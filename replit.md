@@ -48,6 +48,7 @@ Preferred communication style: Simple, everyday language.
 
 **API Structure**
 - Authentication routes: `/api/auth/*` (login, user profile)
+- User management routes: `/api/users` (GET all users, PATCH role updates) - admin only
 - Resource CRUD routes: `/api/{properties|rooms|bookings|guests|orders|bills|leases|expenses}`
 - Financial routes: `/api/leases/:id/payments`, `/api/financials/:propertyId`
 - Aggregated data routes: `/api/dashboard/stats`, `/api/analytics`
@@ -72,7 +73,7 @@ Preferred communication style: Simple, everyday language.
 - Connection pooling via `@neondatabase/serverless`
 
 **Schema Design**
-- **Users**: Authentication profiles with role-based access (admin, manager, staff)
+- **Users**: Authentication profiles with role-based access (admin, manager, staff, kitchen)
 - **Properties**: Multi-property support with location and contact details
 - **Rooms**: Room inventory with status tracking, pricing, and amenities
 - **Guests**: Guest profiles with stay history and preferences
@@ -115,10 +116,15 @@ Preferred communication style: Simple, everyday language.
 - Session table separate from application data
 
 **Authorization Levels**
-- Role-based access control (admin, manager, staff)
+- Role-based access control (admin, manager, staff, kitchen)
+- **Admin**: Full system access including user management
+- **Manager**: Operations, billing, reporting, and property management
+- **Staff**: Basic access to rooms, bookings, and kitchen
+- **Kitchen**: Kitchen order management only
 - Property-specific staff assignments (`assignedPropertyId`)
 - Route protection via `isAuthenticated` middleware
 - UI adapts navigation based on user role
+- User Management page (admin-only) for role assignment and property allocation
 
 **Security Measures**
 - HTTPS-only cookies in production
