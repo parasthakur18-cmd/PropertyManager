@@ -97,8 +97,11 @@ export interface IStorage {
   deleteOrder(id: number): Promise<void>;
 
   // Extra Service operations
+  getAllExtraServices(): Promise<ExtraService[]>;
+  getExtraService(id: number): Promise<ExtraService | undefined>;
   getExtraServicesByBooking(bookingId: number): Promise<ExtraService[]>;
   createExtraService(service: InsertExtraService): Promise<ExtraService>;
+  updateExtraService(id: number, service: Partial<InsertExtraService>): Promise<ExtraService>;
   deleteExtraService(id: number): Promise<void>;
 
   // Bill operations
@@ -452,16 +455,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Extra Service operations
+  async getAllExtraServices(): Promise<ExtraService[]> {
+    return await db.select().from(extraServices).orderBy(desc(extraServices.createdAt));
+  }
+
+  async getExtraService(id: number): Promise<ExtraService | undefined> {
+    const [service] = await db.select().from(extraServices).where(eq(extraServices.id, id));
+    return service;
+  }
+
   async getExtraServicesByBooking(bookingId: number): Promise<ExtraService[]> {
     return await db
       .select()
       .from(extraServices)
-      .where(eq(extraServices.bookingId, bookingId));
+      .where(eq(extraServices.bookingId, bookingId))
+      .orderBy(desc(extraServices.createdAt));
   }
 
   async createExtraService(service: InsertExtraService): Promise<ExtraService> {
     const [newService] = await db.insert(extraServices).values(service).returning();
     return newService;
+  }
+
+  async updateExtraService(id: number, service: Partial<InsertExtraService>): Promise<ExtraService> {
+    const [updated] = await db
+      .update(extraServices)
+      .set(service)
+      .where(eq(extraServices.id, id))
+      .returning();
+    return updated;
   }
 
   async deleteExtraService(id: number): Promise<void> {
