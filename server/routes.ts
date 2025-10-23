@@ -407,8 +407,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // TEST endpoint to verify routing works
+  app.get("/api/bookings/test", isAuthenticated, async (req, res) => {
+    console.log("TEST endpoint called");
+    res.json({ message: "Test endpoint works!" });
+  });
+
   // Active bookings with running totals
   app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
+    console.log("=== ACTIVE BOOKINGS ENDPOINT CALLED ===");
+    
+    try {
+      res.json([{
+        id: 1,
+        test: "This is a test response"
+      }]);
+    } catch (error: any) {
+      console.error("ERROR:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Active bookings with running totals - FULL VERSION (temporarily disabled)
+  app.get("/api/bookings/active-full", isAuthenticated, async (req, res) => {
     console.log("=== HANDLER STARTED ===");
     
     try {
