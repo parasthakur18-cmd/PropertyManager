@@ -413,6 +413,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Test endpoint works!" });
   });
 
+  console.log(">>> REGISTERING /api/bookings/active route...");
+  
   // Active bookings with running totals
   app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
     console.log("=== ACTIVE BOOKINGS ENDPOINT CALLED ===");
@@ -427,6 +429,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: error.message });
     }
   });
+  
+  console.log(">>> /api/bookings/active route REGISTERED successfully");
 
   // Active bookings with running totals - FULL VERSION (temporarily disabled)
   app.get("/api/bookings/active-full", isAuthenticated, async (req, res) => {
