@@ -50,6 +50,7 @@ Preferred communication style: Simple, everyday language.
 - Authentication routes: `/api/auth/*` (login, user profile)
 - User management routes: `/api/users` (GET all users, PATCH role updates) - admin only
 - Resource CRUD routes: `/api/{properties|rooms|bookings|guests|orders|bills|leases|expenses}`
+- Active bookings route: `/api/bookings/active` (GET) - Returns all checked-in bookings with running totals, food orders, and guest details
 - Checkout route: `/api/bookings/checkout` (POST) - Server-side bill calculation and checkout processing
 - Expense category routes: `/api/expense-categories` (GET all, POST create, PATCH update, DELETE) with default category seeding on startup
 - Financial routes: `/api/leases/:id/payments`, `/api/financials/:propertyId`
@@ -204,3 +205,23 @@ Preferred communication style: Simple, everyday language.
 
 **Optional Variables**
 - `NODE_ENV` - Environment mode (development/production)
+
+## Recent Features
+
+### Active Bookings Dashboard (October 2025)
+A comprehensive dashboard for managing currently checked-in guests with real-time monitoring and quick checkout capabilities.
+
+**Key Features:**
+- View all guests with status "checked-in" in a single dashboard
+- Real-time running totals showing room charges, food orders, and extra services
+- Nights stayed calculation from check-in date to present
+- Live food order feed for each active booking
+- Direct checkout functionality with payment method selection
+- Integrated bill generation during checkout
+
+**Future Enhancement:**
+- **SMS/WhatsApp Bill Delivery**: Send final bills directly to guest's mobile via WhatsApp or SMS
+  - Requires Twilio integration setup
+  - Use Replit's Twilio connector (`connector:ccfg_twilio_01K69QJTED9YTJFE2SJ7E4SY08`)
+  - Will need TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER secrets
+  - API endpoint ready for integration at `/api/bookings/checkout`

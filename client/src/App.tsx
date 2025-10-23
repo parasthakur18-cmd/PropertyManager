@@ -28,6 +28,7 @@ import Expenses from "@/pages/expenses";
 import Financials from "@/pages/financials";
 import AddOnServices from "@/pages/addons";
 import UsersManagement from "@/pages/users";
+import ActiveBookings from "@/pages/active-bookings";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -56,6 +57,7 @@ function Router() {
           <Route path="/properties" component={Properties} />
           <Route path="/rooms" component={Rooms} />
           <Route path="/bookings" component={Bookings} />
+          <Route path="/active-bookings" component={ActiveBookings} />
           <Route path="/guests" component={Guests} />
           <Route path="/restaurant" component={Kitchen} />
           <Route path="/kitchen" component={Kitchen} />

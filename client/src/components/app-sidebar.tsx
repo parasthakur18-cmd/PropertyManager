@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Plus,
   UserCog,
+  ClipboardCheck,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -39,6 +40,7 @@ const adminMenuItems = [
   { title: "Properties", url: "/properties", icon: Building2 },
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "Bookings", url: "/bookings", icon: Calendar },
+  { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
@@ -58,6 +60,7 @@ const managerMenuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "Bookings", url: "/bookings", icon: Calendar },
+  { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
@@ -74,6 +77,7 @@ const managerMenuItems = [
 const staffMenuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Rooms", url: "/rooms", icon: Hotel },
+  { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
 ];

@@ -403,6 +403,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Active bookings with running totals
+  app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
+    try {
+      // Get all checked-in bookings
+      const allBookings = await storage.getAllBookings();
+      const activeBookings = allBookings.filter(b => b.status === "checked-in");
+
+      // Get all necessary data
+      const allGuests = await storage.getAllGuests();
+      const allRooms = await storage.getAllRooms();
+      const allProperties = await storage.getAllProperties();
+      const allOrders = await storage.getAllOrders();
+      const allExtras = await storage.getAllExtraServices();
+
+      // Build enriched active booking data
+      const enrichedBookings = activeBookings.map(booking => {
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const room = allRooms.find(r => r.id === booking.roomId);
+        const property = room ? allProperties.find(p => p.id === room.propertyId) : null;
+
+        // Calculate nights stayed (from check-in to now)
+        const checkInDate = new Date(booking.checkInDate);
+        const now = new Date();
+        const nightsStayed = Math.ceil((now.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Calculate room charges
+        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+        const roomCharges = pricePerNight * nightsStayed;
+
+        // Calculate food charges
+        const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
+        const foodCharges = bookingOrders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
+
+        // Calculate extra charges
+        const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
+        const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+
+        // Calculate totals
+        const subtotal = roomCharges + foodCharges + extraCharges;
+        const gstAmount = (subtotal * 18) / 100;
+        const serviceChargeAmount = (subtotal * 10) / 100;
+        const totalAmount = subtotal + gstAmount + serviceChargeAmount;
+        const advancePaid = parseFloat(booking.advanceAmount || "0");
+        const balanceAmount = totalAmount - advancePaid;
+
+        return {
+          ...booking,
+          guest,
+          room,
+          property,
+          nightsStayed,
+          orders: bookingOrders,
+          charges: {
+            roomCharges: roomCharges.toFixed(2),
+            foodCharges: foodCharges.toFixed(2),
+            extraCharges: extraCharges.toFixed(2),
+            subtotal: subtotal.toFixed(2),
+            gstAmount: gstAmount.toFixed(2),
+            serviceChargeAmount: serviceChargeAmount.toFixed(2),
+            totalAmount: totalAmount.toFixed(2),
+            advancePaid: advancePaid.toFixed(2),
+            balanceAmount: balanceAmount.toFixed(2),
+          },
+        };
+      });
+
+      res.json(enrichedBookings);
+    } catch (error: any) {
+      console.error("Active bookings error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
