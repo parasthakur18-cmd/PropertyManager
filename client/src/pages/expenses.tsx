@@ -69,7 +69,7 @@ export default function Expenses() {
       const response = await apiRequest("POST", "/api/expenses", {
         ...data,
         amount: data.amount,
-        expenseDate: new Date(data.expenseDate),
+        expenseDate: data.expenseDate,
       });
       return response.json();
     },

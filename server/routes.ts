@@ -688,7 +688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/leases", isAuthenticated, async (req, res) => {
     try {
-      const lease = await storage.createLease(req.body);
+      const { insertPropertyLeaseSchema } = await import("@shared/schema");
+      const validatedData = insertPropertyLeaseSchema.parse(req.body);
+      const lease = await storage.createLease(validatedData);
       res.status(201).json(lease);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -734,11 +736,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/leases/:leaseId/payments", isAuthenticated, async (req, res) => {
     try {
+      const { insertLeasePaymentSchema } = await import("@shared/schema");
       const paymentData = {
         ...req.body,
         leaseId: parseInt(req.params.leaseId),
       };
-      const payment = await storage.createLeasePayment(paymentData);
+      const validatedData = insertLeasePaymentSchema.parse(paymentData);
+      const payment = await storage.createLeasePayment(validatedData);
       res.status(201).json(payment);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -772,7 +776,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/expenses", isAuthenticated, async (req, res) => {
     try {
-      const expense = await storage.createExpense(req.body);
+      const { insertPropertyExpenseSchema } = await import("@shared/schema");
+      const validatedData = insertPropertyExpenseSchema.parse(req.body);
+      const expense = await storage.createExpense(validatedData);
       res.status(201).json(expense);
     } catch (error: any) {
       if (error instanceof z.ZodError) {

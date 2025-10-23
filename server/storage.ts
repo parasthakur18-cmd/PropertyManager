@@ -659,7 +659,7 @@ export class DatabaseStorage implements IStorage {
 
     // Get total revenue from bills
     const [revenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
       .from(bills)
       .innerJoin(bookings, eq(bills.bookingId, bookings.id))
       .where(
@@ -672,7 +672,7 @@ export class DatabaseStorage implements IStorage {
 
     // Get total expenses
     const [expensesResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(amount), 0)` })
+      .select({ total: sql<string>`COALESCE(SUM(${propertyExpenses.amount}), 0)` })
       .from(propertyExpenses)
       .where(
         and(
@@ -703,7 +703,7 @@ export class DatabaseStorage implements IStorage {
     const expensesByCategory = await db
       .select({
         category: propertyExpenses.category,
-        total: sql<string>`SUM(amount)`,
+        total: sql<string>`SUM(${propertyExpenses.amount})`,
       })
       .from(propertyExpenses)
       .where(

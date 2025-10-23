@@ -77,8 +77,8 @@ export default function Leases() {
       const response = await apiRequest("POST", "/api/leases", {
         ...data,
         totalAmount: data.totalAmount,
-        startDate: new Date(data.startDate),
-        endDate: data.endDate ? new Date(data.endDate) : null,
+        startDate: data.startDate,
+        endDate: data.endDate || null,
       });
       return response.json();
     },
@@ -105,7 +105,7 @@ export default function Leases() {
       const response = await apiRequest("POST", `/api/leases/${selectedLease}/payments`, {
         ...data,
         amount: data.amount,
-        paymentDate: new Date(data.paymentDate),
+        paymentDate: data.paymentDate,
       });
       return response.json();
     },
