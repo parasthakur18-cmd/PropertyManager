@@ -178,6 +178,9 @@ export const orders = pgTable("orders", {
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   orderSource: varchar("order_source", { length: 20 }).notNull().default("staff"),
+  orderType: varchar("order_type", { length: 20 }),
+  customerName: varchar("customer_name", { length: 255 }),
+  customerPhone: varchar("customer_phone", { length: 50 }),
   specialInstructions: text("special_instructions"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -187,6 +190,11 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  roomId: z.number().optional(),
+  orderType: z.string().optional(),
+  customerName: z.string().optional(),
+  customerPhone: z.string().optional(),
 });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

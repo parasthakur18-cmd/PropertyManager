@@ -64,15 +64,22 @@ export default function Kitchen() {
   const renderOrderCard = (order: Order) => {
     const items = order.items as any[];
     const orderSource = (order as any).orderSource || "staff";
+    const orderType = (order as any).orderType;
+    const customerName = (order as any).customerName;
+    const customerPhone = (order as any).customerPhone;
     
     return (
       <Card key={order.id} className="hover-elevate" data-testid={`card-order-${order.id}`}>
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
-                  Room {order.roomId || "N/A"}
+                  {orderType === "restaurant" ? (
+                    customerName || "Restaurant"
+                  ) : (
+                    `Room ${order.roomId || "N/A"}`
+                  )}
                 </CardTitle>
                 <Badge variant="outline" className="text-xs" data-testid={`badge-order-source-${order.id}`}>
                   {orderSource === "guest" ? (
@@ -81,7 +88,15 @@ export default function Kitchen() {
                     <><Phone className="h-3 w-3 mr-1" />Staff</>
                   )}
                 </Badge>
+                {orderType === "restaurant" && (
+                  <Badge variant="secondary" className="text-xs">Restaurant</Badge>
+                )}
               </div>
+              {orderType === "restaurant" && customerPhone && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  📞 {customerPhone}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground mt-1">
                 {format(new Date(order.createdAt!), "PPp")}
               </p>
