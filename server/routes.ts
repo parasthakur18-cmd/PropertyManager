@@ -694,7 +694,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const balanceAmount = totalAmount - advancePaid;
 
       // Create/Update bill with server-calculated amounts
-      const bill = await storage.createOrUpdateBill({
+      console.log(`Creating bill for booking ${bookingId} with discount: ${discountType} - ${discountValue}`);
+      const billData = {
         bookingId,
         guestId: booking.guestId,
         roomCharges: roomCharges.toFixed(2),
@@ -713,10 +714,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balanceAmount: balanceAmount.toFixed(2),
         paymentStatus: "paid",
         paymentMethod,
-      });
+        paidAt: new Date(),
+      };
+      console.log("Bill data:", JSON.stringify(billData, null, 2));
+      
+      const bill = await storage.createOrUpdateBill(billData);
+      console.log("Bill created successfully:", bill.id, "for booking:", bill.bookingId);
 
       // Only update booking status after successful bill creation
       await storage.updateBookingStatus(bookingId, "checked-out");
+      console.log("Booking status updated to checked-out for booking:", bookingId);
 
       res.json({ success: true, bill });
     } catch (error: any) {
