@@ -20,7 +20,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -412,9 +412,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log("=== Active Bookings API Called ===");
       
-      // Get all checked-in bookings
-      const allBookings = await storage.getAllBookings();
-      const activeBookings = allBookings.filter(b => b.status === "checked-in");
+      // Get all checked-in bookings using raw SQL to avoid type issues
+      const activeBookingsQuery = await db.execute(sql`
+        SELECT * FROM bookings WHERE status = 'checked-in' ORDER BY created_at DESC
+      `);
+      
+      const activeBookings = activeBookingsQuery.rows;
       console.log(`Found ${activeBookings.length} checked-in bookings`);
 
       // If no active bookings, return empty array
@@ -427,25 +430,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRooms = await storage.getAllRooms();
       const allProperties = await storage.getAllProperties();
       
-      // Get orders and extras with proper error handling
-      let allOrders: any[] = [];
-      let allExtras: any[] = [];
+      // Get orders and extras using raw SQL to avoid type issues
+      const ordersQuery = await db.execute(sql`SELECT * FROM orders`);
+      const allOrders = ordersQuery.rows;
+      console.log(`Fetched ${allOrders.length} orders`);
       
-      try {
-        allOrders = await db.select().from(orders);
-        console.log(`Fetched ${allOrders.length} orders`);
-      } catch (err: any) {
-        console.error("Error fetching orders:", err.message);
-        allOrders = [];
-      }
-      
-      try {
-        allExtras = await db.select().from(extraServices);
-        console.log(`Fetched ${allExtras.length} extra services`);
-      } catch (err: any) {
-        console.error("Error fetching extras:", err.message);
-        allExtras = [];
-      }
+      const extrasQuery = await db.execute(sql`SELECT * FROM extra_services`);
+      const allExtras = extrasQuery.rows;
+      console.log(`Fetched ${allExtras.length} extra services`);
 
       // Build enriched active booking data
       const enrichedBookings = activeBookings.filter(booking => {
