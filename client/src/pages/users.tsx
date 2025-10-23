@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, Users as UsersIcon, Edit2, Building2 } from "lucide-react";
+import { Shield, Users as UsersIcon, Edit2, Building2, Link as LinkIcon, Copy, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -110,6 +110,16 @@ export default function UsersManagement() {
     }
   };
 
+  const appUrl = window.location.origin;
+  
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: "Copied!",
+      description: "URL copied to clipboard",
+    });
+  };
+
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="flex items-center justify-between mb-6">
@@ -123,6 +133,95 @@ export default function UsersManagement() {
           </p>
         </div>
       </div>
+
+      {/* Testing Roles Info Card */}
+      <Card className="mb-6 border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Info className="h-5 w-5" />
+            How to Test Different Roles
+          </CardTitle>
+          <CardDescription>
+            Share this URL with others or use it in a different browser to test role permissions
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* App URL */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <LinkIcon className="h-4 w-4" />
+              App Login URL
+            </label>
+            <div className="flex gap-2">
+              <div className="flex-1 p-3 bg-muted rounded-md font-mono text-sm break-all">
+                {appUrl}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard(appUrl)}
+                data-testid="button-copy-url"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Instructions */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-sm font-semibold">Testing Steps:</h4>
+            <ol className="space-y-2 text-sm text-muted-foreground list-decimal list-inside">
+              <li>Share the URL above with someone or open it in a different browser/incognito window</li>
+              <li>Have them log in with their Replit account (they'll appear in the users list below)</li>
+              <li>Assign them a role (Staff, Kitchen, Manager, or Admin) using the "Edit Role" button</li>
+              <li>They'll see the interface change based on their assigned role</li>
+            </ol>
+          </div>
+
+          {/* Role Permissions */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+            <div className="p-3 border rounded-md space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="default" className="capitalize">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Admin
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Full access to everything including user management</p>
+            </div>
+
+            <div className="p-3 border rounded-md space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="capitalize">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Manager
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Operations, billing, expenses, and reports (no user management)</p>
+            </div>
+
+            <div className="p-3 border rounded-md space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="capitalize">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Staff
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Rooms, bookings, and kitchen orders only</p>
+            </div>
+
+            <div className="p-3 border rounded-md space-y-1">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="capitalize">
+                  <Shield className="h-3 w-3 mr-1" />
+                  Kitchen
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">Kitchen orders page only</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
