@@ -51,6 +51,7 @@ export interface IStorage {
   updateRoomStatus(id: number, status: string): Promise<Room>;
   deleteRoom(id: number): Promise<void>;
   getAvailableRooms(propertyId: number): Promise<Room[]>;
+  getRoomsWithCheckedInGuests(): Promise<any[]>;
 
   // Guest operations
   getAllGuests(): Promise<Guest[]>;
@@ -196,6 +197,26 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(rooms)
       .where(and(eq(rooms.propertyId, propertyId), eq(rooms.status, "available")));
+  }
+
+  async getRoomsWithCheckedInGuests(): Promise<any[]> {
+    const roomsWithGuests = await db
+      .select({
+        roomId: rooms.id,
+        roomNumber: rooms.roomNumber,
+        roomType: rooms.roomType,
+        guestName: sql<string>`${guests.firstName} || ' ' || ${guests.lastName}`,
+        guestFirstName: guests.firstName,
+        guestLastName: guests.lastName,
+        bookingId: bookings.id,
+      })
+      .from(rooms)
+      .innerJoin(bookings, eq(bookings.roomId, rooms.id))
+      .innerJoin(guests, eq(bookings.guestId, guests.id))
+      .where(eq(bookings.status, "checked-in"))
+      .orderBy(rooms.roomNumber);
+    
+    return roomsWithGuests;
   }
 
   // Guest operations
