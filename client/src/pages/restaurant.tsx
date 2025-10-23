@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +8,8 @@ import { type Order } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
+import { useEffect, useRef } from "react";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -18,10 +20,32 @@ const statusColors = {
 
 export default function Kitchen() {
   const { toast } = useToast();
+  const { playNotification, isEnabled, setIsEnabled } = useNotificationSound();
+  const previousOrderCountRef = useRef<number | null>(null);
 
-  const { data: orders, isLoading } = useQuery<Order[]>({
+  const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
   });
+
+  // Play notification sound when new orders arrive
+  useEffect(() => {
+    if (orders) {
+      const pendingCount = orders.filter(o => o.status === 'pending').length;
+      
+      // Play sound if we have new pending orders
+      // Skip only on initial load (when previousOrderCountRef is null)
+      if (previousOrderCountRef.current !== null && pendingCount > previousOrderCountRef.current) {
+        playNotification();
+        toast({
+          title: "New Order Received!",
+          description: `You have ${pendingCount} pending order${pendingCount > 1 ? 's' : ''}`,
+        });
+      }
+      
+      // Always update the ref, even if count is 0
+      previousOrderCountRef.current = pendingCount;
+    }
+  }, [orders, playNotification, toast]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -61,12 +85,17 @@ export default function Kitchen() {
     );
   }
 
-  const renderOrderCard = (order: Order) => {
+  const renderOrderCard = (order: any) => {
     const items = order.items as any[];
-    const orderSource = (order as any).orderSource || "staff";
-    const orderType = (order as any).orderType;
-    const customerName = (order as any).customerName;
-    const customerPhone = (order as any).customerPhone;
+    const orderSource = order.orderSource || "staff";
+    const orderType = order.orderType;
+    const customerName = order.customerName;
+    const customerPhone = order.customerPhone;
+    const hasCheckedInBooking = order.hasCheckedInBooking;
+    const roomNumber = order.roomNumber;
+    
+    // Only show room number if the room has an active checked-in booking
+    const showRoomNumber = orderType !== "restaurant" && hasCheckedInBooking && roomNumber;
     
     return (
       <Card key={order.id} className="hover-elevate" data-testid={`card-order-${order.id}`}>
@@ -77,8 +106,10 @@ export default function Kitchen() {
                 <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
                   {orderType === "restaurant" ? (
                     customerName || "Restaurant"
+                  ) : showRoomNumber ? (
+                    `Room ${roomNumber}`
                   ) : (
-                    `Room ${order.roomId || "N/A"}`
+                    "Guest Order"
                   )}
                 </CardTitle>
                 <Badge variant="outline" className="text-xs" data-testid={`badge-order-source-${order.id}`}>
@@ -175,12 +206,23 @@ export default function Kitchen() {
 
   return (
     <div className="p-6 md:p-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
-          <ChefHat className="h-8 w-8 text-primary" />
-          Kitchen Panel
-        </h1>
-        <p className="text-muted-foreground mt-1">Manage incoming orders and preparation</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
+            <ChefHat className="h-8 w-8 text-primary" />
+            Kitchen Panel
+          </h1>
+          <p className="text-muted-foreground mt-1">Manage incoming orders and preparation</p>
+        </div>
+        <Button
+          variant={isEnabled ? "default" : "outline"}
+          size="icon"
+          onClick={() => setIsEnabled(!isEnabled)}
+          data-testid="button-toggle-notifications"
+          title={isEnabled ? "Disable notifications" : "Enable notifications"}
+        >
+          {isEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

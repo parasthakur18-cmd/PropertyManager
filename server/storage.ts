@@ -330,8 +330,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Order operations
-  async getAllOrders(): Promise<Order[]> {
-    return await db.select().from(orders).orderBy(desc(orders.createdAt));
+  async getAllOrders(): Promise<any[]> {
+    const ordersWithRoomStatus = await db
+      .select({
+        order: orders,
+        roomStatus: rooms.status,
+        roomNumber: rooms.roomNumber,
+        // Check if there's an active checked-in booking for this room
+        hasCheckedInBooking: sql<boolean>`EXISTS (
+          SELECT 1 FROM ${bookings} 
+          WHERE ${bookings.roomId} = ${rooms.id} 
+          AND ${bookings.status} = 'checked-in'
+        )`,
+      })
+      .from(orders)
+      .leftJoin(rooms, eq(orders.roomId, rooms.id))
+      .orderBy(desc(orders.createdAt));
+    
+    return ordersWithRoomStatus.map(row => ({
+      ...row.order,
+      roomStatus: row.roomStatus,
+      roomNumber: row.roomNumber,
+      hasCheckedInBooking: row.hasCheckedInBooking,
+    }));
   }
 
   async getOrder(id: number): Promise<Order | undefined> {
