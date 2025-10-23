@@ -244,7 +244,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
       console.log("Booking request body:", JSON.stringify(req.body, null, 2));
-      const data = insertBookingSchema.parse(req.body);
+      
+      // Convert date strings to Date objects
+      const bodyWithDates = {
+        ...req.body,
+        checkInDate: new Date(req.body.checkInDate),
+        checkOutDate: new Date(req.body.checkOutDate),
+      };
+      
+      const data = insertBookingSchema.parse(bodyWithDates);
       const booking = await storage.createBooking(data);
       res.status(201).json(booking);
     } catch (error: any) {
