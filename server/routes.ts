@@ -344,6 +344,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Active bookings MUST come before /api/bookings/:id to avoid route collision
+  app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
+    console.log("=== ACTIVE BOOKINGS ENDPOINT CALLED ===");
+    
+    try {
+      // Get bookings directly
+      const result = await db.execute(sql`
+        SELECT id, property_id, room_id, guest_id, status, check_in_date, custom_price, advance_amount
+        FROM bookings 
+        WHERE status = 'checked-in' 
+        ORDER BY check_in_date DESC
+      `);
+      
+      console.log("Got result:", result.rows.length, "checked-in bookings");
+      res.json(result.rows);
+    } catch (error: any) {
+      console.error("Active bookings error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const booking = await storage.getBooking(parseInt(req.params.id));
@@ -407,45 +428,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // TEST endpoint to verify routing works
-  app.get("/api/bookings/test", isAuthenticated, async (req, res) => {
-    console.log("TEST endpoint called");
-    res.json({ message: "Test endpoint works!" });
-  });
-
-  console.log(">>> REGISTERING /api/bookings/active route...");
-  
-  // BRAND NEW TEST ENDPOINT WITH DIFFERENT PATH
-  app.get("/api/active-bookings-test", isAuthenticated, async (req, res) => {
-    console.log("=== NEW TEST ENDPOINT CALLED ===");
-    res.json([{ id: 999, message: "New test endpoint works!" }]);
-  });
-  
-  // Active bookings with running totals
-  app.get("/api/bookings/active", async (req, res) => {
-    console.log("=== ACTIVE BOOKINGS ENDPOINT CALLED ===");
-    
-    try {
-      // Get bookings directly without storage layer
-      const result = await db.execute(sql`
-        SELECT id, property_id, room_id, guest_id, status 
-        FROM bookings 
-        WHERE status = 'checked-in' 
-        LIMIT 5
-      `);
-      
-      console.log("Got result:", result.rows.length, "rows");
-      res.json(result.rows);
-    } catch (error: any) {
-      console.error("ERROR:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
-  
-  console.log(">>> /api/bookings/active route REGISTERED successfully");
-
-  // Active bookings with running totals - FULL VERSION (temporarily disabled)
-  app.get("/api/bookings/active-full", isAuthenticated, async (req, res) => {
+  // Checkout endpoint (keep this in bookings section)
+  app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     console.log("=== HANDLER STARTED ===");
     
     try {
