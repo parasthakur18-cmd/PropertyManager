@@ -635,7 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, paymentMethod } = req.body;
+      const { bookingId, paymentMethod, discountType, discountValue } = req.body;
       
       // Validate input
       if (!bookingId || !paymentMethod) {
@@ -676,8 +676,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const gstAmount = (subtotal * gstRate) / 100;
       const serviceChargeRate = 10;
       const serviceChargeAmount = (subtotal * serviceChargeRate) / 100;
-      const totalAmount = subtotal + gstAmount + serviceChargeAmount;
+      const totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
 
+      // Calculate discount
+      let discountAmount = 0;
+      if (discountType && discountValue && discountType !== "none") {
+        const discount = parseFloat(discountValue);
+        if (discountType === "percentage") {
+          discountAmount = (totalAmountBeforeDiscount * discount) / 100;
+        } else if (discountType === "fixed") {
+          discountAmount = discount;
+        }
+      }
+
+      const totalAmount = totalAmountBeforeDiscount - discountAmount;
       const advancePaid = parseFloat(booking.advanceAmount || "0");
       const balanceAmount = totalAmount - advancePaid;
 
@@ -693,6 +705,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         gstAmount: gstAmount.toFixed(2),
         serviceChargeRate: serviceChargeRate.toString(),
         serviceChargeAmount: serviceChargeAmount.toFixed(2),
+        discountType: discountType || null,
+        discountValue: discountValue ? discountValue.toString() : null,
+        discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : "0",
         totalAmount: totalAmount.toFixed(2),
         advancePaid: advancePaid.toFixed(2),
         balanceAmount: balanceAmount.toFixed(2),
