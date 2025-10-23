@@ -473,6 +473,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Extra Services
+  app.get("/api/extra-services", isAuthenticated, async (req, res) => {
+    try {
+      const services = await storage.getAllExtraServices();
+      res.json(services);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/extra-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.getExtraService(parseInt(req.params.id));
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      res.json(service);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/extra-services/booking/:bookingId", isAuthenticated, async (req, res) => {
     try {
       const services = await storage.getExtraServicesByBooking(parseInt(req.params.bookingId));
@@ -484,6 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/extra-services", isAuthenticated, async (req, res) => {
     try {
+      const { insertExtraServiceSchema } = await import("@shared/schema");
       const data = insertExtraServiceSchema.parse(req.body);
       const service = await storage.createExtraService(data);
       res.status(201).json(service);
@@ -491,6 +513,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/extra-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.updateExtraService(parseInt(req.params.id), req.body);
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      res.json(service);
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
