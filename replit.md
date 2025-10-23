@@ -1,8 +1,8 @@
-# Pahari Property Management System
+# Hostezee Property Management System
 
 ## Overview
 
-A comprehensive property management system designed for mountain resort properties. The platform enables multi-property management, booking coordination, guest tracking, restaurant operations, and billing from a unified interface. Built with a modern SaaS architecture, it features a mountain resort-inspired design system ("Pahari" meaning mountain) with mobile-first responsiveness.
+A comprehensive property management system designed for mountain resort properties. The platform enables multi-property management, booking coordination, guest tracking, restaurant operations, and billing from a unified interface. Built with a modern SaaS architecture, it features a mountain resort-inspired design system with mobile-first responsiveness.
 
 ## User Preferences
 

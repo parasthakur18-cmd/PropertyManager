@@ -4,7 +4,7 @@
 
 **Selected Approach:** Design System with Brand Customization  
 **Primary Reference:** Modern SaaS dashboard patterns (Linear, Notion) combined with mountain resort brand identity  
-**Rationale:** This utility-focused application requires efficiency and clarity for managing complex operations, but must reflect the "Pahari" mountain resort aesthetic to differentiate from generic property management systems.
+**Rationale:** This utility-focused application requires efficiency and clarity for managing complex operations, but must reflect the Hostezee mountain resort aesthetic to differentiate from generic property management systems.
 
 ---
 

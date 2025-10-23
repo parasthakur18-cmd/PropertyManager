@@ -11,7 +11,7 @@ export default function Landing() {
           </div>
           
           <h1 className="text-5xl md:text-6xl font-bold font-serif mb-4 bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-            Pahari Property Management
+            Hostezee
           </h1>
           
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-2xl">
