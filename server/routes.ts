@@ -12,6 +12,7 @@ import {
   insertExtraServiceSchema,
   insertBillSchema,
   insertEnquirySchema,
+  updateUserRoleSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -101,6 +102,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const analytics = await storage.getAnalytics();
       res.json(analytics);
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // User Management (Admin only)
+  app.get("/api/users", isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      if (req.user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/users/:id/role", isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (currentUser?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const validated = updateUserRoleSchema.parse(req.body);
+      
+      const user = await storage.updateUserRole(
+        id, 
+        validated.role,
+        validated.assignedPropertyId
+      );
+      
+      res.json(user);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
       res.status(500).json({ message: error.message });
     }
   });

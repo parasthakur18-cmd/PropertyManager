@@ -44,8 +44,10 @@ import { eq, desc, and, gte, lte, lt, gt, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (required for Replit Auth)
+  getAllUsers(): Promise<User[]>;
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUserRole(id: string, role: string, assignedPropertyId?: number | null): Promise<User>;
 
   // Property operations
   getAllProperties(): Promise<Property[]>;
@@ -153,9 +155,26 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // User operations (required for Replit Auth)
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  async updateUserRole(id: string, role: string, assignedPropertyId?: number | null): Promise<User> {
+    const [updated] = await db
+      .update(users)
+      .set({ 
+        role, 
+        assignedPropertyId: assignedPropertyId !== undefined ? assignedPropertyId : undefined,
+        updatedAt: new Date() 
+      })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {

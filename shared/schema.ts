@@ -41,6 +41,14 @@ export const users = pgTable("users", {
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 
+// User role update schema
+export const updateUserRoleSchema = z.object({
+  role: z.enum(["admin", "manager", "staff", "kitchen"]),
+  assignedPropertyId: z.number().int().nullable().optional(),
+});
+
+export type UpdateUserRole = z.infer<typeof updateUserRoleSchema>;
+
 // Properties table
 export const properties = pgTable("properties", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
