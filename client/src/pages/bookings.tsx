@@ -63,6 +63,8 @@ export default function Bookings() {
       checkOutDate: new Date(),
       status: "pending",
       numberOfGuests: 1,
+      customPrice: null,
+      advanceAmount: "0",
       specialRequests: "",
     },
   });
@@ -375,6 +377,56 @@ export default function Bookings() {
                     </FormItem>
                   )}
                 />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="customPrice"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Custom Price Per Night (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Leave empty for room price"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value ? e.target.value : null)}
+                            data-testid="input-booking-custom-price"
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Override room price with a custom rate
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="advanceAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Advance Payment</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value ? e.target.value : "0")}
+                            data-testid="input-booking-advance"
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Amount received in advance
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <FormField
                   control={form.control}
                   name="specialRequests"
