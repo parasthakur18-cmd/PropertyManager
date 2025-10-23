@@ -661,6 +661,166 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Property Lease endpoints
+  app.get("/api/leases", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      const leases = propertyId 
+        ? await storage.getLeasesByProperty(parseInt(propertyId as string))
+        : await storage.getAllLeases();
+      res.json(leases);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      const lease = await storage.getLeaseWithPayments(parseInt(req.params.id));
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(lease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/leases", isAuthenticated, async (req, res) => {
+    try {
+      const lease = await storage.createLease(req.body);
+      res.status(201).json(lease);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      const lease = await storage.updateLease(parseInt(req.params.id), req.body);
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(lease);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLease(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease Payment endpoints
+  app.get("/api/leases/:leaseId/payments", isAuthenticated, async (req, res) => {
+    try {
+      const payments = await storage.getLeasePayments(parseInt(req.params.leaseId));
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/leases/:leaseId/payments", isAuthenticated, async (req, res) => {
+    try {
+      const paymentData = {
+        ...req.body,
+        leaseId: parseInt(req.params.leaseId),
+      };
+      const payment = await storage.createLeasePayment(paymentData);
+      res.status(201).json(payment);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/lease-payments/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLeasePayment(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Property Expense endpoints
+  app.get("/api/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      const expenses = propertyId 
+        ? await storage.getExpensesByProperty(parseInt(propertyId as string))
+        : await storage.getAllExpenses();
+      res.json(expenses);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const expense = await storage.createExpense(req.body);
+      res.status(201).json(expense);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expense = await storage.updateExpense(parseInt(req.params.id), req.body);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+      res.json(expense);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteExpense(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Financial Reports endpoint
+  app.get("/api/financials/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const financials = await storage.getPropertyFinancials(
+        parseInt(req.params.propertyId),
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(financials);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
