@@ -409,46 +409,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Active bookings with running totals
   app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
+    console.log("=== HANDLER STARTED ===");
+    
     try {
-      console.log("=== Active Bookings API Called ===");
+      console.log("Inside try block");
       
-      // Get all bookings and filter for checked-in
+      // Step 1: Get bookings
+      console.log("STEP 1: Fetching bookings...");
       const allBookings = await storage.getAllBookings();
+      console.log(`Got ${allBookings.length} total bookings`);
+      
       const activeBookings = allBookings.filter(b => b.status === "checked-in");
-      console.log(`Found ${activeBookings.length} checked-in bookings out of ${allBookings.length} total`);
+      console.log(`Filtered to ${activeBookings.length} checked-in bookings`);
 
       // If no active bookings, return empty array
       if (activeBookings.length === 0) {
-        console.log("No active bookings, returning empty array");
+        console.log("Returning empty array");
         return res.json([]);
       }
 
-      console.log("Fetching guests, rooms, properties...");
+      // Step 2: Get related data
+      console.log("STEP 2: Fetching related data...");
       const allGuests = await storage.getAllGuests();
-      const allRooms = await storage.getAllRooms();
-      const allProperties = await storage.getAllProperties();
-      console.log(`Fetched ${allGuests.length} guests, ${allRooms.length} rooms, ${allProperties.length} properties`);
+      console.log(`Got ${allGuests.length} guests`);
       
-      // Get orders and extras with individual error handling
-      console.log("Fetching orders...");
+      const allRooms = await storage.getAllRooms();
+      console.log(`Got ${allRooms.length} rooms`);
+      
+      const allProperties = await storage.getAllProperties();
+      console.log(`Got ${allProperties.length} properties`);
+      
+      // Step 3: Get orders - this might be where the error is
+      console.log("STEP 3: About to fetch orders...");
       let allOrders: any[] = [];
       try {
+        console.log("Calling db.select().from(orders)...");
         allOrders = await db.select().from(orders);
-        console.log(`Fetched ${allOrders.length} orders successfully`);
+        console.log(`SUCCESS: Got ${allOrders.length} orders`);
       } catch (ordersErr: any) {
-        console.error("ERROR fetching orders:", ordersErr.message);
+        console.error("ORDERS ERROR:", ordersErr.message);
+        console.error("ORDERS ERROR STACK:", ordersErr.stack);
         allOrders = [];
       }
       
-      console.log("Fetching extra services...");
+      // Step 4: Get extras
+      console.log("STEP 4: About to fetch extras...");
       let allExtras: any[] = [];
       try {
+        console.log("Calling db.select().from(extraServices)...");
         allExtras = await db.select().from(extraServices);
-        console.log(`Fetched ${allExtras.length} extra services successfully`);
+        console.log(`SUCCESS: Got ${allExtras.length} extras`);
       } catch (extrasErr: any) {
-        console.error("ERROR fetching extras:", extrasErr.message);
+        console.error("EXTRAS ERROR:", extrasErr.message);
+        console.error("EXTRAS ERROR STACK:", extrasErr.stack);
         allExtras = [];
       }
+      
+      console.log("STEP 5: Building enriched data...");
 
       // Build enriched active booking data
       const enrichedBookings = activeBookings.filter(booking => {
