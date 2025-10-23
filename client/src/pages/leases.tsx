@@ -1,0 +1,470 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertPropertyLeaseSchema, type PropertyLease, type Property } from "@shared/schema";
+import { z } from "zod";
+import { format } from "date-fns";
+import { Plus, IndianRupee, Calendar, CreditCard } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+const leaseFormSchema = insertPropertyLeaseSchema.extend({
+  totalAmount: z.string().min(1, "Amount is required"),
+  propertyId: z.number().min(1, "Property is required"),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
+  landlordName: z.string().min(1, "Landlord name is required"),
+});
+
+const paymentFormSchema = z.object({
+  amount: z.string().min(1, "Amount is required"),
+  paymentDate: z.string().min(1, "Payment date is required"),
+  paymentMethod: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export default function Leases() {
+  const { toast } = useToast();
+  const [isLeaseDialogOpen, setIsLeaseDialogOpen] = useState(false);
+  const [selectedLease, setSelectedLease] = useState<number | null>(null);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+
+  const { data: properties = [] } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
+
+  const { data: leases = [], isLoading } = useQuery<PropertyLease[]>({
+    queryKey: ["/api/leases"],
+  });
+
+  const { data: leaseWithPayments } = useQuery<any>({
+    queryKey: ["/api/leases", selectedLease],
+    enabled: !!selectedLease,
+  });
+
+  const leaseForm = useForm({
+    resolver: zodResolver(leaseFormSchema),
+    defaultValues: {
+      propertyId: 0,
+      landlordName: "",
+      totalAmount: "",
+      startDate: "",
+      endDate: "",
+      notes: "",
+    },
+  });
+
+  const paymentForm = useForm({
+    resolver: zodResolver(paymentFormSchema),
+    defaultValues: {
+      amount: "",
+      paymentDate: new Date().toISOString().split("T")[0],
+      paymentMethod: "bank_transfer",
+      notes: "",
+    },
+  });
+
+  const createLeaseMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof leaseFormSchema>) => {
+      const response = await apiRequest("POST", "/api/leases", {
+        ...data,
+        totalAmount: data.totalAmount,
+        startDate: new Date(data.startDate),
+        endDate: data.endDate ? new Date(data.endDate) : null,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      setIsLeaseDialogOpen(false);
+      leaseForm.reset();
+      toast({
+        title: "Lease created",
+        description: "Property lease has been created successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create lease",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const createPaymentMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof paymentFormSchema>) => {
+      const response = await apiRequest("POST", `/api/leases/${selectedLease}/payments`, {
+        ...data,
+        amount: data.amount,
+        paymentDate: new Date(data.paymentDate),
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease] });
+      setIsPaymentDialogOpen(false);
+      paymentForm.reset({
+        amount: "",
+        paymentDate: new Date().toISOString().split("T")[0],
+        paymentMethod: "bank_transfer",
+        notes: "",
+      });
+      toast({
+        title: "Payment recorded",
+        description: "Lease payment has been recorded successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to record payment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateLease = (data: z.infer<typeof leaseFormSchema>) => {
+    createLeaseMutation.mutate(data);
+  };
+
+  const handleCreatePayment = (data: z.infer<typeof paymentFormSchema>) => {
+    createPaymentMutation.mutate(data);
+  };
+
+  const getPropertyName = (propertyId: number) => {
+    return properties.find(p => p.id === propertyId)?.name || "Unknown";
+  };
+
+  const calculateBalance = (lease: PropertyLease) => {
+    const leaseData = leases.find(l => l.id === lease.id);
+    return leaseData ? parseFloat(lease.totalAmount) : 0;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">Loading leases...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-auto">
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold" data-testid="text-page-title">Property Leases</h1>
+            <p className="text-muted-foreground mt-1">Manage property lease agreements and payments</p>
+          </div>
+          <Dialog open={isLeaseDialogOpen} onOpenChange={setIsLeaseDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-lease">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Lease
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create New Lease</DialogTitle>
+              </DialogHeader>
+              <Form {...leaseForm}>
+                <form onSubmit={leaseForm.handleSubmit(handleCreateLease)} className="space-y-4">
+                  <FormField
+                    control={leaseForm.control}
+                    name="propertyId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Property</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                          value={field.value?.toString()}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-property">
+                              <SelectValue placeholder="Select property" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {properties.map((property) => (
+                              <SelectItem key={property.id} value={property.id.toString()}>
+                                {property.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={leaseForm.control}
+                    name="landlordName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Landlord Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value || ""} placeholder="Property landlord name" data-testid="input-landlord-name" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={leaseForm.control}
+                    name="totalAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Total Lease Amount</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            placeholder="1000000"
+                            data-testid="input-total-amount"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={leaseForm.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Start Date</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="date" data-testid="input-start-date" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={leaseForm.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>End Date</FormLabel>
+                          <FormControl>
+                            <Input {...field} type="date" data-testid="input-end-date" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={leaseForm.control}
+                    name="notes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Notes</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value || ""} placeholder="Optional lease notes" data-testid="input-notes" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsLeaseDialogOpen(false)}
+                      data-testid="button-cancel-lease"
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createLeaseMutation.isPending} data-testid="button-submit-lease">
+                      {createLeaseMutation.isPending ? "Creating..." : "Create Lease"}
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {leases.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <IndianRupee className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No leases yet</h3>
+              <p className="text-muted-foreground text-center mb-4">
+                Start by adding a property lease agreement
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {leases.map((lease) => {
+              const totalAmount = parseFloat(lease.totalAmount);
+              
+              return (
+                <Card key={lease.id} className="hover-elevate" data-testid={`card-lease-${lease.id}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg">{getPropertyName(lease.propertyId)}</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">{lease.landlordName || "No landlord"}</p>
+                      </div>
+                      <Badge variant="outline" data-testid={`badge-lease-status-${lease.id}`}>
+                        {lease.endDate && new Date(lease.endDate) < new Date() ? "Expired" : "Active"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Total Amount</span>
+                        <span className="font-mono font-semibold" data-testid={`text-total-amount-${lease.id}`}>
+                          ₹{totalAmount.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Period</span>
+                        <span className="text-sm font-medium">
+                          {format(new Date(lease.startDate), "MMM d, yyyy")} - {lease.endDate ? format(new Date(lease.endDate), "MMM d, yyyy") : "Ongoing"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={() => {
+                          setSelectedLease(lease.id);
+                          setIsPaymentDialogOpen(true);
+                        }}
+                        data-testid={`button-record-payment-${lease.id}`}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        Record Payment
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Record Lease Payment</DialogTitle>
+            </DialogHeader>
+            <Form {...paymentForm}>
+              <form onSubmit={paymentForm.handleSubmit(handleCreatePayment)} className="space-y-4">
+                <FormField
+                  control={paymentForm.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Amount</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          placeholder="100000"
+                          data-testid="input-payment-amount"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="paymentDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Date</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="date" data-testid="input-payment-date" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Method</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-payment-method">
+                            <SelectValue placeholder="Select method" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                          <SelectItem value="check">Check</SelectItem>
+                          <SelectItem value="online">Online Payment</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value || ""} placeholder="Optional payment notes" data-testid="input-payment-notes" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsPaymentDialogOpen(false)}
+                    data-testid="button-cancel-payment"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createPaymentMutation.isPending} data-testid="button-submit-payment">
+                    {createPaymentMutation.isPending ? "Recording..." : "Record Payment"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
+  );
+}
