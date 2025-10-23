@@ -19,6 +19,8 @@ import Kitchen from "@/pages/restaurant";
 import Billing from "@/pages/billing";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import Menu from "@/pages/menu";
+import QuickOrder from "@/pages/quick-order";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -36,6 +38,9 @@ function Router() {
 
   return (
     <Switch>
+      {/* Public Routes - No Auth Required */}
+      <Route path="/menu" component={Menu} />
+      
       {!isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
@@ -47,6 +52,7 @@ function Router() {
           <Route path="/guests" component={Guests} />
           <Route path="/restaurant" component={Kitchen} />
           <Route path="/kitchen" component={Kitchen} />
+          <Route path="/quick-order" component={QuickOrder} />
           <Route path="/billing" component={Billing} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />

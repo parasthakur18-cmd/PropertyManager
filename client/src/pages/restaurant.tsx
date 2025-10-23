@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -63,15 +63,25 @@ export default function Kitchen() {
 
   const renderOrderCard = (order: Order) => {
     const items = order.items as any[];
+    const orderSource = (order as any).orderSource || "staff";
     
     return (
       <Card key={order.id} className="hover-elevate" data-testid={`card-order-${order.id}`}>
         <CardHeader>
           <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
-                Room {order.roomId || "N/A"}
-              </CardTitle>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
+                  Room {order.roomId || "N/A"}
+                </CardTitle>
+                <Badge variant="outline" className="text-xs" data-testid={`badge-order-source-${order.id}`}>
+                  {orderSource === "guest" ? (
+                    <><User className="h-3 w-3 mr-1" />Guest</>
+                  ) : (
+                    <><Phone className="h-3 w-3 mr-1" />Staff</>
+                  )}
+                </Badge>
+              </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {format(new Date(order.createdAt!), "PPp")}
               </p>

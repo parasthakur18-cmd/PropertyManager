@@ -177,6 +177,7 @@ export const orders = pgTable("orders", {
   items: jsonb("items").notNull(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
+  orderSource: varchar("order_source", { length: 20 }).notNull().default("staff"),
   specialInstructions: text("special_instructions"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

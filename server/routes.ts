@@ -18,6 +18,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
+  // ===== PUBLIC ROUTES (No Authentication Required) =====
+  
+  // Public Menu - for guest ordering
+  app.get("/api/public/menu", async (req, res) => {
+    try {
+      const items = await storage.getAllMenuItems();
+      // Only return available items
+      const availableItems = items.filter(item => item.isAvailable);
+      res.json(availableItems);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public Order - for guests to place orders
+  app.post("/api/public/orders", async (req, res) => {
+    try {
+      console.log("Public order request:", JSON.stringify(req.body, null, 2));
+      
+      const { roomId, items, totalAmount, specialInstructions } = req.body;
+      
+      if (!roomId || !items || items.length === 0) {
+        return res.status(400).json({ message: "Room number and items are required" });
+      }
+
+      // Look up room by room number (guest enters "101", we need the actual room ID)
+      const roomNumber = String(roomId);
+      const rooms = await storage.getAllRooms();
+      const room = rooms.find(r => r.roomNumber === roomNumber);
+      
+      if (!room) {
+        return res.status(400).json({ message: `Room ${roomNumber} not found. Please check your room number.` });
+      }
+
+      const orderData = {
+        propertyId: 1, // Default property - you can make this dynamic
+        roomId: room.id, // Use the actual room ID from the database
+        items,
+        totalAmount,
+        specialInstructions: specialInstructions || null,
+        status: "pending",
+        orderSource: "guest", // Track that this order came from guest self-service
+      };
+
+      const order = await storage.createOrder(orderData);
+      res.status(201).json(order);
+    } catch (error: any) {
+      console.error("Public order error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== AUTHENTICATED ROUTES =====
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {

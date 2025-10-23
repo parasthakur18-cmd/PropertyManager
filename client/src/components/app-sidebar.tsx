@@ -9,6 +9,7 @@ import {
   BarChart3,
   Settings,
   ChefHat,
+  Phone,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -34,6 +35,7 @@ const adminMenuItems = [
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+  { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
@@ -46,6 +48,7 @@ const managerMenuItems = [
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+  { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
@@ -54,6 +57,7 @@ const staffMenuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+  { title: "Quick Order", url: "/quick-order", icon: Phone },
 ];
 
 export function AppSidebar() {
