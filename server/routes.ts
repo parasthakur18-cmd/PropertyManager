@@ -415,15 +415,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   console.log(">>> REGISTERING /api/bookings/active route...");
   
+  // BRAND NEW TEST ENDPOINT WITH DIFFERENT PATH
+  app.get("/api/active-bookings-test", isAuthenticated, async (req, res) => {
+    console.log("=== NEW TEST ENDPOINT CALLED ===");
+    res.json([{ id: 999, message: "New test endpoint works!" }]);
+  });
+  
   // Active bookings with running totals
-  app.get("/api/bookings/active", isAuthenticated, async (req, res) => {
+  app.get("/api/bookings/active", async (req, res) => {
     console.log("=== ACTIVE BOOKINGS ENDPOINT CALLED ===");
     
     try {
-      res.json([{
-        id: 1,
-        test: "This is a test response"
-      }]);
+      // Get bookings directly without storage layer
+      const result = await db.execute(sql`
+        SELECT id, property_id, room_id, guest_id, status 
+        FROM bookings 
+        WHERE status = 'checked-in' 
+        LIMIT 5
+      `);
+      
+      console.log("Got result:", result.rows.length, "rows");
+      res.json(result.rows);
     } catch (error: any) {
       console.error("ERROR:", error);
       res.status(500).json({ message: error.message });
