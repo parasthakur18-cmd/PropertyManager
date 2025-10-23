@@ -307,7 +307,7 @@ export default function Expenses() {
                   Manage Categories
                 </Button>
               </DialogTrigger>
-              <DialogContent data-testid="dialog-category-form">
+              <DialogContent className="max-h-[90vh] flex flex-col" data-testid="dialog-category-form">
                 <DialogHeader>
                   <DialogTitle>
                     {editingCategory ? "Edit Category" : "Create New Category"}
@@ -318,6 +318,7 @@ export default function Expenses() {
                       : "Create a custom expense category for better organization"}
                   </DialogDescription>
                 </DialogHeader>
+                <div className="overflow-y-auto flex-1">
                 <Form {...categoryForm}>
                   <form onSubmit={categoryForm.handleSubmit(handleSaveCategory)} className="space-y-4">
                     <FormField
@@ -395,57 +396,58 @@ export default function Expenses() {
                   </form>
                 </Form>
 
-                {categories.length > 0 && (
-                  <div className="mt-6 border-t pt-4">
-                    <h3 className="text-sm font-medium mb-3">Existing Categories</h3>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {categoriesLoading ? (
-                        <div className="space-y-2">
-                          <Skeleton className="h-10 w-full" />
-                          <Skeleton className="h-10 w-full" />
-                        </div>
-                      ) : (
-                        categories.map((cat) => (
-                          <div
-                            key={cat.id}
-                            className="flex items-center justify-between p-2 border rounded-md hover-elevate"
-                            data-testid={`category-item-${cat.id}`}
-                          >
-                            <div>
-                              <div className="font-medium">{cat.name}</div>
-                              {cat.description && (
-                                <p className="text-xs text-muted-foreground">{cat.description}</p>
-                              )}
-                              {cat.isDefault && (
-                                <Badge variant="secondary" className="text-xs mt-1">Default</Badge>
-                              )}
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditCategory(cat)}
-                                data-testid={`button-edit-category-${cat.id}`}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              {!cat.isDefault && (
+                  {categories.length > 0 && (
+                    <div className="mt-6 border-t pt-4">
+                      <h3 className="text-sm font-medium mb-3">Existing Categories</h3>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {categoriesLoading ? (
+                          <div className="space-y-2">
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                          </div>
+                        ) : (
+                          categories.map((cat) => (
+                            <div
+                              key={cat.id}
+                              className="flex items-center justify-between p-2 border rounded-md hover-elevate"
+                              data-testid={`category-item-${cat.id}`}
+                            >
+                              <div>
+                                <div className="font-medium">{cat.name}</div>
+                                {cat.description && (
+                                  <p className="text-xs text-muted-foreground">{cat.description}</p>
+                                )}
+                                {cat.isDefault && (
+                                  <Badge variant="secondary" className="text-xs mt-1">Default</Badge>
+                                )}
+                              </div>
+                              <div className="flex gap-1">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                                  data-testid={`button-delete-category-${cat.id}`}
+                                  onClick={() => handleEditCategory(cat)}
+                                  data-testid={`button-edit-category-${cat.id}`}
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Pencil className="h-3 w-3" />
                                 </Button>
-                              )}
+                                {!cat.isDefault && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                                    data-testid={`button-delete-category-${cat.id}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))
-                      )}
+                          ))
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </DialogContent>
             </Dialog>
 
@@ -456,10 +458,11 @@ export default function Expenses() {
                   Add Expense
                 </Button>
               </DialogTrigger>
-              <DialogContent data-testid="dialog-expense-form">
+              <DialogContent className="max-h-[90vh] flex flex-col" data-testid="dialog-expense-form">
                 <DialogHeader>
                   <DialogTitle>Record New Expense</DialogTitle>
                 </DialogHeader>
+                <div className="overflow-y-auto flex-1">
                 <Form {...expenseForm}>
                   <form onSubmit={expenseForm.handleSubmit(handleCreateExpense)} className="space-y-4">
                     <FormField
@@ -580,6 +583,7 @@ export default function Expenses() {
                     </div>
                   </form>
                 </Form>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
