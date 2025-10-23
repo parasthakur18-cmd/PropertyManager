@@ -28,6 +28,12 @@ const statusColors = {
 export default function Bookings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
+  const [showQuickGuestForm, setShowQuickGuestForm] = useState(false);
+  const [quickGuestData, setQuickGuestData] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+  });
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -61,6 +67,29 @@ export default function Bookings() {
     },
   });
 
+  const quickGuestMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("POST", "/api/guests", data);
+    },
+    onSuccess: (newGuest: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
+      form.setValue("guestId", newGuest.id);
+      setShowQuickGuestForm(false);
+      setQuickGuestData({ fullName: "", phone: "", email: "" });
+      toast({
+        title: "Success",
+        description: "Guest added successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: InsertBooking) => {
       return await apiRequest("POST", "/api/bookings", data);
@@ -74,6 +103,7 @@ export default function Bookings() {
       });
       setIsDialogOpen(false);
       form.reset();
+      setShowQuickGuestForm(false);
     },
     onError: (error: Error) => {
       toast({
@@ -83,6 +113,18 @@ export default function Bookings() {
       });
     },
   });
+
+  const handleQuickAddGuest = () => {
+    if (!quickGuestData.fullName || !quickGuestData.phone) {
+      toast({
+        title: "Error",
+        description: "Name and phone are required",
+        variant: "destructive",
+      });
+      return;
+    }
+    quickGuestMutation.mutate(quickGuestData);
+  };
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
@@ -180,24 +222,70 @@ export default function Bookings() {
                   name="guestId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Guest</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(parseInt(value))}
-                        value={field.value ? field.value.toString() : undefined}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-booking-guest">
-                            <SelectValue placeholder="Select guest" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {guests?.map((guest) => (
-                            <SelectItem key={guest.id} value={guest.id.toString()}>
-                              {guest.fullName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Guest</FormLabel>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowQuickGuestForm(!showQuickGuestForm)}
+                          data-testid="button-toggle-quick-guest"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          {showQuickGuestForm ? "Cancel" : "Quick Add Guest"}
+                        </Button>
+                      </div>
+                      
+                      {showQuickGuestForm ? (
+                        <div className="space-y-3 p-4 border border-border rounded-lg bg-muted/50">
+                          <Input
+                            placeholder="Full Name *"
+                            value={quickGuestData.fullName}
+                            onChange={(e) => setQuickGuestData({ ...quickGuestData, fullName: e.target.value })}
+                            data-testid="input-quick-guest-name"
+                          />
+                          <Input
+                            placeholder="Phone Number *"
+                            value={quickGuestData.phone}
+                            onChange={(e) => setQuickGuestData({ ...quickGuestData, phone: e.target.value })}
+                            data-testid="input-quick-guest-phone"
+                          />
+                          <Input
+                            placeholder="Email (optional)"
+                            type="email"
+                            value={quickGuestData.email}
+                            onChange={(e) => setQuickGuestData({ ...quickGuestData, email: e.target.value })}
+                            data-testid="input-quick-guest-email"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleQuickAddGuest}
+                            disabled={quickGuestMutation.isPending}
+                            data-testid="button-save-quick-guest"
+                          >
+                            {quickGuestMutation.isPending ? "Adding..." : "Add Guest"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Select
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                          value={field.value ? field.value.toString() : undefined}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-booking-guest">
+                              <SelectValue placeholder="Select guest" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {guests?.map((guest) => (
+                              <SelectItem key={guest.id} value={guest.id.toString()}>
+                                {guest.fullName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
