@@ -32,8 +32,12 @@ export default function QuickOrder() {
     queryKey: ["/api/menu-items"],
   });
 
-  const { data: rooms } = useQuery<Room[]>({
-    queryKey: ["/api/rooms"],
+  const { 
+    data: roomsWithGuests, 
+    isLoading: roomsLoading,
+    isError: roomsError 
+  } = useQuery<any[]>({
+    queryKey: ["/api/rooms/checked-in-guests"],
   });
 
   const orderMutation = useMutation({
@@ -101,13 +105,23 @@ export default function QuickOrder() {
     }
 
     if (step === 2) {
-      if (orderType === "room" && !selectedRoom) {
-        toast({
-          title: "Room Required",
-          description: "Please select a room number",
-          variant: "destructive",
-        });
-        return;
+      if (orderType === "room") {
+        if (!roomsWithGuests || roomsWithGuests.length === 0) {
+          toast({
+            title: "No Checked-In Guests",
+            description: "There are no rooms with checked-in guests. Please check in a guest first.",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (!selectedRoom) {
+          toast({
+            title: "Room Required",
+            description: "Please select a room number",
+            variant: "destructive",
+          });
+          return;
+        }
       }
       if (orderType === "restaurant" && (!customerName || !customerPhone)) {
         toast({
@@ -246,18 +260,30 @@ export default function QuickOrder() {
               {orderType === "room" ? (
                 <div>
                   <Label htmlFor="room-select">Room Number *</Label>
-                  <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                    <SelectTrigger id="room-select" data-testid="select-quick-order-room">
-                      <SelectValue placeholder="Select room" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rooms?.map((room) => (
-                        <SelectItem key={room.id} value={room.id.toString()}>
-                          Room {room.roomNumber} - {room.roomType}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {roomsLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : roomsError ? (
+                    <div className="text-sm text-destructive p-3 border border-destructive rounded-md">
+                      Error loading rooms. Please try again.
+                    </div>
+                  ) : roomsWithGuests && roomsWithGuests.length === 0 ? (
+                    <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
+                      No rooms with checked-in guests available. Please check in a guest first.
+                    </div>
+                  ) : (
+                    <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                      <SelectTrigger id="room-select" data-testid="select-quick-order-room">
+                        <SelectValue placeholder="Select room with checked-in guest" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roomsWithGuests?.map((room) => (
+                          <SelectItem key={room.roomId} value={room.roomId.toString()}>
+                            Room {room.roomNumber} - {room.guestName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               ) : (
                 <>
@@ -297,6 +323,7 @@ export default function QuickOrder() {
                 <Button
                   className="flex-1"
                   onClick={handleNextStep}
+                  disabled={orderType === "room" && (!roomsWithGuests || roomsWithGuests.length === 0 || roomsLoading)}
                   data-testid="button-next-step-2"
                 >
                   Next: Select Items
@@ -364,12 +391,20 @@ export default function QuickOrder() {
                     <span className="font-medium capitalize">{orderType}</span>
                   </div>
                   {orderType === "room" ? (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Room:</span>
-                      <span className="font-medium">
-                        {rooms?.find(r => r.id === parseInt(selectedRoom))?.roomNumber || "-"}
-                      </span>
-                    </div>
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Room:</span>
+                        <span className="font-medium">
+                          {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Guest:</span>
+                        <span className="font-medium">
+                          {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
+                        </span>
+                      </div>
+                    </>
                   ) : (
                     <>
                       <div className="flex justify-between">
