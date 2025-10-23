@@ -249,6 +249,8 @@ export const bills = pgTable("bills", {
   serviceChargeRate: decimal("service_charge_rate", { precision: 5, scale: 2 }).notNull().default("10"),
   serviceChargeAmount: decimal("service_charge_amount", { precision: 10, scale: 2 }).notNull(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  advancePaid: decimal("advance_paid", { precision: 10, scale: 2 }).notNull().default("0"), // Advance amount received at booking
+  balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }).notNull().default("0"), // Remaining amount to be paid
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("unpaid"),
   paymentMethod: varchar("payment_method", { length: 50 }),
   paidAt: timestamp("paid_at"),
