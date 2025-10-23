@@ -227,7 +227,14 @@ export default function Bookings() {
               <DialogTitle>Create New Booking</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pb-4">
+              <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                console.log("Form validation errors:", errors);
+                toast({
+                  title: "Form Validation Error",
+                  description: "Please check all required fields",
+                  variant: "destructive",
+                });
+              })} className="space-y-4 pb-4">
                 <div className="space-y-3 p-4 border border-border rounded-lg bg-muted/10">
                   <h3 className="font-medium">Guest Details</h3>
                   <Input
