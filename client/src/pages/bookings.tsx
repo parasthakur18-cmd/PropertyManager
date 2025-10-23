@@ -208,8 +208,8 @@ export default function Bookings() {
                     <FormItem>
                       <FormLabel>Room (Optional - Auto-assign if not selected)</FormLabel>
                       <Select
-                        onValueChange={(value) => field.onChange(value ? parseInt(value) : null)}
-                        value={field.value?.toString() || ""}
+                        onValueChange={(value) => field.onChange(value === "auto" ? null : parseInt(value))}
+                        value={field.value?.toString() || "auto"}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-booking-room">
@@ -217,7 +217,7 @@ export default function Bookings() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Auto-assign</SelectItem>
+                          <SelectItem value="auto">Auto-assign</SelectItem>
                           {availableRooms?.map((room) => (
                             <SelectItem key={room.id} value={room.id.toString()}>
                               Room {room.roomNumber} - {room.roomType} (₹{room.pricePerNight}/night)
