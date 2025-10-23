@@ -285,6 +285,85 @@ export const insertEnquirySchema = createInsertSchema(enquiries).omit({
 export type InsertEnquiry = z.infer<typeof insertEnquirySchema>;
 export type Enquiry = typeof enquiries.$inferSelect;
 
+// Property Leases table
+export const propertyLeases = pgTable("property_leases", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  paymentFrequency: varchar("payment_frequency", { length: 20 }).notNull().default("monthly"),
+  landlordName: varchar("landlord_name", { length: 255 }),
+  landlordContact: varchar("landlord_contact", { length: 100 }),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPropertyLeaseSchema = createInsertSchema(propertyLeases).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date().optional(),
+});
+
+export type InsertPropertyLease = z.infer<typeof insertPropertyLeaseSchema>;
+export type PropertyLease = typeof propertyLeases.$inferSelect;
+
+// Lease Payments table
+export const leasePayments = pgTable("lease_payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentDate: timestamp("payment_date").notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }),
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  notes: text("notes"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeasePaymentSchema = createInsertSchema(leasePayments).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  paymentDate: z.coerce.date(),
+});
+
+export type InsertLeasePayment = z.infer<typeof insertLeasePaymentSchema>;
+export type LeasePayment = typeof leasePayments.$inferSelect;
+
+// Property Expenses table
+export const propertyExpenses = pgTable("property_expenses", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  category: varchar("category", { length: 50 }).notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  expenseDate: timestamp("expense_date").notNull(),
+  description: text("description"),
+  vendorName: varchar("vendor_name", { length: 255 }),
+  paymentMethod: varchar("payment_method", { length: 50 }),
+  receiptNumber: varchar("receipt_number", { length: 100 }),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPropertyExpenseSchema = createInsertSchema(propertyExpenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  expenseDate: z.coerce.date(),
+});
+
+export type InsertPropertyExpense = z.infer<typeof insertPropertyExpenseSchema>;
+export type PropertyExpense = typeof propertyExpenses.$inferSelect;
+
 // Relations
 export const propertiesRelations = relations(properties, ({ many }) => ({
   rooms: many(rooms),
@@ -292,6 +371,30 @@ export const propertiesRelations = relations(properties, ({ many }) => ({
   menuItems: many(menuItems),
   orders: many(orders),
   enquiries: many(enquiries),
+  leases: many(propertyLeases),
+  expenses: many(propertyExpenses),
+}));
+
+export const propertyLeasesRelations = relations(propertyLeases, ({ one, many }) => ({
+  property: one(properties, {
+    fields: [propertyLeases.propertyId],
+    references: [properties.id],
+  }),
+  payments: many(leasePayments),
+}));
+
+export const leasePaymentsRelations = relations(leasePayments, ({ one }) => ({
+  lease: one(propertyLeases, {
+    fields: [leasePayments.leaseId],
+    references: [propertyLeases.id],
+  }),
+}));
+
+export const propertyExpensesRelations = relations(propertyExpenses, ({ one }) => ({
+  property: one(properties, {
+    fields: [propertyExpenses.propertyId],
+    references: [properties.id],
+  }),
 }));
 
 export const roomsRelations = relations(rooms, ({ one, many }) => ({
