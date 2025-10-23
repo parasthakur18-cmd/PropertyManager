@@ -13,12 +13,17 @@ import {
   insertBillSchema,
   insertEnquirySchema,
   updateUserRoleSchema,
+  insertExpenseCategorySchema,
+  insertBankTransactionSchema,
 } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
+
+  // Seed default expense categories
+  await storage.seedDefaultCategories();
 
   // ===== PUBLIC ROUTES (No Authentication Required) =====
   
@@ -859,6 +864,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await storage.deleteLeasePayment(parseInt(req.params.id));
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Expense Category endpoints
+  app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      const categories = propertyId
+        ? await storage.getExpenseCategoriesByProperty(parseInt(propertyId as string))
+        : await storage.getAllExpenseCategories();
+      res.json(categories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/expense-categories", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertExpenseCategorySchema.parse(req.body);
+      const category = await storage.createExpenseCategory(validatedData);
+      res.status(201).json(category);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/expense-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertExpenseCategorySchema.partial().parse(req.body);
+      const category = await storage.updateExpenseCategory(parseInt(id), validatedData);
+      res.json(category);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/expense-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteExpenseCategory(parseInt(id));
+      res.json({ message: "Category deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
