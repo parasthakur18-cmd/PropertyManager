@@ -719,14 +719,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAvailableRoomsForDates(propertyId: number, checkIn: Date, checkOut: Date): Promise<Room[]> {
+    // Get all rooms for this property
     const allRooms = await db
       .select()
       .from(rooms)
       .where(eq(rooms.propertyId, propertyId));
 
-    // Find bookings that overlap with the requested dates
-    const overlappingBookings = await db
-      .select({ roomId: bookings.roomId })
+    // Get all bookings for this property with confirmed or checked-in status
+    const allBookings = await db
+      .select()
       .from(bookings)
       .where(
         and(
@@ -734,11 +735,20 @@ export class DatabaseStorage implements IStorage {
           or(
             eq(bookings.status, 'confirmed'),
             eq(bookings.status, 'checked-in')
-          ),
-          lt(bookings.checkInDate, checkOut),
-          gt(bookings.checkOutDate, checkIn)
+          )
         )
       );
+
+    // Filter bookings that overlap with the requested dates (done in JavaScript)
+    const overlappingBookings = allBookings.filter(booking => {
+      const bookingCheckIn = new Date(booking.checkInDate);
+      const bookingCheckOut = new Date(booking.checkOutDate);
+      const requestCheckIn = new Date(checkIn);
+      const requestCheckOut = new Date(checkOut);
+      
+      // Check if booking overlaps with requested dates
+      return bookingCheckIn < requestCheckOut && bookingCheckOut > requestCheckIn;
+    });
 
     const bookedRoomIds = new Set(overlappingBookings.map(b => b.roomId).filter(id => id !== null));
     return allRooms.filter(room => !bookedRoomIds.has(room.id));
