@@ -1260,22 +1260,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Validate enquiry has required guest information
-      if (!enquiry.guestName || !enquiry.phone) {
+      if (!enquiry.guestName || !enquiry.guestPhone) {
         return res.status(400).json({ message: "Enquiry is missing required guest information (name or phone)" });
       }
 
       // Create or find guest
       let guestId: number;
       const existingGuests = await storage.getAllGuests();
-      const existingGuest = existingGuests.find(g => g.phone === enquiry.phone);
+      const existingGuest = existingGuests.find(g => g.phone === enquiry.guestPhone);
       
       if (existingGuest) {
         guestId = existingGuest.id;
       } else {
         const newGuest = await storage.createGuest({
           fullName: enquiry.guestName,
-          phone: enquiry.phone,
-          email: enquiry.email || null,
+          phone: enquiry.guestPhone,
+          email: enquiry.guestEmail || null,
           idProofType: null,
           idProofNumber: null,
           idProofImage: null,
