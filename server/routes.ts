@@ -936,6 +936,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get bill with all related details (guest, booking, room, property, orders)
+  app.get("/api/bills/:id/details", isAuthenticated, async (req, res) => {
+    try {
+      const billId = parseInt(req.params.id);
+      
+      // Fetch bill
+      const bill = await storage.getBill(billId);
+      if (!bill) {
+        return res.status(404).json({ message: "Bill not found" });
+      }
+
+      // Fetch related booking
+      const booking = await storage.getBooking(bill.bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Fetch guest
+      const guest = await storage.getGuest(bill.guestId);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+
+      // Fetch room
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+
+      // Fetch property
+      const property = room?.propertyId ? await storage.getProperty(room.propertyId) : null;
+
+      // Fetch orders for this booking
+      const allOrders = await storage.getAllOrders();
+      const orders = allOrders.filter(o => o.bookingId === booking.id);
+
+      // Fetch extra services for this booking
+      const allExtras = await storage.getAllExtraServices();
+      const extraServices = allExtras.filter(e => e.bookingId === booking.id);
+
+      // Return enriched bill data
+      res.json({
+        ...bill,
+        guest,
+        booking: {
+          ...booking,
+          room,
+          property,
+        },
+        orders,
+        extraServices,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/bills/booking/:bookingId", isAuthenticated, async (req, res) => {
     try {
       const bill = await storage.getBillByBooking(parseInt(req.params.bookingId));
