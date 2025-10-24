@@ -248,6 +248,8 @@ export const bills = pgTable("bills", {
   gstAmount: decimal("gst_amount", { precision: 10, scale: 2 }).notNull(),
   serviceChargeRate: decimal("service_charge_rate", { precision: 5, scale: 2 }).notNull().default("10"),
   serviceChargeAmount: decimal("service_charge_amount", { precision: 10, scale: 2 }).notNull(),
+  includeGst: boolean("include_gst").notNull().default(true), // Whether to apply GST to the bill
+  includeServiceCharge: boolean("include_service_charge").notNull().default(true), // Whether to apply service charge to the bill
   discountType: varchar("discount_type", { length: 20 }), // "percentage" or "fixed"
   discountValue: decimal("discount_value", { precision: 10, scale: 2 }), // The % or fixed amount entered
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0"), // The calculated discount amount

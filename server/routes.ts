@@ -635,7 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, paymentMethod, discountType, discountValue } = req.body;
+      const { bookingId, paymentMethod, discountType, discountValue, includeGst = true, includeServiceCharge = true } = req.body;
       
       // Validate input
       if (!bookingId || !paymentMethod) {
@@ -673,9 +673,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate totals
       const subtotal = roomCharges + foodCharges + extraCharges;
       const gstRate = 18;
-      const gstAmount = (subtotal * gstRate) / 100;
+      const gstAmount = includeGst ? (subtotal * gstRate) / 100 : 0;
       const serviceChargeRate = 10;
-      const serviceChargeAmount = (subtotal * serviceChargeRate) / 100;
+      const serviceChargeAmount = includeServiceCharge ? (subtotal * serviceChargeRate) / 100 : 0;
       const totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
 
       // Calculate discount
@@ -706,6 +706,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         gstAmount: gstAmount.toFixed(2),
         serviceChargeRate: serviceChargeRate.toString(),
         serviceChargeAmount: serviceChargeAmount.toFixed(2),
+        includeGst,
+        includeServiceCharge,
         discountType: discountType || null,
         discountValue: discountValue ? discountValue.toString() : null,
         discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : "0",
