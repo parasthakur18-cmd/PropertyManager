@@ -72,6 +72,8 @@ export default function NewEnquiry() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number>();
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
+  const [checkInPopoverOpen, setCheckInPopoverOpen] = useState(false);
+  const [checkOutPopoverOpen, setCheckOutPopoverOpen] = useState(false);
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -240,7 +242,7 @@ export default function NewEnquiry() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Check-in Date *</FormLabel>
-                      <Popover>
+                      <Popover open={checkInPopoverOpen} onOpenChange={setCheckInPopoverOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
@@ -267,6 +269,7 @@ export default function NewEnquiry() {
                             onSelect={(date) => {
                               field.onChange(date);
                               setCheckInDate(date);
+                              setCheckInPopoverOpen(false); // Auto-close calendar
                               if (selectedPropertyId && date && checkOutDate) {
                                 checkAvailability(selectedPropertyId, date, checkOutDate);
                               }
@@ -289,7 +292,7 @@ export default function NewEnquiry() {
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
                       <FormLabel>Check-out Date *</FormLabel>
-                      <Popover>
+                      <Popover open={checkOutPopoverOpen} onOpenChange={setCheckOutPopoverOpen}>
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
@@ -316,6 +319,7 @@ export default function NewEnquiry() {
                             onSelect={(date) => {
                               field.onChange(date);
                               setCheckOutDate(date);
+                              setCheckOutPopoverOpen(false); // Auto-close calendar
                               if (selectedPropertyId && checkInDate && date) {
                                 checkAvailability(selectedPropertyId, checkInDate, date);
                               }
