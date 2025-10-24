@@ -286,6 +286,7 @@ export const enquiries = pgTable("enquiries", {
   numberOfGuests: integer("number_of_guests").notNull().default(1),
   priceQuoted: decimal("price_quoted", { precision: 10, scale: 2 }),
   advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }),
+  paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"), // pending, received, refunded
   status: varchar("status", { length: 20 }).notNull().default("new"),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
@@ -299,16 +300,64 @@ export const enquiries = pgTable("enquiries", {
 export const insertEnquirySchema = createInsertSchema(enquiries).omit({
   id: true,
   status: true,
+  paymentStatus: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
   checkInDate: z.coerce.date(),
   checkOutDate: z.coerce.date(),
   status: z.enum(["new", "messaged", "payment_pending", "paid", "confirmed", "cancelled"]).default("new"),
+  paymentStatus: z.enum(["pending", "received", "refunded"]).default("pending"),
 });
 
 export type InsertEnquiry = z.infer<typeof insertEnquirySchema>;
 export type Enquiry = typeof enquiries.$inferSelect;
+
+// Message Templates table
+export const messageTemplates = pgTable("message_templates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar("name", { length: 100 }).notNull(),
+  subject: varchar("subject", { length: 255 }),
+  content: text("content").notNull(),
+  category: varchar("category", { length: 50 }).notNull(), // payment_reminder, booking_confirmation, check_in_details, etc.
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+
+// Communications table (logs all messages sent)
+export const communications = pgTable("communications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  enquiryId: integer("enquiry_id").references(() => enquiries.id, { onDelete: 'cascade' }),
+  bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'cascade' }),
+  recipientPhone: varchar("recipient_phone", { length: 50 }).notNull(),
+  recipientName: varchar("recipient_name", { length: 255 }),
+  messageType: varchar("message_type", { length: 20 }).notNull().default("sms"), // sms, whatsapp, email
+  templateId: integer("template_id").references(() => messageTemplates.id),
+  messageContent: text("message_content").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("sent"), // sent, delivered, failed, read
+  twilioSid: varchar("twilio_sid", { length: 100 }),
+  errorMessage: text("error_message"),
+  sentBy: varchar("sent_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCommunicationSchema = createInsertSchema(communications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCommunication = z.infer<typeof insertCommunicationSchema>;
+export type Communication = typeof communications.$inferSelect;
 
 // Property Leases table
 export const propertyLeases = pgTable("property_leases", {
@@ -540,6 +589,7 @@ export const bookingsRelations = relations(bookings, ({ one, many }) => ({
   orders: many(orders),
   extraServices: many(extraServices),
   bills: many(bills),
+  communications: many(communications),
 }));
 
 export const menuItemsRelations = relations(menuItems, ({ one }) => ({
@@ -586,7 +636,7 @@ export const billsRelations = relations(bills, ({ one }) => ({
   }),
 }));
 
-export const enquiriesRelations = relations(enquiries, ({ one }) => ({
+export const enquiriesRelations = relations(enquiries, ({ one, many }) => ({
   property: one(properties, {
     fields: [enquiries.propertyId],
     references: [properties.id],
@@ -594,5 +644,25 @@ export const enquiriesRelations = relations(enquiries, ({ one }) => ({
   room: one(rooms, {
     fields: [enquiries.roomId],
     references: [rooms.id],
+  }),
+  communications: many(communications),
+}));
+
+export const messageTemplatesRelations = relations(messageTemplates, ({ many }) => ({
+  communications: many(communications),
+}));
+
+export const communicationsRelations = relations(communications, ({ one }) => ({
+  enquiry: one(enquiries, {
+    fields: [communications.enquiryId],
+    references: [enquiries.id],
+  }),
+  booking: one(bookings, {
+    fields: [communications.bookingId],
+    references: [bookings.id],
+  }),
+  template: one(messageTemplates, {
+    fields: [communications.templateId],
+    references: [messageTemplates.id],
   }),
 }));
