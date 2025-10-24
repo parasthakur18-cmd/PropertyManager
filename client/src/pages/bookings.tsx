@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -33,6 +35,7 @@ export default function Bookings() {
     fullName: "",
     phone: "",
     email: "",
+    idProofImage: "",
   });
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -102,7 +105,7 @@ export default function Bookings() {
       });
       setIsDialogOpen(false);
       form.reset();
-      setQuickGuestData({ fullName: "", phone: "", email: "" });
+      setQuickGuestData({ fullName: "", phone: "", email: "", idProofImage: "" });
     },
     onError: (error: Error) => {
       toast({
@@ -169,6 +172,16 @@ export default function Bookings() {
       return;
     }
 
+    // Validate ID proof upload
+    if (!quickGuestData.idProofImage) {
+      toast({
+        title: "Error",
+        description: "Guest ID proof upload is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Validate room selection
     if (!data.roomId) {
       toast({
@@ -179,9 +192,19 @@ export default function Bookings() {
       return;
     }
 
-    // Create guest first
+    // Create guest first with ID proof
     try {
-      const guestResponse = await apiRequest("POST", "/api/guests", quickGuestData);
+      const guestData = {
+        fullName: quickGuestData.fullName,
+        phone: quickGuestData.phone,
+        email: quickGuestData.email || null,
+        idProofImage: quickGuestData.idProofImage,
+        idProofType: null,
+        idProofNumber: null,
+        address: null,
+        preferences: null,
+      };
+      const guestResponse = await apiRequest("POST", "/api/guests", guestData);
       const newGuest = await guestResponse.json();
       
       // Then create booking with the new guest
@@ -276,7 +299,7 @@ export default function Bookings() {
               setIsDialogOpen(open);
               if (!open) {
                 form.reset();
-                setQuickGuestData({ fullName: "", phone: "", email: "" });
+                setQuickGuestData({ fullName: "", phone: "", email: "", idProofImage: "" });
               }
             }}
           >
@@ -320,6 +343,39 @@ export default function Bookings() {
                     onChange={(e) => setQuickGuestData({ ...quickGuestData, email: e.target.value })}
                     data-testid="input-guest-email"
                   />
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">ID Proof Upload *</label>
+                    <ObjectUploader
+                      maxNumberOfFiles={1}
+                      maxFileSize={10485760}
+                      buttonVariant="outline"
+                      onGetUploadParameters={async () => {
+                        const response = await apiRequest("POST", "/api/objects/upload", {});
+                        const data = await response.json();
+                        return {
+                          method: "PUT" as const,
+                          url: data.uploadURL,
+                        };
+                      }}
+                      onComplete={async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+                        if (result.successful && result.successful.length > 0) {
+                          const uploadURL = result.successful[0].uploadURL;
+                          const response = await apiRequest("PUT", "/api/guest-id-proofs", {
+                            idProofUrl: uploadURL,
+                          });
+                          const data = await response.json();
+                          setQuickGuestData({ ...quickGuestData, idProofImage: data.objectPath });
+                          toast({
+                            title: "Success",
+                            description: "ID proof uploaded successfully",
+                          });
+                        }
+                      }}
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {quickGuestData.idProofImage ? "ID Uploaded ✓" : "Upload Guest ID"}
+                    </ObjectUploader>
+                  </div>
                 </div>
                 <FormField
                   control={form.control}
