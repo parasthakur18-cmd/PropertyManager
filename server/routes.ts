@@ -477,7 +477,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/bookings/:id/status", isAuthenticated, async (req, res) => {
     try {
       const { status } = req.body;
-      const booking = await storage.updateBookingStatus(parseInt(req.params.id), status);
+      const bookingId = parseInt(req.params.id);
+      
+      // If trying to check in, validate the check-in date
+      if (status === "checked-in") {
+        const booking = await storage.getBooking(bookingId);
+        if (!booking) {
+          return res.status(404).json({ message: "Booking not found" });
+        }
+        
+        // Check if check-in date is today or in the past
+        const checkInDate = new Date(booking.checkInDate);
+        const today = new Date();
+        
+        // Reset time parts to compare only dates
+        checkInDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+        
+        if (checkInDate > today) {
+          const checkInDateFormatted = format(checkInDate, "PPP");
+          return res.status(400).json({ 
+            message: `Cannot check in before the scheduled check-in date (${checkInDateFormatted}). The guest's check-in is scheduled for ${checkInDateFormatted}.`
+          });
+        }
+      }
+      
+      const booking = await storage.updateBookingStatus(bookingId, status);
       res.json(booking);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
