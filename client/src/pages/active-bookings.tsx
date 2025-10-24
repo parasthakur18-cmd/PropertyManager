@@ -167,7 +167,7 @@ export default function ActiveBookings() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="p-6 md:p-8 flex items-center justify-center min-h-[50vh]">
         <div className="text-muted-foreground">Loading active bookings...</div>
       </div>
     );
@@ -175,7 +175,7 @@ export default function ActiveBookings() {
 
   if (!activeBookings || activeBookings.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-8">
+      <div className="p-6 md:p-8 flex flex-col items-center justify-center min-h-[50vh]">
         <Hotel className="h-16 w-16 text-muted-foreground mb-4" />
         <h2 className="text-2xl font-semibold mb-2">No Active Bookings</h2>
         <p className="text-muted-foreground text-center">
