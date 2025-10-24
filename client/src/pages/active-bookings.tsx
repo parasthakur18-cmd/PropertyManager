@@ -348,7 +348,7 @@ export default function ActiveBookings() {
       </div>
 
       <Dialog open={checkoutDialog.open} onOpenChange={(open) => setCheckoutDialog({ open, booking: null })}>
-        <DialogContent data-testid="dialog-checkout">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-checkout">
           <DialogHeader>
             <DialogTitle>Checkout Guest</DialogTitle>
           </DialogHeader>
