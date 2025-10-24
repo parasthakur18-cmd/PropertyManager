@@ -225,3 +225,29 @@ A comprehensive dashboard for managing currently checked-in guests with real-tim
   - Use Replit's Twilio connector (`connector:ccfg_twilio_01K69QJTED9YTJFE2SJ7E4SY08`)
   - Will need TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER secrets
   - API endpoint ready for integration at `/api/bookings/checkout`
+
+### Edit Booking Feature (October 2025)
+Comprehensive booking editing capability allowing staff to modify existing reservations without creating new ones.
+
+**Key Features:**
+- Edit button (pencil icon) on each booking card for quick access
+- Full-featured edit dialog with all booking fields
+- Modify check-in/check-out dates to handle early arrivals or date changes
+- Change room assignments while preserving booking history
+- Update number of guests, custom pricing, and advance payments
+- Edit special requests and other booking details
+- Separate form instance prevents interference with new booking creation
+- Current room always visible in selector (marked "Current") even if occupied
+
+**Use Cases:**
+- Guest arrives early: Change check-in date to today and proceed with check-in
+- Room change requests: Reassign to different room without losing booking history
+- Date modifications: Extend or shorten stays
+- Price adjustments: Update custom pricing or advance payments
+- Guest count changes: Modify number of guests for existing reservation
+
+**Technical Implementation:**
+- Frontend: Separate edit form with pre-populated values from existing booking
+- Backend: PATCH `/api/bookings/:id` endpoint accepts partial updates
+- All rooms shown in edit dialog (not just available ones) to allow keeping current assignment
+- Real-time cache invalidation ensures UI reflects changes immediately
