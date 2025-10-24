@@ -1172,11 +1172,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "propertyId, checkIn, and checkOut are required" });
       }
 
-      console.log('Room availability request:', { propertyId, checkIn, checkOut });
-      console.log('Creating Date objects...');
+      console.log('=== ROOM AVAILABILITY REQUEST ===');
+      console.log('Query params:', { propertyId, checkIn, checkOut });
+      
       const checkInDate = new Date(checkIn as string);
       const checkOutDate = new Date(checkOut as string);
-      console.log('Dates created:', { checkInDate, checkOutDate });
+      console.log('Parsed dates:', { 
+        checkInDate: checkInDate.toISOString(), 
+        checkOutDate: checkOutDate.toISOString() 
+      });
 
       const availableRooms = await storage.getAvailableRoomsForDates(
         parseInt(propertyId as string),
@@ -1187,8 +1191,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Found ${availableRooms.length} available rooms`);
       res.json(availableRooms);
     } catch (error: any) {
-      console.error('Room availability error FULL:', error);
-      console.error('Error stack:', error.stack);
+      console.error('=== ROOM AVAILABILITY ERROR ===');
+      console.error('Error message:', error.message);
+      console.error('Error name:', error.name);
+      console.error('Full error:', JSON.stringify(error, null, 2));
+      console.error('Stack trace:', error.stack);
       res.status(500).json({ message: error.message });
     }
   });
