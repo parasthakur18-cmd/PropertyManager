@@ -22,6 +22,8 @@ import { z } from "zod";
 import { db } from "./db";
 import { desc, sql } from "drizzle-orm";
 import { format } from "date-fns";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { ObjectPermission } from "./objectAcl";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -29,6 +31,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Seed default expense categories
   await storage.seedDefaultCategories();
+
+  // ===== OBJECT STORAGE ROUTES =====
+  // Referenced from blueprint:javascript_object_storage integration
+  
+  // Serve private uploaded files (with authentication and ACL check)
+  app.get("/objects/:objectPath(*)", isAuthenticated, async (req, res) => {
+    const userId = req.user?.claims?.sub;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path,
+      );
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Get presigned upload URL for guest ID proofs
+  app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    res.json({ uploadURL });
+  });
+
+  // Set ACL policy for uploaded guest ID proof
+  app.put("/api/guest-id-proofs", isAuthenticated, async (req, res) => {
+    if (!req.body.idProofUrl) {
+      return res.status(400).json({ error: "idProofUrl is required" });
+    }
+
+    const userId = req.user?.claims?.sub;
+
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.idProofUrl,
+        {
+          owner: userId,
+          visibility: "private", // Guest ID proofs are private
+        },
+      );
+
+      res.status(200).json({
+        objectPath: objectPath,
+      });
+    } catch (error) {
+      console.error("Error setting guest ID proof:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
 
   // ===== PUBLIC ROUTES (No Authentication Required) =====
   
@@ -1179,6 +1244,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid payment status", errors: error.errors });
       }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Confirm enquiry and create booking
+  app.post("/api/enquiries/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const enquiryId = parseInt(req.params.id);
+      const enquiry = await storage.getEnquiryById(enquiryId);
+      
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+
+      // Create or find guest
+      let guestId: number;
+      const existingGuests = await storage.getAllGuests();
+      const existingGuest = existingGuests.find(g => g.phone === enquiry.phone);
+      
+      if (existingGuest) {
+        guestId = existingGuest.id;
+      } else {
+        const newGuest = await storage.createGuest({
+          fullName: enquiry.guestName,
+          phone: enquiry.phone,
+          email: enquiry.email || null,
+          idProofType: null,
+          idProofNumber: null,
+          idProofImage: null,
+          address: null,
+          preferences: null,
+        });
+        guestId = newGuest.id;
+      }
+
+      // Create booking from enquiry
+      const booking = await storage.createBooking({
+        propertyId: enquiry.propertyId,
+        roomId: enquiry.roomId,
+        guestId: guestId,
+        checkInDate: enquiry.checkInDate,
+        checkOutDate: enquiry.checkOutDate,
+        numberOfGuests: enquiry.numberOfGuests,
+        totalPrice: enquiry.estimatedPrice,
+        advancePayment: enquiry.advancePayment,
+        status: "confirmed",
+        specialRequests: enquiry.specialRequests,
+        paymentMethod: "cash",
+      });
+
+      // Update enquiry status to confirmed
+      await storage.updateEnquiryStatus(enquiryId, "confirmed");
+
+      res.status(201).json(booking);
+    } catch (error: any) {
+      console.error("Error confirming enquiry:", error);
       res.status(500).json({ message: error.message });
     }
   });
