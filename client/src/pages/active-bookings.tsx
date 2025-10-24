@@ -143,6 +143,28 @@ export default function ActiveBookings() {
     }
   };
 
+  // Calculate total amount with optional GST/Service Charge
+  const calculateTotalWithCharges = (booking: ActiveBooking, includeGst: boolean, includeServiceCharge: boolean) => {
+    // The server sends charges with both GST (18%) and Service Charge (10%) included
+    // We need to reverse calculate the base subtotal and reapply selected charges
+    const serverTotal = parseFloat(booking.charges.totalAmount);
+    
+    // Base subtotal = server total / (1.18 * 1.10) because server includes both by default
+    const baseSubtotal = serverTotal / 1.298;
+    
+    let calculatedTotal = baseSubtotal;
+    
+    if (includeGst) {
+      calculatedTotal = calculatedTotal * 1.18;
+    }
+    
+    if (includeServiceCharge) {
+      calculatedTotal = calculatedTotal * 1.10;
+    }
+    
+    return calculatedTotal;
+  };
+
   if (isLoading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -164,8 +186,8 @@ export default function ActiveBookings() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="border-b p-4">
+    <div className="p-6 md:p-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold" data-testid="heading-active-bookings">
           Active Bookings
         </h1>
@@ -174,7 +196,7 @@ export default function ActiveBookings() {
         </p>
       </div>
 
-      <div className="flex-1 overflow-auto p-4">
+      <div className="pb-4">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {activeBookings.map((booking) => (
             <Card key={booking.id} className="flex flex-col" data-testid={`card-active-booking-${booking.id}`}>
@@ -324,15 +346,18 @@ export default function ActiveBookings() {
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>Total Amount</span>
-                  <span>₹{checkoutDialog.booking.charges.totalAmount}</span>
+                  <span data-testid="text-checkout-total">
+                    ₹{calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge).toFixed(2)}
+                  </span>
                 </div>
                 {(() => {
+                  const calculatedTotal = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge);
                   const discountAmt = calculateDiscount(
-                    parseFloat(checkoutDialog.booking.charges.totalAmount),
+                    calculatedTotal,
                     discountType,
                     discountValue
                   );
-                  const finalTotal = parseFloat(checkoutDialog.booking.charges.totalAmount) - discountAmt;
+                  const finalTotal = calculatedTotal - discountAmt;
                   const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
                   const balanceDue = finalTotal - advancePaid;
 
