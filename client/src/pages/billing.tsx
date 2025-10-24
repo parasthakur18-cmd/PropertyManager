@@ -356,14 +356,18 @@ export default function Billing() {
                     <p className="text-muted-foreground mb-1">Subtotal</p>
                     <p className="font-semibold font-mono" data-testid={`text-bill-subtotal-${bill.id}`}>₹{bill.subtotal}</p>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">GST ({bill.gstRate}%)</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-gst-${bill.id}`}>₹{bill.gstAmount}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground mb-1">Service Charge ({bill.serviceChargeRate}%)</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{bill.serviceChargeAmount}</p>
-                  </div>
+                  {bill.includeGst && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">GST ({bill.gstRate}%)</p>
+                      <p className="font-semibold font-mono" data-testid={`text-bill-gst-${bill.id}`}>₹{bill.gstAmount}</p>
+                    </div>
+                  )}
+                  {bill.includeServiceCharge && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">Service Charge ({bill.serviceChargeRate}%)</p>
+                      <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{bill.serviceChargeAmount}</p>
+                    </div>
+                  )}
                   {bill.paymentMethod && (
                     <div>
                       <p className="text-muted-foreground mb-1">Payment Method</p>
@@ -503,15 +507,19 @@ export default function Billing() {
                     <span className="font-mono">₹{billDetails.subtotal}</span>
                   </div>
 
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">GST ({billDetails.gstRate}%)</span>
-                    <span className="font-mono">₹{billDetails.gstAmount}</span>
-                  </div>
+                  {billDetails.includeGst && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">GST ({billDetails.gstRate}%)</span>
+                      <span className="font-mono">₹{billDetails.gstAmount}</span>
+                    </div>
+                  )}
 
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Service Charge ({billDetails.serviceChargeRate}%)</span>
-                    <span className="font-mono">₹{billDetails.serviceChargeAmount}</span>
-                  </div>
+                  {billDetails.includeServiceCharge && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Service Charge ({billDetails.serviceChargeRate}%)</span>
+                      <span className="font-mono">₹{billDetails.serviceChargeAmount}</span>
+                    </div>
+                  )}
 
                   {billDetails.discountAmount && parseFloat(billDetails.discountAmount) > 0 && (
                     <div className="flex justify-between text-sm">
