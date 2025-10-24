@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Calendar, User, Hotel, Receipt, Search } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -27,6 +27,8 @@ const statusColors = {
 
 export default function Bookings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [quickGuestData, setQuickGuestData] = useState({
     fullName: "",
     phone: "",
@@ -54,8 +56,23 @@ export default function Bookings() {
     queryKey: ["/api/rooms"],
   });
 
-  const form = useForm<InsertBooking>({
+  const form = useForm({
     // Don't use zodResolver because we create the guest first
+    defaultValues: {
+      propertyId: undefined as any,
+      guestId: undefined as any,
+      roomId: undefined as any,
+      checkInDate: new Date(),
+      checkOutDate: new Date(),
+      status: "pending",
+      numberOfGuests: 1,
+      customPrice: null,
+      advanceAmount: "0",
+      specialRequests: "",
+    },
+  });
+
+  const editForm = useForm({
     defaultValues: {
       propertyId: undefined as any,
       guestId: undefined as any,
@@ -116,7 +133,31 @@ export default function Bookings() {
     },
   });
 
-  const onSubmit = async (data: InsertBooking) => {
+  const updateBookingMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertBooking> }) => {
+      return await apiRequest("PATCH", `/api/bookings/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      toast({
+        title: "Success",
+        description: "Booking updated successfully",
+      });
+      setIsEditDialogOpen(false);
+      setEditingBooking(null);
+      editForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = async (data: any) => {
     // First, validate and create the guest
     if (!quickGuestData.fullName || !quickGuestData.phone) {
       toast({
@@ -147,7 +188,7 @@ export default function Bookings() {
         ...data,
         guestId: newGuest.id,
       };
-      createMutation.mutate(bookingData);
+      createMutation.mutate(bookingData as InsertBooking);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -155,6 +196,28 @@ export default function Bookings() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleEditBooking = (booking: Booking) => {
+    setEditingBooking(booking);
+    editForm.reset({
+      propertyId: booking.propertyId,
+      guestId: booking.guestId,
+      roomId: booking.roomId || undefined,
+      checkInDate: new Date(booking.checkInDate),
+      checkOutDate: new Date(booking.checkOutDate),
+      status: booking.status,
+      numberOfGuests: booking.numberOfGuests,
+      customPrice: booking.customPrice as any,
+      advanceAmount: booking.advanceAmount || "0",
+      specialRequests: booking.specialRequests || "",
+    });
+    setIsEditDialogOpen(true);
+  };
+
+  const onEditSubmit = (data: any) => {
+    if (!editingBooking) return;
+    updateBookingMutation.mutate({ id: editingBooking.id, data: data as Partial<InsertBooking> });
   };
 
   if (isLoading) {
@@ -471,6 +534,14 @@ export default function Bookings() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditBooking(booking)}
+                        data-testid={`button-edit-booking-${booking.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                       {booking.status === "checked-in" && (
                         <Button
                           size="sm"
@@ -535,6 +606,197 @@ export default function Bookings() {
           })}
         </div>
       )}
+
+      {/* Edit Booking Dialog */}
+      <Dialog 
+        open={isEditDialogOpen} 
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) {
+            setEditingBooking(null);
+            editForm.reset();
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Booking</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 pb-4">
+              <FormField
+                control={editForm.control}
+                name="roomId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Room</FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        const roomId = parseInt(value);
+                        field.onChange(roomId);
+                        const selectedRoom = rooms?.find(r => r.id === roomId);
+                        if (selectedRoom) {
+                          editForm.setValue("propertyId", selectedRoom.propertyId);
+                        }
+                      }}
+                      value={field.value ? field.value.toString() : undefined}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-booking-room">
+                          <SelectValue placeholder="Select room" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {rooms?.map((room) => {
+                          const property = properties?.find(p => p.id === room.propertyId);
+                          const isCurrentRoom = editingBooking?.roomId === room.id;
+                          return (
+                            <SelectItem key={room.id} value={room.id.toString()}>
+                              {property?.name} - Room {room.roomNumber} ({room.roomType}) - ₹{room.pricePerNight}/night
+                              {isCurrentRoom && " (Current)"}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="checkInDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Check-in Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="datetime-local"
+                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                          onChange={(e) => field.onChange(new Date(e.target.value))}
+                          data-testid="input-edit-booking-checkin"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="checkOutDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Check-out Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="datetime-local"
+                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                          onChange={(e) => field.onChange(new Date(e.target.value))}
+                          data-testid="input-edit-booking-checkout"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={editForm.control}
+                name="numberOfGuests"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of Guests</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={field.value || 1}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        data-testid="input-edit-booking-guests"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editForm.control}
+                  name="customPrice"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custom Price Per Night (Optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Leave empty for room price"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value ? e.target.value : null)}
+                          data-testid="input-edit-booking-custom-price"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Override room price with a custom rate
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="advanceAmount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Advance Payment</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value ? e.target.value : "0")}
+                          data-testid="input-edit-booking-advance"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Amount received in advance
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={editForm.control}
+                name="specialRequests"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Special Requests</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Any special requirements..."
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        data-testid="input-edit-booking-requests"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="submit" disabled={updateBookingMutation.isPending} data-testid="button-submit-edit-booking">
+                  {updateBookingMutation.isPending ? "Updating..." : "Update Booking"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Checkout Dialog */}
       <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
