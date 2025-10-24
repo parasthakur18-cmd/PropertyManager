@@ -68,23 +68,22 @@ export default function Enquiries() {
     queryKey: ["/api/message-templates"],
   });
 
-  const markAsReceivedMutation = useMutation({
+  const confirmEnquiryMutation = useMutation({
     mutationFn: async (id: number) => {
-      return await apiRequest("PATCH", `/api/enquiries/${id}/payment-status`, {
-        paymentStatus: "received",
-      });
+      return await apiRequest("POST", `/api/enquiries/${id}/confirm`, {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       toast({
-        title: "Payment Marked as Received",
-        description: "The payment status has been updated successfully.",
+        title: "Enquiry Confirmed",
+        description: "The enquiry has been confirmed and converted to a booking successfully.",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update payment status",
+        description: error.message || "Failed to confirm enquiry",
         variant: "destructive",
       });
     },
@@ -380,12 +379,12 @@ export default function Enquiries() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => markAsReceivedMutation.mutate(enquiry.id)}
-                                disabled={markAsReceivedMutation.isPending}
-                                data-testid={`button-mark-received-${enquiry.id}`}
+                                onClick={() => confirmEnquiryMutation.mutate(enquiry.id)}
+                                disabled={confirmEnquiryMutation.isPending}
+                                data-testid={`button-confirm-enquiry-${enquiry.id}`}
                               >
                                 <Check className="h-4 w-4 mr-1" />
-                                Mark as Received
+                                Confirm Enquiry
                               </Button>
                             )}
                             <Button
