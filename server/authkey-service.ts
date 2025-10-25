@@ -154,9 +154,16 @@ export class AuthkeyService {
       const data = await response.json();
       console.log('[Authkey] SMS API Response:', data);
 
-      // Authkey.io returns status in the response
-      if (response.ok && (data.status === 'success' || data.Status === 'Success')) {
-        const messageId = data.message_id || data.MessageId || 'unknown';
+      // Authkey.io returns different success indicators
+      const isSuccess = response.ok && (
+        data.status === 'success' || 
+        data.Status === 'Success' ||
+        data.Message === 'Submitted Successfully' ||
+        data.LogID // If LogID exists, it was submitted
+      );
+
+      if (isSuccess) {
+        const messageId = data.LogID || data.message_id || data.MessageId || 'unknown';
         console.log(`[Authkey] SMS sent successfully. Message ID: ${messageId}`);
         return {
           success: true,
