@@ -482,6 +482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           property,
           nightsStayed,
           orders: bookingOrders,
+          extraServices: bookingExtras,
           charges: {
             roomCharges: roomCharges.toFixed(2),
             foodCharges: foodCharges.toFixed(2),

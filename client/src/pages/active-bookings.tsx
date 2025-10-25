@@ -48,6 +48,13 @@ interface ActiveBooking {
     createdAt: string;
     specialInstructions: string | null;
   }>;
+  extraServices: Array<{
+    id: number;
+    serviceName: string;
+    amount: string;
+    serviceType: string;
+    serviceDate: string;
+  }>;
   charges: {
     roomCharges: string;
     foodCharges: string;
@@ -271,10 +278,22 @@ export default function ActiveBookings() {
                     <span className="font-medium">₹{booking.charges.foodCharges}</span>
                   </div>
                   {parseFloat(booking.charges.extraCharges) > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Extra Services</span>
-                      <span className="font-medium">₹{booking.charges.extraCharges}</span>
-                    </div>
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Extra Services</span>
+                        <span className="font-medium">₹{booking.charges.extraCharges}</span>
+                      </div>
+                      {booking.extraServices && booking.extraServices.length > 0 && (
+                        <div className="ml-4 space-y-1">
+                          {booking.extraServices.map((extra) => (
+                            <div key={extra.id} className="flex justify-between text-xs text-muted-foreground">
+                              <span>• {extra.serviceName}</span>
+                              <span className="font-mono">₹{extra.amount}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                   <div className="flex justify-between text-sm pt-2 border-t">
                     <span className="text-muted-foreground">Total Amount</span>
