@@ -59,6 +59,7 @@ export default function Enquiries() {
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [customMessage, setCustomMessage] = useState("");
+  const [messageChannel, setMessageChannel] = useState<"sms" | "whatsapp">("sms");
 
   const { data: enquiries, isLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
@@ -98,12 +99,13 @@ export default function Enquiries() {
       queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
       toast({
         title: "Message Sent!",
-        description: "Your message has been logged successfully. (Note: Actual SMS/WhatsApp sending requires Twilio setup)",
+        description: "Your message has been sent successfully.",
       });
       setIsMessageDialogOpen(false);
       setSelectedEnquiry(null);
       setSelectedTemplate("");
       setCustomMessage("");
+      setMessageChannel("sms");
     },
     onError: (error: any) => {
       toast({
@@ -119,6 +121,7 @@ export default function Enquiries() {
     setIsMessageDialogOpen(true);
     setCustomMessage("");
     setSelectedTemplate("");
+    setMessageChannel("sms"); // Default to SMS
   };
 
   const handleSubmitMessage = () => {
@@ -150,7 +153,7 @@ export default function Enquiries() {
       enquiryId: selectedEnquiry.id,
       recipientPhone: selectedEnquiry.guestPhone,
       recipientName: selectedEnquiry.guestName,
-      messageType: "whatsapp", // or "sms"
+      messageType: messageChannel,
       templateId: selectedTemplate ? parseInt(selectedTemplate) : null,
       messageContent,
       status: "sent",
@@ -413,10 +416,10 @@ export default function Enquiries() {
               <div className="flex items-start gap-3">
                 <MessageSquare className="h-5 w-5 text-primary mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium">WhatsApp/SMS Integration Available</p>
+                  <p className="text-sm font-medium">SMS/WhatsApp Integration Active</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Messages are being logged. To actually send SMS or WhatsApp messages to guests,
-                    set up Twilio integration in your Replit project settings.
+                    SMS messaging is enabled via authkey.io. To enable WhatsApp, add AUTHKEY_WHATSAPP_NUMBER 
+                    to Secrets and create pre-approved templates in authkey.io dashboard.
                   </p>
                 </div>
               </div>
@@ -436,6 +439,24 @@ export default function Enquiries() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="channel">Message Channel</Label>
+              <Select value={messageChannel} onValueChange={(value: "sms" | "whatsapp") => setMessageChannel(value)}>
+                <SelectTrigger data-testid="select-message-channel">
+                  <SelectValue placeholder="Select channel" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sms">SMS (Text Message)</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                </SelectContent>
+              </Select>
+              {messageChannel === "whatsapp" && (
+                <p className="text-xs text-muted-foreground">
+                  Note: WhatsApp requires pre-approved templates and AUTHKEY_WHATSAPP_NUMBER to be configured.
+                </p>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="template">Message Template</Label>
               <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
