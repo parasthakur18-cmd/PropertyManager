@@ -75,6 +75,7 @@ export default function Enquiries() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       toast({
         title: "Enquiry Confirmed",
         description: "The enquiry has been confirmed and converted to a booking successfully.",

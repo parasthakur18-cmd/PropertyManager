@@ -53,6 +53,7 @@ export default function Kitchen() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       toast({
         title: "Success",
         description: "Order status updated",
