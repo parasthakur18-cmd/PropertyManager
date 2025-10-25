@@ -502,6 +502,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bookings with details for analytics
+  app.get("/api/bookings/with-details", isAuthenticated, async (req, res) => {
+    try {
+      const allBookings = await storage.getAllBookings();
+      const allGuests = await storage.getAllGuests();
+      const allRooms = await storage.getAllRooms();
+      const allProperties = await storage.getAllProperties();
+
+      const enrichedBookings = allBookings.map(booking => {
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const room = booking.roomId ? allRooms.find(r => r.id === booking.roomId) : null;
+        const property = room?.propertyId ? allProperties.find(p => p.id === room.propertyId) : null;
+
+        if (!guest || !room || !property) {
+          return null;
+        }
+
+        return {
+          ...booking,
+          guest: {
+            fullName: guest.fullName,
+          },
+          room: {
+            roomNumber: room.roomNumber,
+            pricePerNight: room.pricePerNight,
+          },
+          property: {
+            name: property.name,
+          },
+        };
+      }).filter(Boolean);
+
+      res.json(enrichedBookings);
+    } catch (error: any) {
+      console.error("Bookings with details error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const booking = await storage.getBooking(parseInt(req.params.id));
