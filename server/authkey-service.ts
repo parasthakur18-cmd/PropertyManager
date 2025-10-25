@@ -143,12 +143,16 @@ export class AuthkeyService {
       });
 
       const url = `${this.baseUrl}?${queryParams.toString()}`;
+      
+      console.log('[Authkey] Sending SMS to:', mobileNumber, 'Country:', countryCode);
+      console.log('[Authkey] Request URL:', url.replace(this.apiKey, '***KEY***')); // Hide API key in logs
 
       const response = await fetch(url, {
         method: 'GET',
       });
 
       const data = await response.json();
+      console.log('[Authkey] SMS API Response:', data);
 
       // Authkey.io returns status in the response
       if (response.ok && (data.status === 'success' || data.Status === 'Success')) {
