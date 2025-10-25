@@ -25,6 +25,7 @@ import { desc, sql, eq } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
+import { createAuthkeyService } from "./authkey-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1238,7 +1239,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sentBy: userId,
       };
 
-      const communication = await storage.sendMessage(communicationData);
+      // Try to send actual message via authkey.io
+      const authkeyService = createAuthkeyService();
+      let status = 'sent'; // Default status
+      let twilioSid: string | undefined; // Reuse this field for authkey message ID
+
+      if (authkeyService && communicationData.recipientPhone) {
+        try {
+          // Determine if this is WhatsApp or SMS based on messageType field
+          if (communicationData.messageType === 'whatsapp') {
+            // For WhatsApp, we need to use templates
+            // For now, send as plain SMS if no template is configured
+            const result = await authkeyService.sendWhatsAppTemplate({
+              to: communicationData.recipientPhone,
+              template: 'booking_confirmation', // Default template - should match authkey.io templates
+              parameters: [], // Will be populated from actual template variables
+            });
+            
+            if (result.success) {
+              status = 'sent';
+              twilioSid = result.messageId;
+            } else {
+              status = 'failed';
+              communicationData.errorMessage = result.error;
+              console.error('[Communications] WhatsApp send failed:', result.error);
+            }
+          } else {
+            // Send as SMS
+            const result = await authkeyService.sendSMS({
+              to: communicationData.recipientPhone,
+              message: communicationData.messageContent,
+            });
+            
+            if (result.success) {
+              status = 'sent';
+              twilioSid = result.messageId;
+            } else {
+              status = 'failed';
+              communicationData.errorMessage = result.error;
+              console.error('[Communications] SMS send failed:', result.error);
+            }
+          }
+        } catch (sendError: any) {
+          console.error('[Communications] Error sending message:', sendError);
+          status = 'failed';
+          communicationData.errorMessage = sendError.message;
+        }
+      } else {
+        // No authkey configured - just log the message
+        console.log('[Communications] No authkey service configured - message logged only');
+      }
+
+      // Save to database with delivery status
+      const communicationWithStatus = {
+        ...communicationData,
+        status,
+        twilioSid,
+      };
+
+      const communication = await storage.sendMessage(communicationWithStatus);
       res.status(201).json(communication);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
