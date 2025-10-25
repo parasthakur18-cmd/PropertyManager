@@ -764,8 +764,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/orders", isAuthenticated, async (req, res) => {
     try {
-      const data = insertOrderSchema.parse(req.body);
-      const order = await storage.createOrder(data);
+      let orderData = insertOrderSchema.parse(req.body) as any;
+      
+      // If order has bookingId but no guestId, automatically set guestId from booking
+      if (orderData.bookingId && !orderData.guestId) {
+        const booking = await storage.getBooking(orderData.bookingId);
+        if (booking) {
+          orderData = { ...orderData, guestId: booking.guestId };
+        }
+      }
+      
+      const order = await storage.createOrder(orderData);
       res.status(201).json(order);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
