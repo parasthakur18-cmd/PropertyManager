@@ -62,6 +62,20 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
 
 ## Recent Feature Updates
 
+### Menu Management (October 2024)
+- **Menu Item Management**: New comprehensive page for managing restaurant menu items
+  - View all menu items grouped by category (Appetizers, Main Course, Desserts, Beverages, Snacks, Breakfast)
+  - Search functionality to filter items by name or category
+  - Add new menu items with full details: name, category, price, description, preparation time, property assignment
+  - Edit existing items with instant price updates and other modifications
+  - Toggle availability: Enable/disable menu items when out of stock or unavailable
+  - Delete menu items with confirmation dialog
+  - Real-time availability switch visible on each menu card
+  - Form validation using React Hook Form and Zod schemas
+  - Route: `/menu-management`, accessible to admin, manager, and staff roles
+  - Navigation: Added to sidebar with BookOpen icon
+  - Database field: `isAvailable` boolean controls whether items appear on guest-facing menu
+
 ### Food Orders Report (October 2024)
 - **Sales Reporting**: New comprehensive food orders report page with date range filtering and analytics
   - Date range options: Today, Last 7 days, Last 30 days, and Custom range
