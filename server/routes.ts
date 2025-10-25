@@ -1325,6 +1325,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Webhook for authkey.io delivery status updates
+  // This endpoint receives delivery status updates from authkey.io
+  app.post("/api/webhooks/authkey/delivery-status", async (req, res) => {
+    try {
+      const { message_id, status, error_message } = req.body;
+      
+      if (!message_id) {
+        return res.status(400).json({ message: "message_id is required" });
+      }
+
+      // Update the communication record with delivery status
+      const { communications } = await import("@shared/schema");
+      await db
+        .update(communications)
+        .set({ 
+          status: status || 'delivered',
+          errorMessage: error_message || null,
+        })
+        .where(eq(communications.twilioSid, message_id));
+
+      console.log(`[Authkey Webhook] Updated delivery status for message ${message_id}: ${status}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('[Authkey Webhook] Error processing webhook:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Room availability checking
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     try {
