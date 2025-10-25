@@ -45,7 +45,7 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
 
 -   **Replit Auth OIDC**: User authentication and identity management.
 -   **Neon Serverless PostgreSQL**: Primary database service.
--   **Twilio** (Optional): For WhatsApp and SMS messaging to guests. System works without it; messages are logged but not sent until configured.
+-   **Authkey.io** (Optional): For WhatsApp and SMS messaging to guests. System works without it; messages are logged but not sent until configured. Preferred for Indian market with competitive pricing (₹0.35 per WhatsApp conversation, ₹0.90 per template) and ₹2,500 free startup credits.
 
 ### Key NPM Packages
 
@@ -58,7 +58,10 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
 
 -   **Required**: `DATABASE_URL`, `SESSION_SECRET`, `REPL_ID`.
 -   **Optional**: `ISSUER_URL`, `REPLIT_DOMAINS`, `NODE_ENV`.
--   **Optional (for messaging)**: Twilio credentials (not currently set up - messages are logged only).
+-   **Optional (for messaging)**: 
+    -   `AUTHKEY_API_KEY`: authkey.io API key for SMS/WhatsApp messaging
+    -   `AUTHKEY_WHATSAPP_NUMBER`: Your registered WhatsApp Business number
+    -   See `AUTHKEY_SETUP.md` for complete setup instructions
 
 ## Recent Feature Updates
 
@@ -89,7 +92,7 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
   - Route: `/food-orders-report`, accessible to admin and manager roles
   - Navigation: Added to sidebar with FileBarChart icon
 
-### Payment & Messaging System (December 2024)
+### Payment & Messaging System (December 2024 - Updated October 2025)
 - **Payment Status Tracking**: Added `paymentStatus` field to enquiries table with values: pending, received, refunded. Displayed with color-coded badges in the UI.
 - **Message Templates**: Created 6 default message templates for common scenarios (payment reminders, booking confirmations, check-in details, payment confirmations, check-out reminders, welcome messages). Templates support variable substitution like {guestName}, {advanceAmount}, etc.
 - **Communication Logging**: All messages are logged in `communications` table with recipient details, message content, delivery status, and timestamps.
@@ -99,8 +102,15 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
   - Added "Send Message" button that opens dialog with template selection or custom message capability
   - Payment status badges displayed next to price information
   - Real-time message preview with variable substitution
-- **API Enhancements**: New endpoints for enquiry confirmation (`POST /api/enquiries/:id/confirm`), payment status updates (`PATCH /api/enquiries/:id/payment-status`), message templates (`GET /api/message-templates`), sending messages (`POST /api/communications`), and viewing communication history (`GET /api/enquiries/:id/communications`, `GET /api/bookings/:id/communications`).
-- **WhatsApp/SMS Ready**: Backend infrastructure prepared for Twilio integration. Messages are currently logged; actual sending requires Twilio setup.
+- **API Enhancements**: New endpoints for enquiry confirmation (`POST /api/enquiries/:id/confirm`), payment status updates (`PATCH /api/enquiries/:id/payment-status`), message templates (`GET /api/message-templates`), sending messages (`POST /api/communications`), viewing communication history (`GET /api/enquiries/:id/communications`, `GET /api/bookings/:id/communications`), and delivery status webhook (`POST /api/webhooks/authkey/delivery-status`).
+- **Authkey.io Integration**: Full integration with authkey.io for actual SMS and WhatsApp message delivery
+  - Service module (`server/authkey-service.ts`) handles WhatsApp template messages and SMS
+  - Automatic message sending when credentials are configured
+  - Falls back to logging-only mode when credentials are not set
+  - Delivery status tracking with webhook support
+  - Template-based WhatsApp messaging for compliance
+  - DLT-compliant SMS for Indian regulations
+  - See `AUTHKEY_SETUP.md` for complete setup guide
 
 ### Guest ID Proof Upload & Enquiry Conversion (October 2024)
 - **Mandatory ID Upload**: All new bookings now require guest ID proof upload using Replit Object Storage
@@ -123,3 +133,48 @@ Authentication is handled by **Replit Auth** with OpenID Connect (OIDC) via Pass
   - Enquiry confirmation mutation properly invalidates Active Bookings cache when converting to booking
   - Cache invalidation pattern ensures seamless real-time updates across bookings, orders, and enquiries
   - No page refresh needed - all changes reflect immediately on Active Bookings dashboard
+
+### Booking Analytics & Source Tracking (October 2025)
+- **Booking Source Tracking**: Added `source` field to bookings table with 7 channel options
+  - Channels: Booking.com, Airbnb, Walk-in, Phone, Self Generated, Online, OTA (Other)
+  - Captured during booking creation and edit
+  - Enables revenue attribution by booking channel
+- **Meal Plan Tracking**: Added `mealPlan` field to bookings table with 4 options
+  - Plans: EP (Room Only), CP (Room + Breakfast), MAP (Breakfast + Dinner), AP (All Meals)
+  - Helps track guest preferences and package types
+- **Booking Analytics Dashboard**: New comprehensive analytics page (`/booking-analytics`)
+  - Date filtering: Today, Last 7 days, Last 30 days, Custom range
+  - Summary cards: Total bookings, total revenue, top booking source
+  - Revenue by Source: Visual breakdown with percentage bars and booking counts
+  - Meal Plan Distribution: Booking count analysis by meal plan type
+  - Property filtering: Filter analytics by specific property or all properties
+  - CSV Export: Download detailed booking data with all metrics
+  - Route accessible to admin and manager roles
+  - Navigation: Added to sidebar with BarChart3 icon
+- **API Endpoint**: New `/api/bookings/with-details` endpoint provides enriched booking data with guest, room, and property information for analytics
+
+### Authkey.io SMS & WhatsApp Integration (October 2025)
+- **Service Module**: Created `server/authkey-service.ts` for authkey.io API integration
+  - WhatsApp template messaging with parameter substitution
+  - SMS messaging with DLT compliance support
+  - Delivery status tracking
+  - Graceful fallback when credentials not configured
+- **Updated Communications Endpoint**: Enhanced `/api/communications` to send real messages
+  - Automatically sends via authkey.io when credentials are configured
+  - Supports both SMS and WhatsApp channels
+  - Logs delivery status and message IDs
+  - Falls back to logging-only mode without credentials
+- **Delivery Status Webhook**: New `/api/webhooks/authkey/delivery-status` endpoint
+  - Receives delivery status updates from authkey.io
+  - Updates message status in database (sent, delivered, failed)
+  - Tracks error messages for failed deliveries
+- **Environment Variables**: 
+  - `AUTHKEY_API_KEY`: API key for authkey.io authentication
+  - `AUTHKEY_WHATSAPP_NUMBER`: Registered WhatsApp Business number
+- **Setup Documentation**: Complete setup guide in `AUTHKEY_SETUP.md`
+  - Account creation and verification steps
+  - WhatsApp Business API setup
+  - DLT registration for SMS in India
+  - Template creation and approval process
+  - Pricing guide and cost optimization tips
+  - Troubleshooting common issues
