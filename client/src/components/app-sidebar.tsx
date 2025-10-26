@@ -74,6 +74,7 @@ const managerMenuItems = [
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/menu-management", icon: BookOpen },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
+  { title: "Add-ons", url: "/addons", icon: Plus },
 ];
 
 const staffMenuItems = [
