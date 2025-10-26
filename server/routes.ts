@@ -1360,19 +1360,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           // Determine if this is WhatsApp or SMS based on messageType field
           if (communicationData.messageType === 'whatsapp') {
-            // For WhatsApp, using testing template with format:
-            // "Use {#otp#} as your OTP to access your {#company#}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
-            // Parameters: {#otp#} = booking/enquiry ID, {#company#} = Hostezee
-            const otpValue = communicationData.bookingId 
-              ? `BK${communicationData.bookingId}` 
-              : communicationData.enquiryId 
-                ? `ENQ${communicationData.enquiryId}` 
-                : 'INFO';
-            
+            // For WhatsApp, we need to use templates approved in authkey.io
             const result = await authkeyService.sendWhatsAppTemplate({
               to: communicationData.recipientPhone,
-              template: 'testing_template', // Template name in authkey.io (change for production)
-              parameters: [otpValue, 'Hostezee'], // {#otp#}, {#company#}
+              template: 'booking_confirmation', // Template name in authkey.io (change as needed)
+              parameters: [], // Add template parameters as needed
             });
             
             if (result.success) {
@@ -1384,10 +1376,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error('[Communications] WhatsApp send failed:', result.error);
             }
           } else {
-            // Send as SMS
+            // Send as SMS using testing template:
+            // "Use {#otp#} as your OTP to access your {#company#}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
+            const otpValue = communicationData.bookingId 
+              ? `BK${communicationData.bookingId}` 
+              : communicationData.enquiryId 
+                ? `ENQ${communicationData.enquiryId}` 
+                : 'INFO';
+            
+            const smsMessage = `Use ${otpValue} as your OTP to access your Hostezee, OTP is confidential and valid for 5 mins This sms sent by authkey.io`;
+            
             const result = await authkeyService.sendSMS({
               to: communicationData.recipientPhone,
-              message: communicationData.messageContent,
+              message: smsMessage,
             });
             
             if (result.success) {
