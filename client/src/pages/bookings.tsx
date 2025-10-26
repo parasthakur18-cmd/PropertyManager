@@ -263,7 +263,15 @@ export default function Bookings() {
 
   const onEditSubmit = (data: any) => {
     if (!editingBooking) return;
-    updateBookingMutation.mutate({ id: editingBooking.id, data: data as Partial<InsertBooking> });
+    
+    // Convert Date objects to ISO strings for API transmission
+    const payload = {
+      ...data,
+      checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString() : data.checkInDate,
+      checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString() : data.checkOutDate,
+    };
+    
+    updateBookingMutation.mutate({ id: editingBooking.id, data: payload as Partial<InsertBooking> });
   };
 
   if (isLoading) {
