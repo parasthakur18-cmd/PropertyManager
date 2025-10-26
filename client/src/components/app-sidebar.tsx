@@ -151,7 +151,7 @@ export function AppSidebar() {
             </div>
           </div>
           <a
-            href="/api/auth/logout"
+            href="/api/logout"
             className="flex items-center justify-center h-8 w-8 rounded-md hover-elevate active-elevate-2 text-muted-foreground hover:text-foreground transition-colors"
             data-testid="button-logout"
             title="Logout"
