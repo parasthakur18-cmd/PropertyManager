@@ -1378,16 +1378,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             // Send as SMS using testing template:
             // "Use {#otp#} as your OTP to access your {#company#}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
-            const otpValue = communicationData.bookingId 
-              ? `BK${communicationData.bookingId}` 
-              : communicationData.enquiryId 
-                ? `ENQ${communicationData.enquiryId}` 
+            const otpValue = data.bookingId 
+              ? `BK${data.bookingId}` 
+              : data.enquiryId 
+                ? `ENQ${data.enquiryId}` 
                 : 'INFO';
             
             const smsMessage = `Use ${otpValue} as your OTP to access your Hostezee, OTP is confidential and valid for 5 mins This sms sent by authkey.io`;
             
             const result = await authkeyService.sendSMS({
-              to: communicationData.recipientPhone,
+              to: data.recipientPhone,
               message: smsMessage,
             });
             
