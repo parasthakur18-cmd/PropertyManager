@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import type { UploadResult } from "@uppy/core";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -41,6 +43,9 @@ export default function Bookings() {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
+  const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -129,6 +134,30 @@ export default function Bookings() {
         title: "Success",
         description: "Booking status updated",
       });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteBookingMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest("DELETE", `/api/bookings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      toast({
+        title: "Success",
+        description: "Booking deleted successfully",
+      });
+      setDeleteDialogOpen(false);
+      setDeleteBookingId(null);
     },
     onError: (error: Error) => {
       toast({
@@ -250,8 +279,21 @@ export default function Bookings() {
     );
   }
 
-  // Filter bookings based on search query
+  // Filter bookings based on tab and search query
   const filteredBookings = bookings?.filter((booking) => {
+    // Filter by tab
+    let tabMatch = true;
+    if (activeTab === "active") {
+      tabMatch = booking.status === "confirmed" || booking.status === "checked-in" || booking.status === "pending";
+    } else if (activeTab === "completed") {
+      tabMatch = booking.status === "checked-out";
+    } else if (activeTab === "cancelled") {
+      tabMatch = booking.status === "cancelled";
+    }
+    
+    if (!tabMatch) return false;
+    
+    // Filter by search query
     if (!searchQuery) return true;
     
     const query = searchQuery.toLowerCase();
@@ -267,6 +309,14 @@ export default function Bookings() {
       booking.status?.toLowerCase().includes(query)
     );
   });
+
+  // Count bookings by category for badges
+  const bookingCounts = {
+    all: (bookings ?? []).length,
+    active: (bookings ?? []).filter(b => b.status === "confirmed" || b.status === "checked-in" || b.status === "pending").length,
+    completed: (bookings ?? []).filter(b => b.status === "checked-out").length,
+    cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
+  };
 
   return (
     <div className="p-6 md:p-8">
@@ -601,21 +651,38 @@ export default function Bookings() {
         </div>
       </div>
 
-      {!filteredBookings || filteredBookings.length === 0 ? (
-        <Card className="p-12 text-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Calendar className="h-10 w-10" />
-            </div>
-            <h3 className="text-xl font-semibold">{searchQuery ? "No bookings found" : "No bookings yet"}</h3>
-            <p className="text-muted-foreground max-w-md">
-              {searchQuery ? "Try adjusting your search query" : "Create your first booking to get started"}
-            </p>
-          </div>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {filteredBookings.map((booking) => {
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="all" data-testid="tab-all-bookings">
+            All <Badge variant="secondary" className="ml-2">{bookingCounts.all}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="active" data-testid="tab-active-bookings">
+            Active <Badge variant="secondary" className="ml-2">{bookingCounts.active}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="completed" data-testid="tab-completed-bookings">
+            Completed <Badge variant="secondary" className="ml-2">{bookingCounts.completed}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="cancelled" data-testid="tab-cancelled-bookings">
+            Cancelled <Badge variant="secondary" className="ml-2">{bookingCounts.cancelled}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value={activeTab} className="mt-0">
+          {!filteredBookings || filteredBookings.length === 0 ? (
+            <Card className="p-12 text-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <Calendar className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-semibold">{searchQuery ? "No bookings found" : "No bookings yet"}</h3>
+                <p className="text-muted-foreground max-w-md">
+                  {searchQuery ? "Try adjusting your search query" : "Create your first booking to get started"}
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {filteredBookings.map((booking) => {
             const property = properties?.find((p) => p.id === booking.propertyId);
             const guest = guests?.find((g) => g.id === booking.guestId);
             const room = rooms?.find((r) => r.id === booking.roomId);
@@ -648,6 +715,17 @@ export default function Bookings() {
                         data-testid={`button-edit-booking-${booking.id}`}
                       >
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setDeleteBookingId(booking.id);
+                          setDeleteDialogOpen(true);
+                        }}
+                        data-testid={`button-delete-booking-${booking.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                       {booking.status === "checked-in" && (
                         <Button
@@ -710,9 +788,33 @@ export default function Bookings() {
                 </CardContent>
               </Card>
             );
-          })}
-        </div>
-      )}
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent data-testid="dialog-delete-booking">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this booking from the database. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteBookingId && deleteBookingMutation.mutate(deleteBookingId)}
+              className="bg-destructive text-destructive-foreground hover-elevate"
+              data-testid="button-confirm-delete"
+            >
+              {deleteBookingMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Booking Dialog */}
       <Dialog 
