@@ -16,7 +16,8 @@ The frontend uses **React 18** with **TypeScript** (Vite), **Wouter** for routin
 
 ### Feature Specifications
 -   **Multi-Property Management**: Supports managing multiple resort properties.
--   **Booking & Guest Management**: Comprehensive booking coordination, guest tracking, and advanced pricing options with booking source and meal plan tracking.
+-   **Booking & Guest Management**: Comprehensive booking coordination, guest tracking, and advanced pricing options with booking source and meal plan tracking. Includes filter tabs (All, Active, Completed, Cancelled) with real-time badge counts.
+-   **Booking Deletion**: Safe deletion with protection - prevents deletion of bookings with bills or food orders to maintain financial integrity.
 -   **Payment & Communication System**: Tracks advance payment status, sends messages to guests via WhatsApp/SMS using templates, and logs all communications.
 -   **Restaurant & Order Management**: Integrates restaurant operations, order tracking, menu item management, and food orders reporting.
 -   **Financial Tracking**: Manages property lease agreements, payments, expenses with auto-categorization, and generates P&L reports.
@@ -26,6 +27,7 @@ The frontend uses **React 18** with **TypeScript** (Vite), **Wouter** for routin
 -   **Booking Editing**: Allows modification of existing reservations.
 -   **Guest ID Proof Upload**: Requires guest ID proof upload using Replit Object Storage for new bookings.
 -   **Booking Analytics**: Provides analytics on total bookings, revenue, top booking sources, and meal plan distribution.
+-   **User Management**: Admin users can assign roles, manage property assignments, and delete users with safety checks (prevents self-deletion and last-admin removal).
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.

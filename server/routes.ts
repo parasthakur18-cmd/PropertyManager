@@ -193,7 +193,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users", isAuthenticated, async (req: any, res) => {
     try {
       // Check if user is admin
-      if (req.user?.claims?.role !== "admin") {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (currentUser?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       
