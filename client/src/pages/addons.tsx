@@ -95,6 +95,7 @@ export default function AddOnServices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       toast({
         title: "Service added",
         description: "Add-on service has been recorded successfully",
@@ -117,6 +118,7 @@ export default function AddOnServices() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       toast({
         title: "Service deleted",
         description: "Add-on service has been removed",
