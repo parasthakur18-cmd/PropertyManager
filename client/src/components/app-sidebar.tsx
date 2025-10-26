@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   FileBarChart,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -136,17 +137,27 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user?.profileImageUrl || ""} alt={user?.firstName || "User"} />
-            <AvatarFallback>{userInitials}</AvatarFallback>
-          </Avatar>
-          <div className="flex-1 overflow-hidden">
-            <p className="text-sm font-medium truncate">
-              {user?.firstName} {user?.lastName}
-            </p>
-            <p className="text-xs text-muted-foreground capitalize">{user?.role || "Staff"}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 flex-1 overflow-hidden">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user?.profileImageUrl || ""} alt={user?.firstName || "User"} />
+              <AvatarFallback>{userInitials}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-medium truncate">
+                {user?.firstName} {user?.lastName}
+              </p>
+              <p className="text-xs text-muted-foreground capitalize">{user?.role || "Staff"}</p>
+            </div>
           </div>
+          <a
+            href="/api/auth/logout"
+            className="flex items-center justify-center h-8 w-8 rounded-md hover-elevate active-elevate-2 text-muted-foreground hover:text-foreground transition-colors"
+            data-testid="button-logout"
+            title="Logout"
+          >
+            <LogOut className="h-4 w-4" />
+          </a>
         </div>
       </SidebarFooter>
     </Sidebar>
