@@ -1204,7 +1204,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         guestId = newGuest.id;
       }
 
-      // Create booking from enquiry
+      // Check for double-booking: Verify room isn't already booked for overlapping dates
+      if (enquiry.roomId) {
+        const existingBookings = await storage.getAllBookings();
+        const overlappingBooking = existingBookings.find(b => {
+          // Skip cancelled and checked-out bookings
+          if (b.status === "cancelled" || b.status === "checked-out") return false;
+          
+          // Check if same room
+          if (b.roomId !== enquiry.roomId) return false;
+          
+          // Check for date overlap
+          const existingCheckIn = new Date(b.checkInDate);
+          const existingCheckOut = new Date(b.checkOutDate);
+          const newCheckIn = new Date(enquiry.checkInDate);
+          const newCheckOut = new Date(enquiry.checkOutDate);
+          
+          return (
+            (newCheckIn >= existingCheckIn && newCheckIn < existingCheckOut) ||
+            (newCheckOut > existingCheckIn && newCheckOut <= existingCheckOut) ||
+            (newCheckIn <= existingCheckIn && newCheckOut >= existingCheckOut)
+          );
+        });
+        
+        if (overlappingBooking) {
+          return res.status(400).json({ 
+            message: `Room is already booked from ${format(new Date(overlappingBooking.checkInDate), "MMM dd, yyyy")} to ${format(new Date(overlappingBooking.checkOutDate), "MMM dd, yyyy")}` 
+          });
+        }
+      }
+
+      // Create booking from enquiry (using correct field names)
       const booking = await storage.createBooking({
         propertyId: enquiry.propertyId,
         roomId: enquiry.roomId,
@@ -1212,15 +1242,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         checkInDate: enquiry.checkInDate,
         checkOutDate: enquiry.checkOutDate,
         numberOfGuests: enquiry.numberOfGuests,
-        totalPrice: enquiry.estimatedPrice,
-        advancePayment: enquiry.advancePayment,
+        customPrice: enquiry.priceQuoted ? String(enquiry.priceQuoted) : null,
+        advanceAmount: enquiry.advanceAmount ? String(enquiry.advanceAmount) : "0",
         status: "confirmed",
         specialRequests: enquiry.specialRequests,
-        paymentMethod: "cash",
+        source: "walk-in",
+        mealPlan: "EP",
       });
 
-      // Update enquiry status to confirmed
+      // Update enquiry status to confirmed and payment status to received
       await storage.updateEnquiryStatus(enquiryId, "confirmed");
+      await storage.updateEnquiryPaymentStatus(enquiryId, "received");
 
       res.status(201).json(booking);
     } catch (error: any) {
