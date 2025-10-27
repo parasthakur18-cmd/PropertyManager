@@ -110,8 +110,8 @@ export class AuthkeyService {
   }
 
   /**
-   * Send SMS message
-   * Sender ID must be DLT approved
+   * Send SMS message using template
+   * Template must be DLT approved in authkey.io dashboard
    */
   async sendSMS(params: SMSMessage): Promise<AuthkeyResponse> {
     try {
@@ -133,18 +133,21 @@ export class AuthkeyService {
         mobileNumber = phoneNumber.substring(2); // Remove country code
       }
 
-      // Build URL with query parameters (authkey.io uses GET requests)
+      // Build URL with template parameters
+      // Format: https://api.authkey.io/request?authkey=AUTHKEY&mobile=RecepientMobile&country_code=CountryCode&sid=1001&Hosteazze=Hosteazze&otp=1234
       const queryParams = new URLSearchParams({
         authkey: this.apiKey,
         mobile: mobileNumber,
         country_code: countryCode,
-        sms: params.message,
-        sender: params.senderId || 'HOSTEZ', // Your DLT approved sender ID
+        sid: '1001', // Template ID in authkey.io (testing template)
+        Hosteazze: 'Hostezee', // Company name variable
+        otp: params.message, // OTP/Booking ID variable
       });
 
       const url = `${this.baseUrl}?${queryParams.toString()}`;
       
-      console.log('[Authkey] Sending SMS to:', mobileNumber, 'Country:', countryCode);
+      console.log('[Authkey] Sending template SMS to:', mobileNumber, 'Country:', countryCode);
+      console.log('[Authkey] Template variables: sid=1001, Hosteazze=Hostezee, otp=', params.message);
       console.log('[Authkey] Request URL:', url.replace(this.apiKey, '***KEY***')); // Hide API key in logs
 
       const response = await fetch(url, {
