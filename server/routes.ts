@@ -1376,19 +1376,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.error('[Communications] WhatsApp send failed:', result.error);
             }
           } else {
-            // Send as SMS using testing template:
-            // "Use {#otp#} as your OTP to access your {#company#}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
+            // Send as SMS using testing template (sid=28289)
+            // Template format: "Use {otp} as your OTP to access your {company}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
+            // Just send the OTP value - the template will format the full message
             const otpValue = data.bookingId 
               ? `BK${data.bookingId}` 
               : data.enquiryId 
                 ? `ENQ${data.enquiryId}` 
                 : 'INFO';
             
-            const smsMessage = `Use ${otpValue} as your OTP to access your Hostezee, OTP is confidential and valid for 5 mins This sms sent by authkey.io`;
-            
             const result = await authkeyService.sendSMS({
               to: data.recipientPhone,
-              message: smsMessage,
+              message: otpValue, // Just the OTP value - template handles the rest
             });
             
             if (result.success) {
