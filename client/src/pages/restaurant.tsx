@@ -16,6 +16,7 @@ import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -39,6 +40,7 @@ export default function Kitchen() {
   } = useNotificationSound();
   const previousOrderCountRef = useRef<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState("active");
   const [editDialog, setEditDialog] = useState<{ open: boolean; order: any | null }>({
     open: false,
     order: null,
@@ -158,10 +160,32 @@ export default function Kitchen() {
     updateOrderMutation.mutate({ id: editDialog.order.id, items: editedItems });
   };
 
-  const activeOrders = orders?.filter((order) => order.status !== "delivered");
-  const pendingOrders = activeOrders?.filter((order) => order.status === "pending");
-  const preparingOrders = activeOrders?.filter((order) => order.status === "preparing");
-  const readyOrders = activeOrders?.filter((order) => order.status === "ready");
+  // Filter orders based on active tab
+  const allActiveOrders = orders?.filter((order) => order.status !== "delivered" && order.status !== "cancelled") || [];
+  const pendingOrders = orders?.filter((order) => order.status === "pending") || [];
+  const completedOrders = orders?.filter((order) => order.status === "delivered") || [];
+  
+  // Calculate counts for badges
+  const orderCounts = {
+    active: allActiveOrders.length,
+    pending: pendingOrders.length,
+    completed: completedOrders.length,
+  };
+  
+  // Get filtered orders based on active tab
+  let filteredOrders: any[] = [];
+  if (activeTab === "active") {
+    filteredOrders = allActiveOrders;
+  } else if (activeTab === "pending") {
+    filteredOrders = pendingOrders;
+  } else if (activeTab === "completed") {
+    filteredOrders = completedOrders;
+  }
+  
+  // Group active orders by status for display
+  const filteredPendingOrders = filteredOrders.filter((order) => order.status === "pending");
+  const filteredPreparingOrders = filteredOrders.filter((order) => order.status === "preparing");
+  const filteredReadyOrders = filteredOrders.filter((order) => order.status === "ready");
 
   if (isLoading) {
     return (
@@ -402,61 +426,93 @@ export default function Kitchen() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-bold">
-              {pendingOrders?.length || 0}
-            </span>
-            Pending
-          </h2>
-          <div className="space-y-4">
-            {!pendingOrders || pendingOrders.length === 0 ? (
-              <Card className="p-8 text-center">
-                <p className="text-sm text-muted-foreground">No pending orders</p>
-              </Card>
-            ) : (
-              pendingOrders.map(renderOrderCard)
-            )}
-          </div>
-        </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="active" data-testid="tab-active-orders">
+            Active <Badge variant="secondary" className="ml-2">{orderCounts.active}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="pending" data-testid="tab-pending-orders">
+            Pending <Badge variant="secondary" className="ml-2">{orderCounts.pending}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="completed" data-testid="tab-completed-orders">
+            Completed <Badge variant="secondary" className="ml-2">{orderCounts.completed}</Badge>
+          </TabsTrigger>
+        </TabsList>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-2/10 text-chart-2 text-xs font-bold">
-              {preparingOrders?.length || 0}
-            </span>
-            Preparing
-          </h2>
-          <div className="space-y-4">
-            {!preparingOrders || preparingOrders.length === 0 ? (
-              <Card className="p-8 text-center">
-                <p className="text-sm text-muted-foreground">No orders in preparation</p>
-              </Card>
-            ) : (
-              preparingOrders.map(renderOrderCard)
-            )}
-          </div>
-        </div>
+        <TabsContent value={activeTab} className="mt-0">
+          {activeTab === "active" ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-bold">
+                    {filteredPendingOrders.length}
+                  </span>
+                  Pending
+                </h2>
+                <div className="space-y-4">
+                  {filteredPendingOrders.length === 0 ? (
+                    <Card className="p-8 text-center">
+                      <p className="text-sm text-muted-foreground">No pending orders</p>
+                    </Card>
+                  ) : (
+                    filteredPendingOrders.map(renderOrderCard)
+                  )}
+                </div>
+              </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-5/10 text-chart-5 text-xs font-bold">
-              {readyOrders?.length || 0}
-            </span>
-            Ready
-          </h2>
-          <div className="space-y-4">
-            {!readyOrders || readyOrders.length === 0 ? (
-              <Card className="p-8 text-center">
-                <p className="text-sm text-muted-foreground">No orders ready</p>
-              </Card>
-            ) : (
-              readyOrders.map(renderOrderCard)
-            )}
-          </div>
-        </div>
-      </div>
+              <div>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-2/10 text-chart-2 text-xs font-bold">
+                    {filteredPreparingOrders.length}
+                  </span>
+                  Preparing
+                </h2>
+                <div className="space-y-4">
+                  {filteredPreparingOrders.length === 0 ? (
+                    <Card className="p-8 text-center">
+                      <p className="text-sm text-muted-foreground">No orders in preparation</p>
+                    </Card>
+                  ) : (
+                    filteredPreparingOrders.map(renderOrderCard)
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-5/10 text-chart-5 text-xs font-bold">
+                    {filteredReadyOrders.length}
+                  </span>
+                  Ready
+                </h2>
+                <div className="space-y-4">
+                  {filteredReadyOrders.length === 0 ? (
+                    <Card className="p-8 text-center">
+                      <p className="text-sm text-muted-foreground">No orders ready</p>
+                    </Card>
+                  ) : (
+                    filteredReadyOrders.map(renderOrderCard)
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredOrders.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <p className="text-muted-foreground">
+                    {activeTab === "pending" ? "No pending orders" : "No completed orders"}
+                  </p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredOrders.map(renderOrderCard)}
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
       
       {/* Edit Order Dialog */}
       <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog({ open, order: null })}>

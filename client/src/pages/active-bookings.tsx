@@ -432,6 +432,67 @@ export default function ActiveBookings() {
                   <span>Nights Stayed</span>
                   <span>{checkoutDialog.booking.nightsStayed} nights</span>
                 </div>
+              </div>
+
+              {/* Detailed Bill Breakdown */}
+              <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                <h3 className="font-semibold text-sm">Bill Breakdown</h3>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Room Charges ({checkoutDialog.booking.nightsStayed} nights)</span>
+                    <span className="font-medium">₹{checkoutDialog.booking.charges.roomCharges}</span>
+                  </div>
+                  
+                  {checkoutDialog.booking.orders && checkoutDialog.booking.orders.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm font-medium pt-2 border-t">
+                        <span>Food Orders</span>
+                        <span>₹{checkoutDialog.booking.charges.foodCharges}</span>
+                      </div>
+                      <div className="ml-4 space-y-3 text-xs">
+                        {checkoutDialog.booking.orders.map((order) => (
+                          <div key={order.id} className="space-y-1 pb-2 border-b last:border-0">
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">Order #{order.id}</span>
+                              <Badge variant="secondary" className="text-xs">{order.status}</Badge>
+                            </div>
+                            {Array.isArray(order.items) && order.items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between text-muted-foreground">
+                                <span>{item.quantity}x {item.name}</span>
+                                <span className="font-mono">₹{(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
+                              </div>
+                            ))}
+                            <div className="flex justify-between font-medium pt-1">
+                              <span>Order Total</span>
+                              <span className="font-mono">₹{order.totalAmount}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {checkoutDialog.booking.extraServices && checkoutDialog.booking.extraServices.length > 0 && (
+                    <div className="space-y-1 pt-2 border-t">
+                      <div className="flex justify-between text-sm font-medium">
+                        <span>Extra Services</span>
+                        <span>₹{checkoutDialog.booking.charges.extraCharges}</span>
+                      </div>
+                      <div className="ml-4 space-y-1">
+                        {checkoutDialog.booking.extraServices.map((extra) => (
+                          <div key={extra.id} className="flex justify-between text-xs text-muted-foreground">
+                            <span>• {extra.serviceName}</span>
+                            <span className="font-mono">₹{extra.amount}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
                 {manualCharges.some(c => c.amount && parseFloat(c.amount) > 0) && (
                   <>
                     {manualCharges.filter(c => c.amount && parseFloat(c.amount) > 0).map((charge, idx) => (
