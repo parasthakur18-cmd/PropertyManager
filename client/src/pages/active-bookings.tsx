@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 
 interface ActiveBooking {
@@ -84,10 +85,20 @@ export default function ActiveBookings() {
   const [manualCharges, setManualCharges] = useState<Array<{ name: string; amount: string }>>([
     { name: "", amount: "" }
   ]);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [cafeSearchName, setCafeSearchName] = useState("");
+  const [cafeSearchPhone, setCafeSearchPhone] = useState("");
+  const [selectedCafeOrders, setSelectedCafeOrders] = useState<number[]>([]);
 
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
+  });
+
+  // Query for searching café orders
+  const { data: cafeOrders, refetch: searchCafeOrders, isLoading: isSearchingCafe } = useQuery({
+    queryKey: ["/api/orders/search-cafe", cafeSearchName, cafeSearchPhone],
+    enabled: false, // Manual search trigger
   });
 
   // Filter bookings based on search query
@@ -145,6 +156,58 @@ export default function ActiveBookings() {
       });
     },
   });
+
+  const mergeCafeOrdersMutation = useMutation({
+    mutationFn: async ({ orderIds, bookingId }: { orderIds: number[]; bookingId: number }) => {
+      return await apiRequest("PATCH", "/api/orders/merge-to-booking", { orderIds, bookingId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      toast({
+        title: "Orders Merged",
+        description: "Café orders have been added to the bill",
+      });
+      setMergeDialogOpen(false);
+      setSelectedCafeOrders([]);
+      setCafeSearchName("");
+      setCafeSearchPhone("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Merge Failed",
+        description: error.message || "Failed to merge café orders",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSearchCafeOrders = () => {
+    if (!cafeSearchName && !cafeSearchPhone) {
+      toast({
+        title: "Search Required",
+        description: "Please enter customer name or phone number",
+        variant: "destructive",
+      });
+      return;
+    }
+    searchCafeOrders();
+  };
+
+  const handleMergeCafeOrders = () => {
+    if (!checkoutDialog.booking) return;
+    if (selectedCafeOrders.length === 0) {
+      toast({
+        title: "No Orders Selected",
+        description: "Please select at least one café order to merge",
+        variant: "destructive",
+      });
+      return;
+    }
+    mergeCafeOrdersMutation.mutate({
+      orderIds: selectedCafeOrders,
+      bookingId: checkoutDialog.booking.id,
+    });
+  };
 
   const handleCheckout = () => {
     if (!checkoutDialog.booking) return;
