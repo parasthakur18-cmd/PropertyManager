@@ -28,25 +28,31 @@ export default function Menu() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType, setOrderType] = useState<"room" | "restaurant">("restaurant");
   const [roomNumber, setRoomNumber] = useState("");
+  const [propertyId, setPropertyId] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const { toast } = useToast();
   
-  // Detect order type and room from URL query params
+  // Detect order type, property, and room from URL query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const type = params.get("type");
     const room = params.get("room");
+    const property = params.get("property");
     
     if (type === "room" || type === "restaurant") {
       setOrderType(type);
     }
     
-    // Auto-fill room number if provided in URL (from QR code)
+    // Auto-fill room number and property ID if provided in URL (from QR code)
     if (room && type === "room") {
       setRoomNumber(room);
+    }
+    
+    if (property && type === "room") {
+      setPropertyId(property);
     }
   }, []);
 
@@ -142,7 +148,8 @@ export default function Menu() {
     };
     
     if (orderType === "room") {
-      orderData.roomId = parseInt(roomNumber);
+      orderData.roomId = roomNumber;
+      orderData.propertyId = propertyId;
     } else {
       orderData.customerName = customerName;
       orderData.customerPhone = customerPhone;

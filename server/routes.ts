@@ -117,7 +117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/public/orders", async (req, res) => {
     try {
       
-      const { orderType, roomId, customerName, customerPhone, items, totalAmount, specialInstructions } = req.body;
+      const { orderType, roomId, propertyId, customerName, customerPhone, items, totalAmount, specialInstructions } = req.body;
       
       // Validate items
       if (!items || items.length === 0) {
@@ -128,6 +128,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (orderType === "room") {
         if (!roomId) {
           return res.status(400).json({ message: "Room number is required" });
+        }
+        if (!propertyId) {
+          return res.status(400).json({ message: "Property ID is required for room orders" });
         }
       } else if (orderType === "restaurant") {
         if (!customerName || !customerPhone) {
@@ -148,13 +151,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Handle room orders
       if (orderType === "room") {
-        // Look up room by room number (guest enters "101", we need the actual room ID)
+        // Look up room by BOTH property ID and room number to ensure correct match
         const roomNumber = String(roomId);
+        const propertyIdNum = parseInt(String(propertyId));
         const rooms = await storage.getAllRooms();
-        const room = rooms.find(r => r.roomNumber === roomNumber);
+        const room = rooms.find(r => r.roomNumber === roomNumber && r.propertyId === propertyIdNum);
         
         if (!room) {
-          return res.status(400).json({ message: `Room ${roomNumber} not found. Please check your room number.` });
+          return res.status(400).json({ message: `Room ${roomNumber} not found in the selected property. Please check your room number.` });
         }
 
         // Find the checked-in booking for this room to link the order
