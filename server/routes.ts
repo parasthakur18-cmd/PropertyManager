@@ -995,12 +995,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { orderIds, bookingId } = req.body;
       
+      console.log("Merge request:", { orderIds, bookingId, type: typeof bookingId });
+      
       if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
         return res.status(400).json({ message: "orderIds array is required" });
       }
       
-      if (!bookingId) {
-        return res.status(400).json({ message: "bookingId is required" });
+      if (!bookingId || typeof bookingId !== 'number') {
+        return res.status(400).json({ message: "Valid bookingId is required" });
       }
 
       // Verify booking exists
@@ -1009,15 +1011,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Booking not found" });
       }
 
+      console.log("Booking found:", { id: booking.id, guestId: booking.guestId, roomId: booking.roomId });
+
       // Update each order to link to the booking
       const updatedOrders = [];
       for (const orderId of orderIds) {
-        const order = await storage.updateOrder(orderId, {
+        const updateData: any = {
           bookingId: bookingId,
           guestId: booking.guestId,
-          roomId: booking.roomId,
-          propertyId: booking.propertyId,
-        });
+        };
+        
+        // Only add roomId and propertyId if they exist
+        if (booking.roomId) {
+          updateData.roomId = booking.roomId;
+        }
+        if (booking.propertyId) {
+          updateData.propertyId = booking.propertyId;
+        }
+        
+        console.log("Updating order:", orderId, "with data:", updateData);
+        const order = await storage.updateOrder(orderId, updateData);
         updatedOrders.push(order);
       }
 
@@ -1026,6 +1039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mergedOrders: updatedOrders 
       });
     } catch (error: any) {
+      console.error("Error merging orders:", error);
       res.status(500).json({ message: error.message });
     }
   });
