@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,8 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Download, UtensilsCrossed, IndianRupee } from "lucide-react";
+import { Calendar, Download, UtensilsCrossed, IndianRupee, Plus } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface Order {
   id: number;
@@ -22,6 +26,8 @@ interface Order {
   orderSource: string;
   roomNumber: string;
   specialInstructions: string | null;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 interface Guest {
@@ -35,16 +41,33 @@ interface Booking {
   guestId: number;
 }
 
+interface ActiveBooking {
+  id: number;
+  guest: {
+    fullName: string;
+  };
+  room: {
+    roomNumber: string;
+  };
+}
+
 export default function FoodOrdersReport() {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [dateRange, setDateRange] = useState<string>("last7days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
   const [customEndDate, setCustomEndDate] = useState<string>("");
+  const [mergeDialog, setMergeDialog] = useState<{ open: boolean; order: Order | null }>({
+    open: false,
+    order: null,
+  });
+  const [selectedBookingId, setSelectedBookingId] = useState<string>("");
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
-    staleTime: 0, // Always consider data stale so it refetches
-    refetchOnWindowFocus: true, // Refetch when switching to this tab
+    refetchInterval: 10000,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 
   const { data: guests } = useQuery<Guest[]>({
@@ -55,7 +78,45 @@ export default function FoodOrdersReport() {
     queryKey: ["/api/bookings"],
   });
 
-  // Calculate date range
+  const { data: activeBookings } = useQuery<ActiveBooking[]>({
+    queryKey: ["/api/bookings/active"],
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: async ({ orderIds, bookingId }: { orderIds: number[]; bookingId: number }) => {
+      return await apiRequest("PATCH", "/api/orders/merge-to-booking", {
+        orderIds,
+        bookingId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      setMergeDialog({ open: false, order: null });
+      setSelectedBookingId("");
+      toast({
+        title: "Order merged successfully",
+        description: "The café order has been added to the guest bill",
+      });
+      navigate("/bills");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to merge order",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleMergeOrder = () => {
+    if (!mergeDialog.order || !selectedBookingId) return;
+    mergeMutation.mutate({
+      orderIds: [mergeDialog.order.id],
+      bookingId: parseInt(selectedBookingId),
+    });
+  };
+
   const getDateRange = () => {
     const now = new Date();
     let startDate: Date;
@@ -66,11 +127,9 @@ export default function FoodOrdersReport() {
         startDate = startOfDay(now);
         break;
       case "last7days":
-        // Last 7 days means today + 6 days back = exactly 7 days
         startDate = startOfDay(subDays(now, 6));
         break;
       case "last30days":
-        // Last 30 days means today + 29 days back = exactly 30 days
         startDate = startOfDay(subDays(now, 29));
         break;
       case "custom":
@@ -78,7 +137,6 @@ export default function FoodOrdersReport() {
           startDate = startOfDay(new Date(customStartDate));
           endDate = endOfDay(new Date(customEndDate));
         } else {
-          // Invalid custom range - require both dates
           startDate = startOfDay(subDays(now, 6));
         }
         break;
@@ -89,10 +147,7 @@ export default function FoodOrdersReport() {
     return { startDate, endDate };
   };
 
-  // Check if custom range is incomplete
   const isCustomRangeIncomplete = dateRange === "custom" && (!customStartDate || !customEndDate);
-
-  // Filter orders by date range (return empty if custom range incomplete)
   const { startDate, endDate } = getDateRange();
   const filteredOrders = isCustomRangeIncomplete 
     ? [] 
@@ -101,8 +156,8 @@ export default function FoodOrdersReport() {
         return orderDate >= startDate && orderDate <= endDate;
       });
 
-  // Get guest name for an order
   const getGuestName = (order: Order) => {
+    if (order.customerName) return order.customerName;
     if (order.guestId) {
       const guest = guests?.find((g) => g.id === order.guestId);
       return guest?.fullName || "Unknown Guest";
@@ -117,7 +172,6 @@ export default function FoodOrdersReport() {
     return order.orderSource === "guest" ? "Guest Order" : "Walk-in Customer";
   };
 
-  // Calculate totals
   const totalOrders = filteredOrders?.length || 0;
   const totalRevenue = filteredOrders?.reduce((sum, order) => {
     return sum + parseFloat(order.totalAmount || "0");
@@ -125,7 +179,6 @@ export default function FoodOrdersReport() {
 
   const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-  // Group by status
   const ordersByStatus = filteredOrders?.reduce((acc, order) => {
     acc[order.status] = (acc[order.status] || 0) + 1;
     return acc;
@@ -195,7 +248,6 @@ export default function FoodOrdersReport() {
         </Button>
       </div>
 
-      {/* Date Range Filter */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -256,7 +308,6 @@ export default function FoodOrdersReport() {
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -302,7 +353,6 @@ export default function FoodOrdersReport() {
         </Card>
       </div>
 
-      {/* Orders Table */}
       <Card>
         <CardHeader>
           <CardTitle>Order Details</CardTitle>
@@ -325,6 +375,7 @@ export default function FoodOrdersReport() {
                     <TableHead>Items</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -374,6 +425,19 @@ export default function FoodOrdersReport() {
                           {order.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        {order.status === "delivered" && !order.bookingId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setMergeDialog({ open: true, order })}
+                            data-testid={`button-merge-${order.id}`}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Merge to Bill
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -382,6 +446,55 @@ export default function FoodOrdersReport() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={mergeDialog.open} onOpenChange={(open) => setMergeDialog({ open, order: null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Merge Order to Guest Bill</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">
+                Order #{mergeDialog.order?.id} - ₹{mergeDialog.order?.totalAmount}
+              </p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Customer: {mergeDialog.order && getGuestName(mergeDialog.order)}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Select Active Booking</label>
+              <Select value={selectedBookingId} onValueChange={setSelectedBookingId}>
+                <SelectTrigger data-testid="select-booking">
+                  <SelectValue placeholder="Choose a guest's booking" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeBookings?.map((booking) => (
+                    <SelectItem key={booking.id} value={booking.id.toString()}>
+                      {booking.guest.fullName} - Room {booking.room.roomNumber}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMergeDialog({ open: false, order: null })}
+              data-testid="button-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleMergeOrder}
+              disabled={!selectedBookingId || mergeMutation.isPending}
+              data-testid="button-confirm-merge"
+            >
+              {mergeMutation.isPending ? "Merging..." : "Merge to Bill"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
