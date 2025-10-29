@@ -190,7 +190,7 @@ export interface IStorage {
   getPropertyFinancials(propertyId: number, startDate?: Date, endDate?: Date): Promise<any>;
 
   // Dashboard stats
-  getDashboardStats(): Promise<any>;
+  getDashboardStats(propertyId?: number): Promise<any>;
   getAnalytics(): Promise<any>;
 }
 
@@ -1210,19 +1210,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Dashboard stats
-  async getDashboardStats(): Promise<any> {
+  async getDashboardStats(propertyId?: number): Promise<any> {
+    // If propertyId is provided, filter by that property (for managers)
+    const propertyFilter = propertyId ? eq(properties.id, propertyId) : undefined;
+    const roomPropertyFilter = propertyId ? eq(rooms.propertyId, propertyId) : undefined;
+
     const [propertiesCount] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(properties);
+      .from(properties)
+      .where(propertyFilter ? propertyFilter : sql`true`);
 
     const [roomsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(rooms);
+      .from(rooms)
+      .where(roomPropertyFilter ? roomPropertyFilter : sql`true`);
 
-    const [activeBookingsCount] = await db
+    // For active bookings, we need to join with rooms to filter by property
+    let activeBookingsQuery = db
       .select({ count: sql<number>`count(*)::int` })
       .from(bookings)
       .where(sql`status IN ('confirmed', 'checked-in')`);
+
+    if (propertyId) {
+      activeBookingsQuery = activeBookingsQuery
+        .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+        .where(and(
+          sql`bookings.status IN ('confirmed', 'checked-in')`,
+          eq(rooms.propertyId, propertyId)
+        ));
+    }
+
+    const [activeBookingsCount] = await activeBookingsQuery;
 
     const [guestsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -1231,7 +1249,7 @@ export class DatabaseStorage implements IStorage {
     const [occupiedRoomsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(rooms)
-      .where(eq(rooms.status, "occupied"));
+      .where(roomPropertyFilter ? and(eq(rooms.status, "occupied"), roomPropertyFilter) : eq(rooms.status, "occupied"));
 
     const occupancyRate = roomsCount.count > 0
       ? Math.round((occupiedRoomsCount.count / roomsCount.count) * 100)
@@ -1241,10 +1259,23 @@ export class DatabaseStorage implements IStorage {
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
 
-    const [monthlyRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+    // For monthly revenue, filter by property through bookings->rooms join
+    let monthlyRevenueQuery = db
+      .select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
       .from(bills)
       .where(gte(bills.createdAt, currentMonth));
+
+    if (propertyId) {
+      monthlyRevenueQuery = monthlyRevenueQuery
+        .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+        .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+        .where(and(
+          gte(bills.createdAt, currentMonth),
+          eq(rooms.propertyId, propertyId)
+        ));
+    }
+
+    const [monthlyRevenueResult] = await monthlyRevenueQuery;
 
     return {
       totalProperties: propertiesCount.count,

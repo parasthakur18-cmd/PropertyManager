@@ -216,9 +216,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard stats
-  app.get("/api/dashboard/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
     try {
-      const stats = await storage.getDashboardStats();
+      // Get current user to check role and property assignment
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // If user is a manager, filter stats by their assigned property
+      const propertyId = currentUser.role === "manager" ? currentUser.assignedPropertyId : undefined;
+      
+      const stats = await storage.getDashboardStats(propertyId);
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
