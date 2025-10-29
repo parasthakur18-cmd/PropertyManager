@@ -53,6 +53,7 @@ function Router() {
     <Switch>
       {/* Public Routes - No Auth Required */}
       <Route path="/menu" component={Menu} />
+      <Route path="/qr-codes" component={QRCodes} />
       
       {!isAuthenticated ? (
         <Route path="/" component={Landing} />
@@ -80,7 +81,6 @@ function Router() {
           <Route path="/addons" component={AddOnServices} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/users" component={UsersManagement} />
-          <Route path="/qr-codes" component={QRCodes} />
           <Route path="/settings" component={Settings} />
         </>
       )}
