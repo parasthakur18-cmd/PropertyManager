@@ -161,6 +161,11 @@ export function AppSidebar() {
                 {user?.firstName} {user?.lastName}
               </p>
               <p className="text-xs text-muted-foreground capitalize">{user?.role || "Staff"}</p>
+              {(user as any)?.assignedPropertyName && (
+                <p className="text-xs text-muted-foreground truncate" title={(user as any).assignedPropertyName}>
+                  📍 {(user as any).assignedPropertyName}
+                </p>
+              )}
             </div>
           </div>
           <a

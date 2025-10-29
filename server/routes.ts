@@ -208,7 +208,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      res.json(user);
+      // Include assigned property information if user has one
+      let userWithProperty: any = { ...user };
+      if (user.assignedPropertyId) {
+        const property = await storage.getProperty(user.assignedPropertyId);
+        if (property) {
+          userWithProperty.assignedPropertyName = property.name;
+        }
+      }
+      
+      res.json(userWithProperty);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });

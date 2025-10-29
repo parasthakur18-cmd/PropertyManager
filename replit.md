@@ -35,6 +35,7 @@ The frontend uses **React 18** with **TypeScript** (Vite), **Wouter** for routin
 -   **Guest ID Proof Upload**: Requires guest ID proof upload using Replit Object Storage for new bookings.
 -   **Booking Analytics**: Provides analytics on total bookings, revenue, top booking sources, and meal plan distribution.
 -   **User Management**: Admin users can assign roles, manage property assignments, and delete users with safety checks (prevents self-deletion and last-admin removal).
+-   **Property Display**: Users with assigned properties see their property name displayed in the sidebar for easy identification.
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
