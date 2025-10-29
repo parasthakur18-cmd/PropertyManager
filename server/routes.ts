@@ -22,7 +22,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc, sql, eq, and } from "drizzle-orm";
+import { desc, sql, eq, and, isNull } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
@@ -983,7 +983,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(
           and(
             eq(orders.orderType, "restaurant"),
-            sql`${orders.bookingId} IS NULL`
+            isNull(orders.bookingId)
           )
         );
       
