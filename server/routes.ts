@@ -995,6 +995,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { orderIds, bookingId } = req.body;
       
+      console.log("=== MERGE DEBUG START ===");
+      console.log("Raw body:", JSON.stringify(req.body));
+      console.log("orderIds:", orderIds, "type:", typeof orderIds);
+      console.log("bookingId:", bookingId, "type:", typeof bookingId);
+      
       if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
         return res.status(400).json({ message: "orderIds array is required" });
       }
@@ -1005,6 +1010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Verify booking exists
       const booking = await storage.getBooking(bookingId);
+      console.log("Booking found:", booking);
       if (!booking) {
         return res.status(404).json({ message: "Booking not found" });
       }
@@ -1012,22 +1018,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update each order - same pattern as extra services
       const updatedOrders = [];
       for (const orderId of orderIds) {
+        console.log(`Processing orderId: ${orderId}, type: ${typeof orderId}`);
+        
         const orderData = {
           bookingId: bookingId,
           guestId: booking.guestId,
           roomId: booking.roomId,
           propertyId: booking.propertyId,
         };
+        console.log("Order data to update:", JSON.stringify(orderData));
+        console.log("Data types:", {
+          bookingId: typeof orderData.bookingId,
+          guestId: typeof orderData.guestId,
+          roomId: typeof orderData.roomId,
+          propertyId: typeof orderData.propertyId
+        });
+        
         const updated = await storage.updateOrder(orderId, orderData);
+        console.log("Updated order:", updated);
         updatedOrders.push(updated);
       }
 
+      console.log("=== MERGE SUCCESS ===");
       res.json({ 
         message: "Orders merged successfully",
         mergedOrders: updatedOrders
       });
     } catch (error: any) {
-      console.error("Error merging orders:", error);
+      console.error("=== MERGE ERROR ===");
+      console.error("Error:", error);
+      console.error("Stack:", error.stack);
       res.status(500).json({ message: error.message });
     }
   });
