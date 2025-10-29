@@ -1083,6 +1083,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // If order has roomId but no propertyId, automatically set propertyId from room
+      if (orderData.roomId && !orderData.propertyId) {
+        const room = await storage.getRoom(orderData.roomId);
+        if (room) {
+          orderData = { ...orderData, propertyId: room.propertyId };
+        }
+      }
+      
       const order = await storage.createOrder(orderData);
       res.status(201).json(order);
     } catch (error: any) {
