@@ -159,10 +159,21 @@ export default function ActiveBookings() {
     mutationFn: async ({ orderIds, bookingId }: { orderIds: number[]; bookingId: number }) => {
       return await apiRequest("PATCH", "/api/orders/merge-to-booking", { orderIds, bookingId });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+    onSuccess: async () => {
+      // Force refetch to get fresh data
+      await queryClient.refetchQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unmerged-cafe"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      
+      // Update the checkout dialog with fresh booking data
+      const updatedBookings = queryClient.getQueryData<ActiveBooking[]>(["/api/bookings/active"]);
+      if (updatedBookings && checkoutDialog.booking) {
+        const refreshedBooking = updatedBookings.find(b => b.id === checkoutDialog.booking!.id);
+        if (refreshedBooking) {
+          setCheckoutDialog({ open: true, booking: refreshedBooking });
+        }
+      }
+      
       toast({
         title: "Order Merged",
         description: "Café order has been added to the bill",
