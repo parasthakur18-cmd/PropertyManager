@@ -40,10 +40,11 @@ The frontend uses **React 18** with **TypeScript** (Vite), **Wouter** for routin
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
 -   **Backend**: Express.js, Node.js, TypeScript, RESTful API.
 -   **Database**: PostgreSQL (Neon serverless) with Drizzle ORM.
--   **Authentication**: Replit Auth, OpenID Connect, Passport.js, session-based via secure HTTP-only cookies.
--   **Authorization**: Role-based (admin, manager, staff, kitchen) with property-specific assignments.
+-   **Authentication**: Replit Auth, OpenID Connect, Passport.js, session-based via secure HTTP-only cookies. Auto-creates users on first login as admin.
+-   **Authorization**: Role-based (admin, manager, staff, kitchen) with property-specific assignments. Managers have property-scoped data access.
+-   **Property Filtering**: Managers only see rooms from their assigned property. Returns empty array if no property assigned. Rejects stale sessions (deleted users) with 403 error.
 -   **Data Validation**: Client-side with Zod, server-side using shared Zod schemas.
--   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection.
+-   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection, least-privilege access control.
 
 ## External Dependencies
 
