@@ -970,16 +970,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all unmerged café orders (for merging at checkout)
   app.get("/api/orders/unmerged-cafe", isAuthenticated, async (req, res) => {
     try {
-      // Use raw SQL query with db.$queryRaw
-      const result: any[] = await db.execute(sql`
-        SELECT * FROM orders 
-        WHERE order_type = 'restaurant' 
-        AND booking_id IS NULL
-        ORDER BY created_at DESC
-      `);
+      // Get all orders and filter in JavaScript
+      const allOrders = await db
+        .select()
+        .from(orders)
+        .orderBy(desc(orders.createdAt));
       
-      console.log(`Found ${result.length} unmerged café orders`);
-      res.json(result);
+      // Filter for restaurant orders with null bookingId
+      const unmergedOrders = allOrders.filter(
+        (order) => order.orderType === "restaurant" && order.bookingId === null
+      );
+      
+      console.log(`Found ${unmergedOrders.length} unmerged café orders`);
+      res.json(unmergedOrders);
     } catch (error: any) {
       console.error("Error fetching unmerged café orders:", error);
       console.error("Full error:", JSON.stringify(error, null, 2));
