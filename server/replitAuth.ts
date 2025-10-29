@@ -61,9 +61,9 @@ async function upsertUser(
   const allUsers = await storage.getAllUsers();
   const isFirstUser = allUsers.length === 0;
   
-  // Owner email always gets admin
-  const ownerEmail = 'paras.thakur18@gmail.com';
-  const isOwner = claims["email"] === ownerEmail;
+  // Owner emails always get admin
+  const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com'];
+  const isAdmin = adminEmails.includes(claims["email"]);
   
   await storage.upsertUser({
     id: claims["sub"],
@@ -71,7 +71,7 @@ async function upsertUser(
     firstName: claims["first_name"],
     lastName: claims["last_name"],
     profileImageUrl: claims["profile_image_url"],
-    role: (isFirstUser || isOwner) ? 'admin' : 'staff', // First user or owner gets admin
+    role: (isFirstUser || isAdmin) ? 'admin' : 'staff', // First user or admin emails get admin
   });
 }
 
