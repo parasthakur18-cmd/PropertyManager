@@ -110,10 +110,28 @@ export default function FoodOrdersReport() {
   });
 
   const handleMergeOrder = () => {
-    if (!mergeDialog.order || !selectedBookingId) return;
+    if (!mergeDialog.order || !selectedBookingId) {
+      toast({
+        title: "Please select a booking",
+        description: "You must select an active booking to merge this order",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const bookingId = parseInt(selectedBookingId, 10);
+    if (isNaN(bookingId)) {
+      toast({
+        title: "Invalid booking selected",
+        description: "Please select a valid booking",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     mergeMutation.mutate({
       orderIds: [mergeDialog.order.id],
-      bookingId: parseInt(selectedBookingId),
+      bookingId,
     });
   };
 
@@ -447,7 +465,13 @@ export default function FoodOrdersReport() {
         </CardContent>
       </Card>
 
-      <Dialog open={mergeDialog.open} onOpenChange={(open) => setMergeDialog({ open, order: null })}>
+      <Dialog 
+        open={mergeDialog.open} 
+        onOpenChange={(open) => {
+          setMergeDialog({ open, order: null });
+          setSelectedBookingId("");
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Merge Order to Guest Bill</DialogTitle>
@@ -462,17 +486,23 @@ export default function FoodOrdersReport() {
               </p>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Select Active Booking</label>
+              <label className="text-sm font-medium mb-2 block">Select Active Booking *</label>
               <Select value={selectedBookingId} onValueChange={setSelectedBookingId}>
                 <SelectTrigger data-testid="select-booking">
                   <SelectValue placeholder="Choose a guest's booking" />
                 </SelectTrigger>
                 <SelectContent>
-                  {activeBookings?.map((booking) => (
-                    <SelectItem key={booking.id} value={booking.id.toString()}>
-                      {booking.guest.fullName} - Room {booking.room.roomNumber}
+                  {activeBookings && activeBookings.length > 0 ? (
+                    activeBookings.map((booking) => (
+                      <SelectItem key={booking.id} value={booking.id.toString()}>
+                        {booking.guest.fullName} - Room {booking.room.roomNumber}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-bookings" disabled>
+                      No active bookings available
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -480,7 +510,10 @@ export default function FoodOrdersReport() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setMergeDialog({ open: false, order: null })}
+              onClick={() => {
+                setMergeDialog({ open: false, order: null });
+                setSelectedBookingId("");
+              }}
               data-testid="button-cancel"
             >
               Cancel
