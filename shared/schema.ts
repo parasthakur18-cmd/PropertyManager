@@ -124,6 +124,31 @@ export const insertGuestSchema = createInsertSchema(guests).omit({
 export type InsertGuest = z.infer<typeof insertGuestSchema>;
 export type Guest = typeof guests.$inferSelect;
 
+// Travel Agents table
+export const travelAgents = pgTable("travel_agents", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  contactPerson: varchar("contact_person", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  commission: decimal("commission", { precision: 5, scale: 2 }), // Commission percentage
+  address: text("address"),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTravelAgentSchema = createInsertSchema(travelAgents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTravelAgent = z.infer<typeof insertTravelAgentSchema>;
+export type TravelAgent = typeof travelAgents.$inferSelect;
+
 // Bookings table
 export const bookings = pgTable("bookings", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -141,7 +166,8 @@ export const bookings = pgTable("bookings", {
   customPrice: decimal("custom_price", { precision: 10, scale: 2 }), // Custom price per night (overrides room price if set)
   advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }).notNull().default("0"), // Advance payment received
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
-  source: varchar("source", { length: 50 }).notNull().default("walk-in"), // Booking.com, Airbnb, Walk-in, Phone, Self Generated, Online, OTA
+  source: varchar("source", { length: 50 }).notNull().default("Walk-in"), // Walk-in, Online, Booking.com, MMT, Airbnb, OTA, Travel Agent, Others
+  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id), // Only used when source is "Travel Agent"
   mealPlan: varchar("meal_plan", { length: 10 }).notNull().default("EP"), // EP, CP, MAP, AP
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -295,6 +321,8 @@ export const enquiries = pgTable("enquiries", {
   bedsBooked: integer("beds_booked"), // For dormitory enquiries - number of beds to book
   numberOfGuests: integer("number_of_guests").notNull().default(1),
   mealPlan: varchar("meal_plan", { length: 10 }).notNull().default("EP"), // EP, CP, MAP, AP
+  source: varchar("source", { length: 50 }).notNull().default("Walk-in"), // Walk-in, Online, Booking.com, MMT, Airbnb, OTA, Travel Agent, Others
+  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id), // Only used when source is "Travel Agent"
   priceQuoted: decimal("price_quoted", { precision: 10, scale: 2 }),
   advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }),
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"), // pending, received, refunded
