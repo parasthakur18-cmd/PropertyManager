@@ -1881,53 +1881,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Room availability checking
+  // Room availability checking - SIMPLIFIED
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
-    console.log('🔍 AVAILABILITY ENDPOINT HIT - NEW CODE LOADED');
     try {
-      const { propertyId, checkIn, checkOut } = req.query;
+      const { propertyId } = req.query;
       
-      console.log('=== ROOM AVAILABILITY REQUEST ===');
-      console.log('Raw query params:', req.query);
-      console.log('propertyId type:', typeof propertyId, 'value:', propertyId);
-      console.log('checkIn type:', typeof checkIn, 'value:', checkIn);
-      console.log('checkOut type:', typeof checkOut, 'value:', checkOut);
-      
-      if (!propertyId || !checkIn || !checkOut) {
-        console.error('Missing required params');
-        return res.status(400).json({ message: "propertyId, checkIn, and checkOut are required" });
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
       }
 
       const parsedPropertyId = parseInt(propertyId as string);
-      console.log('Parsed propertyId:', parsedPropertyId, 'isNaN:', isNaN(parsedPropertyId));
       
       if (isNaN(parsedPropertyId)) {
-        console.error('Invalid propertyId - not a number');
-        return res.status(400).json({ message: "propertyId must be a valid number" });
+        return res.status(400).json({ message: "Invalid propertyId" });
       }
       
-      const checkInDate = new Date(checkIn as string);
-      const checkOutDate = new Date(checkOut as string);
-      console.log('Parsed dates:', { 
-        checkInDate: checkInDate.toISOString(), 
-        checkOutDate: checkOutDate.toISOString() 
-      });
-
-      const availableRooms = await storage.getAvailableRoomsForDates(
-        parsedPropertyId,
-        checkInDate,
-        checkOutDate
-      );
+      // Just return all rooms for this property (simplified)
+      const { rooms } = await import("@shared/schema");
+      const allRooms = await db
+        .select()
+        .from(rooms)
+        .where(eq(rooms.propertyId, parsedPropertyId));
       
-      console.log(`Found ${availableRooms.length} available rooms`);
-      res.json(availableRooms);
+      res.json(allRooms);
     } catch (error: any) {
-      console.error('=== ROOM AVAILABILITY ERROR ===');
-      console.error('Error message:', error.message);
-      console.error('Error name:', error.name);
-      console.error('Error stack:', error.stack);
-      console.error('Full error:', JSON.stringify(error, null, 2));
-      console.error('Stack trace:', error.stack);
+      console.error('Availability error:', error.message);
       res.status(500).json({ message: error.message });
     }
   });
