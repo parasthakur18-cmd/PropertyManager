@@ -237,6 +237,15 @@ export default function Dashboard() {
                 const room = rooms?.find(r => r.id === booking.roomId);
                 const property = properties?.find(p => p.id === booking.propertyId);
                 
+                // For group bookings, get all rooms
+                const groupRooms = booking.isGroupBooking && booking.roomIds
+                  ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+                  : [];
+                
+                const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                  ? groupRooms.map(r => `Room ${r.roomNumber}`).join(", ")
+                  : room ? `Room ${room.roomNumber}` : "Room TBA";
+                
                 return (
                   <Card key={booking.id} className="hover-elevate" data-testid={`card-checkin-${booking.id}`}>
                     <CardHeader>
@@ -246,14 +255,19 @@ export default function Dashboard() {
                             <LogIn className="h-6 w-6" />
                           </div>
                           <div>
-                            <CardTitle className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2 flex-wrap">
                               {guest?.fullName || "Unknown Guest"}
                               <Badge className={statusColors[booking.status as keyof typeof statusColors]}>
                                 {booking.status}
                               </Badge>
+                              {booking.isGroupBooking && (
+                                <Badge variant="secondary" className="bg-blue-500 text-white">
+                                  Group Booking
+                                </Badge>
+                              )}
                             </CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {property?.name} • Room {room?.roomNumber || "TBA"}
+                              {property?.name} • {roomDisplay}
                             </p>
                           </div>
                         </div>
@@ -305,6 +319,15 @@ export default function Dashboard() {
                 const room = rooms?.find(r => r.id === booking.roomId);
                 const property = properties?.find(p => p.id === booking.propertyId);
                 
+                // For group bookings, get all rooms
+                const groupRooms = booking.isGroupBooking && booking.roomIds
+                  ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+                  : [];
+                
+                const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                  ? groupRooms.map(r => `Room ${r.roomNumber}`).join(", ")
+                  : room ? `Room ${room.roomNumber}` : "Room TBA";
+                
                 return (
                   <Card key={booking.id} className="hover-elevate" data-testid={`card-checkout-${booking.id}`}>
                     <CardHeader>
@@ -314,14 +337,19 @@ export default function Dashboard() {
                             <LogOut className="h-6 w-6" />
                           </div>
                           <div>
-                            <CardTitle className="flex items-center gap-2">
+                            <CardTitle className="flex items-center gap-2 flex-wrap">
                               {guest?.fullName || "Unknown Guest"}
                               <Badge className={statusColors[booking.status as keyof typeof statusColors]}>
                                 {booking.status}
                               </Badge>
+                              {booking.isGroupBooking && (
+                                <Badge variant="secondary" className="bg-blue-500 text-white">
+                                  Group Booking
+                                </Badge>
+                              )}
                             </CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {property?.name} • Room {room?.roomNumber || "TBA"}
+                              {property?.name} • {roomDisplay}
                             </p>
                           </div>
                         </div>
@@ -442,6 +470,15 @@ export default function Dashboard() {
                 const room = rooms?.find(r => r.id === booking.roomId);
                 const property = properties?.find(p => p.id === booking.propertyId);
                 
+                // For group bookings, get all rooms
+                const groupRooms = booking.isGroupBooking && booking.roomIds
+                  ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+                  : [];
+                
+                const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                  ? groupRooms.map(r => `Room ${r.roomNumber}`).join(", ")
+                  : room ? `Room ${room.roomNumber}` : "Room TBA";
+                
                 return (
                   <Card key={booking.id} className="hover-elevate" data-testid={`card-booking-${booking.id}`}>
                     <CardHeader>
@@ -463,7 +500,7 @@ export default function Dashboard() {
                               )}
                             </CardTitle>
                             <p className="text-sm text-muted-foreground mt-1">
-                              {property?.name} • Room {room?.roomNumber || "TBA"}
+                              {property?.name} • {roomDisplay}
                             </p>
                           </div>
                         </div>
