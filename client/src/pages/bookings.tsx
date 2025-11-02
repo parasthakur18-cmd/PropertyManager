@@ -528,6 +528,40 @@ export default function Bookings() {
                         </FormItem>
                       )}
                     />
+                    {/* Bed selection for dormitory rooms */}
+                    {(() => {
+                      const selectedRoomId = form.watch("roomId");
+                      const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
+                      if (selectedRoom?.roomCategory === "dormitory") {
+                        return (
+                          <FormField
+                            control={form.control}
+                            name="bedsBooked"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Number of Beds to Book</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max={selectedRoom.totalBeds || 1}
+                                    placeholder="1"
+                                    value={field.value || ""}
+                                    onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : "")}
+                                    data-testid="input-beds-booked"
+                                  />
+                                </FormControl>
+                                <p className="text-xs text-muted-foreground">
+                                  Available beds: {selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
+                                </p>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        );
+                      }
+                      return null;
+                    })()}
                   </TabsContent>
                   <TabsContent value="group" className="mt-4">
                     <div className="space-y-3">
