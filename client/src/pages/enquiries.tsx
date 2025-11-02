@@ -50,10 +50,246 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Enquiry, MessageTemplate, Room } from "@shared/schema";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+
+const editEnquirySchema = z.object({
+  guestName: z.string().min(2, "Name must be at least 2 characters"),
+  guestPhone: z.string().min(10, "Phone number must be at least 10 digits"),
+  guestEmail: z.string().email("Invalid email").optional().or(z.literal("")),
+  roomId: z.coerce.number().int().min(1, "Please select a room").optional(),
+  numberOfGuests: z.coerce.number().int().min(1, "At least 1 guest required"),
+  priceQuoted: z.coerce.number().min(0, "Price must be positive").optional(),
+  advanceAmount: z.coerce.number().min(0, "Advance must be positive").nullable().optional(),
+  specialRequests: z.string().optional(),
+});
+
+type EditEnquiryFormData = z.infer<typeof editEnquirySchema>;
+
+interface EditEnquiryFormProps {
+  enquiry: Enquiry;
+  rooms: Room[];
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFormProps) {
+  const { toast } = useToast();
+
+  const form = useForm<EditEnquiryFormData>({
+    resolver: zodResolver(editEnquirySchema),
+    defaultValues: {
+      guestName: enquiry.guestName,
+      guestPhone: enquiry.guestPhone,
+      guestEmail: enquiry.guestEmail || "",
+      roomId: enquiry.roomId || undefined,
+      numberOfGuests: enquiry.numberOfGuests,
+      priceQuoted: enquiry.priceQuoted ?? undefined,
+      advanceAmount: enquiry.advanceAmount ?? undefined,
+      specialRequests: enquiry.specialRequests || "",
+    },
+  });
+
+  const updateEnquiryMutation = useMutation({
+    mutationFn: async (data: EditEnquiryFormData) => {
+      return await apiRequest("PATCH", `/api/enquiries/${enquiry.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      toast({
+        title: "Enquiry Updated",
+        description: "The enquiry has been updated successfully.",
+      });
+      onSuccess();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update enquiry",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = (data: EditEnquiryFormData) => {
+    updateEnquiryMutation.mutate(data);
+  };
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="guestName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Guest Name</FormLabel>
+                <FormControl>
+                  <Input placeholder="John Doe" {...field} data-testid="input-edit-guest-name" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="guestPhone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Phone Number</FormLabel>
+                <FormControl>
+                  <Input placeholder="+91 9876543210" {...field} data-testid="input-edit-guest-phone" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="guestEmail"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email (Optional)</FormLabel>
+                <FormControl>
+                  <Input type="email" placeholder="guest@example.com" {...field} data-testid="input-edit-guest-email" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="roomId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Room</FormLabel>
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value?.toString()}
+                  disabled={enquiry.isGroupEnquiry}
+                >
+                  <FormControl>
+                    <SelectTrigger data-testid="select-edit-room">
+                      <SelectValue placeholder="Select room" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {rooms.map((room) => (
+                      <SelectItem key={room.id} value={room.id.toString()}>
+                        {room.roomNumber} - {room.roomType}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {enquiry.isGroupEnquiry && (
+                  <p className="text-xs text-muted-foreground">
+                    Cannot change room for group enquiries
+                  </p>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="numberOfGuests"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Number of Guests</FormLabel>
+                <FormControl>
+                  <Input type="number" min="1" {...field} data-testid="input-edit-number-of-guests" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="priceQuoted"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Price Quoted (₹)</FormLabel>
+                <FormControl>
+                  <Input type="number" min="0" step="0.01" placeholder="0.00" {...field} data-testid="input-edit-price-quoted" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="advanceAmount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Advance Amount (₹)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    {...field}
+                    value={field.value ?? ""}
+                    data-testid="input-edit-advance-amount"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="specialRequests"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Special Requests</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Any special requirements..."
+                  {...field}
+                  data-testid="input-edit-special-requests"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-3 pt-4">
+          <Button type="button" variant="outline" onClick={onCancel} data-testid="button-edit-cancel">
+            Cancel
+          </Button>
+          <Button type="submit" disabled={updateEnquiryMutation.isPending} data-testid="button-edit-save">
+            {updateEnquiryMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
 
 export default function Enquiries() {
   const { toast } = useToast();
@@ -631,30 +867,29 @@ export default function Enquiries() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog - Placeholder for now */}
+      {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Enquiry</DialogTitle>
             <DialogDescription>
               Update enquiry details for {selectedEnquiry?.guestName}
             </DialogDescription>
           </DialogHeader>
-          <div className="p-4 text-center text-muted-foreground">
-            <p>Edit functionality will be available soon.</p>
-            <p className="text-sm mt-2">You can cancel and create a new enquiry for now.</p>
-          </div>
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              onClick={() => {
+          {selectedEnquiry && (
+            <EditEnquiryForm
+              enquiry={selectedEnquiry}
+              rooms={rooms || []}
+              onSuccess={() => {
                 setIsEditDialogOpen(false);
                 setSelectedEnquiry(null);
               }}
-            >
-              Close
-            </Button>
-          </div>
+              onCancel={() => {
+                setIsEditDialogOpen(false);
+                setSelectedEnquiry(null);
+              }}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
