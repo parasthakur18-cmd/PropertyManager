@@ -948,6 +948,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const data = insertBookingSchema.parse(bodyWithDates);
+      
+      // Validate travel agent belongs to same property as booking
+      if (data.travelAgentId) {
+        // Determine booking property from roomId, roomIds, or propertyId
+        let bookingPropertyId: number | undefined;
+        
+        if (data.roomId) {
+          const room = await storage.getRoom(data.roomId);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (data.roomIds && data.roomIds.length > 0) {
+          // Group booking - check first room
+          const room = await storage.getRoom(data.roomIds[0]);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (data.propertyId) {
+          bookingPropertyId = data.propertyId;
+        }
+        
+        if (bookingPropertyId) {
+          const agent = await storage.getTravelAgent(data.travelAgentId);
+          if (!agent) {
+            return res.status(404).json({ message: "Travel agent not found" });
+          }
+          if (agent.propertyId !== bookingPropertyId) {
+            return res.status(400).json({ 
+              message: "Travel agent does not belong to the same property as the booking" 
+            });
+          }
+        }
+      }
+      
       const booking = await storage.createBooking(data);
       res.status(201).json(booking);
     } catch (error: any) {
@@ -963,6 +999,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Parse and validate the booking data - this will convert ISO strings to Date objects
       const validatedData = insertBookingSchema.partial().parse(req.body);
+      
+      // Fetch existing booking to determine property context
+      const existingBooking = await storage.getBooking(parseInt(req.params.id));
+      if (!existingBooking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Determine if room/property is changing
+      const isRoomChanging = validatedData.roomId !== undefined || validatedData.roomIds !== undefined || validatedData.propertyId !== undefined;
+      const isTravelAgentChanging = validatedData.travelAgentId !== undefined;
+      
+      // Validate travel agent when:
+      // 1. Travel agent is being updated
+      // 2. Room/property is changing and booking has an existing travel agent
+      const shouldValidateTravelAgent = isTravelAgentChanging || (isRoomChanging && existingBooking.travelAgentId);
+      
+      if (shouldValidateTravelAgent) {
+        // Determine new booking property from updated data or existing booking
+        let bookingPropertyId: number | undefined;
+        
+        if (validatedData.roomId) {
+          const room = await storage.getRoom(validatedData.roomId);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (validatedData.roomIds && validatedData.roomIds.length > 0) {
+          const room = await storage.getRoom(validatedData.roomIds[0]);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (validatedData.propertyId) {
+          bookingPropertyId = validatedData.propertyId;
+        } else if (existingBooking.roomId) {
+          // Use existing booking's room property
+          const room = await storage.getRoom(existingBooking.roomId);
+          if (room) {
+            bookingPropertyId = room.propertyId;
+          }
+        } else if (existingBooking.propertyId) {
+          bookingPropertyId = existingBooking.propertyId;
+        }
+        
+        // Get the travel agent to validate (from update or existing)
+        const travelAgentId = validatedData.travelAgentId !== undefined 
+          ? validatedData.travelAgentId 
+          : existingBooking.travelAgentId;
+        
+        if (travelAgentId && bookingPropertyId) {
+          const agent = await storage.getTravelAgent(travelAgentId);
+          if (!agent) {
+            return res.status(404).json({ message: "Travel agent not found" });
+          }
+          if (agent.propertyId !== bookingPropertyId) {
+            return res.status(400).json({ 
+              message: "Travel agent does not belong to the same property as the booking" 
+            });
+          }
+        }
+      }
+      
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
       res.json(booking);
     } catch (error: any) {

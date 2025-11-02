@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2 } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
@@ -53,6 +53,8 @@ export default function Bookings() {
   const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
+  const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
+  const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
   const { toast} = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -72,10 +74,6 @@ export default function Bookings() {
     queryKey: ["/api/rooms"],
   });
 
-  const { data: travelAgents } = useQuery<TravelAgent[]>({
-    queryKey: ["/api/travel-agents"],
-  });
-
   const form = useForm({
     // Don't use zodResolver because we create the guest first
     defaultValues: {
@@ -92,6 +90,7 @@ export default function Bookings() {
       source: "Walk-in",
       travelAgentId: null,
       mealPlan: "EP",
+      bedsBooked: null,
     },
   });
 
@@ -107,6 +106,10 @@ export default function Bookings() {
       customPrice: null,
       advanceAmount: "0",
       specialRequests: "",
+      source: "Walk-in",
+      travelAgentId: null,
+      mealPlan: "EP",
+      bedsBooked: null,
     },
   });
 
@@ -197,6 +200,68 @@ export default function Bookings() {
       setIsEditDialogOpen(false);
       setEditingBooking(null);
       editForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Watch propertyId to filter travel agents by property
+  const selectedPropertyId = form.watch("propertyId");
+  
+  const { data: travelAgents } = useQuery<TravelAgent[]>({
+    queryKey: ["/api/travel-agents"],
+    select: (agents) => selectedPropertyId 
+      ? agents.filter(agent => agent.propertyId === selectedPropertyId)
+      : agents,
+  });
+
+  // Clear travelAgentId when source changes away from "Travel Agent"
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === "source" && value.source !== "Travel Agent") {
+        form.setValue("travelAgentId", null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Clear travelAgentId when propertyId changes (prevent cross-property agent mismatch)
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === "propertyId") {
+        form.setValue("travelAgentId", null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // Clear travelAgentId in edit form when propertyId changes
+  useEffect(() => {
+    const subscription = editForm.watch((value, { name }) => {
+      if (name === "propertyId") {
+        editForm.setValue("travelAgentId", null);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [editForm]);
+
+  const createTravelAgentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("POST", "/api/travel-agents", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/travel-agents"] });
+      toast({
+        title: "Success",
+        description: "Travel agent added successfully",
+      });
+      setIsAddAgentDialogOpen(false);
+      setNewAgentData({ name: "", contactPerson: "", phone: "", email: "" });
     },
     onError: (error: Error) => {
       toast({
@@ -806,6 +871,16 @@ export default function Bookings() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setIsAddAgentDialogOpen(true)}
+                            className="mt-2"
+                            data-testid="button-add-travel-agent"
+                          >
+                            <Plus className="h-4 w-4 mr-1" /> Create New Agent
+                          </Button>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -1046,6 +1121,86 @@ export default function Bookings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add Travel Agent Dialog */}
+      <Dialog open={isAddAgentDialogOpen} onOpenChange={setIsAddAgentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Travel Agent</DialogTitle>
+            <DialogDescription>
+              Create a new travel agent for {selectedPropertyId ? properties?.find(p => p.id === selectedPropertyId)?.name : "this property"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="agent-name">Agent Name *</Label>
+              <Input
+                id="agent-name"
+                value={newAgentData.name}
+                onChange={(e) => setNewAgentData({ ...newAgentData, name: e.target.value })}
+                placeholder="Enter agent name"
+                data-testid="input-agent-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="agent-contact">Contact Person</Label>
+              <Input
+                id="agent-contact"
+                value={newAgentData.contactPerson}
+                onChange={(e) => setNewAgentData({ ...newAgentData, contactPerson: e.target.value })}
+                placeholder="Enter contact person name"
+                data-testid="input-agent-contact"
+              />
+            </div>
+            <div>
+              <Label htmlFor="agent-phone">Phone</Label>
+              <Input
+                id="agent-phone"
+                value={newAgentData.phone}
+                onChange={(e) => setNewAgentData({ ...newAgentData, phone: e.target.value })}
+                placeholder="Enter phone number"
+                data-testid="input-agent-phone"
+              />
+            </div>
+            <div>
+              <Label htmlFor="agent-email">Email</Label>
+              <Input
+                id="agent-email"
+                type="email"
+                value={newAgentData.email}
+                onChange={(e) => setNewAgentData({ ...newAgentData, email: e.target.value })}
+                placeholder="Enter email address"
+                data-testid="input-agent-email"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddAgentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!newAgentData.name || !selectedPropertyId) {
+                  toast({
+                    title: "Error",
+                    description: "Agent name and property are required",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                createTravelAgentMutation.mutate({
+                  ...newAgentData,
+                  propertyId: selectedPropertyId,
+                });
+              }}
+              disabled={createTravelAgentMutation.isPending}
+              data-testid="button-submit-agent"
+            >
+              {createTravelAgentMutation.isPending ? "Creating..." : "Create Agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Booking Dialog */}
       <Dialog 
