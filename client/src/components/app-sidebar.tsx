@@ -96,7 +96,6 @@ const staffMenuItems = [
 const kitchenMenuItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
-  { title: "Menu Management", url: "/menu-management", icon: BookOpen },
 ];
 
 export function AppSidebar() {
