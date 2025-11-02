@@ -196,6 +196,11 @@ export default function Bookings() {
   });
 
   const onSubmit = async (data: any) => {
+    console.log("onSubmit called with data:", data);
+    console.log("Booking type:", bookingType);
+    console.log("Selected room IDs:", selectedRoomIds);
+    console.log("Quick guest data:", quickGuestData);
+    
     // First, validate and create the guest
     if (!quickGuestData.fullName || !quickGuestData.phone) {
       toast({
@@ -397,6 +402,9 @@ export default function Bookings() {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Booking</DialogTitle>
+              <DialogDescription>
+                Fill in guest details and select room(s) to create a new booking
+              </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit, (errors) => {
