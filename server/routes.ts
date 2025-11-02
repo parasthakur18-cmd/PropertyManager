@@ -1883,6 +1883,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Room availability checking
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
+    console.log('🔍 AVAILABILITY ENDPOINT HIT - NEW CODE LOADED');
     try {
       const { propertyId, checkIn, checkOut } = req.query;
       
