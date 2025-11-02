@@ -43,12 +43,15 @@ export default function Rooms() {
       propertyId: 0,
       roomNumber: "",
       roomType: "",
+      roomCategory: "standard",
       status: "available",
       pricePerNight: "0",
       maxOccupancy: 2,
       amenities: [],
     },
   });
+
+  const selectedCategory = form.watch("roomCategory");
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertRoom) => {
@@ -210,6 +213,54 @@ export default function Rooms() {
                     )}
                   />
                 </div>
+                <FormField
+                  control={form.control}
+                  name="roomCategory"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Room Category</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || "standard"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-room-category">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="deluxe">Deluxe</SelectItem>
+                          <SelectItem value="suite">Suite</SelectItem>
+                          <SelectItem value="dormitory">Dormitory</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {selectedCategory === "dormitory" && (
+                  <FormField
+                    control={form.control}
+                    name="totalBeds"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Total Beds (Dormitory)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="10"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                            value={field.value || ""}
+                            data-testid="input-total-beds"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
@@ -330,7 +381,15 @@ export default function Rooms() {
                     </Badge>
                     <div className="text-sm space-y-1">
                       <p className="text-muted-foreground" data-testid={`text-room-type-${room.id}`}>{room.roomType || "Standard"}</p>
-                      <p className="font-semibold font-mono text-lg" data-testid={`text-room-price-${room.id}`}>₹{room.pricePerNight}/night</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        <Badge variant="secondary" className="text-xs">
+                          {room.roomCategory || "standard"}
+                        </Badge>
+                        {room.roomCategory === "dormitory" && room.totalBeds && (
+                          <span className="ml-2">• {room.totalBeds} beds</span>
+                        )}
+                      </p>
+                      <p className="font-semibold font-mono text-lg" data-testid={`text-room-price-${room.id}`}>₹{room.pricePerNight}{room.roomCategory === "dormitory" ? "/bed/night" : "/night"}</p>
                       <p className="text-muted-foreground" data-testid={`text-room-occupancy-${room.id}`}>Max: {room.maxOccupancy} guests</p>
                     </div>
                     <Select
