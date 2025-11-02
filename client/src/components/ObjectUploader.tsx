@@ -43,6 +43,7 @@ export function ObjectUploader({
       restrictions: {
         maxNumberOfFiles,
         maxFileSize,
+        allowedFileTypes: ['image/*'],
       },
       autoProceed: false,
     })
@@ -72,6 +73,8 @@ export function ObjectUploader({
         open={showModal}
         onRequestClose={() => setShowModal(false)}
         proudlyDisplayPoweredByUppy={false}
+        note="Upload ID proof or take a photo with camera"
+        plugins={['FileInput']}
       />
     </div>
   );

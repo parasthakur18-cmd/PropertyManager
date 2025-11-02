@@ -797,15 +797,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { status } = req.body;
       const bookingId = parseInt(req.params.id);
       
+      // Get current booking to validate status change
+      const currentBooking = await storage.getBooking(bookingId);
+      if (!currentBooking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Status lock: Prevent changing from checked-out
+      if (currentBooking.status === "checked-out") {
+        return res.status(400).json({ 
+          message: "Cannot change status of a checked-out booking. Status is locked." 
+        });
+      }
+      
       // If trying to check in, validate the check-in date
       if (status === "checked-in") {
-        const booking = await storage.getBooking(bookingId);
-        if (!booking) {
-          return res.status(404).json({ message: "Booking not found" });
-        }
-        
         // Check if check-in date is today or in the past
-        const checkInDate = new Date(booking.checkInDate);
+        const checkInDate = new Date(currentBooking.checkInDate);
         const today = new Date();
         
         // Reset time parts to compare only dates

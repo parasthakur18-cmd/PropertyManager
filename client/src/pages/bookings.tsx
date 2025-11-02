@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2 } from "lucide-react";
-import { ObjectUploader } from "@/components/ObjectUploader";
-import type { UploadResult } from "@uppy/core";
+import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -48,6 +47,9 @@ export default function Bookings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [bookingType, setBookingType] = useState<"single" | "group">("single");
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
+  const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
+  const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
+  const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
   const { toast} = useToast();
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
@@ -445,39 +447,11 @@ export default function Bookings() {
                     data-testid="input-guest-email"
                     className="bg-background"
                   />
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">ID Proof Upload (Optional)</label>
-                    <ObjectUploader
-                      maxNumberOfFiles={1}
-                      maxFileSize={10485760}
-                      buttonVariant="outline"
-                      onGetUploadParameters={async () => {
-                        const response = await apiRequest("POST", "/api/objects/upload", {});
-                        const data = await response.json();
-                        return {
-                          method: "PUT" as const,
-                          url: data.uploadURL,
-                        };
-                      }}
-                      onComplete={async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-                        if (result.successful && result.successful.length > 0) {
-                          const uploadURL = result.successful[0].uploadURL;
-                          const response = await apiRequest("PUT", "/api/guest-id-proofs", {
-                            idProofUrl: uploadURL,
-                          });
-                          const data = await response.json();
-                          setQuickGuestData({ ...quickGuestData, idProofImage: data.objectPath });
-                          toast({
-                            title: "Success",
-                            description: "ID proof uploaded successfully",
-                          });
-                        }
-                      }}
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      {quickGuestData.idProofImage ? "ID Uploaded ✓" : "Upload Guest ID (Optional)"}
-                    </ObjectUploader>
-                  </div>
+                  <IdVerificationUpload
+                    onUploadComplete={(objectKey) => {
+                      setQuickGuestData({ ...quickGuestData, idProofImage: objectKey });
+                    }}
+                  />
                 </div>
                 <Tabs value={bookingType} onValueChange={(value) => setBookingType(value as "single" | "group")} className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
@@ -956,7 +930,28 @@ export default function Bookings() {
                       )}
                       <Select
                         value={booking.status}
-                        onValueChange={(value) => updateStatusMutation.mutate({ id: booking.id, status: value })}
+                        disabled={booking.status === "checked-out"}
+                        onValueChange={(value) => {
+                          // Status lock: Prevent changing from checked-out
+                          if (booking.status === "checked-out") {
+                            toast({
+                              title: "Status Locked",
+                              description: "Cannot change status of a checked-out booking",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          
+                          // If changing to checked-in, show ID verification dialog
+                          if (value === "checked-in") {
+                            setCheckinBookingId(booking.id);
+                            setCheckinIdProof(null);
+                            setCheckinDialogOpen(true);
+                          } else {
+                            // For other status changes, update directly
+                            updateStatusMutation.mutate({ id: booking.id, status: value });
+                          }
+                        }}
                       >
                         <SelectTrigger className="w-40" data-testid={`select-booking-status-${booking.id}`}>
                           <SelectValue />
@@ -1300,6 +1295,79 @@ export default function Bookings() {
             setPaymentMethod={setPaymentMethod}
             onClose={() => setCheckoutDialogOpen(false)}
           />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Check-in ID Verification Dialog */}
+      <Dialog open={checkinDialogOpen} onOpenChange={(open) => {
+        setCheckinDialogOpen(open);
+        if (!open) {
+          setCheckinBookingId(null);
+          setCheckinIdProof(null);
+        }
+      }}>
+        <DialogContent data-testid="dialog-checkin-verification">
+          <DialogHeader>
+            <DialogTitle>Check-In Guest</DialogTitle>
+            <DialogDescription>
+              Please upload or capture the guest's ID proof to complete check-in
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <IdVerificationUpload
+              onUploadComplete={(objectKey) => {
+                setCheckinIdProof(objectKey);
+              }}
+            />
+            
+            {checkinIdProof && (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <Upload className="h-4 w-4" />
+                ID proof uploaded successfully
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCheckinDialogOpen(false);
+                setCheckinBookingId(null);
+                setCheckinIdProof(null);
+              }}
+              data-testid="button-cancel-checkin"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!checkinIdProof) {
+                  toast({
+                    title: "ID Required",
+                    description: "Please upload guest ID proof before checking in",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                if (checkinBookingId) {
+                  updateStatusMutation.mutate({ 
+                    id: checkinBookingId, 
+                    status: "checked-in" 
+                  });
+                  setCheckinDialogOpen(false);
+                  setCheckinBookingId(null);
+                  setCheckinIdProof(null);
+                }
+              }}
+              disabled={!checkinIdProof}
+              data-testid="button-confirm-checkin"
+            >
+              Complete Check-In
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
