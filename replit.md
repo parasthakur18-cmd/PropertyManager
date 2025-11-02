@@ -45,11 +45,14 @@ The frontend uses **React 18** with **TypeScript** (Vite), **Wouter** for routin
 -   **Backend**: Express.js, Node.js, TypeScript, RESTful API.
 -   **Database**: PostgreSQL (Neon serverless) with Drizzle ORM.
 -   **Authentication**: Replit Auth, OpenID Connect, Passport.js, session-based via secure HTTP-only cookies. Auto-creates users on first login as admin.
--   **Authorization**: Role-based (admin, manager, staff, kitchen) with property-specific assignments. Managers and kitchen users have property-scoped data access.
--   **Property Filtering**: 
-    - **Managers & Kitchen**: Only see and manage data from their assigned property (properties list, rooms, dashboard stats, menu items, bookings, active bookings, analytics, revenue)
-    - **Property Enforcement**: Cannot create/modify/delete resources outside their assigned property. All property and booking endpoints filtered by assigned property.
-    - **Security**: Returns empty array if no property assigned. Rejects stale sessions (deleted users) with 403 error
+-   **Authorization**: Role-based (admin, manager, staff, kitchen) with multi-property assignments. Managers and kitchen users have property-scoped data access.
+-   **Multi-Property Assignment System** (Updated Nov 2, 2025):
+    - **Database**: Uses `assignedPropertyIds` (integer array) instead of single `assignedPropertyId`
+    - **Frontend**: Checkbox-based multi-select UI for property assignment
+    - **Backend**: All filtering logic updated to support array-based property authorization
+    - **Managers & Kitchen**: Can be assigned to multiple properties; see and manage data from all their assigned properties (properties list, rooms, dashboard stats, menu items, bookings, active bookings, analytics, revenue, orders)
+    - **Property Enforcement**: Can only create/modify/delete resources within their assigned properties. All endpoints verify property membership using array inclusion checks.
+    - **Security**: Returns empty array if no properties assigned. Rejects stale sessions (deleted users) with 403 error. Validates property ownership on all mutations.
     - **Admin & Staff**: Full access to all properties (unchanged)
 -   **Data Validation**: Client-side with Zod, server-side using shared Zod schemas.
 -   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection, least-privilege access control.

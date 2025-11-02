@@ -595,12 +595,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let bookings = await storage.getAllBookings();
       
       // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyId) {
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         const allRooms = await storage.getAllRooms();
         bookings = bookings.filter(booking => {
           if (!booking.roomId) return false;
           const room = allRooms.find(r => r.id === booking.roomId);
-          return room && room.propertyId === currentUser.assignedPropertyId;
+          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
         });
       }
       
@@ -630,12 +630,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allProperties = await storage.getAllProperties();
       
       // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyId) {
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         // Filter bookings by property through room relationship
         activeBookings = activeBookings.filter(booking => {
           if (!booking.roomId) return false;
           const room = allRooms.find(r => r.id === booking.roomId);
-          return room && room.propertyId === currentUser.assignedPropertyId;
+          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
         });
       }
       
@@ -746,11 +746,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allProperties = await storage.getAllProperties();
 
       // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyId) {
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         allBookings = allBookings.filter(booking => {
           if (!booking.roomId) return false;
           const room = allRooms.find(r => r.id === booking.roomId);
-          return room && room.propertyId === currentUser.assignedPropertyId;
+          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
         });
       }
 
@@ -1067,13 +1067,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // If user is a manager or kitchen, filter by assigned property
-      if ((currentUser.role === "manager" || currentUser.role === "kitchen") && currentUser.assignedPropertyId) {
-        const items = await storage.getMenuItemsByProperty(currentUser.assignedPropertyId);
-        res.json(items);
-      } else if ((currentUser.role === "manager" || currentUser.role === "kitchen") && !currentUser.assignedPropertyId) {
-        // Manager/Kitchen without assigned property sees no menu items
-        res.json([]);
+      // If user is a manager or kitchen, filter by assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          // Get menu items from all assigned properties
+          const allItems = await storage.getAllMenuItems();
+          const filteredItems = allItems.filter(item => currentUser.assignedPropertyIds!.includes(item.propertyId));
+          res.json(filteredItems);
+        } else {
+          // Manager/Kitchen without assigned property sees no menu items
+          res.json([]);
+        }
       } else {
         // Admin and staff see all menu items
         const items = await storage.getAllMenuItems();
@@ -1108,14 +1112,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const data = insertMenuItemSchema.parse(req.body);
       
-      // Security: If user is manager or kitchen, enforce they can only create items for their assigned property
+      // Security: If user is manager or kitchen, enforce they can only create items for their assigned properties
       if (currentUser.role === "manager" || currentUser.role === "kitchen") {
-        if (!currentUser.assignedPropertyId) {
-          return res.status(403).json({ message: "You must be assigned to a property to create menu items." });
+        if (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0) {
+          return res.status(403).json({ message: "You must be assigned to at least one property to create menu items." });
         }
         
-        // Override propertyId to ensure they can only create for their assigned property
-        data.propertyId = currentUser.assignedPropertyId;
+        // Verify the provided propertyId is in their assigned properties
+        if (!data.propertyId || !currentUser.assignedPropertyIds.includes(data.propertyId)) {
+          return res.status(403).json({ message: "You can only create menu items for your assigned properties." });
+        }
       }
       
       const item = await storage.createMenuItem(data);
@@ -1138,7 +1144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // Security: If user is manager or kitchen, verify the menu item belongs to their property
+      // Security: If user is manager or kitchen, verify the menu item belongs to their assigned properties
       if (currentUser.role === "manager" || currentUser.role === "kitchen") {
         const existingItem = await storage.getMenuItem(parseInt(req.params.id));
         
@@ -1146,13 +1152,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Menu item not found" });
         }
         
-        if (existingItem.propertyId !== currentUser.assignedPropertyId) {
-          return res.status(403).json({ message: "You can only modify menu items from your assigned property." });
+        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(existingItem.propertyId)) {
+          return res.status(403).json({ message: "You can only modify menu items from your assigned properties." });
         }
         
-        // Prevent changing propertyId
-        if (req.body.propertyId && req.body.propertyId !== currentUser.assignedPropertyId) {
-          return res.status(403).json({ message: "You cannot change the property of a menu item." });
+        // Prevent changing propertyId to a property not in their assigned list
+        if (req.body.propertyId && !currentUser.assignedPropertyIds.includes(req.body.propertyId)) {
+          return res.status(403).json({ message: "You cannot change the property to one you're not assigned to." });
         }
       }
       
@@ -1173,7 +1179,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // Security: If user is manager or kitchen, verify the menu item belongs to their property
+      // Security: If user is manager or kitchen, verify the menu item belongs to their assigned properties
       if (currentUser.role === "manager" || currentUser.role === "kitchen") {
         const existingItem = await storage.getMenuItem(parseInt(req.params.id));
         
@@ -1181,8 +1187,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Menu item not found" });
         }
         
-        if (existingItem.propertyId !== currentUser.assignedPropertyId) {
-          return res.status(403).json({ message: "You can only delete menu items from your assigned property." });
+        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(existingItem.propertyId)) {
+          return res.status(403).json({ message: "You can only delete menu items from your assigned properties." });
         }
       }
       
@@ -1204,13 +1210,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // If user is a manager or kitchen, filter orders by assigned property
-      if ((currentUser.role === "manager" || currentUser.role === "kitchen") && currentUser.assignedPropertyId) {
-        const orders = await storage.getOrdersByProperty(currentUser.assignedPropertyId);
-        res.json(orders);
-      } else if ((currentUser.role === "manager" || currentUser.role === "kitchen") && !currentUser.assignedPropertyId) {
-        // Manager/Kitchen without assigned property sees no orders
-        res.json([]);
+      // If user is a manager or kitchen, filter orders by assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          // Get orders from all assigned properties
+          const allOrders = await storage.getAllOrders();
+          const filteredOrders = allOrders.filter(order => 
+            order.propertyId && currentUser.assignedPropertyIds!.includes(order.propertyId)
+          );
+          res.json(filteredOrders);
+        } else {
+          // Manager/Kitchen without assigned property sees no orders
+          res.json([]);
+        }
       } else {
         // Admin and staff see all orders
         const orders = await storage.getAllOrders();

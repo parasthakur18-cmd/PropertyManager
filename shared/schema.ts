@@ -629,6 +629,117 @@ export const ordersRelations = relations(orders, ({ one }) => ({
   }),
 }));
 
+// Audit Log table - immutable append-only audit trail
+export const auditLog = pgTable("audit_log", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  entityType: varchar("entity_type", { length: 100 }).notNull(), // booking, user, lease, payment, etc.
+  entityId: varchar("entity_id", { length: 255 }).notNull(), // ID of the affected entity
+  action: varchar("action", { length: 50 }).notNull(), // create, update, delete, checkout, etc.
+  userId: varchar("user_id").notNull().references(() => users.id), // Who made the change
+  userRole: varchar("user_role", { length: 20 }), // Role at time of action
+  propertyContext: integer("property_context").array(), // Property IDs relevant to this action
+  changeSet: jsonb("change_set"), // { before: {...}, after: {...} } field-level diff
+  metadata: jsonb("metadata"), // Additional context (IP, user agent, reason, notes, etc.)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("idx_audit_entity").on(table.entityType, table.entityId),
+  index("idx_audit_user").on(table.userId),
+  index("idx_audit_created").on(table.createdAt),
+]);
+
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLog.$inferSelect;
+
+// Staff Salaries table - monthly salary records
+export const staffSalaries = pgTable("staff_salaries", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Property context
+  periodStart: timestamp("period_start").notNull(), // First day of salary period
+  periodEnd: timestamp("period_end").notNull(), // Last day of salary period
+  grossSalary: decimal("gross_salary", { precision: 12, scale: 2 }).notNull(),
+  deductions: decimal("deductions", { precision: 12, scale: 2 }).notNull().default('0'),
+  netSalary: decimal("net_salary", { precision: 12, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, paid, cancelled
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_salary_user").on(table.userId),
+  index("idx_salary_period").on(table.periodStart, table.periodEnd),
+]);
+
+export const insertStaffSalarySchema = createInsertSchema(staffSalaries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  periodStart: z.coerce.date(),
+  periodEnd: z.coerce.date(),
+});
+
+export type InsertStaffSalary = z.infer<typeof insertStaffSalarySchema>;
+export type StaffSalary = typeof staffSalaries.$inferSelect;
+
+// Salary Advances table - advance payments linked to salary records
+export const salaryAdvances = pgTable("salary_advances", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  salaryId: integer("salary_id").references(() => staffSalaries.id, { onDelete: 'set null' }), // Linked salary period
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  advanceDate: timestamp("advance_date").notNull(),
+  reason: text("reason"),
+  repaymentStatus: varchar("repayment_status", { length: 20 }).notNull().default("pending"), // pending, deducted, cancelled
+  deductedFromSalaryId: integer("deducted_from_salary_id").references(() => staffSalaries.id, { onDelete: 'set null' }),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_advance_user").on(table.userId),
+  index("idx_advance_status").on(table.repaymentStatus),
+]);
+
+export const insertSalaryAdvanceSchema = createInsertSchema(salaryAdvances).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  advanceDate: z.coerce.date(),
+});
+
+export type InsertSalaryAdvance = z.infer<typeof insertSalaryAdvanceSchema>;
+export type SalaryAdvance = typeof salaryAdvances.$inferSelect;
+
+// Salary Payments table - actual disbursement records
+export const salaryPayments = pgTable("salary_payments", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  salaryId: integer("salary_id").notNull().references(() => staffSalaries.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  paymentDate: timestamp("payment_date").notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }), // cash, bank transfer, UPI, etc.
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  paidBy: varchar("paid_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_payment_salary").on(table.salaryId),
+  index("idx_payment_date").on(table.paymentDate),
+]);
+
+export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  paymentDate: z.coerce.date(),
+});
+
+export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
+export type SalaryPayment = typeof salaryPayments.$inferSelect;
+
 export const extraServicesRelations = relations(extraServices, ({ one }) => ({
   booking: one(bookings, {
     fields: [extraServices.bookingId],
