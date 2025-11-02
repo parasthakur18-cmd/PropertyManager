@@ -415,19 +415,25 @@ export default function Bookings() {
                   variant: "destructive",
                 });
               })} className="space-y-4 pb-4">
-                <div className="space-y-3 p-4 border border-border rounded-lg bg-muted/10">
-                  <h3 className="font-medium">Guest Details</h3>
+                <div className="space-y-3 p-4 border-2 border-primary/20 rounded-lg bg-primary/5">
+                  <h3 className="font-semibold text-base flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Guest Details
+                    <Badge variant="destructive" className="ml-auto text-xs">Required</Badge>
+                  </h3>
                   <Input
                     placeholder="Full Name *"
                     value={quickGuestData.fullName}
                     onChange={(e) => setQuickGuestData({ ...quickGuestData, fullName: e.target.value })}
                     data-testid="input-guest-name"
+                    className="bg-background"
                   />
                   <Input
                     placeholder="Phone Number *"
                     value={quickGuestData.phone}
                     onChange={(e) => setQuickGuestData({ ...quickGuestData, phone: e.target.value })}
                     data-testid="input-guest-phone"
+                    className="bg-background"
                   />
                   <Input
                     placeholder="Email (optional)"
@@ -435,6 +441,7 @@ export default function Bookings() {
                     value={quickGuestData.email}
                     onChange={(e) => setQuickGuestData({ ...quickGuestData, email: e.target.value })}
                     data-testid="input-guest-email"
+                    className="bg-background"
                   />
                   <div className="space-y-2">
                     <label className="text-sm font-medium">ID Proof Upload (Optional)</label>
