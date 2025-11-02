@@ -16,7 +16,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room } from "@shared/schema";
+import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room, type TravelAgent } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -72,6 +72,10 @@ export default function Bookings() {
     queryKey: ["/api/rooms"],
   });
 
+  const { data: travelAgents } = useQuery<TravelAgent[]>({
+    queryKey: ["/api/travel-agents"],
+  });
+
   const form = useForm({
     // Don't use zodResolver because we create the guest first
     defaultValues: {
@@ -85,7 +89,8 @@ export default function Bookings() {
       customPrice: null,
       advanceAmount: "0",
       specialRequests: "",
-      source: "walk-in",
+      source: "Walk-in",
+      travelAgentId: null,
       mealPlan: "EP",
     },
   });
@@ -755,7 +760,7 @@ export default function Bookings() {
                         <FormLabel>Booking Source</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          value={field.value || "walk-in"}
+                          value={field.value || "Walk-in"}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-booking-source">
@@ -763,19 +768,49 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="walk-in">Walk-in</SelectItem>
-                            <SelectItem value="phone">Phone</SelectItem>
-                            <SelectItem value="online">Online</SelectItem>
-                            <SelectItem value="self-generated">Self Generated</SelectItem>
-                            <SelectItem value="booking.com">Booking.com</SelectItem>
-                            <SelectItem value="airbnb">Airbnb</SelectItem>
-                            <SelectItem value="ota">OTA (Other)</SelectItem>
+                            <SelectItem value="Walk-in">Walk-in</SelectItem>
+                            <SelectItem value="Online">Online</SelectItem>
+                            <SelectItem value="Booking.com">Booking.com</SelectItem>
+                            <SelectItem value="MMT">MMT (MakeMyTrip)</SelectItem>
+                            <SelectItem value="Airbnb">Airbnb</SelectItem>
+                            <SelectItem value="OTA">OTA (Other)</SelectItem>
+                            <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                            <SelectItem value="Others">Others</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  {form.watch("source") === "Travel Agent" && (
+                    <FormField
+                      control={form.control}
+                      name="travelAgentId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Travel Agent</FormLabel>
+                          <Select
+                            onValueChange={(value) => field.onChange(parseInt(value))}
+                            value={field.value?.toString()}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-travel-agent">
+                                <SelectValue placeholder="Select travel agent" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {travelAgents?.map((agent) => (
+                                <SelectItem key={agent.id} value={agent.id.toString()}>
+                                  {agent.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={form.control}
                     name="mealPlan"
