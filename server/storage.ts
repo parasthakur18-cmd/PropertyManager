@@ -3,6 +3,7 @@ import {
   properties,
   rooms,
   guests,
+  travelAgents,
   bookings,
   menuItems,
   orders,
@@ -27,6 +28,8 @@ import {
   type InsertRoom,
   type Guest,
   type InsertGuest,
+  type TravelAgent,
+  type InsertTravelAgent,
   type Booking,
   type InsertBooking,
   type MenuItem,
@@ -96,6 +99,14 @@ export interface IStorage {
   createGuest(guest: InsertGuest): Promise<Guest>;
   updateGuest(id: number, guest: Partial<InsertGuest>): Promise<Guest>;
   deleteGuest(id: number): Promise<void>;
+
+  // Travel Agent operations
+  getAllTravelAgents(): Promise<TravelAgent[]>;
+  getTravelAgentsByProperty(propertyId: number): Promise<TravelAgent[]>;
+  getTravelAgent(id: number): Promise<TravelAgent | undefined>;
+  createTravelAgent(agent: InsertTravelAgent): Promise<TravelAgent>;
+  updateTravelAgent(id: number, agent: Partial<InsertTravelAgent>): Promise<TravelAgent>;
+  deleteTravelAgent(id: number): Promise<void>;
 
   // Booking operations
   getAllBookings(): Promise<Booking[]>;
@@ -412,6 +423,42 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGuest(id: number): Promise<void> {
     await db.delete(guests).where(eq(guests.id, id));
+  }
+
+  // Travel Agent operations
+  async getAllTravelAgents(): Promise<TravelAgent[]> {
+    return await db.select().from(travelAgents).orderBy(desc(travelAgents.createdAt));
+  }
+
+  async getTravelAgentsByProperty(propertyId: number): Promise<TravelAgent[]> {
+    return await db
+      .select()
+      .from(travelAgents)
+      .where(eq(travelAgents.propertyId, propertyId))
+      .orderBy(desc(travelAgents.createdAt));
+  }
+
+  async getTravelAgent(id: number): Promise<TravelAgent | undefined> {
+    const [agent] = await db.select().from(travelAgents).where(eq(travelAgents.id, id));
+    return agent;
+  }
+
+  async createTravelAgent(agent: InsertTravelAgent): Promise<TravelAgent> {
+    const [created] = await db.insert(travelAgents).values(agent).returning();
+    return created;
+  }
+
+  async updateTravelAgent(id: number, agent: Partial<InsertTravelAgent>): Promise<TravelAgent> {
+    const [updated] = await db
+      .update(travelAgents)
+      .set({ ...agent, updatedAt: new Date() })
+      .where(eq(travelAgents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTravelAgent(id: number): Promise<void> {
+    await db.delete(travelAgents).where(eq(travelAgents.id, id));
   }
 
   // Booking operations
