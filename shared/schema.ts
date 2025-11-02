@@ -293,6 +293,7 @@ export const enquiries = pgTable("enquiries", {
   roomIds: integer("room_ids").array(), // Multiple rooms for group enquiries
   isGroupEnquiry: boolean("is_group_enquiry").notNull().default(false), // True if enquiry for multiple rooms
   numberOfGuests: integer("number_of_guests").notNull().default(1),
+  mealPlan: varchar("meal_plan", { length: 10 }).notNull().default("EP"), // EP, CP, MAP, AP
   priceQuoted: decimal("price_quoted", { precision: 10, scale: 2 }),
   advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }),
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"), // pending, received, refunded

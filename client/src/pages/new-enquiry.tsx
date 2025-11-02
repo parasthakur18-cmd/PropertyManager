@@ -56,6 +56,7 @@ const enquiryFormSchema = z.object({
   }),
   roomId: z.union([z.coerce.number().int().min(1), z.literal("")]).optional(),
   numberOfGuests: z.coerce.number().int().min(1, "At least 1 guest required"),
+  mealPlan: z.enum(["EP", "CP", "MAP", "AP"]).default("EP"),
   priceQuoted: z.coerce.number().min(0, "Price must be a positive number").optional(),
   advanceAmount: z.coerce.number().min(0, "Advance must be a positive number").nullable().optional(),
   specialRequests: z.string().optional(),
@@ -89,6 +90,7 @@ export default function NewEnquiry() {
       guestPhone: "",
       guestEmail: "",
       numberOfGuests: 1,
+      mealPlan: "EP",
       priceQuoted: undefined,
       advanceAmount: undefined,
       specialRequests: "",
@@ -166,6 +168,7 @@ export default function NewEnquiry() {
       checkOutDate: data.checkOutDate,
       roomId: data.roomId && typeof data.roomId === 'number' ? data.roomId : null,
       numberOfGuests: data.numberOfGuests,
+      mealPlan: data.mealPlan,
       priceQuoted: data.priceQuoted !== undefined && data.priceQuoted !== null 
         ? data.priceQuoted.toString() 
         : null,
@@ -473,6 +476,30 @@ export default function NewEnquiry() {
                           {...field}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mealPlan"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Meal Plan *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-meal-plan">
+                            <SelectValue placeholder="Select meal plan" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="EP">EP (Room Only)</SelectItem>
+                          <SelectItem value="CP">CP (With Breakfast)</SelectItem>
+                          <SelectItem value="MAP">MAP (Breakfast + Dinner)</SelectItem>
+                          <SelectItem value="AP">AP (All Meals)</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
