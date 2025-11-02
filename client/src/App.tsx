@@ -21,7 +21,7 @@ import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Menu from "@/pages/menu";
 import QuickOrder from "@/pages/quick-order";
-import NewEnquiry from "@/pages/new-enquiry-calendar";
+import NewEnquiry from "@/pages/new-enquiry";
 import Enquiries from "@/pages/enquiries";
 import Leases from "@/pages/leases";
 import Expenses from "@/pages/expenses";
