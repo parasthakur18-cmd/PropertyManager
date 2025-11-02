@@ -213,13 +213,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Include assigned property information if user has one
+      // Include assigned property information if user has any
       let userWithProperty: any = { ...user };
-      if (user.assignedPropertyId) {
-        const property = await storage.getProperty(user.assignedPropertyId);
-        if (property) {
-          userWithProperty.assignedPropertyName = property.name;
-        }
+      if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+        const properties = await Promise.all(
+          user.assignedPropertyIds.map(id => storage.getProperty(id))
+        );
+        userWithProperty.assignedPropertyNames = properties
+          .filter(p => p !== undefined)
+          .map(p => p!.name);
       }
       
       res.json(userWithProperty);
@@ -273,7 +275,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // If user is a manager, filter stats by their assigned property
-      const propertyId = currentUser.role === "manager" ? currentUser.assignedPropertyId : undefined;
+      const propertyId = (currentUser.role === "manager" && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) 
+        ? currentUser.assignedPropertyIds[0] // Use first assigned property for stats
+        : undefined;
       
       const stats = await storage.getDashboardStats(propertyId);
       res.json(stats);
@@ -322,7 +326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.updateUserRole(
         id, 
         validated.role,
-        validated.assignedPropertyId
+        validated.assignedPropertyIds
       );
       
       res.json(user);
@@ -378,8 +382,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let properties = await storage.getAllProperties();
       
       // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyId) {
-        properties = properties.filter(p => p.id === currentUser.assignedPropertyId);
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        properties = properties.filter(p => currentUser.assignedPropertyIds!.includes(p.id));
       }
       
       res.json(properties);
@@ -442,12 +446,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // If user is a manager, filter by assigned property
+      // If user is a manager, filter by assigned properties
       if (currentUser.role === "manager") {
-        if (currentUser.assignedPropertyId) {
-          // Manager with assigned property sees only their property's rooms
-          const rooms = await storage.getRoomsByProperty(currentUser.assignedPropertyId);
-          res.json(rooms);
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          // Manager with assigned properties sees rooms from all assigned properties
+          const allRooms = await storage.getAllRooms();
+          const filteredRooms = allRooms.filter(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          res.json(filteredRooms);
         } else {
           // Manager without assigned property sees no rooms (return empty array)
           res.json([]);

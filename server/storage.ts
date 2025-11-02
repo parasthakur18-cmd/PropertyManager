@@ -60,7 +60,7 @@ export interface IStorage {
   getAllUsers(): Promise<User[]>;
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
-  updateUserRole(id: string, role: string, assignedPropertyId?: number | null): Promise<User>;
+  updateUserRole(id: string, role: string, assignedPropertyIds?: number[] | null): Promise<User>;
   deleteUser(id: string): Promise<void>;
 
   // Property operations
@@ -207,12 +207,12 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async updateUserRole(id: string, role: string, assignedPropertyId?: number | null): Promise<User> {
+  async updateUserRole(id: string, role: string, assignedPropertyIds?: number[] | null): Promise<User> {
     const [updated] = await db
       .update(users)
       .set({ 
         role, 
-        assignedPropertyId: assignedPropertyId !== undefined ? assignedPropertyId : undefined,
+        assignedPropertyIds: assignedPropertyIds !== undefined ? assignedPropertyIds : undefined,
         updatedAt: new Date() 
       })
       .where(eq(users.id, id))

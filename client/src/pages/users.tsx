@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, Users as UsersIcon, Edit2, Building2, Link as LinkIcon, Copy, Info, Trash2 } from "lucide-react";
+import { Shield, Users as UsersIcon, Edit2, Building2, Link as LinkIcon, Copy, Info, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -51,7 +51,7 @@ export default function UsersManagement() {
   const { toast } = useToast();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [newRole, setNewRole] = useState<string>("");
-  const [newPropertyId, setNewPropertyId] = useState<string | null>(null);
+  const [newPropertyIds, setNewPropertyIds] = useState<number[]>([]);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -68,25 +68,26 @@ export default function UsersManagement() {
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, role, assignedPropertyId }: { 
+    mutationFn: async ({ userId, role, assignedPropertyIds }: { 
       userId: string; 
       role: string; 
-      assignedPropertyId: number | null;
+      assignedPropertyIds: number[] | null;
     }) => {
       return await apiRequest("PATCH", `/api/users/${userId}/role`, {
         role,
-        assignedPropertyId,
+        assignedPropertyIds,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Role Updated!",
         description: "User role has been updated successfully.",
       });
       setSelectedUser(null);
       setNewRole("");
-      setNewPropertyId(null);
+      setNewPropertyIds([]);
     },
     onError: (error: any) => {
       toast({
@@ -122,7 +123,7 @@ export default function UsersManagement() {
   const handleEditUser = (user: User) => {
     setSelectedUser(user);
     setNewRole(user.role);
-    setNewPropertyId(user.assignedPropertyId ? user.assignedPropertyId.toString() : null);
+    setNewPropertyIds(user.assignedPropertyIds || []);
   };
 
   const handleSaveRole = () => {
@@ -131,8 +132,16 @@ export default function UsersManagement() {
     updateRoleMutation.mutate({
       userId: selectedUser.id,
       role: newRole,
-      assignedPropertyId: newPropertyId ? parseInt(newPropertyId) : null,
+      assignedPropertyIds: newPropertyIds.length > 0 ? newPropertyIds : null,
     });
+  };
+
+  const toggleProperty = (propertyId: number) => {
+    setNewPropertyIds(prev => 
+      prev.includes(propertyId)
+        ? prev.filter(id => id !== propertyId)
+        : [...prev, propertyId]
+    );
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -317,11 +326,18 @@ export default function UsersManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
-                          {assignedProperty ? (
-                            <span className="flex items-center gap-1">
-                              <Building2 className="h-3 w-3" />
-                              {assignedProperty.name}
-                            </span>
+                          {user.assignedPropertyIds && user.assignedPropertyIds.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {user.assignedPropertyIds.map(propId => {
+                                const prop = properties?.find(p => p.id === propId);
+                                return prop ? (
+                                  <Badge key={prop.id} variant="secondary" className="text-xs">
+                                    <Building2 className="h-3 w-3 mr-1" />
+                                    {prop.name}
+                                  </Badge>
+                                ) : null;
+                              })}
+                            </div>
                           ) : (
                             <span className="text-muted-foreground">All Properties</span>
                           )}
@@ -398,25 +414,36 @@ export default function UsersManagement() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Assigned Property (Optional)</label>
-              <Select 
-                value={newPropertyId || "all"} 
-                onValueChange={(val) => setNewPropertyId(val === "all" ? null : val)}
-              >
-                <SelectTrigger data-testid="select-property">
-                  <SelectValue placeholder="Select property" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Properties</SelectItem>
-                  {properties?.map((property) => (
-                    <SelectItem key={property.id} value={property.id.toString()}>
-                      {property.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium">Assigned Properties (Optional)</label>
+              <div className="border rounded-md p-3 space-y-2 max-h-48 overflow-y-auto">
+                {properties && properties.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-2 p-2 hover-elevate rounded cursor-pointer border-b"
+                      onClick={() => setNewPropertyIds([])}
+                    >
+                      <div className={`h-4 w-4 border rounded flex items-center justify-center ${newPropertyIds.length === 0 ? 'bg-primary border-primary' : 'border-input'}`}>
+                        {newPropertyIds.length === 0 && <Check className="h-3 w-3 text-primary-foreground" />}
+                      </div>
+                      <span className="text-sm font-medium">All Properties</span>
+                    </div>
+                    {properties.map((property) => (
+                      <div key={property.id} className="flex items-center gap-2 p-2 hover-elevate rounded cursor-pointer"
+                        onClick={() => toggleProperty(property.id)}
+                        data-testid={`checkbox-property-${property.id}`}
+                      >
+                        <div className={`h-4 w-4 border rounded flex items-center justify-center ${newPropertyIds.includes(property.id) ? 'bg-primary border-primary' : 'border-input'}`}>
+                          {newPropertyIds.includes(property.id) && <Check className="h-3 w-3 text-primary-foreground" />}
+                        </div>
+                        <span className="text-sm">{property.name}</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-2">No properties available</p>
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Assign user to a specific property or leave as "All Properties"
+                Select specific properties or choose "All Properties" for full access
               </p>
             </div>
           </div>
