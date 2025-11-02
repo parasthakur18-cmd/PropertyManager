@@ -28,6 +28,7 @@ import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
 import { createAuthkeyService } from "./authkey-service";
 import { neon } from "@neondatabase/serverless";
+import { eventBus, type DomainEvent } from "./eventBus";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -226,6 +227,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
+  });
+
+  // Server-Sent Events (SSE) endpoint for real-time updates
+  app.get('/api/events/stream', isAuthenticated, (req: any, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const sendEvent = (event: DomainEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    sendEvent({
+      id: 'connection',
+      type: 'connected',
+      timestamp: new Date().toISOString(),
+      data: { message: 'Connected to event stream' },
+    } as DomainEvent);
+
+    const unsubscribe = eventBus.subscribeAll(sendEvent);
+
+    // Heartbeat to keep connection alive (every 15 seconds)
+    const heartbeat = setInterval(() => {
+      res.write(':heartbeat\n\n');
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      res.end();
+    });
   });
 
   // Dashboard stats

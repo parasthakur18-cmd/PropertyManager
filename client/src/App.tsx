@@ -8,6 +8,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
+import { connectToEventStream } from "@/lib/eventHandlers";
+import { useEffect, useRef } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -112,6 +114,22 @@ export default function App() {
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (isAuthenticated && !eventSourceRef.current) {
+      console.log('[App] Connecting to event stream...');
+      eventSourceRef.current = connectToEventStream();
+    }
+
+    return () => {
+      if (eventSourceRef.current) {
+        console.log('[App] Disconnecting from event stream');
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (

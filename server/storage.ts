@@ -53,6 +53,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
+import { eventBus, EventTypes } from "./eventBus";
 
 export interface IStorage {
   // User operations (required for Replit Auth)
@@ -413,6 +414,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(guests.id, booking.guestId));
 
     const [newBooking] = await db.insert(bookings).values(booking).returning();
+    
+    // Publish event for automatic propagation
+    eventBus.publish({
+      type: EventTypes.BOOKING_CREATED,
+      data: newBooking,
+      propertyId: newBooking.propertyId,
+    });
+    
     return newBooking;
   }
 
