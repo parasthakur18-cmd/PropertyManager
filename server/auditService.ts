@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { auditLog, type InsertAuditLog, type User } from "@shared/schema";
-import { emitDomainEvent } from "./eventBus";
+import { eventBus } from "./eventBus";
 
 export interface AuditContext {
   entityType: string;
@@ -29,17 +29,23 @@ export class AuditService {
 
     await db.insert(auditLog).values(auditEntry);
 
-    emitDomainEvent({
+    eventBus.publish({
       type: 'audit_log',
-      predicates: [
-        `entity:${context.entityType}`,
-        `entity:${context.entityType}:${context.entityId}`,
-        `user:${context.user.id}`,
-        `action:${context.action}`,
-      ],
+      userId: context.user.id.toString(),
+      propertyId: context.user.assignedPropertyIds?.[0] || undefined,
       data: {
         ...auditEntry,
-        timestamp: new Date().toISOString(),
+        entityType: context.entityType,
+        entityId: context.entityId,
+        action: context.action,
+      },
+      metadata: {
+        predicates: [
+          `entity:${context.entityType}`,
+          `entity:${context.entityType}:${context.entityId}`,
+          `user:${context.user.id}`,
+          `action:${context.action}`,
+        ],
       },
     });
   }
