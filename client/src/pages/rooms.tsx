@@ -25,6 +25,8 @@ const statusColors = {
 
 export default function Rooms() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [filterProperty, setFilterProperty] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const { toast } = useToast();
@@ -53,6 +55,22 @@ export default function Rooms() {
 
   const selectedCategory = form.watch("roomCategory");
 
+  const editForm = useForm<InsertRoom>({
+    resolver: zodResolver(insertRoomSchema),
+    defaultValues: {
+      propertyId: 0,
+      roomNumber: "",
+      roomType: "",
+      roomCategory: "standard",
+      status: "available",
+      pricePerNight: "0",
+      maxOccupancy: 2,
+      amenities: [],
+    },
+  });
+
+  const selectedEditCategory = editForm.watch("roomCategory");
+
   const createMutation = useMutation({
     mutationFn: async (data: InsertRoom) => {
       return await apiRequest("POST", "/api/rooms", data);
@@ -65,6 +83,29 @@ export default function Rooms() {
       });
       setIsDialogOpen(false);
       form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: InsertRoom }) => {
+      return await apiRequest("PUT", `/api/rooms/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      toast({
+        title: "Success",
+        description: "Room updated successfully",
+      });
+      setIsEditDialogOpen(false);
+      setEditingRoom(null);
+      editForm.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -117,6 +158,28 @@ export default function Rooms() {
 
   const onSubmit = (data: InsertRoom) => {
     createMutation.mutate(data);
+  };
+
+  const onEditSubmit = (data: InsertRoom) => {
+    if (editingRoom) {
+      updateMutation.mutate({ id: editingRoom.id, data });
+    }
+  };
+
+  const handleEditClick = (room: Room) => {
+    setEditingRoom(room);
+    editForm.reset({
+      propertyId: room.propertyId,
+      roomNumber: room.roomNumber,
+      roomType: room.roomType || "",
+      roomCategory: room.roomCategory || "standard",
+      status: room.status,
+      pricePerNight: room.pricePerNight,
+      maxOccupancy: room.maxOccupancy,
+      totalBeds: room.totalBeds || undefined,
+      amenities: room.amenities || [],
+    });
+    setIsEditDialogOpen(true);
   };
 
   const filteredRooms = rooms?.filter((room) => {
@@ -303,6 +366,186 @@ export default function Rooms() {
             </Form>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Room Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Room</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+                <FormField
+                  control={editForm.control}
+                  name="propertyId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Property</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(parseInt(value))}
+                        value={field.value?.toString()}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="edit-select-property">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {properties?.map((property) => (
+                            <SelectItem key={property.id} value={property.id.toString()}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="roomNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Room Number</FormLabel>
+                        <FormControl>
+                          <Input placeholder="101" {...field} data-testid="edit-input-room-number" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="roomType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Room Type</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Deluxe" {...field} value={field.value || ""} data-testid="edit-input-room-type" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={editForm.control}
+                  name="roomCategory"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Room Category</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || "standard"}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="edit-select-room-category">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="standard">Standard</SelectItem>
+                          <SelectItem value="deluxe">Deluxe</SelectItem>
+                          <SelectItem value="suite">Suite</SelectItem>
+                          <SelectItem value="dormitory">Dormitory</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {selectedEditCategory === "dormitory" && (
+                  <FormField
+                    control={editForm.control}
+                    name="totalBeds"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Total Beds (Dormitory)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            placeholder="10"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
+                            value={field.value || ""}
+                            data-testid="edit-input-total-beds"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="pricePerNight"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Price per Night (₹)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="5000" {...field} data-testid="edit-input-room-price" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="maxOccupancy"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Occupancy</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            {...field}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 2)}
+                            data-testid="edit-input-room-occupancy"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={editForm.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="edit-select-room-status">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="available">Available</SelectItem>
+                          <SelectItem value="occupied">Occupied</SelectItem>
+                          <SelectItem value="maintenance">Maintenance</SelectItem>
+                          <SelectItem value="cleaning">Cleaning</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="submit" disabled={updateMutation.isPending} data-testid="button-update-room">
+                    {updateMutation.isPending ? "Updating..." : "Update Room"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="flex gap-4 mb-6">
@@ -363,15 +606,25 @@ export default function Rooms() {
                         {property?.name || "Unknown Property"}
                       </p>
                     </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => deleteMutation.mutate(room.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-room-${room.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleEditClick(room)}
+                        data-testid={`button-edit-room-${room.id}`}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteMutation.mutate(room.id)}
+                        disabled={deleteMutation.isPending}
+                        data-testid={`button-delete-room-${room.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
