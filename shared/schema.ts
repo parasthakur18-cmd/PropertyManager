@@ -78,6 +78,8 @@ export const rooms = pgTable("rooms", {
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   roomNumber: varchar("room_number", { length: 50 }).notNull(),
   roomType: varchar("room_type", { length: 100 }),
+  roomCategory: varchar("room_category", { length: 50 }).notNull().default("standard"), // standard, deluxe, suite, dormitory
+  totalBeds: integer("total_beds"), // Only for dormitory rooms - number of beds available
   status: varchar("status", { length: 20 }).notNull().default("available"),
   pricePerNight: decimal("price_per_night", { precision: 10, scale: 2 }).notNull(),
   maxOccupancy: integer("max_occupancy").notNull().default(2),
@@ -126,7 +128,10 @@ export type Guest = typeof guests.$inferSelect;
 export const bookings = pgTable("bookings", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   propertyId: integer("property_id").notNull().references(() => properties.id),
-  roomId: integer("room_id").references(() => rooms.id),
+  roomId: integer("room_id").references(() => rooms.id), // Single room for standard bookings
+  roomIds: integer("room_ids").array(), // Multiple rooms for group bookings
+  isGroupBooking: boolean("is_group_booking").notNull().default(false), // True if booking multiple rooms
+  bedsBooked: integer("beds_booked"), // For dormitory bookings - number of beds booked
   guestId: integer("guest_id").notNull().references(() => guests.id),
   checkInDate: timestamp("check_in_date").notNull(),
   checkOutDate: timestamp("check_out_date").notNull(),
