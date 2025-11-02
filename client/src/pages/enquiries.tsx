@@ -91,6 +91,9 @@ interface EditEnquiryFormProps {
 
 function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFormProps) {
   const { toast } = useToast();
+  const [selectedRoom, setSelectedRoom] = useState<Room | null>(
+    enquiry.roomId ? rooms.find(r => r.id === enquiry.roomId) || null : null
+  );
 
   const form = useForm<EditEnquiryFormData>({
     resolver: zodResolver(editEnquirySchema),
@@ -129,7 +132,11 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
   });
 
   const onSubmit = (data: EditEnquiryFormData) => {
-    updateEnquiryMutation.mutate(data);
+    const updateData = {
+      ...data,
+      bedsBooked: selectedRoom?.roomCategory === "dormitory" ? data.numberOfGuests : null,
+    };
+    updateEnquiryMutation.mutate(updateData);
   };
 
   return (
@@ -185,7 +192,11 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
               <FormItem>
                 <FormLabel>Room</FormLabel>
                 <Select
-                  onValueChange={field.onChange}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    const room = rooms.find(r => r.id === parseInt(value));
+                    setSelectedRoom(room || null);
+                  }}
                   value={field.value?.toString()}
                   disabled={enquiry.isGroupEnquiry}
                 >
@@ -197,7 +208,11 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
                   <SelectContent>
                     {rooms.map((room) => (
                       <SelectItem key={room.id} value={room.id.toString()}>
-                        {room.roomNumber} - {room.roomType}
+                        {room.roomNumber} - {room.roomType || room.roomCategory}
+                        {room.roomCategory === "dormitory" && room.totalBeds 
+                          ? ` (${room.totalBeds} beds - ₹${room.pricePerNight}/bed/night)`
+                          : ` (₹${room.pricePerNight}/night)`
+                        }
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -217,10 +232,23 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
             name="numberOfGuests"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Number of Guests</FormLabel>
+                <FormLabel>
+                  {selectedRoom?.roomCategory === "dormitory" ? "Number of Beds" : "Number of Guests"}
+                </FormLabel>
                 <FormControl>
-                  <Input type="number" min="1" {...field} data-testid="input-edit-number-of-guests" />
+                  <Input 
+                    type="number" 
+                    min="1" 
+                    max={selectedRoom?.roomCategory === "dormitory" && selectedRoom.totalBeds ? selectedRoom.totalBeds : undefined}
+                    {...field} 
+                    data-testid="input-edit-number-of-guests" 
+                  />
                 </FormControl>
+                {selectedRoom?.roomCategory === "dormitory" && selectedRoom.totalBeds && (
+                  <p className="text-xs text-muted-foreground">
+                    Maximum {selectedRoom.totalBeds} beds available in this dormitory
+                  </p>
+                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -612,7 +640,10 @@ export default function Enquiries() {
                             <div>
                               <p className="font-medium">{enquiry.guestName}</p>
                               <p className="text-sm text-muted-foreground">
-                                {enquiry.numberOfGuests} guest{enquiry.numberOfGuests > 1 ? "s" : ""}
+                                {enquiry.bedsBooked 
+                                  ? `${enquiry.bedsBooked} bed${enquiry.bedsBooked > 1 ? "s" : ""}`
+                                  : `${enquiry.numberOfGuests} guest${enquiry.numberOfGuests > 1 ? "s" : ""}`
+                                }
                               </p>
                             </div>
                           </div>
@@ -654,7 +685,11 @@ export default function Enquiries() {
                                 {rooms?.find(r => r.id === enquiry.roomId)?.roomNumber || `Room #${enquiry.roomId}`}
                                 {rooms?.find(r => r.id === enquiry.roomId)?.roomType && (
                                   <span className="text-muted-foreground text-xs ml-1">
-                                    ({rooms.find(r => r.id === enquiry.roomId)?.roomType})
+                                    ({rooms.find(r => r.id === enquiry.roomId)?.roomType}
+                                    {rooms.find(r => r.id === enquiry.roomId)?.roomCategory === "dormitory" && enquiry.bedsBooked 
+                                      ? ` - ${enquiry.bedsBooked} bed${enquiry.bedsBooked > 1 ? 's' : ''}`
+                                      : ''
+                                    })
                                   </span>
                                 )}
                               </span>
