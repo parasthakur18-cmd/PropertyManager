@@ -19,7 +19,6 @@ import type { StaffSalary, SalaryAdvance } from "@shared/schema";
 
 const salaryFormSchema = z.object({
   userId: z.string().min(1, "User is required"),
-  staffName: z.string().min(1, "Staff name is required"),
   propertyId: z.number().optional(),
   grossSalary: z.string().min(1, "Gross salary is required"),
   deductions: z.string().optional(),
@@ -27,6 +26,7 @@ const salaryFormSchema = z.object({
   periodStart: z.string().min(1, "Period start is required"),
   periodEnd: z.string().min(1, "Period end is required"),
   status: z.enum(["pending", "paid"]).default("pending"),
+  notes: z.string().optional(),
 });
 
 export default function SalariesPage() {
@@ -54,23 +54,28 @@ export default function SalariesPage() {
     resolver: zodResolver(salaryFormSchema),
     defaultValues: {
       userId: "",
-      staffName: "",
       grossSalary: "",
       deductions: "0",
       netSalary: "",
       periodStart: "",
       periodEnd: "",
       status: "pending",
+      notes: "",
     },
   });
 
   const createSalaryMutation = useMutation({
     mutationFn: async (data: z.infer<typeof salaryFormSchema>) => {
       return await apiRequest("POST", "/api/salaries", {
-        ...data,
+        userId: data.userId,
+        propertyId: data.propertyId,
         grossSalary: parseFloat(data.grossSalary),
         deductions: parseFloat(data.deductions || "0"),
         netSalary: parseFloat(data.netSalary),
+        periodStart: new Date(data.periodStart),
+        periodEnd: new Date(data.periodEnd),
+        status: data.status,
+        notes: data.notes || undefined,
       });
     },
     onSuccess: () => {
@@ -389,20 +394,6 @@ export default function SalariesPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={salaryForm.control}
-                  name="staffName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Staff Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="John Doe" data-testid="input-staff-name" />
-                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
