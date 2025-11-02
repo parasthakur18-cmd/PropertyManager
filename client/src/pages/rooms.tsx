@@ -381,14 +381,14 @@ export default function Rooms() {
                     </Badge>
                     <div className="text-sm space-y-1">
                       <p className="text-muted-foreground" data-testid={`text-room-type-${room.id}`}>{room.roomType || "Standard"}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
+                      <div className="text-xs text-muted-foreground capitalize flex items-center gap-2">
                         <Badge variant="secondary" className="text-xs">
                           {room.roomCategory || "standard"}
                         </Badge>
                         {room.roomCategory === "dormitory" && room.totalBeds && (
-                          <span className="ml-2">• {room.totalBeds} beds</span>
+                          <span>• {room.totalBeds} beds</span>
                         )}
-                      </p>
+                      </div>
                       <p className="font-semibold font-mono text-lg" data-testid={`text-room-price-${room.id}`}>₹{room.pricePerNight}{room.roomCategory === "dormitory" ? "/bed/night" : "/night"}</p>
                       <p className="text-muted-foreground" data-testid={`text-room-occupancy-${room.id}`}>Max: {room.maxOccupancy} guests</p>
                     </div>
