@@ -5,6 +5,7 @@ import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -860,159 +861,128 @@ export default function Bookings() {
               </div>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {filteredBookings.map((booking) => {
-            const property = properties?.find((p) => p.id === booking.propertyId);
-            const guest = guests?.find((g) => g.id === booking.guestId);
-            const room = rooms?.find((r) => r.id === booking.roomId);
-            
-            // For group bookings, get all rooms
-            const groupRooms = booking.isGroupBooking && booking.roomIds
-              ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
-              : [];
-            
-            const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
-              ? groupRooms.map(r => `Room ${r.roomNumber}`).join(", ")
-              : room ? `Room ${room.roomNumber}` : "Room TBA";
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-semibold">Guest</TableHead>
+                    <TableHead className="font-semibold">Property</TableHead>
+                    <TableHead className="font-semibold">Room</TableHead>
+                    <TableHead className="font-semibold">Check-in</TableHead>
+                    <TableHead className="font-semibold">Check-out</TableHead>
+                    <TableHead className="font-semibold">Guests</TableHead>
+                    <TableHead className="font-semibold">Meal Plan</TableHead>
+                    <TableHead className="font-semibold">Amount</TableHead>
+                    <TableHead className="font-semibold">Status</TableHead>
+                    <TableHead className="font-semibold text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredBookings.map((booking) => {
+                    const property = properties?.find((p) => p.id === booking.propertyId);
+                    const guest = guests?.find((g) => g.id === booking.guestId);
+                    const room = rooms?.find((r) => r.id === booking.roomId);
+                    
+                    const groupRooms = booking.isGroupBooking && booking.roomIds
+                      ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+                      : [];
+                    
+                    const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                      ? groupRooms.map(r => `${r.roomNumber}`).join(", ")
+                      : room ? room.roomNumber : "TBA";
 
-            return (
-              <Card key={booking.id} className="hover-elevate" data-testid={`card-booking-${booking.id}`}>
-                <CardHeader>
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Hotel className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <CardTitle className="flex items-center gap-2 flex-wrap">
-                          {property?.name || "Unknown Property"}
-                          <Badge className={statusColors[booking.status as keyof typeof statusColors] || ""} data-testid={`badge-booking-status-${booking.id}`}>
+                    const mealPlanDisplay = {
+                      "EP": "EP (Room Only)",
+                      "CP": "CP (with Breakfast)",
+                      "MAP": "MAP (Half Board)",
+                      "AP": "AP (Full Board)"
+                    }[booking.mealPlan || "EP"] || booking.mealPlan;
+
+                    return (
+                      <TableRow key={booking.id} className="hover-elevate" data-testid={`row-booking-${booking.id}`}>
+                        <TableCell className="font-medium" data-testid={`text-guest-${booking.id}`}>
+                          {guest?.fullName || "Unknown Guest"}
+                          <div className="text-xs text-muted-foreground mt-0.5">{guest?.phone}</div>
+                        </TableCell>
+                        <TableCell data-testid={`text-property-${booking.id}`}>
+                          {property?.name || "Unknown"}
+                          {booking.isGroupBooking && (
+                            <Badge variant="secondary" className="ml-1 text-xs bg-blue-500 text-white">Group</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono" data-testid={`text-room-${booking.id}`}>
+                          {roomDisplay}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap" data-testid={`text-checkin-${booking.id}`}>
+                          {format(new Date(booking.checkInDate), "dd MMM yyyy")}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap" data-testid={`text-checkout-${booking.id}`}>
+                          {format(new Date(booking.checkOutDate), "dd MMM yyyy")}
+                        </TableCell>
+                        <TableCell className="text-center" data-testid={`text-guests-${booking.id}`}>
+                          {booking.numberOfGuests}
+                        </TableCell>
+                        <TableCell className="font-medium" data-testid={`text-meal-plan-${booking.id}`}>
+                          <Badge variant="outline" className="text-xs whitespace-nowrap">
+                            {mealPlanDisplay}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono font-semibold" data-testid={`text-amount-${booking.id}`}>
+                          {booking.totalAmount ? (
+                            <div>
+                              <div>₹{booking.totalAmount}</div>
+                              {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 && (
+                                <div className="text-xs text-green-600">Adv: ₹{booking.advanceAmount}</div>
+                              )}
+                            </div>
+                          ) : "-"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
                             {booking.status}
                           </Badge>
-                          {booking.isGroupBooking && (
-                            <Badge variant="secondary" className="bg-blue-500 text-white" data-testid={`badge-group-booking-${booking.id}`}>
-                              Group Booking
-                            </Badge>
-                          )}
-                        </CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1" data-testid={`text-booking-details-${booking.id}`}>
-                          {guest?.fullName || "Unknown Guest"} • {roomDisplay}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditBooking(booking)}
-                        data-testid={`button-edit-booking-${booking.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setDeleteBookingId(booking.id);
-                          setDeleteDialogOpen(true);
-                        }}
-                        data-testid={`button-delete-booking-${booking.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                      {booking.status === "checked-in" && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setCheckoutBookingId(booking.id);
-                            setCheckoutDialogOpen(true);
-                          }}
-                          data-testid={`button-checkout-${booking.id}`}
-                        >
-                          <Receipt className="h-4 w-4 mr-2" />
-                          Checkout
-                        </Button>
-                      )}
-                      <Select
-                        value={booking.status}
-                        disabled={booking.status === "checked-out"}
-                        onValueChange={(value) => {
-                          // Status lock: Prevent changing from checked-out
-                          if (booking.status === "checked-out") {
-                            toast({
-                              title: "Status Locked",
-                              description: "Cannot change status of a checked-out booking",
-                              variant: "destructive",
-                            });
-                            return;
-                          }
-                          
-                          // If changing to checked-in, show ID verification dialog
-                          if (value === "checked-in") {
-                            setCheckinBookingId(booking.id);
-                            setCheckinIdProof(null);
-                            setCheckinDialogOpen(true);
-                          } else {
-                            // For other status changes, update directly
-                            updateStatusMutation.mutate({ id: booking.id, status: value });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="w-40" data-testid={`select-booking-status-${booking.id}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="confirmed">Confirmed</SelectItem>
-                          <SelectItem value="checked-in">Checked In</SelectItem>
-                          <SelectItem value="checked-out">Checked Out</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground mb-1">Check-in</p>
-                      <p className="font-medium" data-testid={`text-booking-checkin-${booking.id}`}>{format(new Date(booking.checkInDate), "PPP")}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-1">Check-out</p>
-                      <p className="font-medium" data-testid={`text-booking-checkout-${booking.id}`}>{format(new Date(booking.checkOutDate), "PPP")}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground mb-1">Guests</p>
-                      <p className="font-medium" data-testid={`text-booking-guests-${booking.id}`}>{booking.numberOfGuests}</p>
-                    </div>
-                    {booking.specialRequests && (
-                      <div className="md:col-span-3">
-                        <p className="text-muted-foreground mb-1">Special Requests</p>
-                        <p className="text-sm">{booking.specialRequests}</p>
-                      </div>
-                    )}
-                    {booking.totalAmount && (
-                      <>
-                        <div>
-                          <p className="text-muted-foreground mb-1">Total Amount</p>
-                          <p className="font-semibold font-mono text-lg" data-testid={`text-booking-total-${booking.id}`}>₹{booking.totalAmount}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground mb-1">Advance Paid</p>
-                          <p className="font-semibold font-mono text-lg text-green-600" data-testid={`text-booking-advance-${booking.id}`}>₹{booking.advanceAmount || 0}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground mb-1">Balance Due</p>
-                          <p className="font-semibold font-mono text-lg text-amber-600" data-testid={`text-booking-balance-${booking.id}`}>₹{(booking.totalAmount - (parseFloat(booking.advanceAmount || "0")))}</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-              })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleEditBooking(booking)}
+                              data-testid={`button-edit-booking-${booking.id}`}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            {booking.status === "checked-in" && (
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setCheckoutBookingId(booking.id);
+                                  setCheckoutDialogOpen(true);
+                                }}
+                                data-testid={`button-checkout-${booking.id}`}
+                              >
+                                <Receipt className="h-4 w-4 mr-1" />
+                                Checkout
+                              </Button>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setDeleteBookingId(booking.id);
+                                setDeleteDialogOpen(true);
+                              }}
+                              data-testid={`button-delete-booking-${booking.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>
