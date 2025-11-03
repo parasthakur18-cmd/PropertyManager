@@ -199,12 +199,40 @@ export default function EnhancedMenu() {
       />
 
       {/* Item Form Dialog */}
-      <ItemFormDialog
+      <EnhancedMenuItemForm
         open={showItemForm}
-        onOpenChange={setShowItemForm}
-        item={selectedItem}
-        category={selectedCategory}
+        onClose={() => setShowItemForm(false)}
+        menuItem={selectedItem || undefined}
+        categories={categories || []}
         properties={properties || []}
+        onSave={async (itemData, variants, addOns) => {
+          if (selectedItem) {
+            await apiRequest(`/api/menu-items/${selectedItem.id}`, "PATCH", {
+              ...itemData,
+              categoryId: selectedCategory?.id || itemData.categoryId,
+            });
+            if (variants.length > 0) {
+              await apiRequest(`/api/menu-items/${selectedItem.id}/variants`, "POST", { variants });
+            }
+            if (addOns.length > 0) {
+              await apiRequest(`/api/menu-items/${selectedItem.id}/add-ons`, "POST", { addOns });
+            }
+          } else {
+            const result = await apiRequest("/api/menu-items", "POST", {
+              ...itemData,
+              categoryId: selectedCategory?.id || itemData.categoryId,
+            }) as any;
+            if (variants.length > 0) {
+              await apiRequest(`/api/menu-items/${result.id}/variants`, "POST", { variants });
+            }
+            if (addOns.length > 0) {
+              await apiRequest(`/api/menu-items/${result.id}/add-ons`, "POST", { addOns });
+            }
+          }
+          queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/menu-item-variants"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/menu-item-add-ons"] });
+        }}
       />
     </div>
   );
@@ -591,203 +619,3 @@ function CategoryFormDialog({
   );
 }
 
-// Item Form Dialog - Inline Implementation
-function ItemFormDialog({
-  open,
-  onOpenChange,
-  item,
-  category,
-  properties,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  item: MenuItem | null;
-  category: MenuCategory | null;
-  properties: any[];
-}) {
-  const { toast } = useToast();
-  const [formData, setFormData] = useState({
-    propertyId: item?.propertyId || category?.propertyId || properties[0]?.id || 0,
-    categoryId: item?.categoryId || category?.id || 0,
-    name: item?.name || "",
-    description: item?.description || "",
-    price: item?.price || "0",
-    actualPrice: item?.actualPrice || "",
-    discountedPrice: item?.discountedPrice || "",
-    imageUrl: item?.imageUrl || "",
-    foodType: item?.foodType || "veg" as "veg" | "non-veg",
-    isAvailable: item?.isAvailable ?? true,
-  });
-
-  // Reset form when dialog opens or category changes
-  useEffect(() => {
-    if (open) {
-      setFormData({
-        propertyId: item?.propertyId || category?.propertyId || properties[0]?.id || 0,
-        categoryId: item?.categoryId || category?.id || 0,
-        name: item?.name || "",
-        description: item?.description || "",
-        price: item?.price || "0",
-        actualPrice: item?.actualPrice || "",
-        discountedPrice: item?.discountedPrice || "",
-        imageUrl: item?.imageUrl || "",
-        foodType: item?.foodType || "veg" as "veg" | "non-veg",
-        isAvailable: item?.isAvailable ?? true,
-      });
-    }
-  }, [open, item, category, properties]);
-
-  const saveMutation = useMutation({
-    mutationFn: async (data: any) => {
-      if (item) {
-        return await apiRequest(`/api/menu-items/${item.id}`, "PATCH", data);
-      } else {
-        return await apiRequest("/api/menu-items", "POST", data);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
-      toast({ title: item ? "Item updated" : "Item created successfully!" });
-      onOpenChange(false);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error saving item",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Clean up data for database: convert empty strings and zeros to null
-    const submitData = {
-      ...formData,
-      categoryId: formData.categoryId === 0 ? null : formData.categoryId,
-      actualPrice: formData.actualPrice === "" ? null : formData.actualPrice,
-      discountedPrice: formData.discountedPrice === "" ? null : formData.discountedPrice,
-      description: formData.description === "" ? null : formData.description,
-      imageUrl: formData.imageUrl === "" ? null : formData.imageUrl,
-    };
-    saveMutation.mutate(submitData);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{item ? "Edit Item" : "Add New Item"}</DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Property *</Label>
-              <Select
-                value={formData.propertyId.toString()}
-                onValueChange={(val) => setFormData({ ...formData, propertyId: parseInt(val) })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {properties.map((prop) => (
-                    <SelectItem key={prop.id} value={prop.id.toString()}>
-                      {prop.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Category *</Label>
-              <Input value={category?.name || "N/A"} disabled />
-            </div>
-          </div>
-
-          <div>
-            <Label>Item Name *</Label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Masala Dosa"
-              required
-            />
-          </div>
-
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Delicious dish description..."
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <Label>Image URL (optional)</Label>
-            <Input
-              value={formData.imageUrl}
-              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-              placeholder="https://..."
-            />
-          </div>
-
-          <div>
-            <Label>Food Type</Label>
-            <Select
-              value={formData.foodType}
-              onValueChange={(val: "veg" | "non-veg") =>
-                setFormData({ ...formData, foodType: val })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="veg">🟢 Vegetarian</SelectItem>
-                <SelectItem value="non-veg">🔴 Non-Vegetarian</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Base Price (₹) *</Label>
-              <Input
-                type="number"
-                value={formData.price}
-                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                placeholder="180"
-                required
-              />
-            </div>
-            <div className="flex items-end">
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={formData.isAvailable}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, isAvailable: checked })
-                  }
-                />
-                <Label>Available</Label>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-2 justify-end border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "Saving..." : item ? "Update Item" : "Create Item"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
