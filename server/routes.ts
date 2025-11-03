@@ -105,6 +105,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Public Menu - for guest ordering
   // Public menu categories (no auth required)
+  // Public properties list (for café orders to select property)
+  app.get("/api/public/properties", async (req, res) => {
+    try {
+      const properties = await storage.getAllProperties();
+      // Return only id and name for property selection
+      const publicProperties = properties.map(p => ({ id: p.id, name: p.name }));
+      res.json(publicProperties);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/public/menu-categories", async (req, res) => {
     try {
       const categories = await storage.getAllMenuCategories();
@@ -205,11 +217,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderData.bookingId = activeBooking?.id || null; // Link to booking if guest is checked in
         orderData.guestId = activeBooking?.guestId || null; // Also include guest ID for tracking
       } else {
-        // Handle restaurant orders
+        // Handle restaurant/café orders
         orderData.customerName = customerName;
         orderData.customerPhone = customerPhone;
-        // Restaurant orders aren't linked to a specific room or property
-        // They are walk-in customers
+        // Café orders now include property ID for kitchen filtering
+        if (propertyId) {
+          orderData.propertyId = parseInt(String(propertyId));
+        }
       }
 
       const order = await storage.createOrder(orderData);

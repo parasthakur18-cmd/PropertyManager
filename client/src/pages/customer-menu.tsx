@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Search, ShoppingCart, X, Plus, Minus, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
+import { useToast } from "@/hooks/use-toast";
 import { type MenuItem, type MenuCategory, type MenuItemVariant, type MenuItemAddOn } from "@shared/schema";
 
 interface CartItem {
@@ -31,6 +39,10 @@ export default function CustomerMenu() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const { toast } = useToast();
 
   // Selected item configuration
   const [selectedVariant, setSelectedVariant] = useState<MenuItemVariant | null>(null);
@@ -66,6 +78,46 @@ export default function CustomerMenu() {
     queryKey: selectedItem ? [`/api/public/menu-items/${selectedItem.id}/add-ons`] : [],
     queryFn: () => publicFetch(`/api/public/menu-items/${selectedItem!.id}/add-ons`),
     enabled: !!selectedItem,
+  });
+
+  // Fetch properties for café orders
+  const { data: properties } = useQuery<any[]>({
+    queryKey: ["/api/public/properties"],
+    queryFn: () => publicFetch("/api/public/properties"),
+  });
+
+  // Order placement mutation
+  const orderMutation = useMutation({
+    mutationFn: async (orderData: any) => {
+      const response = await fetch("/api/public/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to place order");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Order Placed!",
+        description: "Your order has been sent to the kitchen.",
+      });
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setSelectedPropertyId(null);
+      setShowCart(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const filteredItems = menuItems
@@ -161,6 +213,44 @@ export default function CustomerMenu() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+
+  const handlePlaceOrder = () => {
+    // Validate inputs
+    if (!customerName || !customerPhone) {
+      toast({
+        title: "Required Fields",
+        description: "Please enter your name and phone number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedPropertyId) {
+      toast({
+        title: "Select Property",
+        description: "Please select which property you're ordering from",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const orderData = {
+      orderType: "restaurant",
+      propertyId: selectedPropertyId,
+      customerName,
+      customerPhone,
+      items: cart.map(item => ({
+        id: item.menuItem.id,
+        name: item.menuItem.name,
+        price: item.totalPrice / item.quantity,
+        quantity: item.quantity,
+      })),
+      totalAmount: cartTotal.toFixed(2),
+      specialInstructions: null,
+    };
+
+    orderMutation.mutate(orderData);
+  };
 
   if (categoriesLoading || itemsLoading) {
     return (
@@ -556,12 +646,60 @@ export default function CustomerMenu() {
           {cart.length > 0 && (
             <SheetFooter className="border-t pt-4">
               <div className="w-full space-y-3">
-                <div className="flex justify-between text-xl font-bold">
+                {/* Property Selector */}
+                <div className="space-y-2">
+                  <Label htmlFor="property">Select Property *</Label>
+                  <Select value={selectedPropertyId?.toString() || ""} onValueChange={(val) => setSelectedPropertyId(parseInt(val))}>
+                    <SelectTrigger id="property" data-testid="select-property">
+                      <SelectValue placeholder="Choose your property" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {properties?.map((property) => (
+                        <SelectItem key={property.id} value={property.id.toString()}>
+                          {property.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Customer Info */}
+                <div className="space-y-2">
+                  <Label htmlFor="name">Your Name *</Label>
+                  <Input
+                    id="name"
+                    placeholder="Enter your name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    data-testid="input-customer-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number *</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="Enter your phone"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    data-testid="input-customer-phone"
+                  />
+                </div>
+
+                <div className="flex justify-between text-xl font-bold pt-2">
                   <span>Total:</span>
                   <span>₹{cartTotal.toFixed(2)}</span>
                 </div>
-                <Button className="w-full" size="lg" data-testid="button-place-order">
-                  Place Order
+                
+                <Button 
+                  className="w-full" 
+                  size="lg" 
+                  onClick={handlePlaceOrder}
+                  disabled={orderMutation.isPending}
+                  data-testid="button-place-order"
+                >
+                  {orderMutation.isPending ? "Placing Order..." : "Place Order"}
                 </Button>
               </div>
             </SheetFooter>
