@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2 } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const statusColors = {
 };
 
 export default function Bookings() {
+  const [location, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -56,6 +58,16 @@ export default function Bookings() {
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
   const { toast} = useToast();
+
+  // Auto-open dialog when coming from dashboard with ?new=true
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('new') === 'true') {
+      setIsDialogOpen(true);
+      // Clean up URL without page reload
+      window.history.replaceState({}, '', '/bookings');
+    }
+  }, []);
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],

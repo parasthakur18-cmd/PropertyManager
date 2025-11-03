@@ -166,7 +166,7 @@ export default function Dashboard() {
           <TabsTrigger 
             value="new-booking" 
             className="flex flex-col h-auto py-3 px-2 bg-primary/10 hover:bg-primary/20" 
-            onClick={() => setLocation("/bookings")}
+            onClick={() => setLocation("/bookings?new=true")}
             data-testid="tab-new-booking"
           >
             <Plus className="h-5 w-5 mb-1 text-primary" />
