@@ -84,10 +84,44 @@ export default function QRCodes() {
     }
   }, []);
   
-  const downloadQRCode = (canvasRef: React.RefObject<HTMLCanvasElement>, filename: string) => {
+  const downloadQRCode = (canvasRef: React.RefObject<HTMLCanvasElement>, filename: string, roomInfo?: { propertyName: string; roomNumber: string }) => {
     if (!canvasRef.current) return;
     
-    canvasRef.current.toBlob((blob) => {
+    // Create a new canvas with room number text
+    const originalCanvas = canvasRef.current;
+    const newCanvas = document.createElement('canvas');
+    const ctx = newCanvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set canvas size (add space for text if room info provided)
+    const padding = 40;
+    const textHeight = roomInfo ? 100 : 0;
+    newCanvas.width = originalCanvas.width + (padding * 2);
+    newCanvas.height = originalCanvas.height + (padding * 2) + textHeight;
+    
+    // Fill white background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, newCanvas.width, newCanvas.height);
+    
+    // Draw the original QR code centered
+    ctx.drawImage(originalCanvas, padding, padding);
+    
+    // Add room number text if provided
+    if (roomInfo) {
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'center';
+      
+      // Property name
+      ctx.font = 'bold 24px Arial';
+      ctx.fillText(roomInfo.propertyName, newCanvas.width / 2, originalCanvas.height + padding + 40);
+      
+      // Room number (larger and more prominent)
+      ctx.font = 'bold 32px Arial';
+      ctx.fillText(`Room ${roomInfo.roomNumber}`, newCanvas.width / 2, originalCanvas.height + padding + 75);
+    }
+    
+    // Download the new canvas
+    newCanvas.toBlob((blob) => {
       if (!blob) return;
       
       const url = URL.createObjectURL(blob);
@@ -185,7 +219,8 @@ export default function QRCodes() {
                   className="w-full"
                   onClick={() => downloadQRCode(
                     roomQRRef, 
-                    `${selectedProperty?.name.replace(/\s+/g, '-')}-Room-${selectedRoom.roomNumber}-QR.png`
+                    `${selectedProperty?.name.replace(/\s+/g, '-')}-Room-${selectedRoom.roomNumber}-QR.png`,
+                    { propertyName: selectedProperty?.name || '', roomNumber: selectedRoom.roomNumber }
                   )}
                   data-testid="button-download-room-qr"
                 >
