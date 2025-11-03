@@ -57,8 +57,7 @@ const adminMenuItems = [
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
-  { title: "Menu Management", url: "/menu-management", icon: BookOpen },
-  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
+  { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
   { title: "Booking Analytics", url: "/booking-analytics", icon: BarChart3 },
   { title: "Add-ons", url: "/addons", icon: Plus },
@@ -83,8 +82,7 @@ const managerMenuItems = [
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
-  { title: "Menu Management", url: "/menu-management", icon: BookOpen },
-  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
+  { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
@@ -99,8 +97,7 @@ const staffMenuItems = [
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
-  { title: "Menu Management", url: "/menu-management", icon: BookOpen },
-  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
+  { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
 ];
 
 const kitchenMenuItems = [
