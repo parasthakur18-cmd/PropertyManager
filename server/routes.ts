@@ -1135,6 +1135,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: `Cannot check in before the scheduled check-in date (${checkInDateFormatted}). The guest's check-in is scheduled for ${checkInDateFormatted}.`
           });
         }
+        
+        // Auto-checkout any previous bookings for the same room to prevent duplicate check-ins
+        // This ensures only one booking can be checked-in per room at a time
+        const allBookings = await storage.getAllBookings();
+        const roomId = currentBooking.roomId;
+        const otherCheckedInBookings = allBookings.filter(b => 
+          b.roomId === roomId && 
+          b.id !== bookingId && 
+          b.status === "checked-in"
+        );
+        
+        // Auto-checkout the previous booking(s)
+        for (const oldBooking of otherCheckedInBookings) {
+          console.log(`[Auto-Checkout] Checking out old booking ${oldBooking.id} for room ${roomId} before checking in booking ${bookingId}`);
+          await storage.updateBookingStatus(oldBooking.id, "checked-out");
+        }
       }
       
       const booking = await storage.updateBookingStatus(bookingId, status);
