@@ -342,6 +342,7 @@ export default function Bookings() {
           roomIds: selectedRoomIds,
           isGroupBooking: true,
           propertyId: firstRoom?.propertyId, // All rooms should be from same property
+          travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
         };
       } else {
         // Single room booking
@@ -350,8 +351,12 @@ export default function Bookings() {
           guestId: newGuest.id,
           roomIds: null,
           isGroupBooking: false,
+          travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
         };
       }
+      
+      console.log("Final bookingData being sent:", bookingData);
+      console.log("travelAgentId value:", bookingData.travelAgentId);
       
       createMutation.mutate(bookingData as InsertBooking);
     } catch (error: any) {
@@ -376,6 +381,10 @@ export default function Bookings() {
       customPrice: booking.customPrice as any,
       advanceAmount: booking.advanceAmount || "0",
       specialRequests: booking.specialRequests || "",
+      source: booking.source || "Walk-in",
+      travelAgentId: booking.travelAgentId || null,
+      mealPlan: booking.mealPlan || "EP",
+      bedsBooked: booking.bedsBooked || null,
     });
     setIsEditDialogOpen(true);
   };
