@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   FileBarChart,
   BookOpen,
+  MenuSquare,
   LogOut,
   QrCode,
   DollarSign,
@@ -57,6 +58,7 @@ const adminMenuItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/menu-management", icon: BookOpen },
+  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
   { title: "Booking Analytics", url: "/booking-analytics", icon: BarChart3 },
   { title: "Add-ons", url: "/addons", icon: Plus },
@@ -82,6 +84,7 @@ const managerMenuItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/menu-management", icon: BookOpen },
+  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
@@ -97,6 +100,7 @@ const staffMenuItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/menu-management", icon: BookOpen },
+  { title: "Enhanced Menu", url: "/enhanced-menu", icon: MenuSquare },
 ];
 
 const kitchenMenuItems = [
