@@ -1437,6 +1437,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Menu Categories
+  app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          const allCategories = await storage.getAllMenuCategories();
+          const filteredCategories = allCategories.filter(cat => currentUser.assignedPropertyIds!.includes(cat.propertyId));
+          res.json(filteredCategories);
+        } else {
+          res.json([]);
+        }
+      } else {
+        const categories = await storage.getAllMenuCategories();
+        res.json(categories);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-categories", isAuthenticated, async (req: any, res) => {
+    try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(req.body.propertyId)) {
+          return res.status(403).json({ message: "You can only create categories for your assigned properties." });
+        }
+      }
+      
+      const category = await storage.createMenuCategory(req.body);
+      res.status(201).json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-categories/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const category = await storage.updateMenuCategory(parseInt(req.params.id), req.body);
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuCategory(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Item Variants
+  app.get("/api/menu-items/:menuItemId/variants", isAuthenticated, async (req, res) => {
+    try {
+      const variants = await storage.getVariantsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(variants);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-items/:menuItemId/variants", isAuthenticated, async (req, res) => {
+    try {
+      const variant = await storage.createMenuItemVariant({
+        ...req.body,
+        menuItemId: parseInt(req.params.menuItemId),
+      });
+      res.status(201).json(variant);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-item-variants/:id", isAuthenticated, async (req, res) => {
+    try {
+      const variant = await storage.updateMenuItemVariant(parseInt(req.params.id), req.body);
+      res.json(variant);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-item-variants/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuItemVariant(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Item Add-Ons
+  app.get("/api/menu-items/:menuItemId/add-ons", isAuthenticated, async (req, res) => {
+    try {
+      const addOns = await storage.getAddOnsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(addOns);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-items/:menuItemId/add-ons", isAuthenticated, async (req, res) => {
+    try {
+      const addOn = await storage.createMenuItemAddOn({
+        ...req.body,
+        menuItemId: parseInt(req.params.menuItemId),
+      });
+      res.status(201).json(addOn);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-item-add-ons/:id", isAuthenticated, async (req, res) => {
+    try {
+      const addOn = await storage.updateMenuItemAddOn(parseInt(req.params.id), req.body);
+      res.json(addOn);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-item-add-ons/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuItemAddOn(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Orders
   app.get("/api/orders", isAuthenticated, async (req: any, res) => {
     try {

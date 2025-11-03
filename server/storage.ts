@@ -5,7 +5,10 @@ import {
   guests,
   travelAgents,
   bookings,
+  menuCategories,
   menuItems,
+  menuItemVariants,
+  menuItemAddOns,
   orders,
   extraServices,
   bills,
@@ -32,8 +35,14 @@ import {
   type InsertTravelAgent,
   type Booking,
   type InsertBooking,
+  type MenuCategory,
+  type InsertMenuCategory,
   type MenuItem,
   type InsertMenuItem,
+  type MenuItemVariant,
+  type InsertMenuItemVariant,
+  type MenuItemAddOn,
+  type InsertMenuItemAddOn,
   type Order,
   type InsertOrder,
   type ExtraService,
@@ -116,6 +125,14 @@ export interface IStorage {
   updateBookingStatus(id: number, status: string): Promise<Booking>;
   deleteBooking(id: number): Promise<void>;
 
+  // Menu Category operations
+  getAllMenuCategories(): Promise<MenuCategory[]>;
+  getMenuCategoriesByProperty(propertyId: number): Promise<MenuCategory[]>;
+  getMenuCategory(id: number): Promise<MenuCategory | undefined>;
+  createMenuCategory(category: InsertMenuCategory): Promise<MenuCategory>;
+  updateMenuCategory(id: number, category: Partial<InsertMenuCategory>): Promise<MenuCategory>;
+  deleteMenuCategory(id: number): Promise<void>;
+
   // Menu Item operations
   getAllMenuItems(): Promise<MenuItem[]>;
   getMenuItemsByProperty(propertyId: number): Promise<MenuItem[]>;
@@ -123,6 +140,18 @@ export interface IStorage {
   createMenuItem(menuItem: InsertMenuItem): Promise<MenuItem>;
   updateMenuItem(id: number, menuItem: Partial<InsertMenuItem>): Promise<MenuItem>;
   deleteMenuItem(id: number): Promise<void>;
+
+  // Menu Item Variant operations
+  getVariantsByMenuItem(menuItemId: number): Promise<MenuItemVariant[]>;
+  createMenuItemVariant(variant: InsertMenuItemVariant): Promise<MenuItemVariant>;
+  updateMenuItemVariant(id: number, variant: Partial<InsertMenuItemVariant>): Promise<MenuItemVariant>;
+  deleteMenuItemVariant(id: number): Promise<void>;
+
+  // Menu Item Add-On operations
+  getAddOnsByMenuItem(menuItemId: number): Promise<MenuItemAddOn[]>;
+  createMenuItemAddOn(addOn: InsertMenuItemAddOn): Promise<MenuItemAddOn>;
+  updateMenuItemAddOn(id: number, addOn: Partial<InsertMenuItemAddOn>): Promise<MenuItemAddOn>;
+  deleteMenuItemAddOn(id: number): Promise<void>;
 
   // Order operations
   getAllOrders(): Promise<Order[]>;
@@ -567,6 +596,96 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMenuItem(id: number): Promise<void> {
     await db.delete(menuItems).where(eq(menuItems.id, id));
+  }
+
+  // Menu Category operations
+  async getAllMenuCategories(): Promise<MenuCategory[]> {
+    return await db.select().from(menuCategories).orderBy(menuCategories.displayOrder, menuCategories.name);
+  }
+
+  async getMenuCategoriesByProperty(propertyId: number): Promise<MenuCategory[]> {
+    return await db
+      .select()
+      .from(menuCategories)
+      .where(eq(menuCategories.propertyId, propertyId))
+      .orderBy(menuCategories.displayOrder, menuCategories.name);
+  }
+
+  async getMenuCategory(id: number): Promise<MenuCategory | undefined> {
+    const [category] = await db.select().from(menuCategories).where(eq(menuCategories.id, id));
+    return category;
+  }
+
+  async createMenuCategory(category: InsertMenuCategory): Promise<MenuCategory> {
+    const [newCategory] = await db.insert(menuCategories).values(category).returning();
+    return newCategory;
+  }
+
+  async updateMenuCategory(id: number, category: Partial<InsertMenuCategory>): Promise<MenuCategory> {
+    const [updated] = await db
+      .update(menuCategories)
+      .set({ ...category, updatedAt: new Date() })
+      .where(eq(menuCategories.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuCategory(id: number): Promise<void> {
+    await db.delete(menuCategories).where(eq(menuCategories.id, id));
+  }
+
+  // Menu Item Variant operations
+  async getVariantsByMenuItem(menuItemId: number): Promise<MenuItemVariant[]> {
+    return await db
+      .select()
+      .from(menuItemVariants)
+      .where(eq(menuItemVariants.menuItemId, menuItemId))
+      .orderBy(menuItemVariants.displayOrder);
+  }
+
+  async createMenuItemVariant(variant: InsertMenuItemVariant): Promise<MenuItemVariant> {
+    const [newVariant] = await db.insert(menuItemVariants).values(variant).returning();
+    return newVariant;
+  }
+
+  async updateMenuItemVariant(id: number, variant: Partial<InsertMenuItemVariant>): Promise<MenuItemVariant> {
+    const [updated] = await db
+      .update(menuItemVariants)
+      .set({ ...variant, updatedAt: new Date() })
+      .where(eq(menuItemVariants.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuItemVariant(id: number): Promise<void> {
+    await db.delete(menuItemVariants).where(eq(menuItemVariants.id, id));
+  }
+
+  // Menu Item Add-On operations
+  async getAddOnsByMenuItem(menuItemId: number): Promise<MenuItemAddOn[]> {
+    return await db
+      .select()
+      .from(menuItemAddOns)
+      .where(eq(menuItemAddOns.menuItemId, menuItemId))
+      .orderBy(menuItemAddOns.displayOrder);
+  }
+
+  async createMenuItemAddOn(addOn: InsertMenuItemAddOn): Promise<MenuItemAddOn> {
+    const [newAddOn] = await db.insert(menuItemAddOns).values(addOn).returning();
+    return newAddOn;
+  }
+
+  async updateMenuItemAddOn(id: number, addOn: Partial<InsertMenuItemAddOn>): Promise<MenuItemAddOn> {
+    const [updated] = await db
+      .update(menuItemAddOns)
+      .set({ ...addOn, updatedAt: new Date() })
+      .where(eq(menuItemAddOns.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMenuItemAddOn(id: number): Promise<void> {
+    await db.delete(menuItemAddOns).where(eq(menuItemAddOns.id, id));
   }
 
   // Order operations
