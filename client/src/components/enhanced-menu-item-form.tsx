@@ -174,6 +174,9 @@ export function EnhancedMenuItemForm({
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="0">
+                  🌍 All Properties
+                </SelectItem>
                 {properties?.map((prop) => (
                   <SelectItem key={prop.id} value={prop.id.toString()}>
                     {prop.name}
@@ -181,6 +184,11 @@ export function EnhancedMenuItemForm({
                 ))}
               </SelectContent>
             </Select>
+            {form.watch("propertyId") === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                This item will be available in all properties
+              </p>
+            )}
           </div>
 
           {/* Category Selection */}
@@ -195,7 +203,7 @@ export function EnhancedMenuItemForm({
               </SelectTrigger>
               <SelectContent>
                 {categories
-                  ?.filter((cat) => cat.propertyId === form.watch("propertyId"))
+                  ?.filter((cat) => form.watch("propertyId") === 0 || cat.propertyId === form.watch("propertyId"))
                   .map((cat) => (
                     <SelectItem key={cat.id} value={cat.id.toString()}>
                       {cat.name}
