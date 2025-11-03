@@ -212,7 +212,7 @@ export type MenuCategory = typeof menuCategories.$inferSelect;
 // Menu Items table (enhanced with veg/non-veg, discounted pricing, etc.)
 export const menuItems = pgTable("menu_items", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Nullable - null means "all properties"
   categoryId: integer("category_id").references(() => menuCategories.id, { onDelete: 'set null' }), // Link to category
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),

@@ -202,6 +202,7 @@ export function EnhancedMenuItemForm({
       // Sanitize item data - convert empty strings to null for optional fields
       const itemData = {
         ...data,
+        propertyId: data.propertyId === 0 ? null : data.propertyId, // Convert "All Properties" (0) to null
         actualPrice: data.actualPrice === "" ? null : data.actualPrice,
         discountedPrice: data.discountedPrice === "" ? null : data.discountedPrice,
         description: data.description === "" ? null : data.description,
