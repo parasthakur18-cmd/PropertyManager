@@ -214,11 +214,11 @@ export default function CustomerMenu() {
         </div>
       </div>
 
-      {/* Category Filter Tabs */}
+      {/* Category Filter Tabs - Only tabs scroll */}
       {categories && categories.length > 0 && (
-        <div className="border-b bg-background sticky top-[145px] z-10">
-          <div className="px-4 py-3 max-w-7xl mx-auto">
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="border-b bg-background sticky top-[145px] z-10 overflow-hidden">
+          <div className="overflow-hidden">
+            <div className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <Badge
                 variant={selectedCategoryId === null ? "default" : "outline"}
                 className="cursor-pointer hover-elevate whitespace-nowrap flex-shrink-0"
@@ -250,7 +250,7 @@ export default function CustomerMenu() {
       )}
 
       {/* Menu Items by Category */}
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 py-6 pb-24 space-y-6">
         {groupedByCategory?.map(({ category, items }) => {
           if (items.length === 0) return null;
 
@@ -568,6 +568,29 @@ export default function CustomerMenu() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Fixed Checkout Button at Bottom */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">{cart.length} {cart.length === 1 ? 'item' : 'items'}</p>
+                <p className="text-lg font-bold">₹{cartTotal.toFixed(2)}</p>
+              </div>
+              <Button 
+                size="lg"
+                onClick={() => setShowCart(true)}
+                className="flex-shrink-0"
+                data-testid="button-fixed-checkout"
+              >
+                <ShoppingCart className="h-5 w-5 mr-2" />
+                View Cart
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
