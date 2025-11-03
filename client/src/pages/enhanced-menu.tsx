@@ -1,18 +1,53 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UtensilsCrossed, Eye, Upload, ArrowUpDown } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type MenuCategory, type MenuItem } from "@shared/schema";
+import { 
+  type MenuCategory, 
+  type MenuItem, 
+  type MenuItemVariant, 
+  type MenuItemAddOn,
+  insertMenuCategorySchema,
+  insertMenuItemSchema,
+  insertMenuItemVariantSchema,
+  insertMenuItemAddOnSchema
+} from "@shared/schema";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export default function EnhancedMenu() {
   const [selectedProperty, setSelectedProperty] = useState<number>(0);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [showItemForm, setShowItemForm] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<MenuCategory | null>(null);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  
   const { toast } = useToast();
 
   const { data: properties } = useQuery<any[]>({
@@ -27,7 +62,6 @@ export default function EnhancedMenu() {
     queryKey: ["/api/menu-items"],
   });
 
-  // Filter categories and items by property
   const filteredCategories = categories?.filter(
     (cat) => selectedProperty === 0 || cat.propertyId === selectedProperty
   );
@@ -36,13 +70,23 @@ export default function EnhancedMenu() {
     (item) => selectedProperty === 0 || item.propertyId === selectedProperty
   );
 
+  const toggleItemExpanded = (itemId: number) => {
+    const newExpanded = new Set(expandedItems);
+    if (newExpanded.has(itemId)) {
+      newExpanded.delete(itemId);
+    } else {
+      newExpanded.add(itemId);
+    }
+    setExpandedItems(newExpanded);
+  };
+
   if (categoriesLoading || itemsLoading) {
     return (
       <div className="p-4 md:p-6">
         <Skeleton className="h-10 w-64 mb-6" />
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-48" />
+        <div className="grid gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-32" />
           ))}
         </div>
       </div>
@@ -50,164 +94,530 @@ export default function EnhancedMenu() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-primary/90 backdrop-blur-sm text-primary-foreground p-4 shadow-md">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold font-serif" data-testid="heading-menu">
-            my RASOI
-          </h1>
-          <UtensilsCrossed className="h-6 w-6" />
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2" data-testid="heading-menu-management">
+          Menu Management
+        </h1>
+        <p className="text-muted-foreground">
+          Manage categories, items, variants, and add-ons for your restaurant menu
+        </p>
       </div>
 
       {/* Property Filter */}
       {properties && properties.length > 1 && (
-        <div className="p-4 bg-muted/30">
-          <select
-            className="w-full px-4 py-2 rounded-md border bg-background"
-            value={selectedProperty}
-            onChange={(e) => setSelectedProperty(parseInt(e.target.value))}
-            data-testid="select-property-filter"
+        <div className="mb-6">
+          <Label>Filter by Property</Label>
+          <Select
+            value={selectedProperty.toString()}
+            onValueChange={(val) => setSelectedProperty(parseInt(val))}
           >
-            <option value={0}>All Properties</option>
-            {properties.map((prop) => (
-              <option key={prop.id} value={prop.id}>
-                {prop.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger data-testid="select-property-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">All Properties</SelectItem>
+              {properties.map((prop) => (
+                <SelectItem key={prop.id} value={prop.id.toString()}>
+                  {prop.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="p-4 space-y-3 max-w-7xl mx-auto">
+      {/* Add Category Button */}
+      <div className="mb-6">
         <Button
-          className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={() => toast({ title: "Category management coming soon" })}
-          data-testid="button-add-menu"
+          onClick={() => {
+            setSelectedCategory(null);
+            setShowCategoryForm(true);
+          }}
+          data-testid="button-add-category"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Menu +
+          Add New Category
         </Button>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="outline"
-            onClick={() => toast({ title: "Arrange menu coming soon" })}
-            data-testid="button-arrange-menu"
-          >
-            <ArrowUpDown className="h-4 w-4 mr-2" />
-            Arrange Menu
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => toast({ title: "Excel upload coming soon" })}
-            data-testid="button-upload-excel"
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Excel
-          </Button>
-        </div>
       </div>
 
-      {/* Category Cards Grid */}
-      <div className="p-4 max-w-7xl mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredCategories?.map((category) => {
-            const categoryItems = filteredItems?.filter(
-              (item) => item.categoryId === category.id
-            );
-            const itemCount = categoryItems?.length || 0;
+      {/* Categories List */}
+      <div className="space-y-6">
+        {filteredCategories?.map((category) => (
+          <CategorySection
+            key={category.id}
+            category={category}
+            items={filteredItems?.filter((item) => item.categoryId === category.id) || []}
+            onEditCategory={(cat) => {
+              setSelectedCategory(cat);
+              setShowCategoryForm(true);
+            }}
+            onAddItem={() => {
+              setSelectedCategory(category);
+              setSelectedItem(null);
+              setShowItemForm(true);
+            }}
+            onEditItem={(item) => {
+              setSelectedCategory(category);
+              setSelectedItem(item);
+              setShowItemForm(true);
+            }}
+            expandedItems={expandedItems}
+            toggleItemExpanded={toggleItemExpanded}
+          />
+        ))}
 
-            return (
-              <Card
-                key={category.id}
-                className="overflow-hidden hover-elevate active-elevate-2 cursor-pointer"
-                data-testid={`card-category-${category.id}`}
+        {(!filteredCategories || filteredCategories.length === 0) && (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground mb-4">
+                No categories yet. Create your first category to start building your menu!
+              </p>
+              <Button
+                onClick={() => {
+                  setSelectedCategory(null);
+                  setShowCategoryForm(true);
+                }}
               >
-                <div className="relative aspect-[4/3]">
-                  {category.imageUrl ? (
-                    <img
-                      src={category.imageUrl}
-                      alt={category.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                      <UtensilsCrossed className="h-16 w-16 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3 text-white">
-                    <h3 className="font-semibold text-lg">{category.name}</h3>
-                    {category.startTime && category.endTime && (
-                      <p className="text-xs opacity-90">
-                        {category.startTime} - {category.endTime}
-                      </p>
-                    )}
-                    <p className="text-xs opacity-75 mt-1">{itemCount} items</p>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="secondary"
-                    className="absolute top-2 right-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toast({ title: "Edit category coming soon" });
-                    }}
-                    data-testid={`button-edit-category-${category.id}`}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
-
-          {/* Add New Category Card */}
-          <Card
-            className="overflow-hidden border-dashed border-2 hover-elevate active-elevate-2 cursor-pointer"
-            onClick={() => toast({ title: "Add category coming soon" })}
-            data-testid="card-add-category"
-          >
-            <div className="aspect-[4/3] flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <Plus className="h-12 w-12" />
-              <span className="text-sm font-medium">Add Category</span>
-            </div>
+                <Plus className="h-4 w-4 mr-2" />
+                Create First Category
+              </Button>
+            </CardContent>
           </Card>
-        </div>
+        )}
       </div>
 
-      {/* Empty State */}
-      {(!filteredCategories || filteredCategories.length === 0) && (
-        <div className="p-12 text-center">
-          <UtensilsCrossed className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No categories yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Create your first category to start building your menu
-          </p>
-          <Button
-            onClick={() => toast({ title: "Add category coming soon" })}
-            data-testid="button-empty-add-category"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Your First Category
-          </Button>
-        </div>
-      )}
+      {/* Category Form Dialog */}
+      <CategoryFormDialog
+        open={showCategoryForm}
+        onOpenChange={setShowCategoryForm}
+        category={selectedCategory}
+        properties={properties || []}
+        defaultPropertyId={selectedProperty || properties?.[0]?.id}
+      />
 
-      {/* Bottom Action Button */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t">
-        <Button
-          className="w-full max-w-7xl mx-auto bg-primary text-primary-foreground hover:bg-primary/90"
-          onClick={() => toast({ title: "Customer preview coming soon" })}
-          data-testid="button-view-as-customer"
-        >
-          <Eye className="h-4 w-4 mr-2" />
-          View your menu as a customer
-        </Button>
-      </div>
+      {/* Item Form Dialog */}
+      <ItemFormDialog
+        open={showItemForm}
+        onOpenChange={setShowItemForm}
+        item={selectedItem}
+        category={selectedCategory}
+        properties={properties || []}
+      />
     </div>
+  );
+}
+
+// Category Section Component
+function CategorySection({
+  category,
+  items,
+  onEditCategory,
+  onAddItem,
+  onEditItem,
+  expandedItems,
+  toggleItemExpanded,
+}: {
+  category: MenuCategory;
+  items: MenuItem[];
+  onEditCategory: (cat: MenuCategory) => void;
+  onAddItem: () => void;
+  onEditItem: (item: MenuItem) => void;
+  expandedItems: Set<number>;
+  toggleItemExpanded: (id: number) => void;
+}) {
+  const { toast } = useToast();
+
+  const deleteCategory = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/menu-categories/${category.id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+      toast({ title: "Category deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting category",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <CardTitle className="flex items-center gap-2">
+              {category.name}
+              {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
+              <Badge variant="outline">{items.length} items</Badge>
+            </CardTitle>
+            {category.startTime && category.endTime && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {category.startTime} - {category.endTime}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onEditCategory(category)}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (items.length > 0) {
+                  toast({
+                    title: "Cannot delete category",
+                    description: "Remove all items first",
+                    variant: "destructive",
+                  });
+                } else {
+                  deleteCategory.mutate();
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={onAddItem}
+          data-testid={`button-add-item-${category.id}`}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Item to {category.name}
+        </Button>
+
+        {/* Items List */}
+        <div className="space-y-2">
+          {items.map((item) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              onEdit={() => onEditItem(item)}
+              isExpanded={expandedItems.has(item.id)}
+              onToggleExpand={() => toggleItemExpanded(item.id)}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Item Card Component with Variants and Add-ons
+function ItemCard({
+  item,
+  onEdit,
+  isExpanded,
+  onToggleExpand,
+}: {
+  item: MenuItem;
+  onEdit: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const { toast } = useToast();
+
+  const { data: variants } = useQuery<MenuItemVariant[]>({
+    queryKey: [`/api/menu-items/${item.id}/variants`],
+    enabled: item.hasVariants,
+  });
+
+  const { data: addOns } = useQuery<MenuItemAddOn[]>({
+    queryKey: [`/api/menu-items/${item.id}/add-ons`],
+  });
+
+  const deleteItem = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/menu-items/${item.id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({ title: "Item deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting item",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs">
+                  {item.foodType === "non-veg" ? "🔴" : "🟢"}
+                </span>
+                <span className="font-semibold">{item.name}</span>
+                {!item.isAvailable && <Badge variant="secondary" className="text-xs">Unavailable</Badge>}
+              </div>
+              {item.description && (
+                <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+              )}
+              <div className="flex items-center gap-2 mt-2">
+                {item.hasVariants ? (
+                  <Badge variant="outline" className="text-xs">
+                    {variants?.length || 0} Variants
+                  </Badge>
+                ) : (
+                  <span className="text-sm font-bold">₹{item.price}</span>
+                )}
+                {addOns && addOns.length > 0 && (
+                  <Badge variant="outline" className="text-xs">
+                    {addOns.length} Add-ons
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={onEdit}>
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => deleteItem.mutate()}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <CollapsibleTrigger asChild>
+                <Button size="sm" variant="ghost">
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+          </div>
+
+          <CollapsibleContent className="mt-3 space-y-3">
+            {/* Variants */}
+            {item.hasVariants && variants && variants.length > 0 && (
+              <div className="border-t pt-3">
+                <p className="text-sm font-semibold mb-2">Variants:</p>
+                <div className="space-y-1">
+                  {variants.map((variant) => (
+                    <div key={variant.id} className="flex items-center justify-between text-sm">
+                      <span>{variant.variantName}</span>
+                      <span className="font-semibold">
+                        ₹{variant.discountedPrice || variant.actualPrice}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add-ons */}
+            {addOns && addOns.length > 0 && (
+              <div className="border-t pt-3">
+                <p className="text-sm font-semibold mb-2">Add-ons:</p>
+                <div className="space-y-1">
+                  {addOns.map((addOn) => (
+                    <div key={addOn.id} className="flex items-center justify-between text-sm">
+                      <span>{addOn.addOnName}</span>
+                      <span className="font-semibold">+₹{addOn.addOnPrice}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CollapsibleContent>
+        </CardContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+// Category Form Dialog
+function CategoryFormDialog({
+  open,
+  onOpenChange,
+  category,
+  properties,
+  defaultPropertyId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  category: MenuCategory | null;
+  properties: any[];
+  defaultPropertyId?: number;
+}) {
+  const [formData, setFormData] = useState({
+    propertyId: category?.propertyId || defaultPropertyId || properties[0]?.id || 0,
+    name: category?.name || "",
+    imageUrl: category?.imageUrl || "",
+    startTime: category?.startTime || "",
+    endTime: category?.endTime || "",
+    displayOrder: category?.displayOrder || 0,
+    isActive: category?.isActive ?? true,
+  });
+
+  const { toast } = useToast();
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: any) => {
+      if (category) {
+        return await apiRequest(`/api/menu-categories/${category.id}`, "PATCH", data);
+      } else {
+        return await apiRequest("/api/menu-categories", "POST", data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+      toast({ title: category ? "Category updated" : "Category created" });
+      onOpenChange(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error saving category",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveMutation.mutate(formData);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{category ? "Edit Category" : "Add New Category"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label>Property</Label>
+            <Select
+              value={formData.propertyId.toString()}
+              onValueChange={(val) =>
+                setFormData({ ...formData, propertyId: parseInt(val) })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {properties.map((prop) => (
+                  <SelectItem key={prop.id} value={prop.id.toString()}>
+                    {prop.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Category Name *</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Breakfast, Main Course"
+              required
+            />
+          </div>
+
+          <div>
+            <Label>Image URL (optional)</Label>
+            <Input
+              value={formData.imageUrl}
+              onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+              placeholder="https://..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Start Time</Label>
+              <Input
+                type="time"
+                value={formData.startTime}
+                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>End Time</Label>
+              <Input
+                type="time"
+                value={formData.endTime}
+                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={formData.isActive}
+              onCheckedChange={(checked) =>
+                setFormData({ ...formData, isActive: checked })
+              }
+            />
+            <Label>Active</Label>
+          </div>
+
+          <div className="flex gap-2 justify-end">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? "Saving..." : "Save Category"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Item Form Dialog (simplified - full implementation would be similar)
+function ItemFormDialog({
+  open,
+  onOpenChange,
+  item,
+  category,
+  properties,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: MenuItem | null;
+  category: MenuCategory | null;
+  properties: any[];
+}) {
+  const { toast } = useToast();
+  
+  // Placeholder - full implementation would include variants and add-ons management
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{item ? "Edit Item" : "Add New Item"}</DialogTitle>
+        </DialogHeader>
+        <div className="p-4 text-center text-muted-foreground">
+          <p>Full item form with variants and add-ons coming in next update.</p>
+          <p className="mt-2">Use the customer menu to see the working system!</p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
