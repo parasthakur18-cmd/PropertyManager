@@ -107,9 +107,9 @@ export default function Bookings() {
       advanceAmount: "0",
       specialRequests: "",
       source: "Walk-in",
-      travelAgentId: null,
+      travelAgentId: undefined as number | undefined,
       mealPlan: "EP",
-      bedsBooked: null,
+      bedsBooked: undefined as number | undefined,
     },
   });
 
@@ -244,7 +244,7 @@ export default function Bookings() {
   useEffect(() => {
     const subscription = editForm.watch((value, { name }) => {
       if (name === "propertyId") {
-        editForm.setValue("travelAgentId", null);
+        editForm.setValue("travelAgentId", undefined);
       }
     });
     return () => subscription.unsubscribe();
@@ -382,9 +382,9 @@ export default function Bookings() {
       advanceAmount: booking.advanceAmount || "0",
       specialRequests: booking.specialRequests || "",
       source: booking.source || "Walk-in",
-      travelAgentId: booking.travelAgentId || null,
+      travelAgentId: booking.travelAgentId || undefined,
       mealPlan: booking.mealPlan || "EP",
-      bedsBooked: booking.bedsBooked || null,
+      bedsBooked: booking.bedsBooked || undefined,
     });
     setIsEditDialogOpen(true);
   };
@@ -884,7 +884,17 @@ export default function Bookings() {
                             type="button" 
                             variant="outline" 
                             size="sm" 
-                            onClick={() => setIsAddAgentDialogOpen(true)}
+                            onClick={() => {
+                              if (!selectedPropertyId) {
+                                toast({
+                                  title: "Property Required",
+                                  description: "Please select a property first before creating a travel agent",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              setIsAddAgentDialogOpen(true);
+                            }}
                             className="mt-2"
                             data-testid="button-add-travel-agent"
                           >
@@ -1209,10 +1219,18 @@ export default function Bookings() {
             </Button>
             <Button
               onClick={() => {
-                if (!newAgentData.name || !selectedPropertyId) {
+                if (!newAgentData.name) {
                   toast({
                     title: "Error",
-                    description: "Agent name and property are required",
+                    description: "Agent name is required",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                if (!selectedPropertyId) {
+                  toast({
+                    title: "Error",
+                    description: "Please select a property in the booking form first",
                     variant: "destructive",
                   });
                   return;
