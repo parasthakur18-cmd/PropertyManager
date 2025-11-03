@@ -602,6 +602,47 @@ export default function Bookings() {
                     }}
                   />
                 </div>
+
+                {/* Date Selection - Moved before room selection */}
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="checkInDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check-in Date *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="datetime-local"
+                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            data-testid="input-booking-checkin"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="checkOutDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check-out Date *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="datetime-local"
+                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            data-testid="input-booking-checkout"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <Tabs value={bookingType} onValueChange={(value) => setBookingType(value as "single" | "group")} className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="single" data-testid="tab-single-room">Single Room</TabsTrigger>
@@ -779,44 +820,7 @@ export default function Bookings() {
                     </div>
                   </TabsContent>
                 </Tabs>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="checkInDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check-in Date</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="datetime-local"
-                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
-                            data-testid="input-booking-checkin"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="checkOutDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check-out Date</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="datetime-local"
-                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
-                            data-testid="input-booking-checkout"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+
                 <FormField
                   control={form.control}
                   name="numberOfGuests"
