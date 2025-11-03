@@ -189,7 +189,7 @@ export type Booking = typeof bookings.$inferSelect;
 // Menu Categories table (for organizing menu items with images and time slots)
 export const menuCategories = pgTable("menu_categories", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Nullable - null means "all properties"
   name: varchar("name", { length: 255 }).notNull(),
   imageUrl: text("image_url"), // Category image
   startTime: varchar("start_time", { length: 10 }), // e.g., "09:00"

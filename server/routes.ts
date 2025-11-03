@@ -1497,7 +1497,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (currentUser.role === "manager" || currentUser.role === "kitchen") {
         if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
           const allCategories = await storage.getAllMenuCategories();
-          const filteredCategories = allCategories.filter(cat => currentUser.assignedPropertyIds!.includes(cat.propertyId));
+          const filteredCategories = allCategories.filter(cat => 
+            cat.propertyId === null || currentUser.assignedPropertyIds!.includes(cat.propertyId)
+          );
           res.json(filteredCategories);
         } else {
           res.json([]);
@@ -1519,8 +1521,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (currentUser.role === "manager" || currentUser.role === "kitchen") {
-        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(req.body.propertyId)) {
-          return res.status(403).json({ message: "You can only create categories for your assigned properties." });
+        if (req.body.propertyId !== null && (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(req.body.propertyId))) {
+          return res.status(403).json({ message: "You can only create categories for your assigned properties or all properties." });
         }
       }
       

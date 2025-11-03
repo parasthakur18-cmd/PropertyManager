@@ -546,7 +546,7 @@ function CategoryFormDialog({
   defaultPropertyId?: number;
 }) {
   const [formData, setFormData] = useState({
-    propertyId: category?.propertyId || defaultPropertyId || properties[0]?.id || 0,
+    propertyId: category?.propertyId !== undefined ? category.propertyId : (defaultPropertyId || null),
     name: category?.name || "",
     imageUrl: category?.imageUrl || "",
     startTime: category?.startTime || "",
@@ -594,15 +594,16 @@ function CategoryFormDialog({
           <div>
             <Label>Property</Label>
             <Select
-              value={formData.propertyId.toString()}
+              value={formData.propertyId?.toString() || "0"}
               onValueChange={(val) =>
-                setFormData({ ...formData, propertyId: parseInt(val) })
+                setFormData({ ...formData, propertyId: val === "0" ? null : parseInt(val) })
               }
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="0">All Properties</SelectItem>
                 {properties.map((prop) => (
                   <SelectItem key={prop.id} value={prop.id.toString()}>
                     {prop.name}
