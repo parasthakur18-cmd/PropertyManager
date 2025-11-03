@@ -387,6 +387,28 @@ function ItemCard({
     },
   });
 
+  const toggleAvailability = useMutation({
+    mutationFn: async (isAvailable: boolean) => {
+      return await apiRequest(`/api/menu-items/${item.id}`, "PATCH", {
+        isAvailable,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({ 
+        title: item.isAvailable ? "Item marked unavailable" : "Item marked available",
+        description: item.isAvailable ? "Item is now hidden from customer menu" : "Item is now visible to customers"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating availability",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
       <Card>
@@ -419,14 +441,24 @@ function ItemCard({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" onClick={onEdit}>
+              <div className="flex flex-col items-center gap-1">
+                <Switch
+                  checked={item.isAvailable}
+                  onCheckedChange={(checked) => toggleAvailability.mutate(checked)}
+                  data-testid={`switch-availability-${item.id}`}
+                />
+                <span className="text-xs text-muted-foreground">
+                  {item.isAvailable ? "Available" : "Hidden"}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={onEdit} data-testid={`button-edit-item-${item.id}`}>
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => deleteItem.mutate()}>
+              <Button size="sm" variant="ghost" onClick={() => deleteItem.mutate()} data-testid={`button-delete-item-${item.id}`}>
                 <Trash2 className="h-4 w-4" />
               </Button>
               <CollapsibleTrigger asChild>
-                <Button size="sm" variant="ghost">
+                <Button size="sm" variant="ghost" data-testid={`button-expand-item-${item.id}`}>
                   {isExpanded ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
