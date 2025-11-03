@@ -24,6 +24,7 @@ import {
   LogOut,
   QrCode,
   DollarSign,
+  Briefcase,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -51,6 +52,7 @@ const adminMenuItems = [
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
+  { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
@@ -75,6 +77,7 @@ const managerMenuItems = [
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
+  { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
