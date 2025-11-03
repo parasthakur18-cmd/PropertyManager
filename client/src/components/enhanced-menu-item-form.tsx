@@ -323,6 +323,29 @@ export function EnhancedMenuItemForm({
             />
           </div>
 
+          {/* Item Image */}
+          <div>
+            <Label>Item Image</Label>
+            {form.watch("imageUrl") && (
+              <div className="mt-2 mb-3">
+                <p className="text-sm text-muted-foreground mb-2">Current Image:</p>
+                <img
+                  src={form.watch("imageUrl")}
+                  alt="Menu item"
+                  className="w-32 h-32 object-cover rounded-md border"
+                />
+              </div>
+            )}
+            <Input
+              {...form.register("imageUrl")}
+              placeholder="Paste image URL or leave blank to remove"
+              data-testid="input-image-url"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Paste an image URL here, or leave blank to remove the image
+            </p>
+          </div>
+
           {/* Food Type */}
           <div>
             <Label>Food Type</Label>
