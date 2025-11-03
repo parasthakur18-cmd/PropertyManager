@@ -1055,7 +1055,27 @@ export default function Bookings() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-2">
+                            <Select
+                              value={booking.status}
+                              onValueChange={(newStatus) => {
+                                updateStatusMutation.mutate({
+                                  id: booking.id,
+                                  status: newStatus as "pending" | "confirmed" | "checked-in" | "checked-out" | "cancelled"
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-[140px]" data-testid={`select-status-${booking.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="confirmed">Confirmed</SelectItem>
+                                <SelectItem value="checked-in">Checked In</SelectItem>
+                                <SelectItem value="checked-out">Checked Out</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
                             <Button
                               size="icon"
                               variant="ghost"
