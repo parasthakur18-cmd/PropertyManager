@@ -80,6 +80,13 @@ export default function CustomerMenu() {
     enabled: !!selectedItem,
   });
 
+  // Debug logging
+  if (selectedItem) {
+    console.log("Selected Item:", selectedItem.name, "ID:", selectedItem.id);
+    console.log("All Variants:", allVariants);
+    console.log("All Add-Ons:", allAddOns);
+  }
+
   // Fetch properties for café orders
   const { data: properties } = useQuery<any[]>({
     queryKey: ["/api/public/properties"],
