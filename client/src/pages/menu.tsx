@@ -35,6 +35,7 @@ export default function Menu() {
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<{id: number; variantName: string; actualPrice: string; discountedPrice: string | null} | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<{ id: number; name: string; price: string; quantity: number; }[]>([]);
   const [isAddOnsSheetOpen, setIsAddOnsSheetOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
@@ -67,6 +68,12 @@ export default function Menu() {
 
   const { data: menuItems, isLoading: itemsLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/public/menu"],
+  });
+
+  // Fetch variants for selected item
+  const { data: variants } = useQuery<{ id: number; menuItemId: number; variantName: string; actualPrice: string; discountedPrice: string | null; }[]>({
+    queryKey: [`/api/public/menu-items/${selectedItem?.id}/variants`],
+    enabled: !!selectedItem,
   });
 
   // Fetch add-ons for selected item
@@ -104,6 +111,7 @@ export default function Menu() {
 
   const openAddOnsSheet = (item: MenuItem) => {
     setSelectedItem(item);
+    setSelectedVariant(null);
     setSelectedAddOns([]);
     setIsAddOnsSheetOpen(true);
   };
@@ -130,21 +138,25 @@ export default function Menu() {
   const addToCartWithAddOns = () => {
     if (!selectedItem) return;
     
-    // Calculate total price including add-ons
+    // Calculate total price including variant and add-ons
+    const basePrice = selectedVariant 
+      ? parseFloat(selectedVariant.discountedPrice || selectedVariant.actualPrice)
+      : parseFloat(selectedItem.price as string);
+      
     const addOnsTotal = selectedAddOns.reduce((sum, addOn) => 
       sum + (parseFloat(addOn.price) * addOn.quantity), 0
     );
-    const itemPrice = parseFloat(selectedItem.price as string);
-    const totalPrice = itemPrice + addOnsTotal;
+    const totalPrice = basePrice + addOnsTotal;
     
-    // Add to cart with add-ons info in the item name for display
+    // Add to cart with variant and add-ons info in the item name for display
+    const variantText = selectedVariant ? ` (${selectedVariant.variantName})` : '';
     const addOnsText = selectedAddOns.length > 0 
-      ? ` (+ ${selectedAddOns.map(a => `${a.quantity}x ${a.name}`).join(', ')})`
+      ? ` + ${selectedAddOns.map(a => `${a.quantity}x ${a.name}`).join(', ')}`
       : '';
     
     const cartItem: CartItem = {
       ...selectedItem,
-      name: selectedItem.name + addOnsText,
+      name: selectedItem.name + variantText + addOnsText,
       price: totalPrice.toString(),
       quantity: 1
     };
@@ -167,11 +179,11 @@ export default function Menu() {
   };
 
   const addToCart = (item: MenuItem) => {
-    // Check if item has add-ons
-    if (item.hasAddOns) {
+    // Check if item has variants or add-ons
+    if (item.hasVariants || item.hasAddOns) {
       openAddOnsSheet(item);
     } else {
-      // Directly add to cart if no add-ons
+      // Directly add to cart if no variants or add-ons
       const existing = cart.find((i) => i.id === item.id);
       if (existing) {
         setCart(cart.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i)));
@@ -532,7 +544,10 @@ export default function Menu() {
           <SheetHeader>
             <SheetTitle>{selectedItem?.name}</SheetTitle>
             <SheetDescription>
-              Customize your order with add-ons
+              {variants && variants.length > 0 
+                ? "Choose your size and customize with add-ons"
+                : "Customize your order with add-ons"
+              }
             </SheetDescription>
           </SheetHeader>
           
@@ -542,6 +557,39 @@ export default function Menu() {
               <span className="font-medium">Base Price</span>
               <span className="font-mono text-lg">₹{selectedItem?.price}</span>
             </div>
+
+            {/* Variants Selection */}
+            {variants && variants.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm">Choose Variant *</h3>
+                {variants.map((variant) => (
+                  <Card
+                    key={variant.id}
+                    className={`p-3 cursor-pointer ${
+                      selectedVariant?.id === variant.id
+                        ? "border-primary bg-primary/5"
+                        : ""
+                    }`}
+                    onClick={() => setSelectedVariant(variant)}
+                    data-testid={`card-variant-${variant.id}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{variant.variantName}</span>
+                      <div className="flex items-center gap-2">
+                        {variant.discountedPrice && (
+                          <span className="text-sm text-muted-foreground line-through">
+                            ₹{variant.actualPrice}
+                          </span>
+                        )}
+                        <span className="font-bold">
+                          ₹{variant.discountedPrice || variant.actualPrice}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
 
             {/* Add-Ons List */}
             {addOns && addOns.length > 0 ? (
@@ -633,10 +681,14 @@ export default function Menu() {
               className="w-full" 
               size="lg" 
               onClick={addToCartWithAddOns}
+              disabled={variants && variants.length > 0 && !selectedVariant}
               data-testid="button-confirm-add-to-cart"
             >
               <ShoppingCart className="h-5 w-5 mr-2" />
-              Add to Cart
+              {variants && variants.length > 0 && !selectedVariant 
+                ? "Select a variant first" 
+                : "Add to Cart"
+              }
             </Button>
           </div>
         </SheetContent>
