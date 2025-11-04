@@ -282,8 +282,11 @@ export default function EnhancedMenu() {
         properties={properties || []}
         onSave={async (itemData, variants, addOns) => {
           try {
+            let itemId: number;
+            
             if (selectedItem) {
               // Update existing item
+              itemId = selectedItem.id;
               await apiRequest(`/api/menu-items/${selectedItem.id}`, "PATCH", {
                 ...itemData,
                 categoryId: selectedCategory?.id || itemData.categoryId,
@@ -309,6 +312,7 @@ export default function EnhancedMenu() {
                 categoryId: selectedCategory?.id || itemData.categoryId,
               });
               const result = await response.json();
+              itemId = result.id;
               
               // Create variants one by one
               for (const variant of variants) {
@@ -320,9 +324,11 @@ export default function EnhancedMenu() {
                 await apiRequest(`/api/menu-items/${result.id}/add-ons`, "POST", addOn);
               }
             }
+            
+            // Invalidate all related queries
             queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/menu-item-variants"] });
-            queryClient.invalidateQueries({ queryKey: ["/api/menu-item-add-ons"] });
+            queryClient.invalidateQueries({ queryKey: [`/api/menu-items/${itemId}/variants`] });
+            queryClient.invalidateQueries({ queryKey: [`/api/menu-items/${itemId}/add-ons`] });
           } catch (error: any) {
             toast({
               title: "Error saving item",
