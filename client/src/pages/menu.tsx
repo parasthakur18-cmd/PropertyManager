@@ -565,23 +565,34 @@ export default function Menu() {
                 {variants.map((variant) => (
                   <Card
                     key={variant.id}
-                    className={`p-3 cursor-pointer ${
+                    className={`p-3 cursor-pointer hover-elevate active-elevate-2 transition-all ${
                       selectedVariant?.id === variant.id
-                        ? "border-primary bg-primary/5"
-                        : ""
+                        ? "border-2 border-primary bg-primary/10"
+                        : "border"
                     }`}
                     onClick={() => setSelectedVariant(variant)}
                     data-testid={`card-variant-${variant.id}`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{variant.variantName}</span>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedVariant?.id === variant.id 
+                            ? "border-primary bg-primary" 
+                            : "border-muted-foreground"
+                        }`}>
+                          {selectedVariant?.id === variant.id && (
+                            <div className="w-2 h-2 rounded-full bg-white"></div>
+                          )}
+                        </div>
+                        <span className="font-medium">{variant.variantName}</span>
+                      </div>
                       <div className="flex items-center gap-2">
                         {variant.discountedPrice && (
                           <span className="text-sm text-muted-foreground line-through">
                             ₹{variant.actualPrice}
                           </span>
                         )}
-                        <span className="font-bold">
+                        <span className="font-bold text-lg">
                           ₹{variant.discountedPrice || variant.actualPrice}
                         </span>
                       </div>
