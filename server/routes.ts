@@ -1300,14 +1300,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
 
       // Calculate totals
-      // IMPORTANT: Apply GST/Service Charge ONLY to room + food charges, NOT to manual/extra charges
-      const baseCharges = roomCharges + foodCharges; // Base charges for GST calculation
-      const subtotal = baseCharges + extraCharges; // Total subtotal including manual charges
+      // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
+      const subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
       
       const gstRate = 5; // 5% GST
-      const gstAmount = includeGst ? (baseCharges * gstRate) / 100 : 0; // GST only on room + food
+      const gstAmount = includeGst ? (roomCharges * gstRate) / 100 : 0; // GST ONLY on room charges
       const serviceChargeRate = 10;
-      const serviceChargeAmount = includeServiceCharge ? (baseCharges * serviceChargeRate) / 100 : 0; // Service charge only on room + food
+      const serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
       const totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
 
       // Calculate discount based on where it applies
