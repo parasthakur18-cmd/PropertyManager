@@ -68,45 +68,17 @@ export default function CustomerMenu() {
     queryFn: () => publicFetch("/api/public/menu"),
   });
 
-  const { data: allVariants, isLoading: variantsLoading, isError: variantsError } = useQuery<MenuItemVariant[]>({
+  const { data: allVariants } = useQuery<MenuItemVariant[]>({
     queryKey: selectedItem ? [`/api/public/menu-items/${selectedItem.id}/variants`] : [],
-    queryFn: async () => {
-      console.log(`🔄 Fetching variants for item ${selectedItem!.id}...`);
-      const result = await publicFetch(`/api/public/menu-items/${selectedItem!.id}/variants`);
-      console.log(`✅ Variants fetched:`, result);
-      return result;
-    },
+    queryFn: () => publicFetch(`/api/public/menu-items/${selectedItem!.id}/variants`),
     enabled: !!selectedItem,
   });
 
-  const { data: allAddOns, isLoading: addOnsLoading, isError: addOnsError } = useQuery<MenuItemAddOn[]>({
+  const { data: allAddOns } = useQuery<MenuItemAddOn[]>({
     queryKey: selectedItem ? [`/api/public/menu-items/${selectedItem.id}/add-ons`] : [],
-    queryFn: async () => {
-      console.log(`🔄 Fetching add-ons for item ${selectedItem!.id}...`);
-      const result = await publicFetch(`/api/public/menu-items/${selectedItem!.id}/add-ons`);
-      console.log(`✅ Add-ons fetched:`, result);
-      return result;
-    },
+    queryFn: () => publicFetch(`/api/public/menu-items/${selectedItem!.id}/add-ons`),
     enabled: !!selectedItem,
   });
-
-  // Debug logging
-  if (selectedItem) {
-    console.log("📋 Selected Item:", {
-      name: selectedItem.name,
-      id: selectedItem.id,
-      hasVariants: selectedItem.hasVariants,
-      hasAddOns: selectedItem.hasAddOns
-    });
-    console.log("📊 Query Status:", {
-      variantsLoading,
-      variantsError,
-      variantsData: allVariants,
-      addOnsLoading,
-      addOnsError,
-      addOnsData: allAddOns
-    });
-  }
 
   // Fetch properties for café orders
   const { data: properties } = useQuery<any[]>({
@@ -475,16 +447,6 @@ export default function CustomerMenu() {
                     {selectedItem.description}
                   </p>
                 )}
-                {/* DEBUG INFO - REMOVE AFTER TESTING */}
-                <div className="bg-yellow-100 border-2 border-yellow-500 p-3 rounded mt-2 text-xs">
-                  <p className="font-bold text-yellow-900">🔍 DEBUG INFO (Latest Version Loaded!)</p>
-                  <p className="text-yellow-800">Item ID: {selectedItem.id}</p>
-                  <p className="text-yellow-800">Has Variants Flag: {selectedItem.hasVariants ? '✅ TRUE' : '❌ FALSE'}</p>
-                  <p className="text-yellow-800">Has Add-Ons Flag: {selectedItem.hasAddOns ? '✅ TRUE' : '❌ FALSE'}</p>
-                  <p className="text-yellow-800">Variants Loading: {variantsLoading ? 'Yes...' : 'No'}</p>
-                  <p className="text-yellow-800">Variants Data: {allVariants ? `${allVariants.length} items` : 'null/undefined'}</p>
-                  <p className="text-yellow-800">Add-Ons Data: {allAddOns ? `${allAddOns.length} items` : 'null/undefined'}</p>
-                </div>
               </SheetHeader>
 
               <div className="space-y-6 py-4">
