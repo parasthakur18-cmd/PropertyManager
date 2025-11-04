@@ -482,8 +482,8 @@ export function EnhancedMenuItemForm({
             </div>
           )}
 
-          {/* Add-Ons Button (appears if clicked or has add-ons) */}
-          {(!showAddOns && !showVariants) && (
+          {/* Add-Ons Button (appears if add-ons not shown yet) */}
+          {!showAddOns && (
             <Button
               type="button"
               variant="outline"
