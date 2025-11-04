@@ -1976,11 +1976,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Guest not found" });
       }
 
-      // Fetch room
-      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
-
-      // Fetch property
-      const property = room?.propertyId ? await storage.getProperty(room.propertyId) : null;
+      // Fetch room(s) - handle both single and group bookings
+      let room = null;
+      let rooms = [];
+      let property = null;
+      
+      if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+        // Group booking: fetch all rooms
+        for (const roomId of booking.roomIds) {
+          const r = await storage.getRoom(roomId);
+          if (r) {
+            rooms.push(r);
+            if (!property && r.propertyId) {
+              property = await storage.getProperty(r.propertyId);
+            }
+          }
+        }
+      } else {
+        // Single room booking
+        room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+        property = room?.propertyId ? await storage.getProperty(room.propertyId) : null;
+      }
 
       // Fetch orders for this booking
       const allOrders = await storage.getAllOrders();
@@ -1997,6 +2013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         booking: {
           ...booking,
           room,
+          rooms, // Add rooms array for group bookings
           property,
         },
         orders,

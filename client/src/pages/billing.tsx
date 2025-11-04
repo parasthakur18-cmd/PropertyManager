@@ -32,6 +32,7 @@ interface BillDetails extends Bill {
   guest: Guest;
   booking: Booking & {
     room: Room | null;
+    rooms?: Room[]; // For group bookings
     property: Property | null;
   };
   orders: Order[];
@@ -445,7 +446,19 @@ export default function Billing() {
                 <div>
                   <h3 className="font-semibold mb-2">Booking Information</h3>
                   <div className="space-y-1 text-sm">
-                    <p><span className="text-muted-foreground">Room:</span> {billDetails.booking?.room?.roomNumber} ({billDetails.booking?.room?.roomType || 'Standard'})</p>
+                    <p>
+                      <span className="text-muted-foreground">Room{billDetails.booking?.rooms && billDetails.booking.rooms.length > 1 ? 's' : ''}:</span>{' '}
+                      {billDetails.booking?.isGroupBooking && billDetails.booking?.rooms && billDetails.booking.rooms.length > 0 ? (
+                        <>
+                          {billDetails.booking.rooms.map(r => r.roomNumber).join(', ')} 
+                          <Badge variant="outline" className="ml-2">Group Booking</Badge>
+                        </>
+                      ) : (
+                        <>
+                          {billDetails.booking?.room?.roomNumber} ({billDetails.booking?.room?.roomType || 'Standard'})
+                        </>
+                      )}
+                    </p>
                     <p><span className="text-muted-foreground">Check-in:</span> {billDetails.booking && format(new Date(billDetails.booking.checkInDate), "PPP")}</p>
                     <p><span className="text-muted-foreground">Check-out:</span> {billDetails.booking && format(new Date(billDetails.booking.checkOutDate), "PPP")}</p>
                     <p><span className="text-muted-foreground">Guests:</span> {billDetails.booking?.numberOfGuests}</p>
