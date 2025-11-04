@@ -304,10 +304,11 @@ export default function EnhancedMenu() {
               }
             } else {
               // Create new item
-              const result = await apiRequest("/api/menu-items", "POST", {
+              const response = await apiRequest("/api/menu-items", "POST", {
                 ...itemData,
                 categoryId: selectedCategory?.id || itemData.categoryId,
-              }) as any;
+              });
+              const result = await response.json();
               
               // Create variants one by one
               for (const variant of variants) {
