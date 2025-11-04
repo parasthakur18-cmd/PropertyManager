@@ -1766,8 +1766,13 @@ function CheckoutBillSummary({
   }
 
   const property = properties?.find(p => p.id === booking.propertyId);
-  const room = rooms?.find(r => r.id === booking.roomId);
   const guest = guests?.find(g => g.id === booking.guestId);
+
+  // Handle both single and group bookings
+  const isGroupBooking = booking.isGroupBooking;
+  const bookingRooms = isGroupBooking 
+    ? rooms?.filter(r => booking.roomIds?.includes(r.id)) || []
+    : rooms?.filter(r => r.id === booking.roomId) || [];
 
   // Filter orders and extras for this booking
   const bookingOrders = orders?.filter(o => o.bookingId === bookingId) || [];
@@ -1778,9 +1783,17 @@ function CheckoutBillSummary({
   const checkOutDate = new Date(booking.checkOutDate);
   const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
   
-  // Use customPrice if available, otherwise use room price
-  const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
-  const roomCharges = pricePerNight * nights;
+  // Calculate room charges for group or single booking
+  const roomCharges = isGroupBooking
+    ? bookingRooms.reduce((total, room) => {
+        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / bookingRooms.length : parseFloat(room.pricePerNight);
+        return total + (pricePerNight * nights);
+      }, 0)
+    : (() => {
+        const room = bookingRooms[0];
+        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+        return pricePerNight * nights;
+      })();
 
   const foodCharges = bookingOrders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
   const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
@@ -1816,7 +1829,18 @@ function CheckoutBillSummary({
             <p className="text-sm text-muted-foreground">{property?.name}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-medium">{room ? `Room ${room.roomNumber}` : "Room TBA"}</p>
+            <div className="flex items-center gap-2 justify-end">
+              <p className="text-sm font-medium">
+                {bookingRooms.length > 0 
+                  ? `Room ${bookingRooms.map(r => r.roomNumber).join(', ')}`
+                  : "Room TBA"}
+              </p>
+              {isGroupBooking && (
+                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  Group Booking
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">{nights} night{nights !== 1 ? 's' : ''}</p>
           </div>
         </div>
@@ -1833,7 +1857,11 @@ function CheckoutBillSummary({
         
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span>Room Charges ({nights} × ₹{pricePerNight.toFixed(2)})</span>
+            <span>
+              {isGroupBooking 
+                ? `Room Charges (${bookingRooms.length} rooms × ${nights} nights)`
+                : `Room Charges (${nights} × ₹${bookingRooms[0] ? parseFloat(bookingRooms[0].pricePerNight).toFixed(2) : '0.00'})`}
+            </span>
             <span className="font-mono" data-testid="text-checkout-room-charges">₹{roomCharges.toFixed(2)}</span>
           </div>
           
