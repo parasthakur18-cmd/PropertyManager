@@ -3,14 +3,22 @@
  * Documentation: https://authkey.io/whatsapp-api-docs
  * 
  * IMPORTANT CONFIGURATION:
- * 1. Set AUTHKEY_API_KEY in environment variables
- * 2. Set AUTHKEY_WA_TEMPLATE_ID for the booking confirmation template
- * 3. Template variables are passed in order: var1, var2, var3, etc.
- * 4. Ensure your authkey template matches the variable order
+ * Required environment variables:
+ * - AUTHKEY_API_KEY: Your authkey.io API key
+ * 
+ * Optional template IDs (with defaults):
+ * - AUTHKEY_WA_BOOKING_CONFIRMATION: Template for booking confirmation (default: 18491)
+ * - AUTHKEY_WA_PAYMENT_CONFIRMATION: Template for payment received (default: 18649)
+ * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 18652)
+ * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout/billing (default: 18652)
+ * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
+ * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
+ * 
+ * Template variables are passed in order: var1, var2, var3, etc.
+ * Ensure your authkey templates match the variable order!
  * 
  * LIMITATIONS:
  * - Currently defaults to Indian country code (91)
- * - Template ID is configurable via environment variable
  */
 
 interface WhatsAppMessageParams {
@@ -133,14 +141,12 @@ export async function sendWhatsAppMessage(params: WhatsAppMessageParams): Promis
 /**
  * Send booking confirmation WhatsApp message
  * 
- * IMPORTANT: Template variables are sent in ORDER:
+ * Template variables (in order):
  * 1. Guest Name
  * 2. Property Name
  * 3. Check-in Date
  * 4. Check-out Date
  * 5. Room Numbers
- * 
- * Ensure your authkey.io template matches this order!
  */
 export async function sendBookingConfirmation(
   phoneNumber: string,
@@ -150,14 +156,8 @@ export async function sendBookingConfirmation(
   checkOutDate: string,
   roomNumbers: string
 ): Promise<WhatsAppResponse> {
-  // Get template ID from environment or use default
-  const templateId = process.env.AUTHKEY_WA_TEMPLATE_ID || "17222";
-  
-  // Clean and format phone number for Indian numbers
+  const templateId = process.env.AUTHKEY_WA_BOOKING_CONFIRMATION || "18491";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
-  
-  // NOTE: Currently hardcoded to India (91)
-  // TODO: Add country code field to guests table and use it here
   const countryCode = "91";
 
   return sendWhatsAppMessage({
@@ -169,22 +169,142 @@ export async function sendBookingConfirmation(
 }
 
 /**
- * Send enquiry notification WhatsApp message
+ * Send payment confirmation WhatsApp message
  * 
- * IMPORTANT: Template variables are sent in ORDER:
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Amount Paid
+ * 3. Payment Date
+ * 4. Booking Reference
+ * 5. Property Name
+ */
+export async function sendPaymentConfirmation(
+  phoneNumber: string,
+  guestName: string,
+  amountPaid: string,
+  paymentDate: string,
+  bookingReference: string,
+  propertyName: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, amountPaid, paymentDate, bookingReference, propertyName],
+  });
+}
+
+/**
+ * Send check-in notification WhatsApp message
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Property Name
+ * 3. Room Numbers
+ * 4. Check-in Date
+ * 5. Check-out Date
+ */
+export async function sendCheckInNotification(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  roomNumbers: string,
+  checkInDate: string,
+  checkOutDate: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "18652";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, roomNumbers, checkInDate, checkOutDate],
+  });
+}
+
+/**
+ * Send checkout/billing notification WhatsApp message
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Property Name
+ * 3. Total Amount
+ * 4. Checkout Date
+ * 5. Room Numbers
+ */
+export async function sendCheckoutNotification(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  totalAmount: string,
+  checkoutDate: string,
+  roomNumbers: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_CHECKOUT_DETAILS || "18652";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, totalAmount, checkoutDate, roomNumbers],
+  });
+}
+
+/**
+ * Send pending payment reminder WhatsApp message
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Property Name
+ * 3. Pending Amount
+ * 4. Due Date
+ * 5. Booking Reference
+ */
+export async function sendPendingPaymentReminder(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  pendingAmount: string,
+  dueDate: string,
+  bookingReference: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_PENDING_PAYMENT || "18649";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, pendingAmount, dueDate, bookingReference],
+  });
+}
+
+/**
+ * Send enquiry confirmation WhatsApp message
+ * 
+ * Template variables (in order):
  * 1. Guest Name
  * 2. Property Name
  * 3. Check-in Date
  * 4. Check-out Date
  */
-export async function sendEnquiryNotification(
+export async function sendEnquiryConfirmation(
   phoneNumber: string,
   guestName: string,
   propertyName: string,
   checkInDate: string,
   checkOutDate: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_TEMPLATE_ID || "17222";
+  const templateId = process.env.AUTHKEY_WA_ENQUIRY_CONFIRMATION || "18491";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 

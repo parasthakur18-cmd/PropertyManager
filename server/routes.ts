@@ -30,7 +30,14 @@ import { ObjectPermission } from "./objectAcl";
 import { createAuthkeyService } from "./authkey-service";
 import { neon } from "@neondatabase/serverless";
 import { eventBus, type DomainEvent } from "./eventBus";
-import { sendBookingConfirmation, sendEnquiryNotification } from "./whatsapp";
+import { 
+  sendBookingConfirmation, 
+  sendPaymentConfirmation,
+  sendCheckInNotification,
+  sendCheckoutNotification,
+  sendPendingPaymentReminder,
+  sendEnquiryConfirmation
+} from "./whatsapp";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1182,6 +1189,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
+      
+      // Send WhatsApp payment confirmation if advance amount was updated
+      if (validatedData.advanceAmount !== undefined && validatedData.advanceAmount !== existingBooking.advanceAmount) {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          
+          if (guest && guest.phone) {
+            // Get property info
+            let propertyName = "Your Property";
+            if (booking.roomId) {
+              const room = await storage.getRoom(booking.roomId);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+              }
+            } else if (booking.roomIds && booking.roomIds.length > 0) {
+              const room = await storage.getRoom(booking.roomIds[0]);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+              }
+            }
+            
+            const guestName = guest.fullName || "Guest";
+            const amountPaid = `₹${booking.advanceAmount}`;
+            const paymentDate = format(new Date(), "dd MMM yyyy");
+            const bookingRef = `#${booking.id}`;
+            
+            await sendPaymentConfirmation(
+              guest.phone,
+              guestName,
+              amountPaid,
+              paymentDate,
+              bookingRef,
+              propertyName
+            );
+            
+            console.log(`[WhatsApp] Booking #${booking.id} - Payment confirmation sent to ${guest.fullName}`);
+          } else if (!guest) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send payment confirmation: guest ${booking.guestId} not found`);
+          } else if (!guest.phone) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send payment confirmation: guest has no phone number`);
+          }
+        } catch (whatsappError: any) {
+          console.error(`[WhatsApp] Booking #${booking.id} - Payment notification failed (non-critical):`, whatsappError.message);
+        }
+      }
+      
       res.json(booking);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1241,6 +1296,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.updateBookingStatus(bookingId, status);
+      
+      // Send WhatsApp notification when guest checks in
+      if (status === "checked-in") {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          
+          if (guest && guest.phone) {
+            // Get property info
+            let propertyName = "Your Property";
+            let roomNumbers = "TBD";
+            
+            if (booking.roomId) {
+              const room = await storage.getRoom(booking.roomId);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+                roomNumbers = room.roomNumber;
+              }
+            } else if (booking.roomIds && booking.roomIds.length > 0) {
+              const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+              if (rooms.length > 0 && rooms[0]) {
+                const property = await storage.getProperty(rooms[0].propertyId);
+                propertyName = property?.name || propertyName;
+                roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+              }
+            }
+            
+            const guestName = guest.fullName || "Guest";
+            const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
+            const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+            
+            await sendCheckInNotification(
+              guest.phone,
+              guestName,
+              propertyName,
+              roomNumbers,
+              checkInDate,
+              checkOutDate
+            );
+            
+            console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName}`);
+          } else if (!guest) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send check-in notification: guest ${booking.guestId} not found`);
+          } else if (!guest.phone) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send check-in notification: guest has no phone number`);
+          }
+        } catch (whatsappError: any) {
+          console.error(`[WhatsApp] Booking #${booking.id} - Check-in notification failed (non-critical):`, whatsappError.message);
+        }
+      }
+      
       res.json(booking);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -1428,6 +1534,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Only update booking status after successful bill creation
       await storage.updateBookingStatus(bookingId, "checked-out");
+      
+      // Send WhatsApp checkout notification
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        
+        if (guest && guest.phone) {
+          // Get property info
+          let propertyName = "Your Property";
+          let roomNumbers = "TBD";
+          
+          if (booking.roomId) {
+            const room2 = await storage.getRoom(booking.roomId);
+            if (room2) {
+              const property = await storage.getProperty(room2.propertyId);
+              propertyName = property?.name || propertyName;
+              roomNumbers = room2.roomNumber;
+            }
+          } else if (booking.roomIds && booking.roomIds.length > 0) {
+            const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+            if (rooms.length > 0 && rooms[0]) {
+              const property = await storage.getProperty(rooms[0].propertyId);
+              propertyName = property?.name || propertyName;
+              roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+            }
+          }
+          
+          const guestName = guest.fullName || "Guest";
+          const totalAmountFormatted = `₹${totalAmount.toFixed(2)}`;
+          const checkoutDate = format(new Date(), "dd MMM yyyy");
+          
+          await sendCheckoutNotification(
+            guest.phone,
+            guestName,
+            propertyName,
+            totalAmountFormatted,
+            checkoutDate,
+            roomNumbers
+          );
+          
+          console.log(`[WhatsApp] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+        } else if (!guest) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send checkout notification: guest ${booking.guestId} not found`);
+        } else if (!guest.phone) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send checkout notification: guest has no phone number`);
+        }
+      } catch (whatsappError: any) {
+        console.error(`[WhatsApp] Booking #${booking.id} - Checkout notification failed (non-critical):`, whatsappError.message);
+      }
 
       res.json({ success: true, bill });
     } catch (error: any) {
