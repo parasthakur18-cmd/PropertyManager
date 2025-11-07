@@ -1050,11 +1050,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const booking = await storage.createBooking(data);
       
       // Send WhatsApp confirmation (non-blocking - don't fail booking if WhatsApp fails)
-      if (booking.guestPhone) {
-        try {
-          // Get guest info
-          const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
-          const guestName = guest ? `${guest.firstName} ${guest.lastName}` : booking.guestName || "Guest";
+      try {
+        // Get guest info
+        const guest = await storage.getGuest(booking.guestId);
+        
+        if (!guest) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send confirmation: guest ${booking.guestId} not found`);
+        } else if (!guest.phone) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send confirmation: guest ${booking.guestId} (${guest.fullName}) has no phone number`);
+        } else {
+          const guestName = guest.fullName || "Guest";
           
           // Get property info
           let propertyName = "Your Property";
@@ -1076,26 +1081,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let roomNumbers = "TBD";
           if (booking.roomId) {
             const room = await storage.getRoom(booking.roomId);
-            roomNumbers = room?.number || roomNumbers;
+            roomNumbers = room?.roomNumber || roomNumbers;
           } else if (booking.roomIds && booking.roomIds.length > 0) {
             const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
-            roomNumbers = rooms.filter(r => r).map(r => r!.number).join(", ");
+            roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
           }
           
           const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
           const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
           
           await sendBookingConfirmation(
-            booking.guestPhone,
+            guest.phone,
             guestName,
             propertyName,
             checkInDate,
             checkOutDate,
             roomNumbers
           );
-        } catch (whatsappError: any) {
-          console.error("WhatsApp notification failed (non-critical):", whatsappError.message);
+          
+          console.log(`[WhatsApp] Booking #${booking.id} - Confirmation sent to ${guest.fullName} (${guest.phone})`);
         }
+      } catch (whatsappError: any) {
+        console.error(`[WhatsApp] Booking #${booking.id} - Notification failed (non-critical):`, whatsappError.message);
       }
       
       res.status(201).json(booking);
