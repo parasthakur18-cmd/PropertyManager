@@ -30,6 +30,7 @@ import { ObjectPermission } from "./objectAcl";
 import { createAuthkeyService } from "./authkey-service";
 import { neon } from "@neondatabase/serverless";
 import { eventBus, type DomainEvent } from "./eventBus";
+import { sendBookingConfirmation, sendEnquiryNotification } from "./whatsapp";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -1047,6 +1048,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const booking = await storage.createBooking(data);
+      
+      // Send WhatsApp confirmation (non-blocking - don't fail booking if WhatsApp fails)
+      if (booking.guestPhone) {
+        try {
+          // Get guest info
+          const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
+          const guestName = guest ? `${guest.firstName} ${guest.lastName}` : booking.guestName || "Guest";
+          
+          // Get property info
+          let propertyName = "Your Property";
+          if (booking.roomId) {
+            const room = await storage.getRoom(booking.roomId);
+            if (room) {
+              const property = await storage.getProperty(room.propertyId);
+              propertyName = property?.name || propertyName;
+            }
+          } else if (booking.roomIds && booking.roomIds.length > 0) {
+            const room = await storage.getRoom(booking.roomIds[0]);
+            if (room) {
+              const property = await storage.getProperty(room.propertyId);
+              propertyName = property?.name || propertyName;
+            }
+          }
+          
+          // Get room numbers
+          let roomNumbers = "TBD";
+          if (booking.roomId) {
+            const room = await storage.getRoom(booking.roomId);
+            roomNumbers = room?.number || roomNumbers;
+          } else if (booking.roomIds && booking.roomIds.length > 0) {
+            const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+            roomNumbers = rooms.filter(r => r).map(r => r!.number).join(", ");
+          }
+          
+          const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
+          const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+          
+          await sendBookingConfirmation(
+            booking.guestPhone,
+            guestName,
+            propertyName,
+            checkInDate,
+            checkOutDate,
+            roomNumbers
+          );
+        } catch (whatsappError: any) {
+          console.error("WhatsApp notification failed (non-critical):", whatsappError.message);
+        }
+      }
+      
       res.status(201).json(booking);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
