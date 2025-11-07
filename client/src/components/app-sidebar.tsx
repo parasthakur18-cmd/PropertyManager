@@ -74,6 +74,7 @@ const adminMenuItems = [
 
 const managerMenuItems = [
   { title: "Dashboard", url: "/", icon: Home },
+  { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
@@ -84,6 +85,7 @@ const managerMenuItems = [
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
+  { title: "Billing", url: "/billing", icon: Receipt },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
   { title: "Expenses", url: "/expenses", icon: FileText },
