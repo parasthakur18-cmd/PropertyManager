@@ -53,6 +53,8 @@ export default function Bookings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [bookingType, setBookingType] = useState<"single" | "group">("single");
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
+  const [editBookingType, setEditBookingType] = useState<"single" | "group">("single");
+  const [editSelectedRoomIds, setEditSelectedRoomIds] = useState<number[]>([]);
   const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
@@ -425,6 +427,16 @@ export default function Bookings() {
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    
+    // Initialize booking type and room selection based on group booking status
+    if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+      setEditBookingType("group");
+      setEditSelectedRoomIds(booking.roomIds);
+    } else {
+      setEditBookingType("single");
+      setEditSelectedRoomIds([]);
+    }
+    
     editForm.reset({
       propertyId: booking.propertyId,
       guestId: booking.guestId,
@@ -447,19 +459,45 @@ export default function Bookings() {
   const onEditSubmit = (data: any) => {
     if (!editingBooking) return;
     
+    // Validate group booking has rooms selected
+    if (editBookingType === "group" && editSelectedRoomIds.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one room for group booking",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // Calculate totalAmount for edited booking
     const checkInDate = new Date(data.checkInDate);
     const checkOutDate = new Date(data.checkOutDate);
     const numberOfNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     
-    // Get the selected room to calculate price
-    const selectedRoom = rooms?.find(r => r.id === data.roomId);
     let pricePerNight = 0;
-    if (selectedRoom) {
-      pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
-      // For dormitory, multiply by beds booked
-      if (selectedRoom.roomCategory === "dormitory" && data.bedsBooked) {
-        pricePerNight = pricePerNight * data.bedsBooked;
+    let isGroupBooking = false;
+    let roomIds: number[] | null = null;
+    let roomId: number | null = null;
+    
+    if (editBookingType === "group") {
+      // Group booking - sum all room prices
+      isGroupBooking = true;
+      roomIds = editSelectedRoomIds;
+      const selectedRooms = rooms?.filter(r => editSelectedRoomIds.includes(r.id)) || [];
+      pricePerNight = selectedRooms.reduce((sum, r) => {
+        const roomPrice = data.customPrice ? parseFloat(data.customPrice) / selectedRooms.length : parseFloat(r.pricePerNight.toString());
+        return sum + roomPrice;
+      }, 0);
+    } else {
+      // Single room booking
+      const selectedRoom = rooms?.find(r => r.id === data.roomId);
+      roomId = data.roomId;
+      if (selectedRoom) {
+        pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
+        // For dormitory, multiply by beds booked
+        if (selectedRoom.roomCategory === "dormitory" && data.bedsBooked) {
+          pricePerNight = pricePerNight * data.bedsBooked;
+        }
       }
     }
     
@@ -471,6 +509,9 @@ export default function Bookings() {
       checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString() : data.checkInDate,
       checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString() : data.checkOutDate,
       totalAmount: totalAmount,
+      isGroupBooking: isGroupBooking,
+      roomIds: roomIds,
+      roomId: roomId,
     };
     
     updateBookingMutation.mutate({ id: editingBooking.id, data: payload as Partial<InsertBooking> });
@@ -1335,6 +1376,8 @@ export default function Bookings() {
           if (!open) {
             setEditingBooking(null);
             editForm.reset();
+            setEditBookingType("single");
+            setEditSelectedRoomIds([]);
           }
         }}
       >
@@ -1344,45 +1387,187 @@ export default function Bookings() {
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 pb-4">
-              <FormField
-                control={editForm.control}
-                name="roomId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Room</FormLabel>
-                    <Select
-                      onValueChange={(value) => {
-                        const roomId = parseInt(value);
-                        field.onChange(roomId);
-                        const selectedRoom = rooms?.find(r => r.id === roomId);
-                        if (selectedRoom) {
-                          editForm.setValue("propertyId", selectedRoom.propertyId);
-                        }
-                      }}
-                      value={field.value ? field.value.toString() : undefined}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-edit-booking-room">
-                          <SelectValue placeholder="Select room" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {rooms?.map((room) => {
-                          const property = properties?.find(p => p.id === room.propertyId);
-                          const isCurrentRoom = editingBooking?.roomId === room.id;
-                          return (
-                            <SelectItem key={room.id} value={room.id.toString()}>
-                              {property?.name} - Room {room.roomNumber} ({room.roomType}) - ₹{room.pricePerNight}/night
-                              {isCurrentRoom && " (Current)"}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              
+              <Tabs value={editBookingType} onValueChange={(value) => setEditBookingType(value as "single" | "group")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="single" data-testid="tab-edit-single-room">Single Room</TabsTrigger>
+                  <TabsTrigger value="group" data-testid="tab-edit-group-booking">Group Booking</TabsTrigger>
+                </TabsList>
+                <TabsContent value="single" className="mt-4">
+                  <FormField
+                    control={editForm.control}
+                    name="roomId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Room</FormLabel>
+                        <Select
+                          onValueChange={(value) => {
+                            const roomId = parseInt(value);
+                            field.onChange(roomId);
+                            const selectedRoom = rooms?.find(r => r.id === roomId);
+                            if (selectedRoom) {
+                              editForm.setValue("propertyId", selectedRoom.propertyId);
+                            }
+                          }}
+                          value={field.value ? field.value.toString() : undefined}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-booking-room">
+                              <SelectValue placeholder="Select room" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {rooms?.map((room) => {
+                              const property = properties?.find(p => p.id === room.propertyId);
+                              const isCurrentRoom = editingBooking?.roomId === room.id;
+                              const roomDescription = room.roomCategory === "dormitory" 
+                                ? `Dormitory - ${room.totalBeds || 0} beds`
+                                : (room.roomType || "Standard");
+                              const priceText = room.roomCategory === "dormitory" 
+                                ? `₹${room.pricePerNight}/bed/night`
+                                : `₹${room.pricePerNight}/night`;
+                              return (
+                                <SelectItem key={room.id} value={room.id.toString()}>
+                                  {property?.name} - Room {room.roomNumber} ({roomDescription}) - {priceText}
+                                  {isCurrentRoom && " (Current)"}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Bed selection for dormitory rooms */}
+                  {(() => {
+                    const selectedRoomId = editForm.watch("roomId");
+                    const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
+                    if (selectedRoom?.roomCategory === "dormitory") {
+                      return (
+                        <FormField
+                          control={editForm.control}
+                          name="bedsBooked"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Number of Beds to Book</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  max={selectedRoom.totalBeds || 1}
+                                  placeholder="Enter number of beds"
+                                  value={field.value || ""}
+                                  onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : "")}
+                                  data-testid="input-edit-beds-booked"
+                                />
+                              </FormControl>
+                              <p className="text-xs text-muted-foreground">
+                                Available beds: {selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
+                              </p>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      );
+                    }
+                    return null;
+                  })()}
+                </TabsContent>
+                <TabsContent value="group" className="mt-4">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <FormLabel>Select Rooms for Group Booking</FormLabel>
+                      <Badge variant="secondary" data-testid="badge-edit-selected-rooms">
+                        {editSelectedRoomIds.length} room{editSelectedRoomIds.length !== 1 ? 's' : ''} selected
+                      </Badge>
+                    </div>
+                    <div className="border border-border rounded-md max-h-64 overflow-y-auto">
+                      <table className="w-full">
+                        <thead className="bg-muted sticky top-0">
+                          <tr className="border-b border-border">
+                            <th className="p-2 text-left text-xs font-medium">
+                              <input
+                                type="checkbox"
+                                checked={editSelectedRoomIds.length === rooms?.length && rooms?.length > 0}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditSelectedRoomIds(rooms?.map(r => r.id) || []);
+                                  } else {
+                                    setEditSelectedRoomIds([]);
+                                  }
+                                }}
+                                data-testid="checkbox-edit-select-all-rooms"
+                              />
+                            </th>
+                            <th className="p-2 text-left text-xs font-medium">Property</th>
+                            <th className="p-2 text-left text-xs font-medium">Room</th>
+                            <th className="p-2 text-left text-xs font-medium">Type</th>
+                            <th className="p-2 text-left text-xs font-medium">Price/Night</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rooms?.map((room) => {
+                            const property = properties?.find(p => p.id === room.propertyId);
+                            const isSelected = editSelectedRoomIds.includes(room.id);
+                            const roomDescription = room.roomCategory === "dormitory" 
+                              ? `Dormitory (${room.totalBeds || 0} beds)`
+                              : (room.roomType || "Standard");
+                            const priceText = room.roomCategory === "dormitory" 
+                              ? `₹${room.pricePerNight}/bed/night`
+                              : `₹${room.pricePerNight}/night`;
+                            return (
+                              <tr 
+                                key={room.id} 
+                                className={`border-b border-border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/10' : ''}`}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setEditSelectedRoomIds(editSelectedRoomIds.filter(id => id !== room.id));
+                                  } else {
+                                    setEditSelectedRoomIds([...editSelectedRoomIds, room.id]);
+                                  }
+                                }}
+                                data-testid={`row-edit-room-${room.id}`}
+                              >
+                                <td className="p-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      e.stopPropagation();
+                                      if (e.target.checked) {
+                                        setEditSelectedRoomIds([...editSelectedRoomIds, room.id]);
+                                      } else {
+                                        setEditSelectedRoomIds(editSelectedRoomIds.filter(id => id !== room.id));
+                                      }
+                                    }}
+                                    data-testid={`checkbox-edit-room-${room.id}`}
+                                  />
+                                </td>
+                                <td className="p-2 text-sm">{property?.name}</td>
+                                <td className="p-2 text-sm font-mono font-semibold">{room.roomNumber}</td>
+                                <td className="p-2 text-sm text-muted-foreground">{roomDescription}</td>
+                                <td className="p-2 text-sm font-medium">{priceText}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {editSelectedRoomIds.length > 0 && (() => {
+                      const selectedRooms = rooms?.filter(r => editSelectedRoomIds.includes(r.id)) || [];
+                      const totalPrice = selectedRooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight.toString()), 0);
+                      return (
+                        <div className="p-3 bg-muted/50 rounded-md text-sm">
+                          <p className="font-medium">Group Booking Summary:</p>
+                          <p className="text-muted-foreground">{editSelectedRoomIds.length} rooms selected • Total: ₹{totalPrice}/night</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </TabsContent>
+              </Tabs>
+              
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={editForm.control}
