@@ -881,10 +881,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
-        const foodCharges = bookingOrders.reduce((sum, order) => {
-          const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
-          return sum + amount;
-        }, 0);
+        // Exclude rejected orders from food charges calculation
+        const foodCharges = bookingOrders
+          .filter(order => order.status !== "rejected")
+          .reduce((sum, order) => {
+            const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
+            return sum + amount;
+          }, 0);
 
         const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
         const extraCharges = bookingExtras.reduce((sum, extra) => {
@@ -1293,7 +1296,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate food charges (reusing allOrders and bookingOrders from pending order check above)
-      const foodCharges = bookingOrders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
+      // Exclude rejected orders from food charges
+      const foodCharges = bookingOrders
+        .filter(order => order.status !== "rejected")
+        .reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
 
       // Fetch and calculate extra service charges (now including manual charges)
       const allExtras = await storage.getAllExtraServices();
