@@ -1515,6 +1515,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk update display order for menu items
+  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const updates: { id: number; displayOrder: number }[] = req.body;
+      await storage.reorderMenuItems(updates);
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Menu Categories
   app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {
@@ -1575,6 +1586,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await storage.deleteMenuCategory(parseInt(req.params.id));
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bulk update display order for menu categories
+  app.patch("/api/menu-categories/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const updates: { id: number; displayOrder: number }[] = req.body;
+      await storage.reorderMenuCategories(updates);
+      res.status(200).json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -1,6 +1,23 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +69,14 @@ export default function EnhancedMenu() {
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   
   const { toast } = useToast();
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const { data: properties } = useQuery<any[]>({
     queryKey: ["/api/properties"],
@@ -106,6 +131,67 @@ export default function EnhancedMenu() {
       newExpanded.add(itemId);
     }
     setExpandedItems(newExpanded);
+  };
+
+  // Reorder categories mutation
+  const reorderCategoriesMutation = useMutation({
+    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
+      return await apiRequest("/api/menu-categories/reorder", "PATCH", updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+    },
+  });
+
+  // Reorder items mutation
+  const reorderItemsMutation = useMutation({
+    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
+      return await apiRequest("/api/menu-items/reorder", "PATCH", updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+    },
+  });
+
+  // Handle category drag end
+  const handleCategoryDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !categories) return;
+
+    // Use the full unfiltered list sorted by current displayOrder to ensure all items get updated
+    const allCategories = [...categories].sort((a, b) => a.displayOrder - b.displayOrder);
+    const oldIndex = allCategories.findIndex(cat => cat.id === active.id);
+    const newIndex = allCategories.findIndex(cat => cat.id === over.id);
+
+    const reordered = arrayMove(allCategories, oldIndex, newIndex);
+    const updates = reordered.map((cat, idx) => ({
+      id: cat.id,
+      displayOrder: idx,
+    }));
+
+    reorderCategoriesMutation.mutate(updates);
+  };
+
+  // Handle item drag end
+  const handleItemDragEnd = (categoryId: number) => (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !menuItems) return;
+
+    // Use the full unfiltered list of items in this category, sorted by displayOrder
+    const allCategoryItems = menuItems
+      .filter(item => item.categoryId === categoryId)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+    
+    const oldIndex = allCategoryItems.findIndex(item => item.id === active.id);
+    const newIndex = allCategoryItems.findIndex(item => item.id === over.id);
+
+    const reordered = arrayMove(allCategoryItems, oldIndex, newIndex);
+    const updates = reordered.map((item, idx) => ({
+      id: item.id,
+      displayOrder: idx,
+    }));
+
+    reorderItemsMutation.mutate(updates);
   };
 
   if (categoriesLoading || itemsLoading) {
@@ -219,50 +305,62 @@ export default function EnhancedMenu() {
       </div>
 
       {/* Categories List */}
-      <div className="space-y-6">
-        {filteredCategories?.map((category) => (
-          <CategorySection
-            key={category.id}
-            category={category}
-            items={filteredItems?.filter((item) => item.categoryId === category.id) || []}
-            onEditCategory={(cat) => {
-              setSelectedCategory(cat);
-              setShowCategoryForm(true);
-            }}
-            onAddItem={() => {
-              setSelectedCategory(category);
-              setSelectedItem(null);
-              setShowItemForm(true);
-            }}
-            onEditItem={(item) => {
-              setSelectedCategory(category);
-              setSelectedItem(item);
-              setShowItemForm(true);
-            }}
-            expandedItems={expandedItems}
-            toggleItemExpanded={toggleItemExpanded}
-          />
-        ))}
-
-        {(!filteredCategories || filteredCategories.length === 0) && (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground mb-4">
-                No categories yet. Create your first category to start building your menu!
-              </p>
-              <Button
-                onClick={() => {
-                  setSelectedCategory(null);
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleCategoryDragEnd}
+      >
+        <SortableContext
+          items={filteredCategories?.map(cat => cat.id) || []}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="space-y-6">
+            {filteredCategories?.map((category) => (
+              <SortableCategory
+                key={category.id}
+                category={category}
+                items={filteredItems?.filter((item) => item.categoryId === category.id) || []}
+                onEditCategory={(cat) => {
+                  setSelectedCategory(cat);
                   setShowCategoryForm(true);
                 }}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create First Category
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                onAddItem={() => {
+                  setSelectedCategory(category);
+                  setSelectedItem(null);
+                  setShowItemForm(true);
+                }}
+                onEditItem={(item) => {
+                  setSelectedCategory(category);
+                  setSelectedItem(item);
+                  setShowItemForm(true);
+                }}
+                expandedItems={expandedItems}
+                toggleItemExpanded={toggleItemExpanded}
+                onItemDragEnd={handleItemDragEnd}
+              />
+            ))}
+
+            {(!filteredCategories || filteredCategories.length === 0) && (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <p className="text-muted-foreground mb-4">
+                    No categories yet. Create your first category to start building your menu!
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setShowCategoryForm(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create First Category
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {/* Category Form Dialog */}
       <CategoryFormDialog
@@ -343,6 +441,56 @@ export default function EnhancedMenu() {
   );
 }
 
+// Sortable Category Wrapper
+function SortableCategory({
+  category,
+  items,
+  onEditCategory,
+  onAddItem,
+  onEditItem,
+  expandedItems,
+  toggleItemExpanded,
+  onItemDragEnd,
+}: {
+  category: MenuCategory;
+  items: MenuItem[];
+  onEditCategory: (cat: MenuCategory) => void;
+  onAddItem: () => void;
+  onEditItem: (item: MenuItem) => void;
+  expandedItems: Set<number>;
+  toggleItemExpanded: (id: number) => void;
+  onItemDragEnd: (categoryId: number) => (event: DragEndEvent) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <CategorySection
+        category={category}
+        items={items}
+        onEditCategory={onEditCategory}
+        onAddItem={onAddItem}
+        onEditItem={onEditItem}
+        expandedItems={expandedItems}
+        toggleItemExpanded={toggleItemExpanded}
+        onItemDragEnd={onItemDragEnd}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
 // Category Section Component
 function CategorySection({
   category,
@@ -352,6 +500,8 @@ function CategorySection({
   onEditItem,
   expandedItems,
   toggleItemExpanded,
+  onItemDragEnd,
+  dragHandleProps,
 }: {
   category: MenuCategory;
   items: MenuItem[];
@@ -360,6 +510,8 @@ function CategorySection({
   onEditItem: (item: MenuItem) => void;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
+  onItemDragEnd: (categoryId: number) => (event: DragEndEvent) => void;
+  dragHandleProps?: any;
 }) {
   const { toast } = useToast();
 
@@ -383,24 +535,28 @@ function CategorySection({
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <CardTitle className="flex items-center gap-2">
-              {category.name}
-              {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
-              <Badge variant="outline">{items.length} items</Badge>
-            </CardTitle>
-            {category.startTime && category.endTime && (
-              <p className="text-sm text-muted-foreground mt-1">
-                {category.startTime} - {category.endTime}
-              </p>
-            )}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
+            <GripVertical className="h-5 w-5 text-muted-foreground" />
+            <div className="flex-1">
+              <CardTitle className="flex items-center gap-2">
+                {category.name}
+                {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
+                <Badge variant="outline">{items.length} items</Badge>
+              </CardTitle>
+              {category.startTime && category.endTime && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {category.startTime} - {category.endTime}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => onEditCategory(category)}
+              data-testid={`button-edit-category-${category.id}`}
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -418,6 +574,7 @@ function CategorySection({
                   deleteCategory.mutate();
                 }
               }}
+              data-testid={`button-delete-category-${category.id}`}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -436,24 +593,40 @@ function CategorySection({
         </Button>
 
         {/* Items List */}
-        <div className="space-y-2">
-          {items.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onEdit={() => onEditItem(item)}
-              isExpanded={expandedItems.has(item.id)}
-              onToggleExpand={() => toggleItemExpanded(item.id)}
-            />
-          ))}
-        </div>
+        <DndContext
+          sensors={useSensors(
+            useSensor(PointerSensor),
+            useSensor(KeyboardSensor, {
+              coordinateGetter: sortableKeyboardCoordinates,
+            })
+          )}
+          collisionDetection={closestCenter}
+          onDragEnd={onItemDragEnd(category.id)}
+        >
+          <SortableContext
+            items={items.map(item => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {items.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  onEdit={() => onEditItem(item)}
+                  isExpanded={expandedItems.has(item.id)}
+                  onToggleExpand={() => toggleItemExpanded(item.id)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </CardContent>
     </Card>
   );
 }
 
-// Item Card Component with Variants and Add-ons
-function ItemCard({
+// Sortable Item Wrapper
+function SortableItem({
   item,
   onEdit,
   isExpanded,
@@ -463,6 +636,46 @@ function ItemCard({
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <ItemCard
+        item={item}
+        onEdit={onEdit}
+        isExpanded={isExpanded}
+        onToggleExpand={onToggleExpand}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
+
+// Item Card Component with Variants and Add-ons
+function ItemCard({
+  item,
+  onEdit,
+  isExpanded,
+  onToggleExpand,
+  dragHandleProps,
+}: {
+  item: MenuItem;
+  onEdit: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  dragHandleProps?: any;
 }) {
   const { toast } = useToast();
 
@@ -518,7 +731,10 @@ function ItemCard({
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
       <Card>
         <CardContent className="p-3">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
+              <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs">

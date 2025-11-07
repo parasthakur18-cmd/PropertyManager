@@ -132,6 +132,7 @@ export interface IStorage {
   createMenuCategory(category: InsertMenuCategory): Promise<MenuCategory>;
   updateMenuCategory(id: number, category: Partial<InsertMenuCategory>): Promise<MenuCategory>;
   deleteMenuCategory(id: number): Promise<void>;
+  reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void>;
 
   // Menu Item operations
   getAllMenuItems(): Promise<MenuItem[]>;
@@ -140,6 +141,7 @@ export interface IStorage {
   createMenuItem(menuItem: InsertMenuItem): Promise<MenuItem>;
   updateMenuItem(id: number, menuItem: Partial<InsertMenuItem>): Promise<MenuItem>;
   deleteMenuItem(id: number): Promise<void>;
+  reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void>;
 
   // Menu Item Variant operations
   getVariantsByMenuItem(menuItemId: number): Promise<MenuItemVariant[]>;
@@ -566,7 +568,7 @@ export class DatabaseStorage implements IStorage {
 
   // Menu Item operations
   async getAllMenuItems(): Promise<MenuItem[]> {
-    return await db.select().from(menuItems).orderBy(menuItems.category, menuItems.name);
+    return await db.select().from(menuItems).orderBy(menuItems.displayOrder, menuItems.name);
   }
 
   async getMenuItemsByProperty(propertyId: number): Promise<MenuItem[]> {
@@ -574,7 +576,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(menuItems)
       .where(eq(menuItems.propertyId, propertyId))
-      .orderBy(menuItems.category, menuItems.name);
+      .orderBy(menuItems.displayOrder, menuItems.name);
   }
 
   async getMenuItem(id: number): Promise<MenuItem | undefined> {
@@ -598,6 +600,15 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMenuItem(id: number): Promise<void> {
     await db.delete(menuItems).where(eq(menuItems.id, id));
+  }
+
+  async reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void> {
+    for (const update of updates) {
+      await db
+        .update(menuItems)
+        .set({ displayOrder: update.displayOrder, updatedAt: new Date() })
+        .where(eq(menuItems.id, update.id));
+    }
   }
 
   // Menu Category operations
@@ -634,6 +645,15 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMenuCategory(id: number): Promise<void> {
     await db.delete(menuCategories).where(eq(menuCategories.id, id));
+  }
+
+  async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {
+    for (const update of updates) {
+      await db
+        .update(menuCategories)
+        .set({ displayOrder: update.displayOrder, updatedAt: new Date() })
+        .where(eq(menuCategories.id, update.id));
+    }
   }
 
   // Menu Item Variant operations
