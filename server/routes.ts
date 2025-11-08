@@ -1737,10 +1737,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bulk update display order for menu items
   app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
     try {
-      const updates: { id: number; displayOrder: number }[] = req.body;
+      // Ensure IDs and displayOrder are converted to numbers
+      const updates: { id: number; displayOrder: number }[] = req.body.map((item: any) => ({
+        id: parseInt(String(item.id)),
+        displayOrder: parseInt(String(item.displayOrder))
+      }));
       await storage.reorderMenuItems(updates);
       res.status(200).json({ success: true });
     } catch (error: any) {
+      console.error("[Menu Reorder Error]:", error);
       res.status(500).json({ message: error.message });
     }
   });
