@@ -202,8 +202,8 @@ export async function sendPaymentConfirmation(
  * Send check-in notification WhatsApp message
  * 
  * Template variables (in order):
- * 1. Guest Name
- * 2. Property Name
+ * 1. Property Name (e.g., "Mountain View")
+ * 2. Guest Name (e.g., "Yogita")
  * 3. Room Numbers
  * 4. Check-in Date
  * 5. Check-out Date
@@ -224,7 +224,7 @@ export async function sendCheckInNotification(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, propertyName, roomNumbers, checkInDate, checkOutDate],
+    variables: [propertyName, guestName, roomNumbers, checkInDate, checkOutDate],
   });
 }
 
