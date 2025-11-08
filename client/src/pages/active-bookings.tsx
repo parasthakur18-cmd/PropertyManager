@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -31,6 +31,7 @@ interface ActiveBooking {
     fullName: string;
     email: string | null;
     phone: string;
+    idProofImage: string | null;
   };
   room: {
     id: number;
@@ -397,6 +398,21 @@ export default function ActiveBookings() {
                       {booking.numberOfGuests} {booking.numberOfGuests === 1 ? "guest" : "guests"}
                     </span>
                   </div>
+                  {booking.guest.idProofImage && (
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <a
+                        href={booking.guest.idProofImage}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline text-xs flex items-center gap-1"
+                        data-testid={`link-view-id-${booking.id}`}
+                      >
+                        <Eye className="h-3 w-3" />
+                        View ID Proof
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t pt-3 space-y-2">
@@ -513,6 +529,20 @@ export default function ActiveBookings() {
                       <Badge variant="secondary" className="ml-2 bg-blue-500 text-white text-xs">
                         Group Booking
                       </Badge>
+                    )}
+                    {checkoutDialog.booking.guest.idProofImage && (
+                      <div className="mt-1">
+                        <a
+                          href={checkoutDialog.booking.guest.idProofImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-xs flex items-center gap-1"
+                          data-testid="link-view-id-checkout"
+                        >
+                          <FileText className="h-3 w-3" />
+                          View Guest ID Proof
+                        </a>
+                      </div>
                     )}
                   </div>
                   <div className="text-right">
