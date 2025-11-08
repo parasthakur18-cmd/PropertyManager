@@ -1979,6 +1979,13 @@ function CheckoutBillSummary({
         const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
         return pricePerNight * nights;
       })();
+  
+  // Calculate actual price per night for display (considering custom price)
+  const displayPricePerNight = isGroupBooking
+    ? 0 // For group bookings, don't show individual price per night
+    : booking.customPrice 
+      ? parseFloat(booking.customPrice)
+      : (bookingRooms[0] ? parseFloat(bookingRooms[0].pricePerNight) : 0);
 
   const foodCharges = bookingOrders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
   const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
@@ -2045,7 +2052,7 @@ function CheckoutBillSummary({
             <span>
               {isGroupBooking 
                 ? `Room Charges (${bookingRooms.length} rooms × ${nights} nights)`
-                : `Room Charges (${nights} × ₹${bookingRooms[0] ? parseFloat(bookingRooms[0].pricePerNight).toFixed(2) : '0.00'})`}
+                : `Room Charges (${nights} × ₹${displayPricePerNight.toFixed(2)})`}
             </span>
             <span className="font-mono" data-testid="text-checkout-room-charges">₹{roomCharges.toFixed(2)}</span>
           </div>
