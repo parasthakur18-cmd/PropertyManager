@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -146,7 +146,6 @@ export default function EnhancedMenu() {
   // Reorder items mutation
   const reorderItemsMutation = useMutation({
     mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
-      console.log("[Frontend] Sending reorder updates:", JSON.stringify(updates, null, 2));
       return await apiRequest("/api/menu-items/reorder", "PATCH", updates);
     },
     onSuccess: () => {
@@ -157,7 +156,6 @@ export default function EnhancedMenu() {
       });
     },
     onError: (error: Error) => {
-      console.error("[Frontend] Reorder error:", error);
       toast({
         title: "Error",
         description: `Failed to reorder items: ${error.message}`,
@@ -165,6 +163,29 @@ export default function EnhancedMenu() {
       });
     },
   });
+
+  // Move item up or down within category
+  const moveItem = (categoryId: number, itemId: number, direction: 'up' | 'down') => {
+    if (!menuItems) return;
+    
+    const categoryItems = menuItems
+      .filter(item => item.categoryId === categoryId)
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+    
+    const currentIndex = categoryItems.findIndex(item => item.id === itemId);
+    if (currentIndex === -1) return;
+    
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= categoryItems.length) return;
+    
+    // Swap displayOrder of current item and target item
+    const updates = [
+      { id: categoryItems[currentIndex].id, displayOrder: categoryItems[targetIndex].displayOrder },
+      { id: categoryItems[targetIndex].id, displayOrder: categoryItems[currentIndex].displayOrder }
+    ];
+    
+    reorderItemsMutation.mutate(updates);
+  };
 
   // Handle category drag end
   const handleCategoryDragEnd = (event: DragEndEvent) => {
@@ -185,27 +206,6 @@ export default function EnhancedMenu() {
     reorderCategoriesMutation.mutate(updates);
   };
 
-  // Handle item drag end
-  const handleItemDragEnd = (categoryId: number) => (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id || !menuItems) return;
-
-    // Use the full unfiltered list of items in this category, sorted by displayOrder
-    const allCategoryItems = menuItems
-      .filter(item => item.categoryId === categoryId)
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-    
-    const oldIndex = allCategoryItems.findIndex(item => item.id === active.id);
-    const newIndex = allCategoryItems.findIndex(item => item.id === over.id);
-
-    const reordered = arrayMove(allCategoryItems, oldIndex, newIndex);
-    const updates = reordered.map((item, idx) => ({
-      id: item.id,
-      displayOrder: idx,
-    }));
-
-    reorderItemsMutation.mutate(updates);
-  };
 
   if (categoriesLoading || itemsLoading) {
     return (
@@ -329,7 +329,7 @@ export default function EnhancedMenu() {
         >
           <div className="space-y-6">
             {filteredCategories?.map((category) => (
-              <SortableCategory
+              <CategorySection
                 key={category.id}
                 category={category}
                 items={filteredItems?.filter((item) => item.categoryId === category.id) || []}
@@ -349,7 +349,7 @@ export default function EnhancedMenu() {
                 }}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
-                onItemDragEnd={handleItemDragEnd}
+                onMoveItem={moveItem}
               />
             ))}
 
@@ -454,55 +454,6 @@ export default function EnhancedMenu() {
   );
 }
 
-// Sortable Category Wrapper
-function SortableCategory({
-  category,
-  items,
-  onEditCategory,
-  onAddItem,
-  onEditItem,
-  expandedItems,
-  toggleItemExpanded,
-  onItemDragEnd,
-}: {
-  category: MenuCategory;
-  items: MenuItem[];
-  onEditCategory: (cat: MenuCategory) => void;
-  onAddItem: () => void;
-  onEditItem: (item: MenuItem) => void;
-  expandedItems: Set<number>;
-  toggleItemExpanded: (id: number) => void;
-  onItemDragEnd: (categoryId: number) => (event: DragEndEvent) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: category.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <CategorySection
-        category={category}
-        items={items}
-        onEditCategory={onEditCategory}
-        onAddItem={onAddItem}
-        onEditItem={onEditItem}
-        expandedItems={expandedItems}
-        toggleItemExpanded={toggleItemExpanded}
-        onItemDragEnd={onItemDragEnd}
-        dragHandleProps={{ ...attributes, ...listeners }}
-      />
-    </div>
-  );
-}
 
 // Category Section Component
 function CategorySection({
@@ -513,8 +464,7 @@ function CategorySection({
   onEditItem,
   expandedItems,
   toggleItemExpanded,
-  onItemDragEnd,
-  dragHandleProps,
+  onMoveItem,
 }: {
   category: MenuCategory;
   items: MenuItem[];
@@ -523,8 +473,7 @@ function CategorySection({
   onEditItem: (item: MenuItem) => void;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
-  onItemDragEnd: (categoryId: number) => (event: DragEndEvent) => void;
-  dragHandleProps?: any;
+  onMoveItem: (categoryId: number, itemId: number, direction: 'up' | 'down') => void;
 }) {
   const { toast } = useToast();
 
@@ -549,20 +498,17 @@ function CategorySection({
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
-            <GripVertical className="h-5 w-5 text-muted-foreground" />
-            <div className="flex-1">
-              <CardTitle className="flex items-center gap-2">
-                {category.name}
-                {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
-                <Badge variant="outline">{items.length} items</Badge>
-              </CardTitle>
-              {category.startTime && category.endTime && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {category.startTime} - {category.endTime}
-                </p>
-              )}
-            </div>
+          <div className="flex-1">
+            <CardTitle className="flex items-center gap-2">
+              {category.name}
+              {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
+              <Badge variant="outline">{items.length} items</Badge>
+            </CardTitle>
+            {category.startTime && category.endTime && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {category.startTime} - {category.endTime}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -606,75 +552,26 @@ function CategorySection({
         </Button>
 
         {/* Items List */}
-        <DndContext
-          sensors={useSensors(
-            useSensor(PointerSensor),
-            useSensor(KeyboardSensor, {
-              coordinateGetter: sortableKeyboardCoordinates,
-            })
-          )}
-          collisionDetection={closestCenter}
-          onDragEnd={onItemDragEnd(category.id)}
-        >
-          <SortableContext
-            items={items.map(item => item.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-2">
-              {items.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  onEdit={() => onEditItem(item)}
-                  isExpanded={expandedItems.has(item.id)}
-                  onToggleExpand={() => toggleItemExpanded(item.id)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <div className="space-y-2">
+          {items.map((item, index) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              onEdit={() => onEditItem(item)}
+              isExpanded={expandedItems.has(item.id)}
+              onToggleExpand={() => toggleItemExpanded(item.id)}
+              onMoveUp={() => onMoveItem(category.id, item.id, 'up')}
+              onMoveDown={() => onMoveItem(category.id, item.id, 'down')}
+              isFirst={index === 0}
+              isLast={index === items.length - 1}
+            />
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-// Sortable Item Wrapper
-function SortableItem({
-  item,
-  onEdit,
-  isExpanded,
-  onToggleExpand,
-}: {
-  item: MenuItem;
-  onEdit: () => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <ItemCard
-        item={item}
-        onEdit={onEdit}
-        isExpanded={isExpanded}
-        onToggleExpand={onToggleExpand}
-        dragHandleProps={{ ...attributes, ...listeners }}
-      />
-    </div>
-  );
-}
 
 // Item Card Component with Variants and Add-ons
 function ItemCard({
@@ -682,13 +579,19 @@ function ItemCard({
   onEdit,
   isExpanded,
   onToggleExpand,
-  dragHandleProps,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
 }: {
   item: MenuItem;
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
-  dragHandleProps?: any;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  isFirst?: boolean;
+  isLast?: boolean;
 }) {
   const { toast } = useToast();
 
@@ -745,8 +648,27 @@ function ItemCard({
       <Card>
         <CardContent className="p-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 cursor-grab active:cursor-grabbing" {...dragHandleProps}>
-              <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <div className="flex flex-col gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onMoveUp}
+                disabled={isFirst || !onMoveUp}
+                className="h-6 w-6"
+                data-testid={`button-move-up-${item.id}`}
+              >
+                <ArrowUp className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onMoveDown}
+                disabled={isLast || !onMoveDown}
+                className="h-6 w-6"
+                data-testid={`button-move-down-${item.id}`}
+              >
+                <ArrowDown className="h-3 w-3" />
+              </Button>
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
