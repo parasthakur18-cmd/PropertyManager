@@ -1734,25 +1734,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk update display order for menu items
-  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+  // Swap two menu items (simple swap for arrow buttons)
+  app.patch("/api/menu-items/swap", isAuthenticated, async (req, res) => {
     try {
-      const fs = await import('fs/promises');
-      await fs.writeFile('/tmp/reorder-debug.txt', `Request body: ${JSON.stringify(req.body, null, 2)}\n`, { flag: 'a' });
+      const { id1, id2, order1, order2 } = req.body;
       
-      // Ensure IDs and displayOrder are converted to numbers
-      const updates: { id: number; displayOrder: number }[] = req.body.map((item: any) => ({
-        id: parseInt(String(item.id)),
-        displayOrder: parseInt(String(item.displayOrder))
-      }));
+      // Simple swap - update both items
+      await storage.updateMenuItem(Number(id1), { displayOrder: Number(order2) });
+      await storage.updateMenuItem(Number(id2), { displayOrder: Number(order1) });
       
-      await fs.writeFile('/tmp/reorder-debug.txt', `Converted updates: ${JSON.stringify(updates, null, 2)}\n`, { flag: 'a' });
-      
-      await storage.reorderMenuItems(updates);
       res.status(200).json({ success: true });
     } catch (error: any) {
-      const fs = await import('fs/promises');
-      await fs.writeFile('/tmp/reorder-debug.txt', `ERROR: ${error.message}\nSTACK: ${error.stack}\n`, { flag: 'a' });
       res.status(500).json({ message: error.message });
     }
   });

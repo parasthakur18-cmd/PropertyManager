@@ -143,10 +143,10 @@ export default function EnhancedMenu() {
     },
   });
 
-  // Reorder items mutation
-  const reorderItemsMutation = useMutation({
-    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
-      return await apiRequest("/api/menu-items/reorder", "PATCH", updates);
+  // Swap two items mutation
+  const swapItemsMutation = useMutation({
+    mutationFn: async (payload: { id1: number; id2: number; order1: number; order2: number }) => {
+      return await apiRequest("/api/menu-items/swap", "PATCH", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -178,13 +178,16 @@ export default function EnhancedMenu() {
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (targetIndex < 0 || targetIndex >= categoryItems.length) return;
     
-    // Swap displayOrder of current item and target item
-    const updates = [
-      { id: categoryItems[currentIndex].id, displayOrder: categoryItems[targetIndex].displayOrder },
-      { id: categoryItems[targetIndex].id, displayOrder: categoryItems[currentIndex].displayOrder }
-    ];
+    const currentItem = categoryItems[currentIndex];
+    const targetItem = categoryItems[targetIndex];
     
-    reorderItemsMutation.mutate(updates);
+    // Swap the two items
+    swapItemsMutation.mutate({
+      id1: currentItem.id,
+      id2: targetItem.id,
+      order1: currentItem.displayOrder,
+      order2: targetItem.displayOrder
+    });
   };
 
   // Handle category drag end
