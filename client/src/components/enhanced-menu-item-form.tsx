@@ -36,6 +36,7 @@ const menuItemFormSchema = z.object({
   isAvailable: z.boolean().default(true),
   hasVariants: z.boolean().default(false),
   hasAddOns: z.boolean().default(false),
+  displayOrder: z.number().int().min(0),
   variants: z.array(z.object({
     variantName: z.string().min(1),
     actualPrice: z.string().min(1),
@@ -86,6 +87,7 @@ export function EnhancedMenuItemForm({
       isAvailable: true,
       hasVariants: false,
       hasAddOns: false,
+      displayOrder: 0,
       variants: [],
       addOns: [],
     },
@@ -125,8 +127,8 @@ export function EnhancedMenuItemForm({
           ]);
 
           form.reset({
-            propertyId: menuItem.propertyId,
-            categoryId: menuItem.categoryId,
+            propertyId: menuItem.propertyId ?? 0,
+            categoryId: menuItem.categoryId ?? null,
             name: menuItem.name,
             description: menuItem.description || "",
             foodType: (menuItem.foodType as "veg" | "non-veg") || "veg",
@@ -136,6 +138,7 @@ export function EnhancedMenuItemForm({
             isAvailable: menuItem.isAvailable,
             hasVariants: menuItem.hasVariants,
             hasAddOns: menuItem.hasAddOns,
+            displayOrder: menuItem.displayOrder || 0,
             variants: variantsResponse.map((v: any) => ({
               variantName: v.variantName,
               actualPrice: v.actualPrice,
@@ -154,8 +157,8 @@ export function EnhancedMenuItemForm({
           console.error("Error loading existing data:", error);
           // Fallback to empty arrays if fetch fails
           form.reset({
-            propertyId: menuItem.propertyId,
-            categoryId: menuItem.categoryId,
+            propertyId: menuItem.propertyId ?? 0,
+            categoryId: menuItem.categoryId ?? null,
             name: menuItem.name,
             description: menuItem.description || "",
             foodType: (menuItem.foodType as "veg" | "non-veg") || "veg",
@@ -165,6 +168,7 @@ export function EnhancedMenuItemForm({
             isAvailable: menuItem.isAvailable,
             hasVariants: menuItem.hasVariants,
             hasAddOns: menuItem.hasAddOns,
+            displayOrder: menuItem.displayOrder || 0,
             variants: [],
             addOns: [],
           });
@@ -188,6 +192,7 @@ export function EnhancedMenuItemForm({
         isAvailable: true,
         hasVariants: false,
         hasAddOns: false,
+        displayOrder: 0,
         variants: [],
         addOns: [],
       });
@@ -295,6 +300,27 @@ export function EnhancedMenuItemForm({
                   ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Display Order */}
+          <div>
+            <Label>Display Order</Label>
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              {...form.register("displayOrder", { valueAsNumber: true })}
+              placeholder="0"
+              data-testid="input-display-order"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Lower numbers appear first (0, 1, 2, 3...)
+            </p>
+            {form.formState.errors.displayOrder && (
+              <p className="text-sm text-destructive mt-1">
+                {form.formState.errors.displayOrder.message}
+              </p>
+            )}
           </div>
 
           {/* Item Name */}
