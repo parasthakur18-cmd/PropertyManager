@@ -372,12 +372,15 @@ export default function Bookings() {
         };
       } else {
         // Single room booking
+        const selectedRoom = rooms?.find(r => r.id === data.roomId);
         bookingData = {
           ...data,
           guestId: newGuest.id,
           roomIds: null,
           isGroupBooking: false,
           travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
+          // Auto-set bedsBooked for dormitory rooms (use null instead of undefined to avoid database defaults)
+          bedsBooked: selectedRoom?.roomType === "Dormitory" ? data.numberOfGuests : null,
         };
       }
       
@@ -392,9 +395,10 @@ export default function Bookings() {
         const selectedRoom = rooms?.find(r => r.id === data.roomId);
         if (selectedRoom) {
           pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
-          // For dormitory, multiply by beds booked
-          if (selectedRoom.roomCategory === "dormitory" && data.bedsBooked) {
-            pricePerNight = pricePerNight * data.bedsBooked;
+          // For dormitory, multiply by beds booked (use numberOfGuests if bedsBooked not set)
+          if (selectedRoom.roomType === "Dormitory") {
+            const bedsCount = bookingData.bedsBooked || data.numberOfGuests;
+            pricePerNight = pricePerNight * bedsCount;
           }
         }
       } else {
@@ -495,13 +499,20 @@ export default function Bookings() {
       if (selectedRoom) {
         pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
         // For dormitory, multiply by beds booked
-        if (selectedRoom.roomCategory === "dormitory" && data.bedsBooked) {
-          pricePerNight = pricePerNight * data.bedsBooked;
+        if (selectedRoom.roomType === "Dormitory") {
+          const bedsCount = data.bedsBooked || data.numberOfGuests;
+          pricePerNight = pricePerNight * bedsCount;
         }
       }
     }
     
     const totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+    
+    // Auto-set bedsBooked for dormitory rooms in edit mode
+    const selectedRoom = rooms?.find(r => r.id === data.roomId);
+    const bedsBooked = selectedRoom?.roomType === "Dormitory" 
+      ? (data.bedsBooked || data.numberOfGuests) 
+      : null;
     
     // Convert Date objects to ISO strings for API transmission
     const payload = {
@@ -512,6 +523,7 @@ export default function Bookings() {
       isGroupBooking: isGroupBooking,
       roomIds: roomIds,
       roomId: roomId,
+      bedsBooked: bedsBooked,
     };
     
     updateBookingMutation.mutate({ id: editingBooking.id, data: payload as Partial<InsertBooking> });

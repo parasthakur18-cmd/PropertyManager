@@ -491,6 +491,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
+    console.log('🔍 [STORAGE DEBUG] createBooking called with:', {
+      roomId: booking.roomId,
+      numberOfGuests: booking.numberOfGuests,
+      bedsBooked: booking.bedsBooked,
+      hasBedsBooked: 'bedsBooked' in booking,
+      bedsBookedType: typeof booking.bedsBooked
+    });
+    
     // Auto-assign room if not provided
     if (!booking.roomId && booking.propertyId) {
       const availableRooms = await this.getAvailableRooms(booking.propertyId);
@@ -507,7 +515,13 @@ export class DatabaseStorage implements IStorage {
       .set({ totalStays: sql`${guests.totalStays} + 1` })
       .where(eq(guests.id, booking.guestId));
 
+    console.log('🔍 [STORAGE DEBUG] About to insert booking with bedsBooked:', booking.bedsBooked);
     const [newBooking] = await db.insert(bookings).values(booking).returning();
+    console.log('🔍 [STORAGE DEBUG] Created booking:', {
+      id: newBooking.id,
+      bedsBooked: newBooking.bedsBooked,
+      numberOfGuests: newBooking.numberOfGuests
+    });
     
     // Publish event for automatic propagation
     eventBus.publish({

@@ -1019,6 +1019,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const data = insertBookingSchema.parse(bodyWithDates);
       
+      console.log('🔍 [DEBUG] Booking creation - parsed data:', {
+        roomId: data.roomId,
+        numberOfGuests: data.numberOfGuests,
+        bedsBooked: data.bedsBooked,
+        hasBedsBooked: 'bedsBooked' in data,
+        bedsBookedType: typeof data.bedsBooked
+      });
+      
       // Validate travel agent belongs to same property as booking
       if (data.travelAgentId) {
         // Determine booking property from roomId, roomIds, or propertyId
