@@ -19,9 +19,9 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
 -   **Booking & Guest Management**: Coordinates bookings, tracks guests, offers advanced pricing, and tracks booking sources and meal plans.
 -   **WhatsApp Notifications System**: Guest notifications for check-in and checkout via authkey.io, with Indian phone number normalization and configurable templates. Booking confirmation and payment notifications are available but currently disabled (can be re-enabled in code).
 -   **Travel Agent Management**: Tracks and manages travel agents with full CRUD operations, property-scoped databases, and data integrity validation.
--   **Date-Based Room Availability**: Determines room availability by checking booking date overlaps across active bookings, supporting multiple bookings for different date ranges for the same room.
+-   **Date-Based Room Availability**: Determines room availability by checking booking date overlaps across active bookings, supporting multiple bookings for different date ranges for the same room. Frontend booking form now integrates with availability API to show only available rooms and display remaining bed counts for dormitory rooms in real-time.
 -   **Group Bookings**: Allows creating group bookings for multiple rooms under a single guest.
--   **Dormitory Room Support**: Enables "Dormitory" room type with bed count for bed-based bookings.
+-   **Dormitory Bed Capacity Tracking**: Full bed-level tracking for dormitory rooms. The `bedsBooked` field correctly saves to database (fixed by using `null` instead of `undefined` to avoid database defaults). Frontend booking form displays remaining beds (e.g., "3/6 beds available") and prevents overbooking by filtering unavailable rooms based on date-range availability.
 -   **Booking Deletion**: Safe deletion prevents removal of bookings with associated bills or food orders.
 -   **Payment & Communication System**: Tracks advance payments, sends guest messages, and logs communications.
 -   **Restaurant & Order Management**: Manages restaurant operations, order tracking, menu items, and food order reporting.

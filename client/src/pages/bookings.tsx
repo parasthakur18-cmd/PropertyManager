@@ -97,6 +97,45 @@ export default function Bookings() {
     queryKey: ["/api/rooms"],
   });
 
+  const form = useForm({
+    // Don't use zodResolver because we create the guest first
+    defaultValues: {
+      propertyId: undefined as any,
+      guestId: undefined as any,
+      roomId: undefined as any,
+      checkInDate: new Date(),
+      checkOutDate: new Date(),
+      status: "pending",
+      numberOfGuests: 1,
+      customPrice: null,
+      advanceAmount: "0",
+      specialRequests: "",
+      source: "Walk-in",
+      travelAgentId: null,
+      mealPlan: "EP",
+      bedsBooked: null,
+    },
+  });
+
+  const editForm = useForm({
+    defaultValues: {
+      propertyId: undefined as any,
+      guestId: undefined as any,
+      roomId: undefined as any,
+      checkInDate: new Date(),
+      checkOutDate: new Date(),
+      status: "pending",
+      numberOfGuests: 1,
+      customPrice: null,
+      advanceAmount: "0",
+      specialRequests: "",
+      source: "Walk-in",
+      travelAgentId: undefined as number | undefined,
+      mealPlan: "EP",
+      bedsBooked: undefined as number | undefined,
+    },
+  });
+
   // Watch check-in and check-out dates for availability checking
   const checkInDate = form.watch("checkInDate");
   const checkOutDate = form.watch("checkOutDate");
@@ -182,45 +221,6 @@ export default function Bookings() {
     const roomAvail = availability?.find(a => a.roomId === roomId);
     return roomAvail?.remainingBeds || roomAvail?.totalBeds || 0;
   };
-
-  const form = useForm({
-    // Don't use zodResolver because we create the guest first
-    defaultValues: {
-      propertyId: undefined as any,
-      guestId: undefined as any,
-      roomId: undefined as any,
-      checkInDate: new Date(),
-      checkOutDate: new Date(),
-      status: "pending",
-      numberOfGuests: 1,
-      customPrice: null,
-      advanceAmount: "0",
-      specialRequests: "",
-      source: "Walk-in",
-      travelAgentId: null,
-      mealPlan: "EP",
-      bedsBooked: null,
-    },
-  });
-
-  const editForm = useForm({
-    defaultValues: {
-      propertyId: undefined as any,
-      guestId: undefined as any,
-      roomId: undefined as any,
-      checkInDate: new Date(),
-      checkOutDate: new Date(),
-      status: "pending",
-      numberOfGuests: 1,
-      customPrice: null,
-      advanceAmount: "0",
-      specialRequests: "",
-      source: "Walk-in",
-      travelAgentId: undefined as number | undefined,
-      mealPlan: "EP",
-      bedsBooked: undefined as number | undefined,
-    },
-  });
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertBooking) => {
