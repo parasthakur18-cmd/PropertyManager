@@ -97,6 +97,92 @@ export default function Bookings() {
     queryKey: ["/api/rooms"],
   });
 
+  // Watch check-in and check-out dates for availability checking
+  const checkInDate = form.watch("checkInDate");
+  const checkOutDate = form.watch("checkOutDate");
+  const editCheckInDate = editForm.watch("checkInDate");
+  const editCheckOutDate = editForm.watch("checkOutDate");
+
+  // Fetch room availability based on selected dates (for new booking)
+  const { data: roomAvailability } = useQuery({
+    queryKey: ["/api/rooms/availability", checkInDate, checkOutDate],
+    enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/rooms/availability?checkIn=${checkInDate.toISOString()}&checkOut=${checkOutDate.toISOString()}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch availability");
+      return response.json() as Promise<Array<{
+        roomId: number;
+        available: number;
+        totalBeds?: number;
+        remainingBeds?: number;
+      }>>;
+    },
+  });
+
+  // Fetch room availability for edit mode
+  const { data: editRoomAvailability } = useQuery({
+    queryKey: ["/api/rooms/availability", editCheckInDate, editCheckOutDate, editingBooking?.id],
+    enabled: !!(editCheckInDate && editCheckOutDate && editCheckInDate < editCheckOutDate && editingBooking),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/rooms/availability?checkIn=${editCheckInDate.toISOString()}&checkOut=${editCheckOutDate.toISOString()}&excludeBookingId=${editingBooking?.id}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch availability");
+      return response.json() as Promise<Array<{
+        roomId: number;
+        available: number;
+        totalBeds?: number;
+        remainingBeds?: number;
+      }>>;
+    },
+  });
+
+  // Helper function to get available rooms based on date-range availability
+  const getAvailableRooms = (isEditMode: boolean = false) => {
+    const availability = isEditMode ? editRoomAvailability : roomAvailability;
+    
+    if (!availability || !rooms) {
+      // Fallback to status-based filtering while loading
+      if (import.meta.env.DEV) {
+        console.debug('[Availability] No availability data yet, using status filter fallback');
+      }
+      return rooms?.filter(r => r.status === "available") || [];
+    }
+
+    // Filter rooms based on availability
+    const availableRooms = rooms.filter(room => {
+      const roomAvail = availability.find(a => a.roomId === room.id);
+      if (!roomAvail) return false;
+      
+      // For regular rooms, check if available > 0
+      // For dormitory rooms, check if remainingBeds > 0
+      const isAvailable = room.roomCategory === "dormitory" 
+        ? (roomAvail.remainingBeds || 0) > 0
+        : roomAvail.available > 0;
+      
+      if (import.meta.env.DEV && !isAvailable) {
+        console.debug(`[Availability] Room ${room.roomNumber} excluded - ${room.roomCategory === "dormitory" ? `${roomAvail.remainingBeds || 0} beds remaining` : 'unavailable'}`);
+      }
+      
+      return isAvailable;
+    });
+
+    if (import.meta.env.DEV) {
+      console.debug('[Availability] Available rooms:', availableRooms.map(r => r.roomNumber));
+    }
+
+    return availableRooms;
+  };
+
+  // Helper to get remaining beds for a dormitory room
+  const getRemainingBeds = (roomId: number, isEditMode: boolean = false) => {
+    const availability = isEditMode ? editRoomAvailability : roomAvailability;
+    const roomAvail = availability?.find(a => a.roomId === roomId);
+    return roomAvail?.remainingBeds || roomAvail?.totalBeds || 0;
+  };
+
   const form = useForm({
     // Don't use zodResolver because we create the guest first
     defaultValues: {
@@ -737,10 +823,11 @@ export default function Bookings() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {rooms?.filter(r => r.status === "available").map((room) => {
+                              {getAvailableRooms(false).map((room) => {
                                 const property = properties?.find(p => p.id === room.propertyId);
+                                const remainingBeds = getRemainingBeds(room.id, false);
                                 const roomDescription = room.roomCategory === "dormitory" 
-                                  ? `Dormitory - ${room.totalBeds || 0} beds`
+                                  ? `Dormitory - ${remainingBeds}/${room.totalBeds || 0} beds available`
                                   : (room.roomType || "Standard");
                                 const priceText = room.roomCategory === "dormitory" 
                                   ? `₹${room.pricePerNight}/bed/night`
@@ -762,6 +849,7 @@ export default function Bookings() {
                       const selectedRoomId = form.watch("roomId");
                       const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
                       if (selectedRoom?.roomCategory === "dormitory") {
+                        const remainingBeds = getRemainingBeds(selectedRoomId, false);
                         return (
                           <FormField
                             control={form.control}
@@ -773,7 +861,7 @@ export default function Bookings() {
                                   <Input
                                     type="number"
                                     min="1"
-                                    max={selectedRoom.totalBeds || 1}
+                                    max={remainingBeds}
                                     placeholder="Enter number of beds"
                                     value={field.value || ""}
                                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : "")}
@@ -781,7 +869,7 @@ export default function Bookings() {
                                   />
                                 </FormControl>
                                 <p className="text-xs text-muted-foreground">
-                                  Available beds: {selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
+                                  Available beds: {remainingBeds}/{selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
                                 </p>
                                 <FormMessage />
                               </FormItem>
@@ -807,10 +895,10 @@ export default function Bookings() {
                               <th className="p-2 text-left text-xs font-medium">
                                 <input
                                   type="checkbox"
-                                  checked={selectedRoomIds.length === rooms?.filter(r => r.status === "available").length && rooms?.filter(r => r.status === "available").length > 0}
+                                  checked={selectedRoomIds.length === getAvailableRooms(false).length && getAvailableRooms(false).length > 0}
                                   onChange={(e) => {
                                     if (e.target.checked) {
-                                      setSelectedRoomIds(rooms?.filter(r => r.status === "available").map(r => r.id) || []);
+                                      setSelectedRoomIds(getAvailableRooms(false).map(r => r.id));
                                     } else {
                                       setSelectedRoomIds([]);
                                     }
@@ -825,11 +913,12 @@ export default function Bookings() {
                             </tr>
                           </thead>
                           <tbody>
-                            {rooms?.filter(r => r.status === "available").map((room) => {
+                            {getAvailableRooms(false).map((room) => {
                               const property = properties?.find(p => p.id === room.propertyId);
                               const isSelected = selectedRoomIds.includes(room.id);
+                              const remainingBeds = getRemainingBeds(room.id, false);
                               const roomDescription = room.roomCategory === "dormitory" 
-                                ? `Dormitory (${room.totalBeds || 0} beds)`
+                                ? `Dormitory (${remainingBeds}/${room.totalBeds || 0} beds)`
                                 : (room.roomType || "Standard");
                               const priceText = room.roomCategory === "dormitory" 
                                 ? `₹${room.pricePerNight}/bed/night`
