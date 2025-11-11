@@ -230,6 +230,7 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
       queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
       toast({
         title: "Success",
@@ -256,6 +257,7 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
       toast({
         title: "Success",
         description: "Booking status updated",
@@ -278,6 +280,7 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
       toast({
         title: "Success",
         description: "Booking deleted successfully",
@@ -302,6 +305,7 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
       toast({
         title: "Success",
         description: "Booking updated successfully",
@@ -1518,22 +1522,31 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {rooms?.map((room) => {
-                              const property = properties?.find(p => p.id === room.propertyId);
-                              const isCurrentRoom = editingBooking?.roomId === room.id;
-                              const roomDescription = room.roomCategory === "dormitory" 
-                                ? `Dormitory - ${room.totalBeds || 0} beds`
-                                : (room.roomType || "Standard");
-                              const priceText = room.roomCategory === "dormitory" 
-                                ? `₹${room.pricePerNight}/bed/night`
-                                : `₹${room.pricePerNight}/night`;
-                              return (
-                                <SelectItem key={room.id} value={room.id.toString()}>
-                                  {property?.name} - Room {room.roomNumber} ({roomDescription}) - {priceText}
-                                  {isCurrentRoom && " (Current)"}
-                                </SelectItem>
-                              );
-                            })}
+                            {/* Show available rooms plus the currently selected room */}
+                            {(() => {
+                              const availableRooms = getAvailableRooms(true);
+                              const currentRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
+                              const roomsToShow = currentRoom && !availableRooms.find(r => r.id === currentRoom.id)
+                                ? [currentRoom, ...availableRooms]
+                                : availableRooms;
+                              return roomsToShow.map((room) => {
+                                const property = properties?.find(p => p.id === room.propertyId);
+                                const isCurrentRoom = editingBooking?.roomId === room.id;
+                                const remainingBeds = getRemainingBeds(room.id, true);
+                                const roomDescription = room.roomCategory === "dormitory" 
+                                  ? `Dormitory - ${remainingBeds}/${room.totalBeds || 0} beds available`
+                                  : (room.roomType || "Standard");
+                                const priceText = room.roomCategory === "dormitory" 
+                                  ? `₹${room.pricePerNight}/bed/night`
+                                  : `₹${room.pricePerNight}/night`;
+                                return (
+                                  <SelectItem key={room.id} value={room.id.toString()}>
+                                    {property?.name} - Room {room.roomNumber} ({roomDescription}) - {priceText}
+                                    {isCurrentRoom && " (Current)"}
+                                  </SelectItem>
+                                );
+                              });
+                            })()}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -1545,6 +1558,7 @@ export default function Bookings() {
                     const selectedRoomId = editForm.watch("roomId");
                     const selectedRoom = rooms?.find(r => r.id === selectedRoomId);
                     if (selectedRoom?.roomCategory === "dormitory") {
+                      const remainingBeds = getRemainingBeds(selectedRoomId, true);
                       return (
                         <FormField
                           control={editForm.control}
@@ -1556,7 +1570,7 @@ export default function Bookings() {
                                 <Input
                                   type="number"
                                   min="1"
-                                  max={selectedRoom.totalBeds || 1}
+                                  max={remainingBeds}
                                   placeholder="Enter number of beds"
                                   value={field.value || ""}
                                   onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : "")}
@@ -1564,7 +1578,7 @@ export default function Bookings() {
                                 />
                               </FormControl>
                               <p className="text-xs text-muted-foreground">
-                                Available beds: {selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
+                                Available beds: {remainingBeds}/{selectedRoom.totalBeds || 0} • Price: ₹{selectedRoom.pricePerNight}/bed/night
                               </p>
                               <FormMessage />
                             </FormItem>
@@ -1590,10 +1604,10 @@ export default function Bookings() {
                             <th className="p-2 text-left text-xs font-medium">
                               <input
                                 type="checkbox"
-                                checked={editSelectedRoomIds.length === rooms?.length && rooms?.length > 0}
+                                checked={editSelectedRoomIds.length === getAvailableRooms(true).length && getAvailableRooms(true).length > 0}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setEditSelectedRoomIds(rooms?.map(r => r.id) || []);
+                                    setEditSelectedRoomIds(getAvailableRooms(true).map(r => r.id));
                                   } else {
                                     setEditSelectedRoomIds([]);
                                   }
@@ -1608,11 +1622,12 @@ export default function Bookings() {
                           </tr>
                         </thead>
                         <tbody>
-                          {rooms?.map((room) => {
+                          {getAvailableRooms(true).map((room) => {
                             const property = properties?.find(p => p.id === room.propertyId);
                             const isSelected = editSelectedRoomIds.includes(room.id);
+                            const remainingBeds = getRemainingBeds(room.id, true);
                             const roomDescription = room.roomCategory === "dormitory" 
-                              ? `Dormitory (${room.totalBeds || 0} beds)`
+                              ? `Dormitory (${remainingBeds}/${room.totalBeds || 0} beds)`
                               : (room.roomType || "Standard");
                             const priceText = room.roomCategory === "dormitory" 
                               ? `₹${room.pricePerNight}/bed/night`
