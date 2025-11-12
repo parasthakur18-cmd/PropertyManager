@@ -2433,6 +2433,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all pending bills with guest and agent details  
   app.get("/api/bills/pending", isAuthenticated, async (req, res) => {
     try {
+      console.log("[/api/bills/pending] Starting request, user:", req.user);
+      
       // Use raw SQL to bypass Drizzle ORM issues
       const result = await db.execute(sql`
         SELECT 
@@ -2456,9 +2458,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ORDER BY b.created_at DESC
       `);
       
+      console.log("[/api/bills/pending] Query successful, rows:", result.rows.length);
       res.json(result.rows);
     } catch (error: any) {
-      console.error("Error fetching pending bills:", error.message);
+      console.error("[/api/bills/pending] FULL ERROR:", error);
+      console.error("[/api/bills/pending] Error message:", error.message);
+      console.error("[/api/bills/pending] Error stack:", error.stack);
       res.status(500).json({ message: error.message });
     }
   });
