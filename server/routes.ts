@@ -2862,7 +2862,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Build availability response with bed counts for dormitory rooms
       const availability = allRooms.map(room => {
         // For dormitory rooms, calculate bed-level availability
-        if (room.roomCategory === "dormitory" && room.totalBeds) {
+        if (room.roomCategory === "dormitory") {
+          // Ensure totalBeds has a valid value (default to 6 if not set)
+          const totalBeds = room.totalBeds || 6;
+          
           // Get all overlapping bookings for this dorm room
           const overlappingBookings = allBookings.filter(booking => 
             (booking.roomId === room.id || booking.roomIds?.includes(room.id))
@@ -2876,12 +2879,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }, 0);
           
           // Calculate remaining beds
-          const remainingBeds = room.totalBeds - bedsBookedCount;
+          const remainingBeds = totalBeds - bedsBookedCount;
           
           return {
             roomId: room.id,
             available: remainingBeds > 0 ? 1 : 0,
-            totalBeds: room.totalBeds,
+            totalBeds: totalBeds,
             remainingBeds: Math.max(0, remainingBeds)
           };
         }

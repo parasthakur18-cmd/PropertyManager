@@ -235,7 +235,13 @@ export default function Bookings() {
   const getRemainingBeds = (roomId: number, isEditMode: boolean = false) => {
     const availability = isEditMode ? editRoomAvailability : roomAvailability;
     const roomAvail = availability?.find(a => a.roomId === roomId);
-    return roomAvail?.remainingBeds || roomAvail?.totalBeds || 0;
+    
+    // If remainingBeds is explicitly set (even if 0), use it
+    // Otherwise fall back to totalBeds (for rooms with no bookings)
+    if (roomAvail?.remainingBeds !== undefined && roomAvail?.remainingBeds !== null) {
+      return roomAvail.remainingBeds;
+    }
+    return roomAvail?.totalBeds || 0;
   };
 
   const createMutation = useMutation({
