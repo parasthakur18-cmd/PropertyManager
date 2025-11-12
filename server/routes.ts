@@ -544,6 +544,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get bed inventory for a dormitory room (simple bed counts)
+  app.get("/api/rooms/:id/bed-inventory", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = parseInt(req.params.id);
+      const { checkIn, checkOut, excludeBookingId } = req.query;
+      
+      const room = await storage.getRoom(roomId);
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      // Default to room's total beds (or 6 if not set)
+      const totalBeds = room.totalBeds || 6;
+      
+      // If no dates provided, just return total beds
+      if (!checkIn || !checkOut) {
+        return res.json({
+          totalBeds,
+          reservedBeds: 0,
+          remainingBeds: totalBeds
+        });
+      }
+      
+      // Parse dates
+      const checkInDate = new Date(checkIn as string);
+      const checkOutDate = new Date(checkOut as string);
+      
+      // Get overlapping bookings for this room
+      const { bookings: bookingsTable } = await import("@shared/schema");
+      let conditions = [
+        not(eq(bookingsTable.status, "cancelled")),
+        sql`${bookingsTable.checkOutDate} > ${checkInDate.toISOString().split('T')[0]}`,
+        sql`${bookingsTable.checkInDate} < ${checkOutDate.toISOString().split('T')[0]}`
+      ];
+      
+      // Exclude specific booking if provided (for edit mode)
+      if (excludeBookingId) {
+        const parsedExcludeId = parseInt(excludeBookingId as string);
+        if (!isNaN(parsedExcludeId)) {
+          conditions.push(not(eq(bookingsTable.id, parsedExcludeId)));
+        }
+      }
+      
+      const overlappingBookings = await db
+        .select()
+        .from(bookingsTable)
+        .where(and(...conditions));
+      
+      // Filter for this specific room
+      const roomBookings = overlappingBookings.filter(booking => 
+        booking.roomId === roomId || booking.roomIds?.includes(roomId)
+      );
+      
+      // Calculate reserved beds
+      const reservedBeds = roomBookings.reduce((sum, booking) => {
+        return sum + (booking.bedsBooked || 1);
+      }, 0);
+      
+      const remainingBeds = Math.max(0, totalBeds - reservedBeds);
+      
+      res.json({
+        totalBeds,
+        reservedBeds,
+        remainingBeds
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/rooms", isAuthenticated, async (req, res) => {
     try {
       const data = insertRoomSchema.parse(req.body);
