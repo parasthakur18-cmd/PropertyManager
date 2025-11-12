@@ -2433,8 +2433,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all pending bills with guest and agent details
   app.get("/api/bills/pending", isAuthenticated, async (req, res) => {
     try {
+      console.log("[Pending Bills] User:", req.user?.role, "Assigned Properties:", req.user?.assignedPropertyIds);
+      
       const allBills = await storage.getAllBills();
+      console.log("[Pending Bills] Total bills:", allBills.length);
+      
       let filteredBills = allBills.filter(bill => bill.paymentStatus === "pending");
+      console.log("[Pending Bills] Pending bills:", filteredBills.length);
       
       // Filter by property for managers (admin sees all)
       if (req.user?.role !== "admin" && req.user?.assignedPropertyIds && Array.isArray(req.user.assignedPropertyIds) && req.user.assignedPropertyIds.length > 0) {
@@ -2448,19 +2453,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const booking = bookingMap.get(bill.bookingId);
           return booking && userProperties.includes(booking.propertyId);
         });
+        console.log("[Pending Bills] After property filter:", filteredBills.length);
       }
       
       // Enrich with guest, booking, and agent details
       const enrichedBills = await Promise.all(
         filteredBills.map(async (bill) => {
           try {
+            console.log("[Pending Bills] Enriching bill:", bill.id, "Booking:", bill.bookingId);
             const guest = await storage.getGuest(bill.guestId);
             const booking = await storage.getBooking(bill.bookingId);
             let agentName = null;
             
+            console.log("[Pending Bills] Booking travel agent ID:", booking?.travelAgentId);
             if (booking?.travelAgentId && typeof booking.travelAgentId === 'number') {
               const agent = await storage.getTravelAgent(booking.travelAgentId);
               agentName = agent?.name || null;
+              console.log("[Pending Bills] Agent name:", agentName);
             }
             
             return {
@@ -2471,7 +2480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               travelAgentId: booking?.travelAgentId || null,
             };
           } catch (enrichError: any) {
-            console.error(`Error enriching bill ${bill.id}:`, enrichError.message);
+            console.error(`Error enriching bill ${bill.id}:`, enrichError.message, enrichError.stack);
             // Return basic bill data if enrichment fails
             return {
               ...bill,
@@ -2484,9 +2493,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
       
+      console.log("[Pending Bills] Enriched bills:", enrichedBills.length);
       res.json(enrichedBills);
     } catch (error: any) {
-      console.error("Error fetching pending bills:", error);
+      console.error("Error fetching pending bills:", error.message, error.stack);
       res.status(500).json({ message: error.message });
     }
   });
