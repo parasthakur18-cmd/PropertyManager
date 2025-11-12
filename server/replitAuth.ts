@@ -163,9 +163,14 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     // Attach full user data from database to req.user
     const userId = user.claims?.sub;
     if (userId) {
-      const dbUser = await storage.getUser(userId);
-      if (dbUser) {
-        Object.assign(user, dbUser);
+      try {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          Object.assign(user, dbUser);
+        }
+      } catch (error: any) {
+        console.error("[isAuthenticated] Error loading user from DB:", error.message);
+        // Continue without DB user data - use session data only
       }
     }
     return next();
@@ -184,9 +189,14 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     // Attach full user data from database after refresh
     const userId = user.claims?.sub;
     if (userId) {
-      const dbUser = await storage.getUser(userId);
-      if (dbUser) {
-        Object.assign(user, dbUser);
+      try {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          Object.assign(user, dbUser);
+        }
+      } catch (error: any) {
+        console.error("[isAuthenticated] Error loading user from DB after refresh:", error.message);
+        // Continue without DB user data - use session data only
       }
     }
     return next();
