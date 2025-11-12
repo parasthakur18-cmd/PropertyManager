@@ -2433,8 +2433,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all pending bills with guest and agent details
   app.get("/api/bills/pending", isAuthenticated, async (req, res) => {
     try {
-      console.log("[Pending Bills] User:", req.user?.role, "Assigned Properties:", req.user?.assignedPropertyIds);
+      console.log("[Pending Bills] START - User:", req.user?.email, "Role:", req.user?.role);
+      console.log("[Pending Bills] Assigned Properties type:", typeof req.user?.assignedPropertyIds, "Value:", req.user?.assignedPropertyIds);
       
+      console.log("[Pending Bills] Calling getAllBills...");
       const allBills = await storage.getAllBills();
       console.log("[Pending Bills] Total bills:", allBills.length);
       
