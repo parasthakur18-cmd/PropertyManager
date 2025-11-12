@@ -2431,59 +2431,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all pending bills with guest and agent details  
-  app.get("/api/bills/pending", async (req, res) => {
+  app.get("/api/bills/pending", isAuthenticated, async (req, res) => {
     try {
-      console.log("[Pending Bills] START - BYPASSING AUTH FOR DEBUG");
+      // Use raw SQL to bypass Drizzle ORM issues
+      const result = await db.execute(sql`
+        SELECT 
+          b.id,
+          b.booking_id as "bookingId",
+          b.guest_id as "guestId",
+          b.total_amount as "totalAmount",
+          b.balance_amount as "balanceAmount",
+          b.due_date as "dueDate",
+          b.pending_reason as "pendingReason",
+          b.created_at as "createdAt",
+          g.full_name as "guestName",
+          g.phone as "guestPhone",
+          ta.name as "agentName",
+          bk.travel_agent_id as "travelAgentId"
+        FROM bills b
+        JOIN guests g ON b.guest_id = g.id
+        JOIN bookings bk ON b.booking_id = bk.id
+        LEFT JOIN travel_agents ta ON bk.travel_agent_id = ta.id
+        WHERE b.payment_status = 'pending'
+        ORDER BY b.created_at DESC
+      `);
       
-      console.log("[Pending Bills] Calling getAllBills...");
-      const allBills = await storage.getAllBills();
-      console.log("[Pending Bills] Total bills:", allBills.length);
-      
-      let filteredBills = allBills.filter(bill => bill.paymentStatus === "pending");
-      console.log("[Pending Bills] Pending bills:", filteredBills.length);
-      
-      // Enrich with guest, booking, and agent details
-      const enrichedBills = await Promise.all(
-        filteredBills.map(async (bill) => {
-          try {
-            console.log("[Pending Bills] Enriching bill:", bill.id, "Booking:", bill.bookingId);
-            const guest = await storage.getGuest(bill.guestId);
-            const booking = await storage.getBooking(bill.bookingId);
-            let agentName = null;
-            
-            console.log("[Pending Bills] Booking travel agent ID:", booking?.travelAgentId);
-            if (booking?.travelAgentId && typeof booking.travelAgentId === 'number') {
-              const agent = await storage.getTravelAgent(booking.travelAgentId);
-              agentName = agent?.name || null;
-              console.log("[Pending Bills] Agent name:", agentName);
-            }
-            
-            return {
-              ...bill,
-              guestName: guest?.fullName || "Unknown Guest",
-              guestPhone: guest?.phone || null,
-              agentName,
-              travelAgentId: booking?.travelAgentId || null,
-            };
-          } catch (enrichError: any) {
-            console.error(`Error enriching bill ${bill.id}:`, enrichError.message, enrichError.stack);
-            // Return basic bill data if enrichment fails
-            return {
-              ...bill,
-              guestName: "Unknown Guest",
-              guestPhone: null,
-              agentName: null,
-              travelAgentId: null,
-            };
-          }
-        })
-      );
-      
-      console.log("[Pending Bills] Enriched bills:", enrichedBills.length);
-      res.json(enrichedBills);
+      res.json(result.rows);
     } catch (error: any) {
-      console.error("Error fetching pending bills:", error.message, error.stack);
-      res.status(500).json({ message: error.message, stack: error.stack });
+      console.error("Error fetching pending bills:", error.message);
+      res.status(500).json({ message: error.message });
     }
   });
 
