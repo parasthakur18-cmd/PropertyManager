@@ -363,6 +363,8 @@ export const bills = pgTable("bills", {
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("unpaid"),
   paymentMethod: varchar("payment_method", { length: 50 }),
   paidAt: timestamp("paid_at"),
+  dueDate: timestamp("due_date"), // Optional due date for pending payments
+  pendingReason: text("pending_reason"), // Optional note for why payment is pending (e.g., "Corporate client - monthly billing")
   mergedBookingIds: integer("merged_booking_ids").array(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
