@@ -160,6 +160,9 @@ export default function AddOnServices() {
     ? services 
     : services.filter(s => s.serviceType === filterType);
 
+  // Get unique service types from the data
+  const uniqueServiceTypes = Array.from(new Set(services.map(s => s.serviceType)));
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -422,7 +425,7 @@ export default function AddOnServices() {
           >
             All Services
           </Button>
-          {Object.entries(serviceTypeLabels).map(([type, label]) => (
+          {uniqueServiceTypes.map((type) => (
             <Button
               key={type}
               variant={filterType === type ? "default" : "outline"}
@@ -430,7 +433,7 @@ export default function AddOnServices() {
               onClick={() => setFilterType(type)}
               data-testid={`filter-${type}`}
             >
-              {label}
+              {serviceTypeLabels[type] || type}
             </Button>
           ))}
         </div>
@@ -458,7 +461,7 @@ export default function AddOnServices() {
                         <CardTitle className="text-base">{service.serviceName}</CardTitle>
                       </div>
                       <Badge variant="outline" data-testid={`badge-type-${service.id}`}>
-                        {serviceTypeLabels[service.serviceType]}
+                        {serviceTypeLabels[service.serviceType] || service.serviceType}
                       </Badge>
                     </div>
                   </CardHeader>
