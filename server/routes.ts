@@ -2301,6 +2301,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bills", isAuthenticated, async (req, res) => {
     try {
+      // Only admins can create bills manually
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can create bills" });
+      }
+
       const data = insertBillSchema.parse(req.body);
       const bill = await storage.createBill(data);
       res.status(201).json(bill);
@@ -2314,6 +2319,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/bills/:id", isAuthenticated, async (req, res) => {
     try {
+      // Only admins can update bills
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can modify bills" });
+      }
+
       const bill = await storage.updateBill(parseInt(req.params.id), req.body);
       res.json(bill);
     } catch (error: any) {
@@ -2323,6 +2333,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bills/merge", isAuthenticated, async (req, res) => {
     try {
+      // Only admins can merge bills
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can merge bills" });
+      }
+
       const schema = z.object({
         bookingIds: z.array(z.number()).min(2, "At least 2 bookings required"),
         primaryBookingId: z.number(),
@@ -2382,6 +2397,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mark a bill as paid
   app.post("/api/bills/:id/mark-paid", isAuthenticated, async (req, res) => {
     try {
+      // Only admins can mark bills as paid
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can mark bills as paid" });
+      }
+
       const billId = parseInt(req.params.id);
       const { paymentMethod } = req.body;
       

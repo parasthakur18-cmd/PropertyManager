@@ -101,7 +101,6 @@ const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Pending Payments", url: "/pending-payments", icon: ClockAlert },
   { title: "Expenses", url: "/expenses", icon: FileText },
-  { title: "Salaries", url: "/salaries", icon: DollarSign },
 ];
 
 const staffMenuItems = [
