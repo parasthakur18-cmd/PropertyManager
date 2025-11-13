@@ -651,7 +651,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteRoom(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      // Return 400 for validation errors (room has associations), 500 for unexpected errors
+      const status = error.message.includes("Cannot delete room") ? 400 : 500;
+      res.status(status).json({ message: error.message });
     }
   });
 
