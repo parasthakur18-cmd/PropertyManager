@@ -522,38 +522,38 @@ export default function QuickOrder() {
                                 <p className="font-medium">{item.name}</p>
                                 <p className="text-sm text-muted-foreground">₹{item.price}</p>
                               </div>
-                              {quantity > 0 ? (
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8"
-                                    onClick={() => updateQuantity(item.id, -1)}
-                                    data-testid={`button-quick-decrease-${item.id}`}
-                                  >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                  <span className="w-8 text-center font-mono text-sm">{quantity}</span>
-                                  <Button
-                                    size="icon"
-                                    variant="outline"
-                                    className="h-8 w-8"
-                                    onClick={() => updateQuantity(item.id, 1)}
-                                    data-testid={`button-quick-increase-${item.id}`}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  onClick={() => addToCart(item)}
-                                  data-testid={`button-quick-add-${item.id}`}
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    if (quantity > 0) {
+                                      updateQuantity(item.id, -1);
+                                    }
+                                  }}
+                                  disabled={quantity === 0}
+                                  data-testid={`button-quick-decrease-${item.id}`}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <span className="w-8 text-center font-mono text-sm">{quantity}</span>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    if (quantity > 0) {
+                                      updateQuantity(item.id, 1);
+                                    } else {
+                                      addToCart(item);
+                                    }
+                                  }}
+                                  data-testid={`button-quick-increase-${item.id}`}
                                 >
                                   <Plus className="h-4 w-4" />
                                 </Button>
-                              )}
+                              </div>
                             </div>
                           );
                         })}

@@ -694,7 +694,7 @@ export default function Menu() {
                             >
                               {getItemQuantityInCart(item.id) > 0 ? "Manage" : "Customize"}
                             </Button>
-                          ) : getItemQuantityInCart(item.id) > 0 ? (
+                          ) : (
                             <div className="flex items-center gap-1 flex-shrink-0">
                               <Button
                                 size="icon"
@@ -704,6 +704,7 @@ export default function Menu() {
                                   const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
                                   if (cartItem) updateQuantity(cartItem.cartId, -1);
                                 }}
+                                disabled={getItemQuantityInCart(item.id) === 0}
                                 data-testid={`button-decrease-main-${item.id}`}
                               >
                                 <Minus className="h-3 w-3" />
@@ -714,24 +715,19 @@ export default function Menu() {
                                 variant="outline"
                                 className="h-7 w-7"
                                 onClick={() => {
-                                  const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
-                                  if (cartItem) updateQuantity(cartItem.cartId, 1);
+                                  const quantity = getItemQuantityInCart(item.id);
+                                  if (quantity > 0) {
+                                    const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
+                                    if (cartItem) updateQuantity(cartItem.cartId, 1);
+                                  } else {
+                                    addToCart(item);
+                                  }
                                 }}
                                 data-testid={`button-increase-main-${item.id}`}
                               >
                                 <Plus className="h-3 w-3" />
                               </Button>
                             </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              onClick={() => addToCart(item)}
-                              data-testid={`button-add-to-cart-${item.id}`}
-                              className="h-7 px-2 text-xs"
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Add
-                            </Button>
                           )}
                         </div>
                       </div>
