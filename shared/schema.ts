@@ -889,3 +889,57 @@ export const communicationsRelations = relations(communications, ({ one }) => ({
     references: [messageTemplates.id],
   }),
 }));
+
+// Analytics Response Types
+export interface AgingBuckets {
+  current: number;         // 0 days overdue (not due yet or due today)
+  day1to7: number;        // 1-7 days overdue
+  day8to30: number;       // 8-30 days overdue
+  over30: number;         // Over 30 days overdue
+}
+
+export interface ReceivablesBreakdown {
+  id: number;
+  name: string;
+  pendingAmount: number;
+  overdueAmount: number;
+  count: number;           // Number of pending bills
+  collectionRate?: number; // Optional collection rate percentage
+}
+
+export interface PendingReceivables {
+  totalPending: number;            // Total amount pending (not yet paid)
+  totalOverdue: number;            // Total amount overdue (past due date)
+  collectionRate: number;          // Percentage of bills paid vs total
+  agingBuckets: AgingBuckets;      // Breakdown by aging
+  propertyBreakdown: ReceivablesBreakdown[];
+  agentBreakdown: ReceivablesBreakdown[];
+}
+
+export interface AnalyticsResponse {
+  // Existing metrics
+  totalRevenue: number;
+  paidRevenue: number;
+  monthlyRevenue: number;
+  roomRevenue: number;
+  restaurantRevenue: number;
+  extraServicesRevenue: number;
+  totalBookings: number;
+  totalGuests: number;
+  occupancyRate: number;
+  avgRoomRate: number;
+  activeProperties: number;
+  repeatGuestRate: number;
+  
+  // Pending receivables metrics
+  pendingReceivables: PendingReceivables;
+  
+  // Financial metadata for trend analysis and reconciliation
+  period: string;              // Current period (e.g., "2025-11" for month, "2025" for year)
+  comparisonPeriod?: string;   // Previous period for comparison
+  cashCollected: number;       // Total cash collected in current period
+  writeOffs: number;           // Total write-offs in current period
+  
+  // Metadata
+  generatedAt: string;         // ISO date string
+}
