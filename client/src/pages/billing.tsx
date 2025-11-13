@@ -50,6 +50,7 @@ export default function Billing() {
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "pending">("all");
+  const [agentFilter, setAgentFilter] = useState<number | "all">("all");
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -61,6 +62,10 @@ export default function Billing() {
   const { data: bookings = [] } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
     select: (bookings) => bookings.filter(b => b.status === "checked-in" || b.status === "confirmed"),
+  });
+
+  const { data: travelAgents = [] } = useQuery<any[]>({
+    queryKey: ["/api/travel-agents"],
   });
 
   const { data: billDetails } = useQuery<BillDetails>({
@@ -186,13 +191,30 @@ export default function Billing() {
   const paidBills = bills?.filter((bill) => bill.paymentStatus === "paid").length || 0;
   const pendingBills = bills?.filter((bill) => bill.paymentStatus === "pending").length || 0;
 
-  // Filter bills based on selected filter
+  // Filter bills based on selected filters
   const filteredBills = bills?.filter(bill => {
-    if (paymentFilter === "all") return true;
-    if (paymentFilter === "paid") return bill.paymentStatus === "paid";
-    if (paymentFilter === "pending") return bill.paymentStatus === "pending";
-    return true;
+    // Payment status filter
+    let matchesPaymentFilter = true;
+    if (paymentFilter === "paid") matchesPaymentFilter = bill.paymentStatus === "paid";
+    if (paymentFilter === "pending") matchesPaymentFilter = bill.paymentStatus === "pending";
+    
+    // Agent filter - need to check the booking's travel agent
+    let matchesAgentFilter = true;
+    if (agentFilter !== "all") {
+      const booking = bookings.find(b => b.id === bill.bookingId);
+      matchesAgentFilter = booking?.travelAgentId === agentFilter;
+    }
+    
+    return matchesPaymentFilter && matchesAgentFilter;
   }) || [];
+
+  // Get unique agents that have bills
+  const agentsWithBills = Array.from(new Set(
+    bills?.map(bill => {
+      const booking = bookings.find(b => b.id === bill.bookingId);
+      return booking?.travelAgentId;
+    }).filter(Boolean)
+  )) as number[];
 
   return (
     <div className="p-6 md:p-8">
@@ -347,8 +369,8 @@ export default function Billing() {
         </Card>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="mb-6">
+      {/* Filters */}
+      <div className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center">
         <Tabs value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as "all" | "paid" | "pending")}>
           <TabsList>
             <TabsTrigger value="all" data-testid="tab-all-bills">
@@ -362,6 +384,32 @@ export default function Billing() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
+
+        {/* Agent Filter */}
+        {agentsWithBills.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Filter by Agent:</label>
+            <Select 
+              value={agentFilter === "all" ? "all" : agentFilter.toString()} 
+              onValueChange={(value) => setAgentFilter(value === "all" ? "all" : parseInt(value))}
+            >
+              <SelectTrigger className="w-[200px]" data-testid="select-agent-filter">
+                <SelectValue placeholder="All Agents" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Agents</SelectItem>
+                {agentsWithBills.map(agentId => {
+                  const agent = travelAgents.find(a => a.id === agentId);
+                  return (
+                    <SelectItem key={agentId} value={agentId.toString()}>
+                      {agent?.name || `Agent #${agentId}`}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {!filteredBills || filteredBills.length === 0 ? (
@@ -387,11 +435,20 @@ export default function Billing() {
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 flex-wrap">
                       {(bill as any).guestName || `Invoice #${bill.id}`}
                       <Badge className={paymentStatusColors[bill.paymentStatus as keyof typeof paymentStatusColors]}>
                         {bill.paymentStatus}
                       </Badge>
+                      {(() => {
+                        const booking = bookings.find(b => b.id === bill.bookingId);
+                        const agent = booking?.travelAgentId ? travelAgents.find(a => a.id === booking.travelAgentId) : null;
+                        return agent ? (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            Agent: {agent.name}
+                          </Badge>
+                        ) : null;
+                      })()}
                     </CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
                       Created {format(new Date(bill.createdAt!), "PPP")} • Invoice #{bill.id}
