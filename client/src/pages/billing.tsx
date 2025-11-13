@@ -177,7 +177,12 @@ export default function Billing() {
     );
   }
 
-  const totalRevenue = bills?.reduce((sum, bill) => sum + parseFloat(bill.totalAmount), 0) || 0;
+  // Revenue = Only PAID bills (actual money received)
+  const totalRevenue = bills?.filter(bill => bill.paymentStatus === "paid").reduce((sum, bill) => sum + parseFloat(bill.totalAmount), 0) || 0;
+  
+  // Pending Receivables = Money owed but not yet received
+  const pendingReceivables = bills?.filter(bill => bill.paymentStatus === "pending").reduce((sum, bill) => sum + parseFloat(bill.balanceAmount || bill.totalAmount), 0) || 0;
+  
   const paidBills = bills?.filter((bill) => bill.paymentStatus === "paid").length || 0;
   const pendingBills = bills?.filter((bill) => bill.paymentStatus === "pending").length || 0;
 
@@ -332,11 +337,12 @@ export default function Billing() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Bills</CardTitle>
-            <Clock className="h-4 w-4 text-destructive" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Receivables</CardTitle>
+            <Clock className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-mono" data-testid="stat-unpaid-bills">{pendingBills}</div>
+            <div className="text-3xl font-bold font-mono text-amber-600" data-testid="stat-unpaid-bills">₹{pendingReceivables.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">{pendingBills} pending bill{pendingBills !== 1 ? 's' : ''}</p>
           </CardContent>
         </Card>
       </div>
