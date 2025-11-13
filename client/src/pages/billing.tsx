@@ -59,10 +59,13 @@ export default function Billing() {
     queryKey: ["/api/bills"],
   });
 
-  const { data: bookings = [] } = useQuery<Booking[]>({
+  // Load ALL bookings (not just active ones) for bill filtering
+  const { data: allBookings = [] } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
-    select: (bookings) => bookings.filter(b => b.status === "checked-in" || b.status === "confirmed"),
   });
+
+  // Active bookings for merge dialog only
+  const activeBookings = allBookings.filter(b => b.status === "checked-in" || b.status === "confirmed");
 
   const { data: travelAgents = [] } = useQuery<any[]>({
     queryKey: ["/api/travel-agents"],
@@ -201,7 +204,8 @@ export default function Billing() {
     // Agent filter - need to check the booking's travel agent
     let matchesAgentFilter = true;
     if (agentFilter !== "all") {
-      const booking = bookings.find(b => b.id === bill.bookingId);
+      const booking = allBookings.find(b => b.id === bill.bookingId);
+      console.log('Bill:', bill.id, 'BookingId:', bill.bookingId, 'Booking:', booking, 'TravelAgentId:', booking?.travelAgentId, 'Filter:', agentFilter, 'Match:', booking?.travelAgentId === agentFilter);
       matchesAgentFilter = booking?.travelAgentId === agentFilter;
     }
     
@@ -236,12 +240,12 @@ export default function Billing() {
                   Select at least 2 bookings to create a consolidated bill
                 </p>
                 <div className="space-y-2">
-                  {bookings.length === 0 ? (
+                  {activeBookings.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
                       No active bookings available for merging
                     </p>
                   ) : (
-                    bookings.map((booking) => (
+                    activeBookings.map((booking) => (
                       <div
                         key={booking.id}
                         className="flex items-center space-x-3 p-3 rounded-md border hover-elevate"
@@ -433,7 +437,7 @@ export default function Billing() {
                         {bill.paymentStatus}
                       </Badge>
                       {(() => {
-                        const booking = bookings.find(b => b.id === bill.bookingId);
+                        const booking = allBookings.find(b => b.id === bill.bookingId);
                         const agent = booking?.travelAgentId ? travelAgents.find(a => a.id === booking.travelAgentId) : null;
                         return agent ? (
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
