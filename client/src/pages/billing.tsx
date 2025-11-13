@@ -1,13 +1,15 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Receipt, IndianRupee, CheckCircle, Clock, Merge, Eye, Printer } from "lucide-react";
+import { Receipt, IndianRupee, CheckCircle, Clock, Merge, Eye, Printer, DollarSign } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Bill, type Booking, type Guest, type Room, type Property, type Order } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +49,10 @@ export default function Billing() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedBillId, setSelectedBillId] = useState<number | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
+  const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "pending">("all");
+  const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
+  const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
 
   const { data: bills, isLoading } = useQuery<Bill[]>({
     queryKey: ["/api/bills"],
@@ -81,6 +87,29 @@ export default function Billing() {
       toast({
         title: "Error merging bills",
         description: error.message || "Failed to merge bills",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const markAsPaidMutation = useMutation({
+    mutationFn: async (data: { billId: number; paymentMethod: string }) => {
+      return await apiRequest(`/api/bills/${data.billId}/mark-paid`, "POST", { paymentMethod: data.paymentMethod });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+      toast({
+        title: "Payment recorded",
+        description: "Bill marked as paid successfully",
+      });
+      setMarkPaidDialogOpen(false);
+      setBillToMarkPaid(null);
+      setPaymentMethod("cash");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating bill",
+        description: error.message || "Failed to mark bill as paid",
         variant: "destructive",
       });
     },
@@ -150,7 +179,15 @@ export default function Billing() {
 
   const totalRevenue = bills?.reduce((sum, bill) => sum + parseFloat(bill.totalAmount), 0) || 0;
   const paidBills = bills?.filter((bill) => bill.paymentStatus === "paid").length || 0;
-  const unpaidBills = bills?.filter((bill) => bill.paymentStatus === "unpaid").length || 0;
+  const pendingBills = bills?.filter((bill) => bill.paymentStatus === "pending").length || 0;
+
+  // Filter bills based on selected filter
+  const filteredBills = bills?.filter(bill => {
+    if (paymentFilter === "all") return true;
+    if (paymentFilter === "paid") return bill.paymentStatus === "paid";
+    if (paymentFilter === "pending") return bill.paymentStatus === "pending";
+    return true;
+  }) || [];
 
   return (
     <div className="p-6 md:p-8">
@@ -299,26 +336,47 @@ export default function Billing() {
             <Clock className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold font-mono" data-testid="stat-unpaid-bills">{unpaidBills}</div>
+            <div className="text-3xl font-bold font-mono" data-testid="stat-unpaid-bills">{pendingBills}</div>
           </CardContent>
         </Card>
       </div>
 
-      {!bills || bills.length === 0 ? (
+      {/* Filter Tabs */}
+      <div className="mb-6">
+        <Tabs value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as "all" | "paid" | "pending")}>
+          <TabsList>
+            <TabsTrigger value="all" data-testid="tab-all-bills">
+              All Bills ({bills?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="paid" data-testid="tab-paid-bills">
+              Paid ({paidBills})
+            </TabsTrigger>
+            <TabsTrigger value="pending" data-testid="tab-pending-bills">
+              Pending ({pendingBills})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {!filteredBills || filteredBills.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Receipt className="h-10 w-10" />
             </div>
-            <h3 className="text-xl font-semibold">No bills yet</h3>
+            <h3 className="text-xl font-semibold">
+              {paymentFilter === "all" ? "No bills yet" : `No ${paymentFilter} bills`}
+            </h3>
             <p className="text-muted-foreground max-w-md">
-              Bills will be generated automatically when guests check out
+              {paymentFilter === "all" 
+                ? "Bills will be generated automatically when guests check out"
+                : `No bills with ${paymentFilter} status found`}
             </p>
           </div>
         </Card>
       ) : (
         <div className="space-y-4">
-          {bills.map((bill) => (
+          {filteredBills.map((bill) => (
             <Card key={bill.id} className="hover-elevate" data-testid={`card-bill-${bill.id}`}>
               <CardHeader>
                 <div className="flex justify-between items-start">
@@ -382,7 +440,21 @@ export default function Billing() {
                     </div>
                   )}
                 </div>
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2">
+                  {bill.paymentStatus === "pending" && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        setBillToMarkPaid(bill);
+                        setMarkPaidDialogOpen(true);
+                      }}
+                      data-testid={`button-mark-paid-${bill.id}`}
+                    >
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      Mark as Paid
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -615,6 +687,67 @@ export default function Billing() {
                   Print Bill
                 </Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark as Paid Dialog */}
+      <Dialog open={markPaidDialogOpen} onOpenChange={setMarkPaidDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Bill as Paid</DialogTitle>
+          </DialogHeader>
+          {billToMarkPaid && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded-lg">
+                <p className="text-sm text-muted-foreground">Bill #{billToMarkPaid.id}</p>
+                <p className="text-2xl font-bold font-mono mt-1">₹{billToMarkPaid.balanceAmount}</p>
+                <p className="text-sm text-muted-foreground mt-1">Balance Amount</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Payment Method</label>
+                <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <SelectTrigger data-testid="select-mark-paid-payment-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMarkPaidDialogOpen(false);
+                    setBillToMarkPaid(null);
+                    setPaymentMethod("cash");
+                  }}
+                  data-testid="button-cancel-mark-paid"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (billToMarkPaid) {
+                      markAsPaidMutation.mutate({
+                        billId: billToMarkPaid.id,
+                        paymentMethod,
+                      });
+                    }
+                  }}
+                  disabled={markAsPaidMutation.isPending}
+                  data-testid="button-confirm-mark-paid"
+                >
+                  {markAsPaidMutation.isPending ? "Processing..." : "Confirm Payment"}
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
