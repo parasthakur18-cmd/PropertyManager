@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed, Clock } from "lucide-react";
+import { ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed, Clock, Search, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,7 @@ export default function Menu() {
   const [selectedAddOns, setSelectedAddOns] = useState<{ id: number; name: string; price: string; quantity: number; }[]>([]);
   const [isAddOnsSheetOpen, setIsAddOnsSheetOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
   
   // Detect order type, property, and room from URL query params
@@ -302,12 +303,36 @@ export default function Menu() {
     orderMutation.mutate(orderData);
   };
 
+  // Helper function to get total quantity of an item in cart (across all variants)
+  const getItemQuantityInCart = (itemId: number) => {
+    return cart
+      .filter(cartItem => cartItem.id === itemId)
+      .reduce((sum, cartItem) => sum + cartItem.quantity, 0);
+  };
+
+  // Helper function to check if item has variants or add-ons
+  const isComplexItem = (item: MenuItem) => {
+    return item.hasVariants || item.hasAddOns;
+  };
+
+  // Filter items by search term (name + description)
+  const filteredItems = useMemo(() => {
+    if (!menuItems) return [];
+    if (!searchTerm.trim()) return menuItems;
+    
+    const searchLower = searchTerm.toLowerCase().trim();
+    return menuItems.filter(item => 
+      item.name.toLowerCase().includes(searchLower) ||
+      (item.description && item.description.toLowerCase().includes(searchLower))
+    );
+  }, [menuItems, searchTerm]);
+
   // Group by category using new category system
   const groupedByCategory = menuCategories
     ?.filter((cat) => selectedCategoryId === null || cat.id === selectedCategoryId)
     .map((category) => ({
       category,
-      items: menuItems?.filter((item) => item.categoryId === category.id) || [],
+      items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
     }))
     .filter(group => group.items.length > 0);
 
@@ -544,6 +569,36 @@ export default function Menu() {
         </div>
       </div>
 
+      {/* Search Bar */}
+      <div className="border-b bg-background">
+        <div className="container mx-auto px-4 md:px-6 py-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search menu items..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10"
+              aria-label="Search menu items"
+              data-testid="input-search-menu"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                onClick={() => setSearchTerm("")}
+                aria-label="Clear search"
+                data-testid="button-clear-search"
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Category Filter Tabs - Only tabs scroll */}
       {menuCategories && menuCategories.length > 0 && (
         <div className="border-b bg-background">
@@ -555,10 +610,10 @@ export default function Menu() {
                 onClick={() => setSelectedCategoryId(null)}
                 data-testid="badge-category-all"
               >
-                All ({menuItems?.filter((item) => item.isAvailable).length || 0})
+                All ({filteredItems?.filter((item) => item.isAvailable).length || 0})
               </Badge>
               {menuCategories.map((category) => {
-                const itemCount = menuItems?.filter(
+                const itemCount = filteredItems?.filter(
                   (item) => item.categoryId === category.id && item.isAvailable
                 ).length || 0;
                 if (itemCount === 0) return null;
@@ -617,21 +672,67 @@ export default function Menu() {
                           <p className="text-xs text-muted-foreground line-clamp-1 mb-1">{item.description}</p>
                         )}
                         <div className="flex items-center justify-between gap-2">
-                          {item.preparationTime && (
-                            <p className="text-xs text-muted-foreground">
-                              <Clock className="inline h-3 w-3 mr-1" />
-                              {item.preparationTime}min
-                            </p>
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.preparationTime && (
+                              <p className="text-xs text-muted-foreground">
+                                <Clock className="inline h-3 w-3 mr-1" />
+                                {item.preparationTime}min
+                              </p>
+                            )}
+                            {getItemQuantityInCart(item.id) > 0 && (
+                              <Badge variant="default" className="font-mono text-xs px-1.5 py-0 h-5">
+                                {getItemQuantityInCart(item.id)} in cart
+                              </Badge>
+                            )}
+                          </div>
+                          {isComplexItem(item) ? (
+                            <Button
+                              size="sm"
+                              onClick={() => openAddOnsSheet(item)}
+                              data-testid={`button-customize-${item.id}`}
+                              className="h-7 px-2 text-xs"
+                            >
+                              {getItemQuantityInCart(item.id) > 0 ? "Manage" : "Customize"}
+                            </Button>
+                          ) : getItemQuantityInCart(item.id) > 0 ? (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
+                                  if (cartItem) updateQuantity(cartItem.cartId, -1);
+                                }}
+                                data-testid={`button-decrease-main-${item.id}`}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-6 text-center font-mono text-xs">{getItemQuantityInCart(item.id)}</span>
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
+                                  if (cartItem) updateQuantity(cartItem.cartId, 1);
+                                }}
+                                data-testid={`button-increase-main-${item.id}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              onClick={() => addToCart(item)}
+                              data-testid={`button-add-to-cart-${item.id}`}
+                              className="h-7 px-2 text-xs"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Add
+                            </Button>
                           )}
-                          <Button
-                            size="sm"
-                            onClick={() => addToCart(item)}
-                            data-testid={`button-add-to-cart-${item.id}`}
-                            className="h-7 px-2 text-xs"
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Add
-                          </Button>
                         </div>
                       </div>
                     </div>
