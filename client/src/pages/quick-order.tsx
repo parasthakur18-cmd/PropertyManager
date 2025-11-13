@@ -225,10 +225,11 @@ export default function QuickOrder() {
 
   // Group by category (using filtered items)
   const categorizedItems = filteredMenuItems?.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
+    const category = item.category || "Uncategorized";
+    if (!acc[category]) {
+      acc[category] = [];
     }
-    acc[item.category].push(item);
+    acc[category].push(item);
     return acc;
   }, {} as Record<string, MenuItem[]>);
 
