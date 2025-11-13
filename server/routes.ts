@@ -865,9 +865,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         const allRooms = await storage.getAllRooms();
         bookings = bookings.filter(booking => {
-          if (!booking.roomId) return false;
-          const room = allRooms.find(r => r.id === booking.roomId);
-          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
+          // Handle single room bookings
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) {
+              console.warn(`Room ${booking.roomId} not found for booking ${booking.id}`);
+              return false;
+            }
+            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+          }
+          // Handle group bookings (multiple rooms)
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            // Include group booking if ANY of its rooms belong to manager's properties
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => {
+                if (!room) {
+                  console.warn(`Room not found in roomIds for booking ${booking.id}`);
+                  return false;
+                }
+                return true;
+              });
+            
+            // Show booking if at least one room belongs to manager's assigned properties
+            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          }
+          return false;
         });
       }
       
@@ -900,9 +923,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         // Filter bookings by property through room relationship
         activeBookings = activeBookings.filter(booking => {
-          if (!booking.roomId) return false;
-          const room = allRooms.find(r => r.id === booking.roomId);
-          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
+          // Handle single room bookings
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) {
+              console.warn(`Room ${booking.roomId} not found for active booking ${booking.id}`);
+              return false;
+            }
+            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+          }
+          // Handle group bookings (multiple rooms)
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => {
+                if (!room) {
+                  console.warn(`Room not found in roomIds for active booking ${booking.id}`);
+                  return false;
+                }
+                return true;
+              });
+            
+            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          }
+          return false;
         });
       }
       
@@ -1030,9 +1074,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Apply property filtering for managers and kitchen users
       if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
         allBookings = allBookings.filter(booking => {
-          if (!booking.roomId) return false;
-          const room = allRooms.find(r => r.id === booking.roomId);
-          return room && currentUser.assignedPropertyIds!.includes(room.propertyId);
+          // Handle single room bookings
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) {
+              console.warn(`Room ${booking.roomId} not found for booking ${booking.id}`);
+              return false;
+            }
+            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+          }
+          // Handle group bookings (multiple rooms)
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => {
+                if (!room) {
+                  console.warn(`Room not found in roomIds for booking ${booking.id}`);
+                  return false;
+                }
+                return true;
+              });
+            
+            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          }
+          return false;
         });
       }
 
