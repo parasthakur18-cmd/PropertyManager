@@ -756,10 +756,40 @@ export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLog.$inferSelect;
 
-// Staff Salaries table - monthly salary records
+// Staff Members table - non-app staff for salary tracking
+export const staffMembers = pgTable("staff_members", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  role: varchar("role", { length: 100 }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  joiningDate: timestamp("joining_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_staff_member_property").on(table.propertyId),
+  index("idx_staff_member_active").on(table.isActive),
+]);
+
+export const insertStaffMemberSchema = createInsertSchema(staffMembers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  joiningDate: z.coerce.date().optional(),
+});
+
+export type InsertStaffMember = z.infer<typeof insertStaffMemberSchema>;
+export type StaffMember = typeof staffMembers.$inferSelect;
+
+// Staff Salaries table - monthly salary records (supports both app users and non-app staff)
 export const staffSalaries = pgTable("staff_salaries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }), // For app users
+  staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }), // For non-app staff
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Property context
   periodStart: timestamp("period_start").notNull(), // First day of salary period
   periodEnd: timestamp("period_end").notNull(), // Last day of salary period
@@ -772,6 +802,7 @@ export const staffSalaries = pgTable("staff_salaries", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_salary_user").on(table.userId),
+  index("idx_salary_staff_member").on(table.staffMemberId),
   index("idx_salary_period").on(table.periodStart, table.periodEnd),
 ]);
 
@@ -787,10 +818,11 @@ export const insertStaffSalarySchema = createInsertSchema(staffSalaries).omit({
 export type InsertStaffSalary = z.infer<typeof insertStaffSalarySchema>;
 export type StaffSalary = typeof staffSalaries.$inferSelect;
 
-// Salary Advances table - advance payments linked to salary records
+// Salary Advances table - advance payments linked to salary records (supports both app users and non-app staff)
 export const salaryAdvances = pgTable("salary_advances", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }), // For app users
+  staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }), // For non-app staff
   salaryId: integer("salary_id").references(() => staffSalaries.id, { onDelete: 'set null' }), // Linked salary period
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   advanceDate: timestamp("advance_date").notNull(),
@@ -802,6 +834,7 @@ export const salaryAdvances = pgTable("salary_advances", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_advance_user").on(table.userId),
+  index("idx_advance_staff_member").on(table.staffMemberId),
   index("idx_advance_status").on(table.repaymentStatus),
 ]);
 
