@@ -399,6 +399,50 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteRoom(id: number): Promise<void> {
+    // Check for associated bookings
+    const associatedBookings = await db
+      .select()
+      .from(bookings)
+      .where(
+        or(
+          eq(bookings.roomId, id),
+          sql`${id} = ANY(${bookings.roomIds})`
+        )
+      )
+      .limit(1);
+
+    if (associatedBookings.length > 0) {
+      throw new Error("Cannot delete room with existing bookings. Please delete or reassign bookings first.");
+    }
+
+    // Check for associated orders
+    const associatedOrders = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.roomId, id))
+      .limit(1);
+
+    if (associatedOrders.length > 0) {
+      throw new Error("Cannot delete room with existing orders. Please delete orders first.");
+    }
+
+    // Check for associated enquiries
+    const associatedEnquiries = await db
+      .select()
+      .from(enquiries)
+      .where(
+        or(
+          eq(enquiries.roomId, id),
+          sql`${id} = ANY(${enquiries.roomIds})`
+        )
+      )
+      .limit(1);
+
+    if (associatedEnquiries.length > 0) {
+      throw new Error("Cannot delete room with existing enquiries. Please delete or reassign enquiries first.");
+    }
+
+    // If no associations found, safe to delete
     await db.delete(rooms).where(eq(rooms.id, id));
   }
 
