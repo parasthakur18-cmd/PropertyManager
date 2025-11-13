@@ -208,13 +208,8 @@ export default function Billing() {
     return matchesPaymentFilter && matchesAgentFilter;
   }) || [];
 
-  // Get unique agents that have bills
-  const agentsWithBills = Array.from(new Set(
-    bills?.map(bill => {
-      const booking = bookings.find(b => b.id === bill.bookingId);
-      return booking?.travelAgentId;
-    }).filter(Boolean)
-  )) as number[];
+  // Always show all travel agents (not just those with bills)
+  const agentsToShow = travelAgents || [];
 
   return (
     <div className="p-6 md:p-8">
@@ -386,7 +381,7 @@ export default function Billing() {
         </Tabs>
 
         {/* Agent Filter */}
-        {agentsWithBills.length > 0 && (
+        {agentsToShow.length > 0 && (
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Filter by Agent:</label>
             <Select 
@@ -398,14 +393,11 @@ export default function Billing() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Agents</SelectItem>
-                {agentsWithBills.map(agentId => {
-                  const agent = travelAgents.find(a => a.id === agentId);
-                  return (
-                    <SelectItem key={agentId} value={agentId.toString()}>
-                      {agent?.name || `Agent #${agentId}`}
-                    </SelectItem>
-                  );
-                })}
+                {agentsToShow.map(agent => (
+                  <SelectItem key={agent.id} value={agent.id.toString()}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
