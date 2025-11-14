@@ -37,7 +37,7 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
 -   **Active Bookings Dashboard**: Real-time monitoring of checked-in guests with quick checkout.
 -   **Enhanced Dashboard with Quick Actions**: Mobile-optimized dashboard with quick action tabs for New Booking and New Enquiry, and live counts for check-ins, check-outs, and orders.
 -   **Room Availability Calendar**: Visual calendar for occupancy.
--   **Bill Management**: Detailed bill viewing, generation, and professional printing.
+-   **Bill Management**: Detailed bill viewing, generation, and professional printing. Billing page UI hides "Total Revenue" from managers (frontend-only) - only admins see revenue totals.
 -   **Booking Editing**: Modifies existing reservations.
 -   **Guest ID Proof Upload**: Requires guest ID proof upload using Replit Object Storage.
 -   **Booking Analytics**: Provides analytics on bookings, revenue, sources, and meal plans.
