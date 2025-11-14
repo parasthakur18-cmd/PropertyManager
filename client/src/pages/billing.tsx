@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 const paymentStatusColors = {
   paid: "bg-chart-5 text-white",
@@ -43,6 +44,7 @@ interface BillDetails extends Bill {
 
 export default function Billing() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isMergeDialogOpen, setIsMergeDialogOpen] = useState(false);
   const [selectedBookingIds, setSelectedBookingIds] = useState<number[]>([]);
   const [primaryBookingId, setPrimaryBookingId] = useState<number | null>(null);
@@ -334,16 +336,18 @@ export default function Billing() {
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <IndianRupee className="h-4 w-4 text-chart-5" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold font-mono" data-testid="stat-total-revenue">₹{totalRevenue.toLocaleString()}</div>
-          </CardContent>
-        </Card>
+      <div className={`grid grid-cols-1 gap-6 mb-8 ${user?.role === 'admin' ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+        {user?.role === 'admin' && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
+              <IndianRupee className="h-4 w-4 text-chart-5" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold font-mono" data-testid="stat-total-revenue">₹{totalRevenue.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
