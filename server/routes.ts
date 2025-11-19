@@ -23,7 +23,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc, sql, eq, and, isNull, not, or } from "drizzle-orm";
+import { desc, sql, eq, and, isNull, not, or, gt, lt } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
@@ -2970,8 +2970,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let bookingConditions = [
         not(eq(bookingsTable.status, "cancelled")),
         // Booking overlaps if checkout > requestCheckIn AND checkIn < requestCheckOut
-        sql`${bookingsTable.checkOutDate} > ${requestCheckIn.toISOString()}::timestamp`,
-        sql`${bookingsTable.checkInDate} < ${requestCheckOut.toISOString()}::timestamp`
+        gt(bookingsTable.checkOutDate, requestCheckIn),
+        lt(bookingsTable.checkInDate, requestCheckOut)
       ];
       
       // Optionally exclude a specific booking (for edit mode)
