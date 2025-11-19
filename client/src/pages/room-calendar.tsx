@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Calendar as CalendarIcon } from "lucide-react";
+import { Calendar as CalendarIcon, BookPlus, FileText, Bed } from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval } from "date-fns";
 import {
   Select,
@@ -14,6 +15,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Property } from "@shared/schema";
 
@@ -32,6 +34,7 @@ interface RoomCalendarData {
 }
 
 export default function RoomCalendar() {
+  const [, navigate] = useLocation();
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
   const [endDate, setEndDate] = useState<Date>(addDays(today, 30));
@@ -65,6 +68,20 @@ export default function RoomCalendar() {
   // Generate array of dates for the calendar
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // Calculate available rooms for the entire date range
+  const availableRooms = useMemo(() => {
+    if (!calendarData.length) return [];
+    
+    return calendarData.filter(room => {
+      // Check if room is available for ALL dates in the range
+      return dates.every(date => {
+        const dateKey = format(date, "yyyy-MM-dd");
+        const block = room.dateBlocks[dateKey];
+        return block?.available === true;
+      });
+    });
+  }, [calendarData, dates]);
+
   const handlePrevious30Days = () => {
     setStartDate(addDays(startDate, -30));
     setEndDate(addDays(endDate, -30));
@@ -73,6 +90,28 @@ export default function RoomCalendar() {
   const handleNext30Days = () => {
     setStartDate(addDays(startDate, 30));
     setEndDate(addDays(endDate, 30));
+  };
+
+  const handleCreateBooking = (roomId: number) => {
+    // Navigate to bookings page with pre-filled data
+    const params = new URLSearchParams({
+      roomId: roomId.toString(),
+      checkIn: startDate.toISOString(),
+      checkOut: endDate.toISOString(),
+      ...(selectedPropertyId !== "all" && { propertyId: selectedPropertyId.toString() }),
+    });
+    navigate(`/bookings?${params}`);
+  };
+
+  const handleCreateEnquiry = (roomId: number) => {
+    // Navigate to enquiries page with pre-filled data
+    const params = new URLSearchParams({
+      roomId: roomId.toString(),
+      checkIn: startDate.toISOString(),
+      checkOut: endDate.toISOString(),
+      ...(selectedPropertyId !== "all" && { propertyId: selectedPropertyId.toString() }),
+    });
+    navigate(`/enquiries?${params}`);
   };
 
   return (
@@ -273,7 +312,7 @@ export default function RoomCalendar() {
                         )}
                         {room.roomCategory === "dormitory" && (
                           <div className="text-xs text-muted-foreground mt-1">
-                            🛏️ {room.totalBeds} beds
+                            {room.totalBeds} beds
                           </div>
                         )}
                       </td>
@@ -334,6 +373,85 @@ export default function RoomCalendar() {
         </CardContent>
       </Card>
 
+      {/* Available Rooms Summary */}
+      {availableRooms.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Bed className="h-5 w-5" />
+              Available Rooms for Selected Dates
+              <Badge variant="secondary" className="ml-2">
+                {availableRooms.length} {availableRooms.length === 1 ? "room" : "rooms"}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-muted-foreground mb-4">
+              These rooms are available for the entire date range: {format(startDate, "MMM d")} - {format(endDate, "MMM d, yyyy")}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {availableRooms.map((room) => (
+                <Card key={room.roomId} className="hover-elevate">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">{room.roomNumber}</CardTitle>
+                    {room.roomName && (
+                      <p className="text-sm text-muted-foreground">{room.roomName}</p>
+                    )}
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">
+                        {room.roomCategory}
+                      </Badge>
+                      {room.roomCategory === "dormitory" && room.totalBeds && (
+                        <Badge variant="secondary">
+                          {room.totalBeds} beds
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleCreateBooking(room.roomId)}
+                        data-testid={`button-book-room-${room.roomId}`}
+                      >
+                        <BookPlus className="h-4 w-4 mr-1" />
+                        Book
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleCreateEnquiry(room.roomId)}
+                        data-testid={`button-enquiry-room-${room.roomId}`}
+                      >
+                        <FileText className="h-4 w-4 mr-1" />
+                        Enquiry
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {availableRooms.length === 0 && calendarData.length > 0 && (
+        <Card>
+          <CardContent className="py-8 text-center">
+            <div className="text-muted-foreground">
+              <Bed className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="font-medium">No Fully Available Rooms</p>
+              <p className="text-sm mt-1">
+                No rooms are available for the entire date range. Check the calendar above for partial availability.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Separator />
 
       <div className="text-sm text-muted-foreground space-y-2">
@@ -353,6 +471,8 @@ export default function RoomCalendar() {
           </li>
           <li>Hover over cells for details</li>
           <li>Scroll horizontally to see more dates</li>
+          <li>Available rooms list shows rooms free for the entire date range</li>
+          <li>Click "Book" to create a booking or "Enquiry" to save as enquiry</li>
         </ul>
       </div>
     </div>
