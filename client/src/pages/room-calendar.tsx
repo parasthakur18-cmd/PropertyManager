@@ -92,26 +92,36 @@ export default function RoomCalendar() {
     setEndDate(addDays(endDate, 30));
   };
 
-  const handleCreateBooking = (roomId: number) => {
+  const handleCreateBooking = (roomId: number, checkIn?: Date, checkOut?: Date) => {
     // Navigate to bookings page with pre-filled data
     const params = new URLSearchParams({
       roomId: roomId.toString(),
-      checkIn: startDate.toISOString(),
-      checkOut: endDate.toISOString(),
+      checkIn: (checkIn || startDate).toISOString(),
+      checkOut: (checkOut || endDate).toISOString(),
       ...(selectedPropertyId !== "all" && { propertyId: selectedPropertyId.toString() }),
     });
     navigate(`/bookings?${params}`);
   };
 
-  const handleCreateEnquiry = (roomId: number) => {
+  const handleCreateEnquiry = (roomId: number, checkIn?: Date, checkOut?: Date) => {
     // Navigate to enquiries page with pre-filled data
     const params = new URLSearchParams({
       roomId: roomId.toString(),
-      checkIn: startDate.toISOString(),
-      checkOut: endDate.toISOString(),
+      checkIn: (checkIn || startDate).toISOString(),
+      checkOut: (checkOut || endDate).toISOString(),
       ...(selectedPropertyId !== "all" && { propertyId: selectedPropertyId.toString() }),
     });
     navigate(`/enquiries?${params}`);
+  };
+
+  const handleCellClick = (roomId: number, date: Date, isAvailable: boolean) => {
+    if (!isAvailable) return;
+    
+    // When clicking a cell, use that date as check-in and next day as check-out
+    const checkIn = startOfDay(date);
+    const checkOut = addDays(checkIn, 1);
+    
+    handleCreateBooking(roomId, checkIn, checkOut);
   };
 
   return (
@@ -330,11 +340,14 @@ export default function RoomCalendar() {
                           const bedsAvail = block.bedsAvailable || 0;
                           const totalBeds = room.totalBeds || 6;
                           const percentAvailable = (bedsAvail / totalBeds) * 100;
+                          const hasAvailability = bedsAvail > 0;
 
                           return (
                             <td
                               key={dateKey}
-                              className="border p-1 text-center cursor-help"
+                              className={`border p-1 text-center ${
+                                hasAvailability ? "cursor-pointer hover:opacity-80" : "cursor-not-allowed"
+                              }`}
                               style={{
                                 backgroundColor:
                                   percentAvailable >= 50
@@ -343,7 +356,12 @@ export default function RoomCalendar() {
                                     ? "#fb923c"
                                     : "#ef4444",
                               }}
-                              title={`${bedsAvail}/${totalBeds} beds available`}
+                              title={
+                                hasAvailability
+                                  ? `${bedsAvail}/${totalBeds} beds available - Click to book`
+                                  : "Fully booked"
+                              }
+                              onClick={() => handleCellClick(room.roomId, date, hasAvailability)}
                               data-testid={`cell-${room.roomId}-${dateKey}`}
                             >
                               <span className="text-xs text-white font-bold">
@@ -356,10 +374,17 @@ export default function RoomCalendar() {
                         return (
                           <td
                             key={dateKey}
-                            className={`border p-1 cursor-help ${
-                              block.available ? "bg-green-500" : "bg-red-500"
+                            className={`border p-1 ${
+                              block.available
+                                ? "bg-green-500 cursor-pointer hover:opacity-80"
+                                : "bg-red-500 cursor-not-allowed"
                             }`}
-                            title={block.available ? "Available" : "Booked"}
+                            title={
+                              block.available
+                                ? "Available - Click to book"
+                                : "Booked"
+                            }
+                            onClick={() => handleCellClick(room.roomId, date, block.available)}
                             data-testid={`cell-${room.roomId}-${dateKey}`}
                           />
                         );
@@ -459,6 +484,7 @@ export default function RoomCalendar() {
           <strong>How to use:</strong>
         </p>
         <ul className="list-disc list-inside space-y-1 ml-2">
+          <li><strong>Click any green cell</strong> to book that room for that date (1 night)</li>
           <li>Green cells = Room available</li>
           <li>Red cells = Room booked</li>
           <li>
@@ -471,8 +497,8 @@ export default function RoomCalendar() {
           </li>
           <li>Hover over cells for details</li>
           <li>Scroll horizontally to see more dates</li>
-          <li>Available rooms list shows rooms free for the entire date range</li>
-          <li>Click "Book" to create a booking or "Enquiry" to save as enquiry</li>
+          <li>Available rooms list shows rooms free for the entire selected date range</li>
+          <li>Use "Book" buttons in summary panel for longer stays</li>
         </ul>
       </div>
     </div>
