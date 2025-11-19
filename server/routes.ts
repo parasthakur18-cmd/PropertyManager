@@ -571,26 +571,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const checkInDate = new Date(checkIn as string);
       const checkOutDate = new Date(checkOut as string);
       
-      // Get overlapping bookings for this room
+      // Get ALL non-cancelled bookings, then filter in JavaScript
       const { bookings: bookingsTable } = await import("@shared/schema");
-      let conditions = [
-        not(eq(bookingsTable.status, "cancelled")),
-        sql`${bookingsTable.checkOutDate} > ${checkInDate.toISOString().split('T')[0]}`,
-        sql`${bookingsTable.checkInDate} < ${checkOutDate.toISOString().split('T')[0]}`
-      ];
-      
-      // Exclude specific booking if provided (for edit mode)
-      if (excludeBookingId) {
-        const parsedExcludeId = parseInt(excludeBookingId as string);
-        if (!isNaN(parsedExcludeId)) {
-          conditions.push(not(eq(bookingsTable.id, parsedExcludeId)));
-        }
-      }
-      
-      const overlappingBookings = await db
+      const allBookings = await db
         .select()
         .from(bookingsTable)
-        .where(and(...conditions));
+        .where(not(eq(bookingsTable.status, "cancelled")));
+      
+      // Filter for overlapping bookings in JavaScript
+      const overlappingBookings = allBookings.filter(booking => {
+        // Skip excluded booking if specified
+        if (excludeBookingId && booking.id === parseInt(excludeBookingId as string)) {
+          return false;
+        }
+        
+        // Check if booking overlaps with requested dates
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        return bookingCheckOut > checkInDate && bookingCheckIn < checkOutDate;
+      });
       
       // Filter for this specific room
       const roomBookings = overlappingBookings.filter(booking => 
