@@ -2927,24 +2927,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Room availability checking
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     try {
-      const { propertyId } = req.query;
+      const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
       
       // Get all rooms (optionally filtered by property)
       const { rooms } = await import("@shared/schema");
-      let roomsQuery = db.select().from(rooms);
       
-      // Only filter by property if we have a valid finite number
-      if (propertyId) {
-        const propertyIdNum = Number(propertyId);
-        if (Number.isFinite(propertyIdNum)) {
-          roomsQuery = roomsQuery.where(eq(rooms.propertyId, propertyIdNum));
-        }
-      }
-      
-      const allRooms = await roomsQuery;
+      // Build query with optional property filter
+      const propertyIdNum = propertyId ? Number(propertyId) : null;
+      const allRooms = Number.isFinite(propertyIdNum) 
+        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
+        : await db.select().from(rooms);
       
       // If no dates provided, return all rooms with full availability
-      const { checkIn, checkOut, excludeBookingId } = req.query;
       if (!checkIn || !checkOut) {
         const availability = allRooms.map(room => ({
           roomId: room.id,
