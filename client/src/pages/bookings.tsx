@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, Download } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -761,6 +761,140 @@ export default function Bookings() {
     cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
   };
 
+  // Export all bookings to CSV with complete data
+  const exportToCSV = () => {
+    if (!bookings || bookings.length === 0) {
+      toast({
+        title: "No Data",
+        description: "There are no bookings to export",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // CSV Headers - comprehensive booking data
+    const headers = [
+      "Booking ID",
+      "Created Date",
+      "Property",
+      "Room Number(s)",
+      "Room Type",
+      "Room Category",
+      "Booking Type",
+      "Beds Booked",
+      "Guest Name",
+      "Guest Phone",
+      "Guest Email",
+      "Check-in Date",
+      "Check-out Date",
+      "Nights",
+      "Status",
+      "Number of Guests",
+      "Source",
+      "Travel Agent",
+      "Meal Plan",
+      "Base Price/Night",
+      "Custom Price/Night",
+      "Advance Paid",
+      "Total Amount",
+      "Balance Due",
+      "Special Requests",
+      "Created By",
+    ];
+
+    // Build CSV rows
+    const rows = bookings.map((booking) => {
+      const property = properties?.find(p => p.id === booking.propertyId);
+      const guest = guests?.find(g => g.id === booking.guestId);
+      const agent = travelAgents?.find(a => a.id === booking.travelAgentId);
+      
+      // Handle both single and group bookings
+      let roomNumbers = "";
+      let roomType = "";
+      let roomCategory = "";
+      let basePrice = "0";
+      
+      if (booking.isGroupBooking && booking.roomIds) {
+        const bookingRooms = rooms?.filter(r => booking.roomIds?.includes(r.id)) || [];
+        roomNumbers = bookingRooms.map(r => r.roomNumber).join(", ");
+        roomType = bookingRooms.map(r => r.roomType || "Standard").join(", ");
+        roomCategory = bookingRooms.map(r => r.roomCategory).join(", ");
+        basePrice = bookingRooms.map(r => r.pricePerNight).join(", ");
+      } else {
+        const room = rooms?.find(r => r.id === booking.roomId);
+        roomNumbers = room?.roomNumber || "";
+        roomType = room?.roomType || "Standard";
+        roomCategory = room?.roomCategory || "";
+        basePrice = room?.pricePerNight || "0";
+      }
+      
+      // Calculate nights
+      const checkIn = new Date(booking.checkInDate);
+      const checkOut = new Date(booking.checkOutDate);
+      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+      
+      // Calculate balance
+      const totalAmount = parseFloat(booking.totalAmount || "0");
+      const advancePaid = parseFloat(booking.advanceAmount || "0");
+      const balance = totalAmount - advancePaid;
+      
+      // Booking type
+      const bookingType = booking.bedsBooked 
+        ? "Dormitory" 
+        : booking.isGroupBooking 
+          ? "Group Booking" 
+          : "Single Room";
+      
+      return [
+        booking.id,
+        booking.createdAt ? format(new Date(booking.createdAt), "yyyy-MM-dd HH:mm") : "",
+        property?.name || "",
+        roomNumbers,
+        roomType,
+        roomCategory,
+        bookingType,
+        booking.bedsBooked || "",
+        guest?.fullName || "",
+        guest?.phone || "",
+        guest?.email || "",
+        format(checkIn, "yyyy-MM-dd HH:mm"),
+        format(checkOut, "yyyy-MM-dd HH:mm"),
+        nights,
+        booking.status,
+        booking.numberOfGuests,
+        booking.source || "Walk-in",
+        agent?.name || "",
+        booking.mealPlan || "EP",
+        basePrice,
+        booking.customPrice || "",
+        advancePaid.toFixed(2),
+        totalAmount.toFixed(2),
+        balance.toFixed(2),
+        (booking.specialRequests || "").replace(/[\n\r]/g, " "),
+        booking.createdBy || "",
+      ];
+    });
+
+    // Create CSV content
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map(cell => `"${cell}"`).join(","))
+      .join("\n");
+    
+    // Download file
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hostezee-bookings-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Successful",
+      description: `${bookings.length} bookings exported to CSV`,
+    });
+  };
+
   return (
     <div className="p-6 md:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -779,6 +913,14 @@ export default function Bookings() {
               data-testid="input-search-bookings"
             />
           </div>
+          <Button 
+            onClick={exportToCSV}
+            variant="outline"
+            data-testid="button-export-bookings"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
           <Dialog 
             open={isDialogOpen} 
             onOpenChange={(open) => {

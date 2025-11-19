@@ -50,6 +50,7 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
 -   **Property Display**: Users see their assigned property name in the sidebar.
 -   **Enhanced Enquiries Management**: Manages the complete enquiry lifecycle, supporting group enquiries and ensuring proper data transfer during conversion to booking.
 -   **Pending Payments Tracking**: Comprehensive system for tracking unpaid bills with payment status selection during checkout (paid/pending), optional due dates and reasons, agent-wise summary dashboard, and mark-as-paid functionality with payment method recording.
+-   **Excel Export for Bookings**: Comprehensive CSV export of all booking data from the Bookings page, including guest details (name, phone, email), room information (numbers, type, category), dates, pricing (base, custom, advance, total, balance), booking source, travel agent, meal plan, special requests, and metadata for complete data analysis and record-keeping.
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
