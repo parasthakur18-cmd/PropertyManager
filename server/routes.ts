@@ -2965,30 +2965,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         excludeBookingId: excludeBookingId || 'none'
       });
       
-      // Get all bookings that might overlap with requested dates
-      // Only exclude cancelled bookings
-      let bookingConditions = [
-        not(eq(bookingsTable.status, "cancelled")),
-        // Booking overlaps if checkout > requestCheckIn AND checkIn < requestCheckOut
-        // Use param() to properly bind Date objects as timestamp parameters
-        gt(bookingsTable.checkOutDate, param("requestCheckIn", requestCheckIn)),
-        lt(bookingsTable.checkInDate, param("requestCheckOut", requestCheckOut))
-      ];
-      
-      // Optionally exclude a specific booking (for edit mode)
-      if (excludeBookingId) {
-        const parsedExcludeId = parseInt(excludeBookingId as string);
-        if (!isNaN(parsedExcludeId)) {
-          bookingConditions.push(not(eq(bookingsTable.id, parsedExcludeId)));
-        }
-      }
-      
-      const allBookings = await db
+      // Get ALL non-cancelled bookings, then filter in JavaScript
+      // This avoids complex SQL date comparison issues
+      let allBookings = await db
         .select()
         .from(bookingsTable)
-        .where(and(...bookingConditions));
+        .where(not(eq(bookingsTable.status, "cancelled")));
       
-      console.log('✅ Found overlapping bookings:', allBookings.length);
+      // Filter for overlapping bookings in JavaScript
+      const overlappingBookings = allBookings.filter(booking => {
+        // Skip excluded booking if specified
+        if (excludeBookingId && booking.id === parseInt(excludeBookingId as string)) {
+          return false;
+        }
+        
+        // Check if booking overlaps with requested dates
+        // Overlap occurs when: checkout > requestCheckIn AND checkIn < requestCheckOut
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
+      });
+      
+      console.log('✅ Found overlapping bookings:', overlappingBookings.length);
       
       // Build availability response with bed counts for dormitory rooms
       const availability = allRooms.map(room => {
@@ -2998,12 +2997,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const totalBeds = room.totalBeds || 6;
           
           // Get all overlapping bookings for this dorm room
-          const overlappingBookings = allBookings.filter(booking => 
+          const roomOverlaps = overlappingBookings.filter(booking => 
             (booking.roomId === room.id || booking.roomIds?.includes(room.id))
           );
           
           // Calculate total beds booked during the requested dates
-          const bedsBookedCount = overlappingBookings.reduce((sum, booking) => {
+          const bedsBookedCount = roomOverlaps.reduce((sum, booking) => {
             // Use bedsBooked if available, otherwise assume 1 bed
             const bookedBeds = booking.bedsBooked || 1;
             return sum + bookedBeds;
@@ -3021,7 +3020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // For regular rooms, check if any booking overlaps
-        const hasOverlap = allBookings.some(booking => 
+        const hasOverlap = overlappingBookings.some(booking => 
           (booking.roomId === room.id || booking.roomIds?.includes(room.id))
         );
         
