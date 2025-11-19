@@ -17,7 +17,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room, type TravelAgent } from "@shared/schema";
+import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room, type TravelAgent, type Bill, type Order } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -95,6 +95,14 @@ export default function Bookings() {
 
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
+  });
+
+  const { data: bills } = useQuery<Bill[]>({
+    queryKey: ["/api/bills"],
+  });
+
+  const { data: orders } = useQuery<Order[]>({
+    queryKey: ["/api/orders"],
   });
 
   // Helper to get default check-in time (2:00 PM today)
@@ -761,7 +769,7 @@ export default function Bookings() {
     cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
   };
 
-  // Export all bookings to CSV with complete data
+  // Export all bookings to CSV with complete financial data
   const exportToCSV = () => {
     if (!bookings || bookings.length === 0) {
       toast({
@@ -772,11 +780,11 @@ export default function Bookings() {
       return;
     }
 
-    // CSV Headers - comprehensive booking data
+    // CSV Headers - comprehensive booking and financial data
     const headers = [
       "Booking ID",
       "Created Date",
-      "Property",
+      "Property Name",
       "Room Number(s)",
       "Room Type",
       "Room Category",
@@ -793,11 +801,22 @@ export default function Bookings() {
       "Source",
       "Travel Agent",
       "Meal Plan",
-      "Base Price/Night",
+      "Base Room Price/Night",
       "Custom Price/Night",
+      "Room Charges (Total)",
+      "Food Charges",
+      "Extra Charges",
+      "Subtotal",
+      "GST Rate (%)",
+      "GST Amount",
+      "Service Charge Rate (%)",
+      "Service Charge Amount",
+      "Discount Amount",
+      "Total Bill Amount",
       "Advance Paid",
-      "Total Amount",
       "Balance Due",
+      "Payment Status",
+      "Payment Method",
       "Special Requests",
       "Created By",
     ];
@@ -807,6 +826,7 @@ export default function Bookings() {
       const property = properties?.find(p => p.id === booking.propertyId);
       const guest = guests?.find(g => g.id === booking.guestId);
       const agent = travelAgents?.find(a => a.id === booking.travelAgentId);
+      const bill = bills?.find(b => b.bookingId === booking.id);
       
       // Handle both single and group bookings
       let roomNumbers = "";
@@ -833,10 +853,21 @@ export default function Bookings() {
       const checkOut = new Date(booking.checkOutDate);
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
       
-      // Calculate balance
-      const totalAmount = parseFloat(booking.totalAmount || "0");
-      const advancePaid = parseFloat(booking.advanceAmount || "0");
-      const balance = totalAmount - advancePaid;
+      // Get bill details
+      const roomCharges = bill ? parseFloat(bill.roomCharges) : 0;
+      const foodCharges = bill ? parseFloat(bill.foodCharges) : 0;
+      const extraCharges = bill ? parseFloat(bill.extraCharges) : 0;
+      const subtotal = bill ? parseFloat(bill.subtotal) : 0;
+      const gstRate = bill ? parseFloat(bill.gstRate) : 0;
+      const gstAmount = bill ? parseFloat(bill.gstAmount) : 0;
+      const serviceChargeRate = bill ? parseFloat(bill.serviceChargeRate) : 0;
+      const serviceChargeAmount = bill ? parseFloat(bill.serviceChargeAmount) : 0;
+      const discountAmount = bill ? parseFloat(bill.discountAmount || "0") : 0;
+      const totalBillAmount = bill ? parseFloat(bill.totalAmount) : parseFloat(booking.totalAmount || "0");
+      const advancePaid = bill ? parseFloat(bill.advancePaid) : parseFloat(booking.advanceAmount || "0");
+      const balanceDue = bill ? parseFloat(bill.balanceAmount) : totalBillAmount - advancePaid;
+      const paymentStatus = bill?.paymentStatus || (booking.status === "checked-out" ? "unpaid" : "pending");
+      const paymentMethod = bill?.paymentMethod || "";
       
       // Booking type
       const bookingType = booking.bedsBooked 
@@ -867,9 +898,20 @@ export default function Bookings() {
         booking.mealPlan || "EP",
         basePrice,
         booking.customPrice || "",
+        roomCharges.toFixed(2),
+        foodCharges.toFixed(2),
+        extraCharges.toFixed(2),
+        subtotal.toFixed(2),
+        gstRate.toFixed(2),
+        gstAmount.toFixed(2),
+        serviceChargeRate.toFixed(2),
+        serviceChargeAmount.toFixed(2),
+        discountAmount.toFixed(2),
+        totalBillAmount.toFixed(2),
         advancePaid.toFixed(2),
-        totalAmount.toFixed(2),
-        balance.toFixed(2),
+        balanceDue.toFixed(2),
+        paymentStatus,
+        paymentMethod,
         (booking.specialRequests || "").replace(/[\n\r]/g, " "),
         booking.createdBy || "",
       ];
@@ -885,13 +927,13 @@ export default function Bookings() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `hostezee-bookings-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
+    link.download = `hostezee-bookings-complete-${format(new Date(), "yyyy-MM-dd-HHmm")}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     
     toast({
       title: "Export Successful",
-      description: `${bookings.length} bookings exported to CSV`,
+      description: `${bookings.length} bookings with complete financial data exported`,
     });
   };
 
