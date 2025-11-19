@@ -6,8 +6,10 @@ Hostezee is a comprehensive, multi-property management system for mountain resor
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Fixes (Nov 19, 2025)
-- **Check Availability Bug Fix**: Fixed critical PostgreSQL error caused by invalid `propertyId=NaN` parameter when "All Properties" selected. Implemented proper validation using `Number.isFinite()` on both frontend and backend. Date-overlap logic now uses Drizzle's `lt()` and `gt()` operators correctly with Date objects as bind parameters.
+## Recent Updates (Nov 19, 2025)
+- **Airbnb-Style Room Calendar**: Built new visual calendar with horizontal date grid and vertical room list. Features color-coded availability (green/red/orange), dormitory bed-level tracking, direct booking from cells, date range search, and available rooms summary panel. Uses new `/api/calendar/availability` endpoint with proper date-overlap logic.
+- **Room Status Smart Logic**: Rooms in "cleaning", "maintenance", or "out-of-order" status are blocked ONLY for today. Future dates ignore room status and only check booking overlaps, allowing advance bookings for rooms currently being cleaned.
+- **Removed Check Availability Page**: Deprecated old buggy availability checker. Users now use the Room Calendar for all availability searches and bookings.
 
 ## System Architecture
 
@@ -39,7 +41,7 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
 -   **Financial Tracking**: Manages property lease agreements, payments, expenses, and generates P&L reports.
 -   **Active Bookings Dashboard**: Real-time monitoring of checked-in guests with quick checkout.
 -   **Enhanced Dashboard with Quick Actions**: Mobile-optimized dashboard with quick action tabs for New Booking and New Enquiry, and live counts for check-ins, check-outs, and orders.
--   **Room Availability Calendar**: Visual calendar for occupancy.
+-   **Airbnb-Style Room Calendar**: Visual calendar with horizontal dates and vertical room grid. Color-coded availability (green=available, red=booked, orange=partial for dorms). Supports direct booking from calendar cells, date range search, property filtering, and shows available rooms summary with Book/Enquiry actions. Smart room status handling: cleaning/maintenance blocks only today, not future dates.
 -   **Bill Management**: Detailed bill viewing, generation, and professional printing. Billing page UI hides "Total Revenue" from managers (frontend-only) - only admins see revenue totals.
 -   **Booking Editing**: Modifies existing reservations.
 -   **Guest ID Proof Upload**: Requires guest ID proof upload using Replit Object Storage.

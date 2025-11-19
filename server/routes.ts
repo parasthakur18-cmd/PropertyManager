@@ -3071,13 +3071,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Generate date blocks for this room
         const dateBlocks: { [date: string]: { available: boolean; bedsAvailable?: number } } = {};
         
+        // Get today's date (start of day for comparison)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayKey = today.toISOString().split('T')[0];
+        
         // Initialize all dates as available
         let current = new Date(start);
         while (current <= end) {
           const dateKey = current.toISOString().split('T')[0];
+          
+          // For TODAY only: check room status (cleaning/maintenance = unavailable)
+          // For FUTURE dates: ignore room status (only bookings matter)
+          const isToday = dateKey === todayKey;
+          const isRoomStatusBlocking = isToday && 
+            (room.status === 'cleaning' || room.status === 'maintenance' || room.status === 'out-of-order');
+          
           dateBlocks[dateKey] = {
-            available: true,
-            ...(room.roomCategory === "dormitory" && { bedsAvailable: room.totalBeds || 6 })
+            available: !isRoomStatusBlocking,
+            ...(room.roomCategory === "dormitory" && { 
+              bedsAvailable: isRoomStatusBlocking ? 0 : (room.totalBeds || 6)
+            })
           };
           current.setDate(current.getDate() + 1);
         }
