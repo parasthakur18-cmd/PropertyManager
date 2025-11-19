@@ -2928,15 +2928,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     try {
       const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
+      console.log('[AVAILABILITY] Query params:', { propertyId, checkIn, checkOut, excludeBookingId });
       
       // Get all rooms (optionally filtered by property)
       const { rooms } = await import("@shared/schema");
       
       // Build query with optional property filter
       const propertyIdNum = propertyId ? Number(propertyId) : null;
+      console.log('[AVAILABILITY] Parsed propertyId:', propertyIdNum, 'isFinite:', Number.isFinite(propertyIdNum));
+      
       const allRooms = Number.isFinite(propertyIdNum) 
         ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
         : await db.select().from(rooms);
+      
+      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
       
       // If no dates provided, return all rooms with full availability
       if (!checkIn || !checkOut) {
@@ -3007,7 +3012,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(availability);
     } catch (error: any) {
-      console.error('[AVAILABILITY ERROR]', error.message);
+      console.error('[AVAILABILITY ERROR] Full error:', error);
+      console.error('[AVAILABILITY ERROR] Message:', error.message);
+      console.error('[AVAILABILITY ERROR] Stack:', error.stack);
       res.status(500).json({ message: error.message });
     }
   });
