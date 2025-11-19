@@ -6,6 +6,9 @@ Hostezee is a comprehensive, multi-property management system for mountain resor
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Fixes (Nov 19, 2025)
+- **Check Availability Bug Fix**: Fixed critical PostgreSQL error caused by invalid `propertyId=NaN` parameter when "All Properties" selected. Implemented proper validation using `Number.isFinite()` on both frontend and backend. Date-overlap logic now uses Drizzle's `lt()` and `gt()` operators correctly with Date objects as bind parameters.
+
 ## System Architecture
 
 ### UI/UX Decisions

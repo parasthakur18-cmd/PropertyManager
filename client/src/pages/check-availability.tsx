@@ -53,7 +53,8 @@ export default function CheckAvailability() {
       const params = new URLSearchParams({
         checkIn: checkInDate.toISOString(),
         checkOut: checkOutDate.toISOString(),
-        ...(selectedPropertyId && { propertyId: selectedPropertyId.toString() }),
+        // Only include propertyId if it's a valid finite number
+        ...(Number.isFinite(selectedPropertyId) ? { propertyId: selectedPropertyId.toString() } : {}),
       });
       const response = await fetch(`/api/rooms/availability?${params.toString()}`);
       if (!response.ok) throw new Error("Failed to fetch availability");

@@ -2924,37 +2924,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Room availability checking - SIMPLIFIED TO DEBUG
+  // Room availability checking
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     try {
       const { propertyId } = req.query;
-      console.log('[AVAILABILITY] Request received for propertyId:', propertyId);
       
       // Get all rooms (optionally filtered by property)
       const { rooms } = await import("@shared/schema");
       let roomsQuery = db.select().from(rooms);
       
+      // Only filter by property if we have a valid finite number
       if (propertyId) {
-        const parsedPropertyId = parseInt(propertyId as string);
-        if (!isNaN(parsedPropertyId)) {
-          roomsQuery = roomsQuery.where(eq(rooms.propertyId, parsedPropertyId));
+        const propertyIdNum = Number(propertyId);
+        if (Number.isFinite(propertyIdNum)) {
+          roomsQuery = roomsQuery.where(eq(rooms.propertyId, propertyIdNum));
         }
       }
       
       const allRooms = await roomsQuery;
-      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
       
-      // TEMPORARY: Return all rooms as available to test endpoint
-      const availability = allRooms.map(room => ({
-        roomId: room.id,
-        available: 1,
-        ...(room.roomCategory === "dormitory" && {
-          totalBeds: room.totalBeds || 6,
-          remainingBeds: room.totalBeds || 6
-        })
-      }));
+      // If no dates provided, return all rooms with full availability
+      const { checkIn, checkOut, excludeBookingId } = req.query;
+      if (!checkIn || !checkOut) {
+        const availability = allRooms.map(room => ({
+          roomId: room.id,
+          available: 1,
+          ...(room.roomCategory === "dormitory" && {
+            totalBeds: room.totalBeds || 6,
+            remainingBeds: room.totalBeds || 6
+          })
+        }));
+        return res.json(availability);
+      }
       
-      console.log('[AVAILABILITY] Returning', availability.length, 'rooms');
+      // Parse and validate dates
+      const requestCheckIn = new Date(checkIn as string);
+      const requestCheckOut = new Date(checkOut as string);
+      if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      // Get overlapping bookings using Drizzle query builder
+      const { bookings } = await import("@shared/schema");
+      let overlappingBookings = await db
+        .select()
+        .from(bookings)
+        .where(and(
+          not(eq(bookings.status, "cancelled")),
+          lt(bookings.checkInDate, requestCheckOut),
+          gt(bookings.checkOutDate, requestCheckIn)
+        ));
+      
+      // Filter out excluded booking if specified
+      if (excludeBookingId) {
+        const excludeId = Number(excludeBookingId);
+        if (Number.isFinite(excludeId)) {
+          overlappingBookings = overlappingBookings.filter(b => b.id !== excludeId);
+        }
+      }
+      
+      // Calculate availability for each room
+      const availability = allRooms.map(room => {
+        if (room.roomCategory === "dormitory") {
+          const totalBeds = room.totalBeds || 6;
+          const roomBookings = overlappingBookings.filter(b => 
+            b.roomId === room.id || b.roomIds?.includes(room.id)
+          );
+          const bedsBooked = roomBookings.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          const remainingBeds = Math.max(0, totalBeds - bedsBooked);
+          
+          return {
+            roomId: room.id,
+            available: remainingBeds > 0 ? 1 : 0,
+            totalBeds,
+            remainingBeds
+          };
+        }
+        
+        const hasOverlap = overlappingBookings.some(b => 
+          b.roomId === room.id || b.roomIds?.includes(room.id)
+        );
+        
+        return {
+          roomId: room.id,
+          available: hasOverlap ? 0 : 1
+        };
+      });
+      
       res.json(availability);
     } catch (error: any) {
       console.error('[AVAILABILITY ERROR]', error.message);
