@@ -1,0 +1,148 @@
+Build an Airbnb-Style Room Availability Calendar System
+
+I want you to build a complete Airbnb-style room availability checker for my PMS.
+Follow these exact requirements:
+
+1. Calendar UI (like Airbnb host calendar)
+
+Create a horizontal date grid and vertical room list, like this:
+
+             20  21  22  23  24  25  26
+Room 101     █ █ █ ▢ ▢ ▢ ▢
+Room 102     ▢ ▢ █ █ ▢ ▢ ▢
+Room 103     ▢ ▢ ▢ ▢ ▢ ▢ ▢
+
+
+Symbols:
+
+█ (red) = booked
+
+▢ (green) = available
+
+Calendar must:
+
+Scroll horizontally for dates
+
+Scroll vertically for rooms
+
+Fit mobile & desktop
+
+Highlight selected date range
+
+2. Date Range Search Function
+
+Add a section above the calendar:
+
+Check-in date
+
+Check-out date
+
+Guests (optional)
+
+“Search Availability” button
+
+When dates are selected, highlight available rooms across the grid.
+
+3. Accurate Room Availability Logic
+
+Use a date-block system like Airbnb:
+
+For each booking, store:
+
+room_id
+
+check_in
+
+check_out
+
+status
+
+Then generate blocked dates for each day:
+
+Example booking:
+Check-in: 2024-11-20
+Check-out: 2024-11-23
+Block dates: 20, 21, 22
+
+Check-out day becomes available.
+
+This prevents:
+
+Overlapping bookings
+
+Rooms staying blocked after cancellation
+
+Rooms showing unavailable for future dates
+
+4. Real-Time Availability Result
+
+After user selects 20 to 25:
+
+Show only the rooms that have all days free.
+
+Example result:
+
+Room 101 → Available
+
+Room 102 → Not available
+
+Room 103 → Available
+
+Show these rooms as selectable cards below the calendar.
+
+5. Group Booking Support
+
+If the user wants 3 rooms, the system must:
+
+Show only rooms available for all selected dates
+
+Allow selecting multiple rooms (checkbox style)
+
+Show selected rooms count
+
+Show total price for entire stay
+
+6. Dormitory Support (bed-level availability)
+
+Add support for a dorm:
+
+Dorm 6-Bed: [ ○ ○ ● ○ ○ ○ ]
+
+
+Symbols:
+
+○ green → available bed
+
+● red → booked bed
+
+Booking 1 bed should only block that bed, not the entire dorm.
+
+7. Booking Actions
+
+When user selects rooms, show a summary panel:
+
+Booking Summary
+
+Dates
+
+Nights
+
+Rooms selected
+
+Total price
+
+Advance amount
+
+Buttons: “Create Booking” & “Create Enquiry”
+
+8. Automatic Update on Cancellation
+
+When booking is cancelled:
+
+Remove date blocks
+
+Refresh calendar
+
+Room becomes available again
+
+This solves the issue of rooms staying blocked after cancellation.

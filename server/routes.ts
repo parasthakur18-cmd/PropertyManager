@@ -3019,6 +3019,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Calendar availability endpoint - returns date blocks for visual calendar
+  app.get("/api/calendar/availability", isAuthenticated, async (req, res) => {
+    try {
+      const { startDate, endDate, propertyId } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+      
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      // Get rooms (optionally filtered by property)
+      const { rooms, bookings } = await import("@shared/schema");
+      const propertyIdNum = propertyId ? Number(propertyId) : null;
+      const allRooms = Number.isFinite(propertyIdNum)
+        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
+        : await db.select().from(rooms);
+      
+      // Get all active bookings that overlap with the date range
+      const overlappingBookings = await db
+        .select()
+        .from(bookings)
+        .where(and(
+          not(eq(bookings.status, "cancelled")),
+          lt(bookings.checkInDate, end),
+          gt(bookings.checkOutDate, start)
+        ));
+      
+      // Build calendar data
+      const calendarData = allRooms.map(room => {
+        const roomBookings = overlappingBookings.filter(b =>
+          b.roomId === room.id || b.roomIds?.includes(room.id)
+        );
+        
+        // Generate date blocks for this room
+        const dateBlocks: { [date: string]: { available: boolean; bedsAvailable?: number } } = {};
+        
+        // Initialize all dates as available
+        let current = new Date(start);
+        while (current <= end) {
+          const dateKey = current.toISOString().split('T')[0];
+          dateBlocks[dateKey] = {
+            available: true,
+            ...(room.roomCategory === "dormitory" && { bedsAvailable: room.totalBeds || 6 })
+          };
+          current.setDate(current.getDate() + 1);
+        }
+        
+        // Mark booked dates
+        roomBookings.forEach(booking => {
+          const bookingStart = new Date(booking.checkInDate);
+          const bookingEnd = new Date(booking.checkOutDate);
+          
+          let bookingDate = new Date(bookingStart);
+          while (bookingDate < bookingEnd) {
+            const dateKey = bookingDate.toISOString().split('T')[0];
+            
+            if (dateBlocks[dateKey]) {
+              if (room.roomCategory === "dormitory") {
+                const bedsBooked = booking.bedsBooked || 1;
+                const currentAvailable = dateBlocks[dateKey].bedsAvailable || 0;
+                const newAvailable = Math.max(0, currentAvailable - bedsBooked);
+                dateBlocks[dateKey] = {
+                  available: newAvailable > 0,
+                  bedsAvailable: newAvailable
+                };
+              } else {
+                dateBlocks[dateKey].available = false;
+              }
+            }
+            
+            bookingDate.setDate(bookingDate.getDate() + 1);
+          }
+        });
+        
+        return {
+          roomId: room.id,
+          roomNumber: room.roomNumber,
+          roomName: room.roomName,
+          roomCategory: room.roomCategory,
+          totalBeds: room.totalBeds,
+          dateBlocks
+        };
+      });
+      
+      res.json(calendarData);
+    } catch (error: any) {
+      console.error('[CALENDAR ERROR]', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Property Lease endpoints
   app.get("/api/leases", isAuthenticated, async (req, res) => {
     try {
