@@ -3035,6 +3035,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
+      // Prevent excessive date range to avoid performance issues
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 90) {
+        return res.status(400).json({ message: "Date range cannot exceed 90 days" });
+      }
+      
+      if (daysDiff < 1) {
+        return res.status(400).json({ message: "End date must be after start date" });
+      }
+      
       // Get rooms (optionally filtered by property)
       const { rooms, bookings } = await import("@shared/schema");
       const propertyIdNum = propertyId ? Number(propertyId) : null;
