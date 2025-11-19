@@ -53,7 +53,6 @@ const adminOperationsItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Properties", url: "/properties", icon: Building2 },
   { title: "Rooms", url: "/rooms", icon: Hotel },
-  { title: "Check Availability", url: "/check-availability", icon: Search },
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
@@ -85,7 +84,6 @@ const adminFinanceItems = [
 const managerOperationsItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Rooms", url: "/rooms", icon: Hotel },
-  { title: "Check Availability", url: "/check-availability", icon: Search },
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },

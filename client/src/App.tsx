@@ -41,7 +41,6 @@ import QRCodes from "@/pages/qr-codes";
 import Salaries from "@/pages/salaries";
 import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
-import CheckAvailability from "@/pages/check-availability";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -71,7 +70,6 @@ function Router() {
           <Route path="/" component={Dashboard} />
           <Route path="/properties" component={Properties} />
           <Route path="/rooms" component={Rooms} />
-          <Route path="/check-availability" component={CheckAvailability} />
           <Route path="/bookings" component={Bookings} />
           <Route path="/active-bookings" component={ActiveBookings} />
           <Route path="/room-calendar" component={RoomCalendar} />
