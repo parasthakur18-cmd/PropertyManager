@@ -2970,8 +2970,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let bookingConditions = [
         not(eq(bookingsTable.status, "cancelled")),
         // Booking overlaps if checkout > requestCheckIn AND checkIn < requestCheckOut
-        sql`${bookingsTable.checkOutDate} > ${requestCheckIn.toISOString().split('T')[0]}`,
-        sql`${bookingsTable.checkInDate} < ${requestCheckOut.toISOString().split('T')[0]}`
+        sql`${bookingsTable.checkOutDate} > ${requestCheckIn.toISOString()}::timestamp`,
+        sql`${bookingsTable.checkInDate} < ${requestCheckOut.toISOString()}::timestamp`
       ];
       
       // Optionally exclude a specific booking (for edit mode)
