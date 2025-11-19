@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2 } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1400,8 +1400,23 @@ export default function Bookings() {
                     return (
                       <TableRow key={booking.id} className="hover-elevate" data-testid={`row-booking-${booking.id}`}>
                         <TableCell className="font-medium" data-testid={`text-guest-${booking.id}`}>
-                          {guest?.fullName || "Unknown Guest"}
-                          <div className="text-xs text-muted-foreground mt-0.5">{guest?.phone}</div>
+                          <div className="flex items-center gap-2">
+                            <div>
+                              {guest?.fullName || "Unknown Guest"}
+                              <div className="text-xs text-muted-foreground mt-0.5">{guest?.phone}</div>
+                            </div>
+                            {guest?.phone && (
+                              <a 
+                                href={`tel:${guest.phone}`} 
+                                className="p-1.5 rounded-md hover-elevate bg-primary/10 text-primary shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={`Call ${guest.fullName}`}
+                                data-testid={`button-call-${booking.id}`}
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </a>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell data-testid={`text-property-${booking.id}`}>
                           {property?.name || "Unknown"}
@@ -1437,9 +1452,16 @@ export default function Bookings() {
                           ) : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
-                            {booking.status}
-                          </Badge>
+                          <div className="flex flex-col gap-1">
+                            <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
+                              {booking.status}
+                            </Badge>
+                            {booking.source && (
+                              <span className="text-xs text-muted-foreground" data-testid={`text-source-${booking.id}`}>
+                                {booking.source}
+                              </span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
