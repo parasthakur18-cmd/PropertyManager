@@ -2924,13 +2924,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Room availability checking - ULTRA SIMPLIFIED
+  // Room availability checking - SIMPLIFIED TO DEBUG
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     try {
-      const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
+      const { propertyId } = req.query;
+      console.log('[AVAILABILITY] Request received for propertyId:', propertyId);
       
       // Get all rooms (optionally filtered by property)
-      const { rooms, bookings: bookingsTable } = await import("@shared/schema");
+      const { rooms } = await import("@shared/schema");
       let roomsQuery = db.select().from(rooms);
       
       if (propertyId) {
@@ -2941,100 +2942,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const allRooms = await roomsQuery;
+      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
       
-      // If no dates provided, return all rooms (for simple listing)
-      if (!checkIn || !checkOut) {
-        return res.json(allRooms);
-      }
+      // TEMPORARY: Return all rooms as available to test endpoint
+      const availability = allRooms.map(room => ({
+        roomId: room.id,
+        available: 1,
+        ...(room.roomCategory === "dormitory" && {
+          totalBeds: room.totalBeds || 6,
+          remainingBeds: room.totalBeds || 6
+        })
+      }));
       
-      // Parse dates
-      const requestCheckIn = new Date(checkIn as string);
-      const requestCheckOut = new Date(checkOut as string);
-      
-      // Validate dates
-      if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
-        return res.status(400).json({ message: "Invalid date format" });
-      }
-      
-      console.log('🔍 Availability check:', {
-        propertyId: propertyId || 'all',
-        requestCheckIn,
-        requestCheckOut,
-        checkInISO: requestCheckIn.toISOString(),
-        checkOutISO: requestCheckOut.toISOString(),
-        excludeBookingId: excludeBookingId || 'none'
-      });
-      
-      // Get overlapping bookings using Drizzle's query builder
-      // Date objects are automatically sent as bind parameters
-      let overlappingBookings = await db
-        .select()
-        .from(bookingsTable)
-        .where(and(
-          not(eq(bookingsTable.status, "cancelled")),
-          lt(bookingsTable.checkInDate, requestCheckOut),
-          gt(bookingsTable.checkOutDate, requestCheckIn)
-        ));
-      
-      // Filter out excluded booking if specified
-      if (excludeBookingId) {
-        const parsedExcludeId = parseInt(excludeBookingId as string);
-        if (!isNaN(parsedExcludeId)) {
-          overlappingBookings = overlappingBookings.filter(b => b.id !== parsedExcludeId);
-        }
-      }
-      
-      console.log('✅ Found overlapping bookings:', overlappingBookings.length);
-      console.log('📊 Total rooms to process:', allRooms.length);
-      
-      // Build availability response with bed counts for dormitory rooms
-      const availability = allRooms.map(room => {
-        // For dormitory rooms, calculate bed-level availability
-        if (room.roomCategory === "dormitory") {
-          // Ensure totalBeds has a valid value (default to 6 if not set)
-          const totalBeds = room.totalBeds || 6;
-          
-          // Get all overlapping bookings for this dorm room
-          const roomOverlaps = overlappingBookings.filter(booking => 
-            (booking.roomId === room.id || booking.roomIds?.includes(room.id))
-          );
-          
-          // Calculate total beds booked during the requested dates
-          const bedsBookedCount = roomOverlaps.reduce((sum, booking) => {
-            // Use bedsBooked if available, otherwise assume 1 bed
-            const bookedBeds = booking.bedsBooked || 1;
-            return sum + bookedBeds;
-          }, 0);
-          
-          // Calculate remaining beds
-          const remainingBeds = totalBeds - bedsBookedCount;
-          
-          return {
-            roomId: room.id,
-            available: remainingBeds > 0 ? 1 : 0,
-            totalBeds: totalBeds,
-            remainingBeds: Math.max(0, remainingBeds)
-          };
-        }
-        
-        // For regular rooms, check if any booking overlaps
-        const hasOverlap = overlappingBookings.some(booking => 
-          (booking.roomId === room.id || booking.roomIds?.includes(room.id))
-        );
-        
-        return {
-          roomId: room.id,
-          available: hasOverlap ? 0 : 1
-        };
-      });
-      
-      console.log('✅ Availability calculated for', availability.length, 'rooms');
+      console.log('[AVAILABILITY] Returning', availability.length, 'rooms');
       res.json(availability);
     } catch (error: any) {
-      console.error('❌ Availability error:', error);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      console.error('Error details:', JSON.stringify(error, null, 2));
+      console.error('[AVAILABILITY ERROR]', error.message);
       res.status(500).json({ message: error.message });
     }
   });
