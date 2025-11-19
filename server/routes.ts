@@ -2965,29 +2965,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         excludeBookingId: excludeBookingId || 'none'
       });
       
-      // Get ALL non-cancelled bookings, then filter in JavaScript
-      // This avoids complex SQL date comparison issues
-      let allBookings = await db
+      // Get overlapping bookings using Drizzle's query builder
+      // Date objects are automatically sent as bind parameters
+      let overlappingBookings = await db
         .select()
         .from(bookingsTable)
-        .where(not(eq(bookingsTable.status, "cancelled")));
+        .where(and(
+          not(eq(bookingsTable.status, "cancelled")),
+          lt(bookingsTable.checkInDate, requestCheckOut),
+          gt(bookingsTable.checkOutDate, requestCheckIn)
+        ));
       
-      // Filter for overlapping bookings in JavaScript
-      const overlappingBookings = allBookings.filter(booking => {
-        // Skip excluded booking if specified
-        if (excludeBookingId && booking.id === parseInt(excludeBookingId as string)) {
-          return false;
+      // Filter out excluded booking if specified
+      if (excludeBookingId) {
+        const parsedExcludeId = parseInt(excludeBookingId as string);
+        if (!isNaN(parsedExcludeId)) {
+          overlappingBookings = overlappingBookings.filter(b => b.id !== parsedExcludeId);
         }
-        
-        // Check if booking overlaps with requested dates
-        // Overlap occurs when: checkout > requestCheckIn AND checkIn < requestCheckOut
-        const bookingCheckOut = new Date(booking.checkOutDate);
-        const bookingCheckIn = new Date(booking.checkInDate);
-        
-        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
-      });
+      }
       
       console.log('✅ Found overlapping bookings:', overlappingBookings.length);
+      console.log('📊 Total rooms to process:', allRooms.length);
       
       // Build availability response with bed counts for dormitory rooms
       const availability = allRooms.map(room => {
@@ -3034,7 +3032,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(availability);
     } catch (error: any) {
       console.error('❌ Availability error:', error);
+      console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
+      console.error('Error details:', JSON.stringify(error, null, 2));
       res.status(500).json({ message: error.message });
     }
   });
