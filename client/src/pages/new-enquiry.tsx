@@ -70,17 +70,15 @@ type EnquiryFormData = z.infer<typeof enquiryFormSchema>;
 export default function NewEnquiry() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
-  const [checkInDate, setCheckInDate] = useState<Date>();
-  const [checkOutDate, setCheckOutDate] = useState<Date>();
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number>();
-  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
-  const [loadingRooms, setLoadingRooms] = useState(false);
   const [checkInPopoverOpen, setCheckInPopoverOpen] = useState(false);
   const [checkOutPopoverOpen, setCheckOutPopoverOpen] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+  });
+
+  const { data: rooms } = useQuery<Room[]>({
+    queryKey: ["/api/rooms"],
   });
 
   const form = useForm<EnquiryFormData>({
@@ -98,6 +96,51 @@ export default function NewEnquiry() {
       roomId: undefined,
     },
   });
+
+  // Watch check-in and check-out dates for availability checking (like bookings.tsx)
+  const checkInDate = form.watch("checkInDate");
+  const checkOutDate = form.watch("checkOutDate");
+  const selectedPropertyId = form.watch("propertyId");
+
+  // Fetch room availability using TanStack Query (matches bookings.tsx pattern exactly)
+  const { data: roomAvailability, isLoading: loadingRooms } = useQuery({
+    queryKey: ["/api/rooms/availability", checkInDate, checkOutDate, selectedPropertyId],
+    enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate && selectedPropertyId),
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/rooms/availability?propertyId=${selectedPropertyId}&checkIn=${checkInDate.toISOString()}&checkOut=${checkOutDate.toISOString()}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch availability");
+      return response.json() as Promise<Array<{
+        roomId: number;
+        available: number;
+        totalBeds?: number;
+        remainingBeds?: number;
+      }>>;
+    },
+  });
+
+  // Helper to get available rooms (matches bookings.tsx pattern)
+  const getAvailableRooms = () => {
+    if (!roomAvailability || !rooms) {
+      return rooms?.filter(r => r.propertyId === selectedPropertyId && (r.status === "available" || r.status === "cleaning")) || [];
+    }
+
+    return rooms.filter(room => {
+      if (room.propertyId !== selectedPropertyId) return false;
+      const roomAvail = roomAvailability.find(a => a.roomId === room.id);
+      if (!roomAvail) return false;
+      
+      const isAvailable = room.roomCategory === "dormitory" 
+        ? (roomAvail.remainingBeds || 0) > 0
+        : roomAvail.available > 0;
+      
+      return isAvailable;
+    });
+  };
+
+  const availableRooms = getAvailableRooms();
+  const selectedRoom = rooms?.find(r => r.id === form.watch("roomId"));
 
   const createEnquiryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -122,47 +165,6 @@ export default function NewEnquiry() {
       });
     },
   });
-
-  const checkAvailability = async (propertyId: number, checkIn: Date, checkOut: Date) => {
-    if (!propertyId || !checkIn || !checkOut || checkOut <= checkIn) return;
-
-    setLoadingRooms(true);
-    try {
-      // Fetch available rooms using the availability endpoint with date filtering
-      const checkInISO = checkIn.toISOString();
-      const checkOutISO = checkOut.toISOString();
-      const response = await fetch(
-        `/api/rooms/availability?propertyId=${propertyId}&checkIn=${encodeURIComponent(checkInISO)}&checkOut=${encodeURIComponent(checkOutISO)}`
-      );
-      
-      if (!response.ok) throw new Error("Failed to fetch available rooms");
-      const availableRoomsList = await response.json();
-      
-      setAvailableRooms(availableRoomsList);
-
-      if (availableRoomsList.length === 0) {
-        toast({
-          title: "No Rooms Available",
-          description: "All rooms are booked for these dates. Please try different dates.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Rooms Available!",
-          description: `${availableRoomsList.length} room(s) available for your selected dates.`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to check room availability",
-        variant: "destructive",
-      });
-      setAvailableRooms([]);
-    } finally {
-      setLoadingRooms(false);
-    }
-  };
 
   const onSubmit = (data: EnquiryFormData) => {
     const enquiryData = {
@@ -219,11 +221,7 @@ export default function NewEnquiry() {
                     <FormLabel>Property *</FormLabel>
                     <Select
                       onValueChange={(value) => {
-                        const propId = parseInt(value);
-                        field.onChange(propId);
-                        setSelectedPropertyId(propId);
-                        // Reset available rooms when property changes
-                        setAvailableRooms([]);
+                        field.onChange(parseInt(value));
                         form.setValue("roomId", undefined);
                       }}
                       value={field.value ? field.value.toString() : ""}
@@ -280,11 +278,7 @@ export default function NewEnquiry() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
-                              setCheckInDate(date);
-                              setCheckInPopoverOpen(false); // Auto-close calendar
-                              if (selectedPropertyId && date && checkOutDate) {
-                                checkAvailability(selectedPropertyId, date, checkOutDate);
-                              }
+                              setCheckInPopoverOpen(false);
                             }}
                             disabled={(date) =>
                               date < new Date(new Date().setHours(0, 0, 0, 0))
@@ -330,11 +324,7 @@ export default function NewEnquiry() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
-                              setCheckOutDate(date);
-                              setCheckOutPopoverOpen(false); // Auto-close calendar
-                              if (selectedPropertyId && checkInDate && date) {
-                                checkAvailability(selectedPropertyId, checkInDate, date);
-                              }
+                              setCheckOutPopoverOpen(false);
                             }}
                             disabled={(date) =>
                               date < new Date(new Date().setHours(0, 0, 0, 0))
