@@ -2963,17 +2963,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
-      console.log('[AVAILABILITY] Parsed dates:', { 
-        checkInStr: checkIn, 
-        checkOutStr: checkOut,
-        checkInDate: requestCheckIn.toISOString(), 
-        checkOutDate: requestCheckOut.toISOString() 
-      });
-      
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
       
-      console.log('[AVAILABILITY] About to query overlapping bookings...');
+      console.log('[AVAIL DEBUG] Request dates:', {
+        checkIn: requestCheckIn.toISOString(),
+        checkOut: requestCheckOut.toISOString(),
+        checkInType: typeof requestCheckIn,
+        checkOutType: typeof requestCheckOut
+      });
+      
       let overlappingBookings;
       try {
         overlappingBookings = await db
@@ -2981,13 +2980,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .from(bookings)
           .where(and(
             not(eq(bookings.status, "cancelled")),
-            lt(bookings.checkInDate, requestCheckOut.toISOString()),
-            gt(bookings.checkOutDate, requestCheckIn.toISOString())
+            lt(bookings.checkInDate, requestCheckOut),
+            gt(bookings.checkOutDate, requestCheckIn)
           ));
-        console.log('[AVAILABILITY] Found overlapping bookings:', overlappingBookings.length);
-      } catch (queryError: any) {
-        console.error('[AVAILABILITY] Query error:', queryError.message);
-        throw queryError;
+        console.log('[AVAIL DEBUG] Query succeeded, found bookings:', overlappingBookings.length);
+      } catch (dbError: any) {
+        console.error('[AVAIL DEBUG] Database query failed!');
+        console.error('[AVAIL DEBUG] Error name:', dbError.name);
+        console.error('[AVAIL DEBUG] Error message:', dbError.message);
+        console.error('[AVAIL DEBUG] Full error:', JSON.stringify(dbError, null, 2));
+        throw new Error(`Database query error: ${dbError.message}`);
       }
       
       // Filter out excluded booking if specified
