@@ -553,7 +553,7 @@ export default function Bookings() {
           travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
         };
       } else {
-        // Single room booking
+        // Single room booking (includes dormitory)
         const selectedRoom = rooms?.find(r => r.id === data.roomId);
         bookingData = {
           ...data,
@@ -561,8 +561,8 @@ export default function Bookings() {
           roomIds: null,
           isGroupBooking: false,
           travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
-          // Auto-set bedsBooked for dormitory rooms (use null instead of undefined to avoid database defaults)
-          bedsBooked: selectedRoom?.roomType === "Dormitory" ? data.numberOfGuests : null,
+          // Auto-set bedsBooked for dormitory rooms
+          bedsBooked: selectedRoom?.roomCategory === "dormitory" ? (data.bedsBooked || data.numberOfGuests) : null,
         };
       }
       
@@ -576,12 +576,17 @@ export default function Bookings() {
       if (bookingType === "single" || bookingType === "dormitory") {
         const selectedRoom = rooms?.find(r => r.id === data.roomId);
         if (selectedRoom) {
-          pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
+          const basePrice = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
+          pricePerNight = basePrice;
+          
           // For dormitory, multiply by beds booked
           if (selectedRoom.roomCategory === "dormitory") {
             const bedsCount = bookingData.bedsBooked || data.numberOfGuests || 1;
-            pricePerNight = pricePerNight * bedsCount;
+            console.log(`[Price Calc] Dormitory: basePrice=${basePrice}, bedsCount=${bedsCount}, total=${basePrice * bedsCount}`);
+            pricePerNight = basePrice * bedsCount;
           }
+          
+          console.log(`[Price Calc] Room ${selectedRoom.roomNumber}: category=${selectedRoom.roomCategory}, pricePerNight=${pricePerNight}`);
         }
       } else {
         // Group booking - sum all room prices
