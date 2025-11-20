@@ -2963,16 +2963,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
+      console.log('[AVAIL] Date comparison values:');
+      console.log('[AVAIL] requestCheckIn:', requestCheckIn);
+      console.log('[AVAIL] requestCheckOut:', requestCheckOut);
+      console.log('[AVAIL] checkIn ISO:', requestCheckIn.toISOString());
+      console.log('[AVAIL] checkOut ISO:', requestCheckOut.toISOString());
+      
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
       
+      // Use Date objects directly - Drizzle handles the conversion automatically
       const overlappingBookings = await db
         .select()
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          lt(bookings.checkInDate, requestCheckOut.toISOString()),
-          gt(bookings.checkOutDate, requestCheckIn.toISOString())
+          lt(bookings.checkInDate, requestCheckOut),
+          gt(bookings.checkOutDate, requestCheckIn)
         ));
       
       // Filter out excluded booking if specified
