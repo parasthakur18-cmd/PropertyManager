@@ -361,7 +361,7 @@ export default function RoomCalendar() {
                               }`}
                               style={{
                                 backgroundColor:
-                                  percentAvailable >= 50
+                                  percentAvailable === 100
                                     ? "#22c55e"
                                     : percentAvailable > 0
                                     ? "#fb923c"
