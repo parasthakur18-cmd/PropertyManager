@@ -2979,8 +2979,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Filter overlapping bookings using JavaScript Date comparison
       // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
       let overlappingBookings = allBookings.filter(booking => {
+        // Skip bookings with invalid dates
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        
         const bookingCheckOut = new Date(booking.checkOutDate);
         const bookingCheckIn = new Date(booking.checkInDate);
+        
+        // Skip if dates are invalid
+        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
         
         return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
       });
@@ -3071,8 +3077,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Filter overlapping bookings using JavaScript Date comparison
       const overlappingBookings = allBookings.filter(booking => {
+        // Skip bookings with invalid dates
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        
         const bookingCheckOut = new Date(booking.checkOutDate);
         const bookingCheckIn = new Date(booking.checkInDate);
+        
+        // Skip if dates are invalid
+        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
         
         return bookingCheckOut > start && bookingCheckIn < end;
       });
