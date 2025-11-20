@@ -16,6 +16,8 @@ import {
   Edit,
   X,
   Search,
+  FileText,
+  MessageCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -679,7 +681,18 @@ export default function Enquiries() {
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-muted-foreground" />
                             <div>
-                              <p className="font-medium">{enquiry.guestName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{enquiry.guestName}</p>
+                                {enquiry.specialRequests && (
+                                  <div className="group relative">
+                                    <FileText className="h-4 w-4 text-amber-500 cursor-help" data-testid={`icon-special-requests-${enquiry.id}`} />
+                                    <div className="invisible group-hover:visible absolute left-0 top-6 z-50 w-64 p-3 bg-popover text-popover-foreground rounded-md border shadow-md">
+                                      <p className="text-xs font-semibold mb-1">Special Requests:</p>
+                                      <p className="text-xs">{enquiry.specialRequests}</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                               <p className="text-sm text-muted-foreground">
                                 {enquiry.bedsBooked 
                                   ? `${enquiry.bedsBooked} bed${enquiry.bedsBooked > 1 ? "s" : ""}`
@@ -693,12 +706,34 @@ export default function Enquiries() {
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 text-sm">
                               <Phone className="h-3 w-3 text-muted-foreground" />
-                              {enquiry.guestPhone}
+                              <a 
+                                href={`tel:${enquiry.guestPhone}`} 
+                                className="hover:underline text-blue-600 dark:text-blue-400"
+                                data-testid={`link-call-${enquiry.id}`}
+                              >
+                                {enquiry.guestPhone}
+                              </a>
+                              <a
+                                href={`https://wa.me/${enquiry.guestPhone.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-green-600 hover:text-green-700 dark:text-green-400"
+                                title="WhatsApp"
+                                data-testid={`link-whatsapp-${enquiry.id}`}
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </a>
                             </div>
                             {enquiry.guestEmail && (
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <Mail className="h-3 w-3" />
-                                {enquiry.guestEmail}
+                                <a 
+                                  href={`mailto:${enquiry.guestEmail}`}
+                                  className="hover:underline text-blue-600 dark:text-blue-400"
+                                  data-testid={`link-email-${enquiry.id}`}
+                                >
+                                  {enquiry.guestEmail}
+                                </a>
                               </div>
                             )}
                           </div>
