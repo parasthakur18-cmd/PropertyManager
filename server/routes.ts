@@ -2966,25 +2966,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
       
-      let overlappingBookings;
-      try {
-        overlappingBookings = await db
-          .select()
-          .from(bookings)
-          .where(and(
-            not(eq(bookings.status, "cancelled")),
-            lt(bookings.checkInDate, requestCheckOut),
-            gt(bookings.checkOutDate, requestCheckIn)
-          ));
-      } catch (dbError: any) {
-        console.error('[AVAIL ERROR] Database query failed!');
-        console.error('[AVAIL ERROR] checkIn:', checkIn, 'type:', typeof checkIn);
-        console.error('[AVAIL ERROR] checkOut:', checkOut, 'type:', typeof checkOut);
-        console.error('[AVAIL ERROR] requestCheckIn:', requestCheckIn);
-        console.error('[AVAIL ERROR] requestCheckOut:', requestCheckOut);
-        console.error('[AVAIL ERROR] Error:', dbError);
-        throw dbError;
-      }
+      const overlappingBookings = await db
+        .select()
+        .from(bookings)
+        .where(and(
+          not(eq(bookings.status, "cancelled")),
+          lt(bookings.checkInDate, requestCheckOut.toISOString()),
+          gt(bookings.checkOutDate, requestCheckIn.toISOString())
+        ));
       
       // Filter out excluded booking if specified
       if (excludeBookingId) {
@@ -3070,8 +3059,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          lt(bookings.checkInDate, end),
-          gt(bookings.checkOutDate, start)
+          lt(bookings.checkInDate, end.toISOString()),
+          gt(bookings.checkOutDate, start.toISOString())
         ));
       
       // Build calendar data
