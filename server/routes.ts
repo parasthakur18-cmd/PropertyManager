@@ -2967,18 +2967,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { bookings } = await import("@shared/schema");
       const { sql } = await import("drizzle-orm");
       
-      // Convert dates to ISO strings for PostgreSQL
+      // Query for overlapping bookings at database level using raw SQL for date comparison
+      // Overlap condition: booking.checkIn <= requestCheckOut AND booking.checkOut >= requestCheckIn
       const checkInISO = requestCheckIn.toISOString();
       const checkOutISO = requestCheckOut.toISOString();
       
-      // Use sql template for proper timestamp comparison
+      console.log('[AVAIL DEBUG] Dates:', { checkInISO, checkOutISO });
+      console.log('[AVAIL DEBUG] About to query with SQL template...');
+      
+      try {
+        const overlappingBookings = await db
+          .select()
+          .from(bookings)
+          .where(and(
+            not(eq(bookings.status, "cancelled")),
+            sql`${bookings.checkInDate} <= ${checkOutISO}::timestamptz`,
+            sql`${bookings.checkOutDate} >= ${checkInISO}::timestamptz`
+          ));
+        console.log('[AVAIL DEBUG] Query succeeded, got bookings:', overlappingBookings.length);
+      } catch (dbError: any) {
+        console.error('[AVAIL DEBUG] Database query FAILED');
+        console.error('[AVAIL DEBUG] Error name:', dbError.name);
+        console.error('[AVAIL DEBUG] Error message:', dbError.message);
+        console.error('[AVAIL DEBUG] Error code:', dbError.code);
+        console.error('[AVAIL DEBUG] Full error:', JSON.stringify(dbError, null, 2));
+        throw dbError;
+      }
+      
       const overlappingBookings = await db
         .select()
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          sql`${bookings.checkInDate} < ${checkOutISO}::timestamp`,
-          sql`${bookings.checkOutDate} > ${checkInISO}::timestamp`
+          sql`${bookings.checkInDate} <= ${checkOutISO}::timestamptz`,
+          sql`${bookings.checkOutDate} >= ${checkInISO}::timestamptz`
         ));
       
       // Filter out excluded booking if specified
@@ -3059,17 +3081,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
         : await db.select().from(rooms);
       
-      // Get all active bookings that overlap with the date range
+      // Get all active bookings that overlap with the date range at database level
       const { sql } = await import("drizzle-orm");
       const startISO = start.toISOString();
       const endISO = end.toISOString();
+      
       const overlappingBookings = await db
         .select()
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          sql`${bookings.checkInDate} < ${endISO}::timestamp`,
-          sql`${bookings.checkOutDate} > ${startISO}::timestamp`
+          sql`${bookings.checkInDate} <= ${endISO}::timestamptz`,
+          sql`${bookings.checkOutDate} >= ${startISO}::timestamptz`
         ));
       
       // Build calendar data
