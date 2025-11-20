@@ -387,9 +387,13 @@ export default function Enquiries() {
       });
     },
     onError: (error: any) => {
+      const isRoomBooked = error.message?.includes("already book") || error.message?.includes("not available");
+      
       toast({
-        title: "Error",
-        description: error.message || "Failed to confirm enquiry",
+        title: isRoomBooked ? "Room Already Booked" : "Confirmation Failed",
+        description: isRoomBooked 
+          ? "This room is already booked for the selected dates. Please check the Room Calendar for available rooms or edit the enquiry to select a different room."
+          : (error.message || "Failed to confirm enquiry. Please try again."),
         variant: "destructive",
       });
     },
