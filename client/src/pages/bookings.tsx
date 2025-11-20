@@ -573,13 +573,13 @@ export default function Bookings() {
       
       // Calculate price per night
       let pricePerNight = 0;
-      if (bookingType === "single") {
+      if (bookingType === "single" || bookingType === "dormitory") {
         const selectedRoom = rooms?.find(r => r.id === data.roomId);
         if (selectedRoom) {
           pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
-          // For dormitory, multiply by beds booked (use numberOfGuests if bedsBooked not set)
-          if (selectedRoom.roomType === "Dormitory") {
-            const bedsCount = bookingData.bedsBooked || data.numberOfGuests;
+          // For dormitory, multiply by beds booked
+          if (selectedRoom.roomCategory === "dormitory") {
+            const bedsCount = bookingData.bedsBooked || data.numberOfGuests || 1;
             pricePerNight = pricePerNight * bedsCount;
           }
         }
