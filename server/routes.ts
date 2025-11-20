@@ -2956,23 +2956,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(availability);
       }
       
-      // Parse and validate dates
+      // Parse and validate dates  
       const requestCheckIn = new Date(checkIn as string);
       const requestCheckOut = new Date(checkOut as string);
       if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
+      console.log('[AVAILABILITY] Parsed dates:', { 
+        checkInStr: checkIn, 
+        checkOutStr: checkOut,
+        checkInDate: requestCheckIn.toISOString(), 
+        checkOutDate: requestCheckOut.toISOString() 
+      });
+      
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
-      let overlappingBookings = await db
-        .select()
-        .from(bookings)
-        .where(and(
-          not(eq(bookings.status, "cancelled")),
-          lt(bookings.checkInDate, requestCheckOut),
-          gt(bookings.checkOutDate, requestCheckIn)
-        ));
+      
+      console.log('[AVAILABILITY] About to query overlapping bookings...');
+      let overlappingBookings;
+      try {
+        overlappingBookings = await db
+          .select()
+          .from(bookings)
+          .where(and(
+            not(eq(bookings.status, "cancelled")),
+            lt(bookings.checkInDate, requestCheckOut.toISOString()),
+            gt(bookings.checkOutDate, requestCheckIn.toISOString())
+          ));
+        console.log('[AVAILABILITY] Found overlapping bookings:', overlappingBookings.length);
+      } catch (queryError: any) {
+        console.error('[AVAILABILITY] Query error:', queryError.message);
+        throw queryError;
+      }
       
       // Filter out excluded booking if specified
       if (excludeBookingId) {
