@@ -367,7 +367,6 @@ export default function NewEnquiry() {
                             const roomId = value ? parseInt(value) : "";
                             field.onChange(roomId);
                             const room = availableRooms.find(r => r.id === parseInt(value));
-                            setSelectedRoom(room || null);
                             
                             // For dormitory rooms, set numberOfGuests to 1 bed by default
                             if (room?.roomCategory === "dormitory") {
