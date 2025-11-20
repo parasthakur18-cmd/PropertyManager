@@ -68,6 +68,16 @@ export default function RoomCalendar() {
   // Generate array of dates for the calendar
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // Sort rooms by room number for proper sequence display
+  const sortedCalendarData = useMemo(() => {
+    return [...calendarData].sort((a, b) => {
+      // Extract numeric part from room numbers for proper sorting
+      const numA = parseInt(a.roomNumber.replace(/\D/g, '') || '0');
+      const numB = parseInt(b.roomNumber.replace(/\D/g, '') || '0');
+      return numA - numB;
+    });
+  }, [calendarData]);
+
   // Calculate available rooms for the entire date range
   const availableRooms = useMemo(() => {
     if (!calendarData.length) return [];
@@ -121,7 +131,8 @@ export default function RoomCalendar() {
     const checkIn = startOfDay(date);
     const checkOut = addDays(checkIn, 1);
     
-    handleCreateBooking(roomId, checkIn, checkOut);
+    // Calendar clicks should create enquiries, not direct bookings
+    handleCreateEnquiry(roomId, checkIn, checkOut);
   };
 
   return (
@@ -311,7 +322,7 @@ export default function RoomCalendar() {
                   </tr>
                 </thead>
                 <tbody>
-                  {calendarData.map((room) => (
+                  {sortedCalendarData.map((room) => (
                     <tr key={room.roomId} data-testid={`row-room-${room.roomId}`}>
                       <td className="sticky left-0 bg-background border p-3 font-medium z-10">
                         <div className="font-semibold">{room.roomNumber}</div>
