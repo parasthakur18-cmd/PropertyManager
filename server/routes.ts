@@ -532,6 +532,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Room availability checking - MUST be before /api/rooms/:id to avoid route collision
+  app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
+    console.log('[AVAILABILITY HANDLER] ✅ Handler called - ENTRY POINT');
+    try {
+      const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
+      console.log('[AVAILABILITY] Query params:', { propertyId, checkIn, checkOut, excludeBookingId });
+      
+      // Get all rooms (optionally filtered by property)
+      const { rooms } = await import("@shared/schema");
+      
+      // Build query with optional property filter
+      const propertyIdNum = propertyId ? Number(propertyId) : null;
+      console.log('[AVAILABILITY] Parsed propertyId:', propertyIdNum, 'isFinite:', Number.isFinite(propertyIdNum));
+      
+      const allRooms = Number.isFinite(propertyIdNum) 
+        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
+        : await db.select().from(rooms);
+      
+      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
+      
+      // If no dates provided, return all rooms with full availability
+      if (!checkIn || !checkOut) {
+        const availability = allRooms.map(room => ({
+          roomId: room.id,
+          available: 1,
+          ...(room.roomCategory === "dormitory" && {
+            totalBeds: room.totalBeds || 6,
+            remainingBeds: room.totalBeds || 6
+          })
+        }));
+        return res.json(availability);
+      }
+      
+      // Parse and validate dates  
+      const requestCheckIn = new Date(checkIn as string);
+      const requestCheckOut = new Date(checkOut as string);
+      if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      // Get all active bookings and filter in JavaScript (historical working solution)
+      const { bookings } = await import("@shared/schema");
+      
+      // Fetch all non-cancelled bookings for the property
+      const allBookings = await db
+        .select()
+        .from(bookings)
+        .where(
+          propertyId 
+            ? and(eq(bookings.propertyId, Number(propertyId)), not(eq(bookings.status, "cancelled")))
+            : not(eq(bookings.status, "cancelled"))
+        );
+      
+      // Filter overlapping bookings using JavaScript Date comparison
+      // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
+      let overlappingBookings = allBookings.filter(booking => {
+        // Skip bookings with invalid dates
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        // Skip if dates are invalid
+        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
+        
+        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
+      });
+      
+      // Filter out excluded booking if specified
+      if (excludeBookingId) {
+        const excludeId = Number(excludeBookingId);
+        if (Number.isFinite(excludeId)) {
+          overlappingBookings = overlappingBookings.filter(b => b.id !== excludeId);
+        }
+      }
+      
+      // Calculate availability for each room
+      const availability = allRooms.map(room => {
+        if (room.roomCategory === "dormitory") {
+          const totalBeds = room.totalBeds || 6;
+          const roomBookings = overlappingBookings.filter(b => 
+            b.roomId === room.id || b.roomIds?.includes(room.id)
+          );
+          const bedsBooked = roomBookings.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          const remainingBeds = Math.max(0, totalBeds - bedsBooked);
+          
+          return {
+            roomId: room.id,
+            available: remainingBeds > 0 ? 1 : 0,
+            totalBeds,
+            remainingBeds
+          };
+        }
+        
+        const hasOverlap = overlappingBookings.some(b => 
+          b.roomId === room.id || b.roomIds?.includes(room.id)
+        );
+        
+        return {
+          roomId: room.id,
+          available: hasOverlap ? 0 : 1
+        };
+      });
+      
+      res.json(availability);
+    } catch (error: any) {
+      console.error('[AVAILABILITY ERROR] ❌ CAUGHT ERROR IN HANDLER');
+      console.error('[AVAILABILITY ERROR] Full error:', error);
+      console.error('[AVAILABILITY ERROR] Message:', error.message);
+      console.error('[AVAILABILITY ERROR] Stack:', error.stack);
+      console.error('[AVAILABILITY ERROR] Error name:', error.name);
+      console.error('[AVAILABILITY ERROR] Error code:', error.code);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/rooms/:id", isAuthenticated, async (req, res) => {
     try {
       const room = await storage.getRoom(parseInt(req.params.id));
@@ -2920,118 +3036,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error: any) {
       console.error('[Authkey Webhook] Error processing webhook:', error);
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Room availability checking
-  app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
-    try {
-      const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
-      console.log('[AVAILABILITY] Query params:', { propertyId, checkIn, checkOut, excludeBookingId });
-      
-      // Get all rooms (optionally filtered by property)
-      const { rooms } = await import("@shared/schema");
-      
-      // Build query with optional property filter
-      const propertyIdNum = propertyId ? Number(propertyId) : null;
-      console.log('[AVAILABILITY] Parsed propertyId:', propertyIdNum, 'isFinite:', Number.isFinite(propertyIdNum));
-      
-      const allRooms = Number.isFinite(propertyIdNum) 
-        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
-        : await db.select().from(rooms);
-      
-      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
-      
-      // If no dates provided, return all rooms with full availability
-      if (!checkIn || !checkOut) {
-        const availability = allRooms.map(room => ({
-          roomId: room.id,
-          available: 1,
-          ...(room.roomCategory === "dormitory" && {
-            totalBeds: room.totalBeds || 6,
-            remainingBeds: room.totalBeds || 6
-          })
-        }));
-        return res.json(availability);
-      }
-      
-      // Parse and validate dates  
-      const requestCheckIn = new Date(checkIn as string);
-      const requestCheckOut = new Date(checkOut as string);
-      if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
-        return res.status(400).json({ message: "Invalid date format" });
-      }
-      
-      // Get all active bookings and filter in JavaScript (historical working solution)
-      const { bookings } = await import("@shared/schema");
-      
-      // Fetch all non-cancelled bookings for the property
-      const allBookings = await db
-        .select()
-        .from(bookings)
-        .where(
-          propertyId 
-            ? and(eq(bookings.propertyId, Number(propertyId)), not(eq(bookings.status, "cancelled")))
-            : not(eq(bookings.status, "cancelled"))
-        );
-      
-      // Filter overlapping bookings using JavaScript Date comparison
-      // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
-      let overlappingBookings = allBookings.filter(booking => {
-        // Skip bookings with invalid dates
-        if (!booking.checkInDate || !booking.checkOutDate) return false;
-        
-        const bookingCheckOut = new Date(booking.checkOutDate);
-        const bookingCheckIn = new Date(booking.checkInDate);
-        
-        // Skip if dates are invalid
-        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
-        
-        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
-      });
-      
-      // Filter out excluded booking if specified
-      if (excludeBookingId) {
-        const excludeId = Number(excludeBookingId);
-        if (Number.isFinite(excludeId)) {
-          overlappingBookings = overlappingBookings.filter(b => b.id !== excludeId);
-        }
-      }
-      
-      // Calculate availability for each room
-      const availability = allRooms.map(room => {
-        if (room.roomCategory === "dormitory") {
-          const totalBeds = room.totalBeds || 6;
-          const roomBookings = overlappingBookings.filter(b => 
-            b.roomId === room.id || b.roomIds?.includes(room.id)
-          );
-          const bedsBooked = roomBookings.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-          const remainingBeds = Math.max(0, totalBeds - bedsBooked);
-          
-          return {
-            roomId: room.id,
-            available: remainingBeds > 0 ? 1 : 0,
-            totalBeds,
-            remainingBeds
-          };
-        }
-        
-        const hasOverlap = overlappingBookings.some(b => 
-          b.roomId === room.id || b.roomIds?.includes(room.id)
-        );
-        
-        return {
-          roomId: room.id,
-          available: hasOverlap ? 0 : 1
-        };
-      });
-      
-      res.json(availability);
-    } catch (error: any) {
-      console.error('[AVAILABILITY ERROR] Full error:', error);
-      console.error('[AVAILABILITY ERROR] Message:', error.message);
-      console.error('[AVAILABILITY ERROR] Stack:', error.stack);
       res.status(500).json({ message: error.message });
     }
   });
