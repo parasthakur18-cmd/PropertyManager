@@ -2966,13 +2966,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
       
-      console.log('[AVAIL DEBUG] Request dates:', {
-        checkIn: requestCheckIn.toISOString(),
-        checkOut: requestCheckOut.toISOString(),
-        checkInType: typeof requestCheckIn,
-        checkOutType: typeof requestCheckOut
-      });
-      
       let overlappingBookings;
       try {
         overlappingBookings = await db
@@ -2983,13 +2976,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             lt(bookings.checkInDate, requestCheckOut),
             gt(bookings.checkOutDate, requestCheckIn)
           ));
-        console.log('[AVAIL DEBUG] Query succeeded, found bookings:', overlappingBookings.length);
       } catch (dbError: any) {
-        console.error('[AVAIL DEBUG] Database query failed!');
-        console.error('[AVAIL DEBUG] Error name:', dbError.name);
-        console.error('[AVAIL DEBUG] Error message:', dbError.message);
-        console.error('[AVAIL DEBUG] Full error:', JSON.stringify(dbError, null, 2));
-        throw new Error(`Database query error: ${dbError.message}`);
+        console.error('[AVAIL ERROR] Database query failed!');
+        console.error('[AVAIL ERROR] checkIn:', checkIn, 'type:', typeof checkIn);
+        console.error('[AVAIL ERROR] checkOut:', checkOut, 'type:', typeof checkOut);
+        console.error('[AVAIL ERROR] requestCheckIn:', requestCheckIn);
+        console.error('[AVAIL ERROR] requestCheckOut:', requestCheckOut);
+        console.error('[AVAIL ERROR] Error:', dbError);
+        throw dbError;
       }
       
       // Filter out excluded booking if specified
