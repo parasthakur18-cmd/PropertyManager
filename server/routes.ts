@@ -2963,23 +2963,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
-      console.log('[AVAIL] Date comparison values:');
-      console.log('[AVAIL] requestCheckIn:', requestCheckIn);
-      console.log('[AVAIL] requestCheckOut:', requestCheckOut);
-      console.log('[AVAIL] checkIn ISO:', requestCheckIn.toISOString());
-      console.log('[AVAIL] checkOut ISO:', requestCheckOut.toISOString());
-      
       // Get overlapping bookings using Drizzle query builder
       const { bookings } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
       
-      // Use Date objects directly - Drizzle handles the conversion automatically
+      // Use sql template for proper timestamp comparison
       const overlappingBookings = await db
         .select()
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          lt(bookings.checkInDate, requestCheckOut),
-          gt(bookings.checkOutDate, requestCheckIn)
+          sql`${bookings.checkInDate} < ${requestCheckOut}`,
+          sql`${bookings.checkOutDate} > ${requestCheckIn}`
         ));
       
       // Filter out excluded booking if specified
@@ -3061,13 +3056,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : await db.select().from(rooms);
       
       // Get all active bookings that overlap with the date range
+      const { sql } = await import("drizzle-orm");
       const overlappingBookings = await db
         .select()
         .from(bookings)
         .where(and(
           not(eq(bookings.status, "cancelled")),
-          lt(bookings.checkInDate, end.toISOString()),
-          gt(bookings.checkOutDate, start.toISOString())
+          sql`${bookings.checkInDate} < ${end}`,
+          sql`${bookings.checkOutDate} > ${start}`
         ));
       
       // Build calendar data
