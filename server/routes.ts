@@ -523,16 +523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/rooms/checked-in-guests", isAuthenticated, async (req, res) => {
-    try {
-      const roomsWithGuests = await storage.getRoomsWithCheckedInGuests();
-      res.json(roomsWithGuests);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Room availability checking - MUST be before /api/rooms/:id to avoid route collision
+  // Room availability checking - MUST be FIRST specific /api/rooms/* route to avoid collision with :id routes
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     console.log('[AVAILABILITY HANDLER] ✅ Handler called - ENTRY POINT');
     try {
@@ -644,6 +635,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error('[AVAILABILITY ERROR] Stack:', error.stack);
       console.error('[AVAILABILITY ERROR] Error name:', error.name);
       console.error('[AVAILABILITY ERROR] Error code:', error.code);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/rooms/checked-in-guests", isAuthenticated, async (req, res) => {
+    try {
+      const roomsWithGuests = await storage.getRoomsWithCheckedInGuests();
+      res.json(roomsWithGuests);
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });

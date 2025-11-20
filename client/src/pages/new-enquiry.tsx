@@ -103,20 +103,22 @@ export default function NewEnquiry() {
   const selectedPropertyId = form.watch("propertyId");
 
   // Fetch room availability using TanStack Query (matches bookings.tsx pattern exactly)
-  const { data: roomAvailability, isLoading: loadingRooms } = useQuery({
-    queryKey: ["/api/rooms/availability", checkInDate, checkOutDate, selectedPropertyId],
+  const { data: roomAvailability, isLoading: loadingRooms } = useQuery<Array<{
+    roomId: number;
+    available: number;
+    totalBeds?: number;
+    remainingBeds?: number;
+  }>>({
+    queryKey: ["/api/rooms/availability", selectedPropertyId, checkInDate, checkOutDate],
     enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate && selectedPropertyId),
     queryFn: async () => {
+      // Custom fetcher with auth credentials
       const response = await fetch(
-        `/api/rooms/availability?propertyId=${selectedPropertyId}&checkIn=${checkInDate.toISOString()}&checkOut=${checkOutDate.toISOString()}`
+        `/api/rooms/availability?propertyId=${selectedPropertyId}&checkIn=${checkInDate.toISOString()}&checkOut=${checkOutDate.toISOString()}`,
+        { credentials: "include" } // AUTH HEADERS
       );
       if (!response.ok) throw new Error("Failed to fetch availability");
-      return response.json() as Promise<Array<{
-        roomId: number;
-        available: number;
-        totalBeds?: number;
-        remainingBeds?: number;
-      }>>;
+      return response.json();
     },
   });
 
