@@ -2963,45 +2963,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid date format" });
       }
       
-      // Get overlapping bookings using Drizzle query builder
+      // Get all active bookings and filter in JavaScript (historical working solution)
       const { bookings } = await import("@shared/schema");
-      const { sql } = await import("drizzle-orm");
       
-      // Query for overlapping bookings at database level using raw SQL for date comparison
-      // Overlap condition: booking.checkIn <= requestCheckOut AND booking.checkOut >= requestCheckIn
-      const checkInISO = requestCheckIn.toISOString();
-      const checkOutISO = requestCheckOut.toISOString();
-      
-      console.log('[AVAIL DEBUG] Dates:', { checkInISO, checkOutISO });
-      console.log('[AVAIL DEBUG] About to query with SQL template...');
-      
-      try {
-        const overlappingBookings = await db
-          .select()
-          .from(bookings)
-          .where(and(
-            not(eq(bookings.status, "cancelled")),
-            sql`${bookings.checkInDate} <= ${checkOutISO}::timestamptz`,
-            sql`${bookings.checkOutDate} >= ${checkInISO}::timestamptz`
-          ));
-        console.log('[AVAIL DEBUG] Query succeeded, got bookings:', overlappingBookings.length);
-      } catch (dbError: any) {
-        console.error('[AVAIL DEBUG] Database query FAILED');
-        console.error('[AVAIL DEBUG] Error name:', dbError.name);
-        console.error('[AVAIL DEBUG] Error message:', dbError.message);
-        console.error('[AVAIL DEBUG] Error code:', dbError.code);
-        console.error('[AVAIL DEBUG] Full error:', JSON.stringify(dbError, null, 2));
-        throw dbError;
-      }
-      
-      const overlappingBookings = await db
+      // Fetch all non-cancelled bookings for the property
+      const allBookings = await db
         .select()
         .from(bookings)
-        .where(and(
-          not(eq(bookings.status, "cancelled")),
-          sql`${bookings.checkInDate} <= ${checkOutISO}::timestamptz`,
-          sql`${bookings.checkOutDate} >= ${checkInISO}::timestamptz`
-        ));
+        .where(
+          propertyId 
+            ? and(eq(bookings.propertyId, Number(propertyId)), not(eq(bookings.status, "cancelled")))
+            : not(eq(bookings.status, "cancelled"))
+        );
+      
+      // Filter overlapping bookings using JavaScript Date comparison
+      // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
+      let overlappingBookings = allBookings.filter(booking => {
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
+      });
       
       // Filter out excluded booking if specified
       if (excludeBookingId) {
@@ -3081,19 +3063,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
         : await db.select().from(rooms);
       
-      // Get all active bookings that overlap with the date range at database level
-      const { sql } = await import("drizzle-orm");
-      const startISO = start.toISOString();
-      const endISO = end.toISOString();
-      
-      const overlappingBookings = await db
+      // Get all active bookings and filter in JavaScript (historical working solution)
+      const allBookings = await db
         .select()
         .from(bookings)
-        .where(and(
-          not(eq(bookings.status, "cancelled")),
-          sql`${bookings.checkInDate} <= ${endISO}::timestamptz`,
-          sql`${bookings.checkOutDate} >= ${startISO}::timestamptz`
-        ));
+        .where(not(eq(bookings.status, "cancelled")));
+      
+      // Filter overlapping bookings using JavaScript Date comparison
+      const overlappingBookings = allBookings.filter(booking => {
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        return bookingCheckOut > start && bookingCheckIn < end;
+      });
       
       // Build calendar data
       const calendarData = allRooms.map(room => {
