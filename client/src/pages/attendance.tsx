@@ -134,7 +134,8 @@ export default function Attendance() {
   const createAttendanceMutation = useMutation({
     mutationFn: async (data: z.infer<typeof attendanceFormSchema>) => {
       return await apiRequest("/api/attendance", "POST", {
-        staffMemberId: data.staffMemberId,
+        staffMemberId: parseInt(data.staffMemberId || "0", 10),
+        propertyId: selectedMonth ? 1 : undefined,
         attendanceDate: new Date(data.attendanceDate),
         status: data.status,
         remarks: data.remarks || null,
