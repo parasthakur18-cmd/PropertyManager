@@ -29,7 +29,7 @@ import {
   BookOpen,
   Search,
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -96,18 +96,18 @@ export function SuperAdminSidebar() {
             {adminMenuItems.map((item) => {
               const isActive = location === item.url;
               return (
-                <Link key={item.title} href={item.url} asChild>
-                  <button
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
-                      isActive
-                        ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
-                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="text-sm font-medium">{item.title}</span>
-                  </button>
-                </Link>
+                <button
+                  key={item.title}
+                  onClick={() => window.location.href = item.url}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
+                    isActive
+                      ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
+                      : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm font-medium">{item.title}</span>
+                </button>
               );
             })}
           </div>
@@ -120,18 +120,18 @@ export function SuperAdminSidebar() {
             {financeMenuItems.map((item) => {
               const isActive = location === item.url;
               return (
-                <Link key={item.title} href={item.url} asChild>
-                  <button
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
-                      isActive
-                        ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
-                        : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    <item.icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="text-sm font-medium">{item.title}</span>
-                  </button>
-                </Link>
+                <button
+                  key={item.title}
+                  onClick={() => window.location.href = item.url}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
+                    isActive
+                      ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
+                      : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  <item.icon className="h-4 w-4 flex-shrink-0" />
+                  <span className="text-sm font-medium">{item.title}</span>
+                </button>
               );
             })}
           </div>
@@ -141,18 +141,17 @@ export function SuperAdminSidebar() {
         <div>
           <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">System</h3>
           <div className="space-y-1">
-            <Link href="/settings" asChild>
-              <button
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
-                  location === "/settings"
-                    ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
-                }`}
-              >
-                <Settings className="h-4 w-4 flex-shrink-0" />
-                <span className="text-sm font-medium">Settings</span>
-              </button>
-            </Link>
+            <button
+              onClick={() => window.location.href = "/settings"}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
+                location === "/settings"
+                  ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
+              }`}
+            >
+              <Settings className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm font-medium">Settings</span>
+            </button>
           </div>
         </div>
       </div>
