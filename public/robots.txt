@@ -1,0 +1,23 @@
+# Hostezee SEO Robots Configuration
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /private/
+Disallow: /super-admin-login
+Disallow: /admin-portal-login
+
+# Allow search engine crawlers
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# Sitemap location
+Sitemap: https://hostezee.in/sitemap.xml
+
+# Crawl delay
+Crawl-delay: 1
