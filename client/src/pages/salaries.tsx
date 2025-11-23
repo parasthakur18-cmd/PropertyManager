@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, DollarSign, TrendingUp, Users, Calendar } from "lucide-react";
@@ -150,8 +151,9 @@ export default function SalariesPage() {
             <CardContent>
               <div className="flex gap-4 items-end">
                 <div className="flex-1">
-                  <FormLabel>From Date</FormLabel>
+                  <Label htmlFor="start-date">From Date</Label>
                   <Input
+                    id="start-date"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
@@ -159,8 +161,9 @@ export default function SalariesPage() {
                   />
                 </div>
                 <div className="flex-1">
-                  <FormLabel>To Date</FormLabel>
+                  <Label htmlFor="end-date">To Date</Label>
                   <Input
+                    id="end-date"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
