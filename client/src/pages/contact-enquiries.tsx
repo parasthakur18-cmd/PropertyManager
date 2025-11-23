@@ -16,11 +16,17 @@ interface ContactEnquiry {
 }
 
 export default function ContactEnquiries() {
-  const { data: enquiries = [], isLoading } = useQuery<ContactEnquiry[]>({
+  const { data: enquiries = [], isLoading, error } = useQuery<ContactEnquiry[]>({
     queryKey: ["/api/contact"],
     queryFn: async () => {
-      const res = await fetch("/api/contact");
-      if (!res.ok) throw new Error("Failed to fetch enquiries");
+      const res = await fetch("/api/contact", { credentials: "include" });
+      if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return [];
+        }
+        throw new Error("Failed to fetch enquiries");
+      }
       return res.json();
     },
   });
@@ -45,7 +51,14 @@ export default function ContactEnquiries() {
         <p className="text-slate-600 dark:text-slate-400">View all leads and enquiries from your landing page</p>
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <Card className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <p className="text-red-600 dark:text-red-400 text-lg">Error loading enquiries</p>
+            <p className="text-red-500 dark:text-red-500 text-sm mt-2">{(error as Error).message}</p>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin h-12 w-12 border-4 border-primary border-t-transparent rounded-full"></div>
         </div>
