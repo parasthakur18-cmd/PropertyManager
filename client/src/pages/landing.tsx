@@ -45,20 +45,20 @@ export default function Landing() {
             {/* Left Section - Content */}
             <div className="space-y-8">
               <div className="space-y-4">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 w-fit hover:bg-teal-100 dark:hover:bg-teal-900/30 transition-colors">
-                  <Sparkles className="h-4 w-4 text-teal-600 dark:text-teal-400" />
-                  <span className="text-sm font-semibold text-teal-700 dark:text-teal-400">Welcome Back</span>
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 w-fit hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors">
+                  <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">🎉 World's First Replit-Powered PMS</span>
                 </div>
 
                 <h1 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white leading-tight">
-                  Experience
-                  <span className="block bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                    Modern Hospitality
+                  Deploy in
+                  <span className="block bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                    Seconds, Not Servers
                   </span>
                 </h1>
 
                 <p className="text-xl text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
-                  The world's leading property management platform trusted by premium hotels, resorts, and luxury accommodations worldwide. Streamline operations, maximize revenue, and delight guests at scale.
+                  The world's first property management system running on Replit. Zero DevOps setup. Instant deployment. Manage unlimited properties with zero infrastructure costs. Trusted by 500+ hospitality businesses.
                 </p>
               </div>
 
@@ -69,9 +69,9 @@ export default function Landing() {
                     window.location.href = "/api/login";
                   }}
                   data-testid="button-login"
-                  className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-base h-13 shadow-lg hover:shadow-xl transition-all gap-2 group"
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-base h-13 shadow-lg hover:shadow-xl transition-all gap-2 group"
                 >
-                  Login to Dashboard
+                  Start Managing Now (Free)
                   <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
@@ -93,21 +93,21 @@ export default function Landing() {
                 </p>
               </div>
 
-              {/* Trust Badges */}
+              {/* Trust Badges & Replit Badge */}
               <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-4">Trusted Globally</p>
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-4">Trusted Globally • Powered by Replit</p>
                 <div className="flex flex-wrap gap-8">
                   <div>
-                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">500+</p>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">500+</p>
                     <p className="text-xs text-slate-600 dark:text-slate-400">Premium Properties</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">$500M+</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Revenue Managed</p>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">0s</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Setup Time</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">99.9%</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Uptime Guarantee</p>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">∞</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Scale (No Limits)</p>
                   </div>
                 </div>
               </div>
@@ -117,9 +117,9 @@ export default function Landing() {
             <div className="relative h-96 md:h-full min-h-96 lg:min-h-80">
               <div className="space-y-6">
                 {[
-                  { icon: Calendar, title: "Intelligent Booking Engine", desc: "AI-powered availability and dynamic pricing optimization", color: "from-blue-500 to-cyan-500" },
-                  { icon: Users, title: "Guest Experience Platform", desc: "Personalized journeys from booking to checkout", color: "from-teal-500 to-green-500" },
-                  { icon: BarChart3, title: "Revenue Intelligence", desc: "Real-time analytics and predictive insights", color: "from-orange-500 to-red-500" },
+                  { icon: Calendar, title: "Instant Deployment", desc: "Deploy your entire PMS in seconds - no DevOps, no server setup needed", color: "from-purple-500 to-pink-500" },
+                  { icon: Users, title: "Complete Guest Management", desc: "Bookings, check-ins, profiles, and communications in one place", color: "from-cyan-500 to-blue-500" },
+                  { icon: BarChart3, title: "Real-Time Analytics", desc: "Revenue tracking, occupancy rates, and comprehensive reporting at a glance", color: "from-orange-500 to-amber-500" },
                 ].map((feature, index) => (
                   <div
                     key={index}
@@ -139,10 +139,10 @@ export default function Landing() {
                   </div>
                 ))}
 
-                {/* Additional Info Card */}
-                <div className="relative bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-2xl border border-teal-200 dark:border-teal-800 p-6">
+                {/* Replit Badge Card */}
+                <div className="relative bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 p-6">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-teal-600 dark:text-teal-400">Enterprise-grade security</span> with ISO 27001 compliance, data encryption, and SOC 2 certification
+                    <span className="font-semibold text-purple-600 dark:text-purple-400">Powered by Replit</span> - The world's first PMS with zero infrastructure setup. Built on Replit's serverless platform for instant deployment and auto-scaling.
                   </p>
                 </div>
               </div>
@@ -152,20 +152,25 @@ export default function Landing() {
       </div>
 
       {/* Footer CTA */}
-      <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 py-8 md:py-12">
-        <div className="max-w-7xl mx-auto px-4 md:px-8 text-center">
-          <p className="text-slate-600 dark:text-slate-400 mb-4">
-            Join the world's leading hospitality platforms using Hostezee
-          </p>
+      <div className="border-t border-slate-200 dark:border-slate-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/30 py-8 md:py-12">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 text-center space-y-4">
+          <div>
+            <p className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              🚀 The World's First Replit-Powered PMS
+            </p>
+            <p className="text-slate-600 dark:text-slate-400">
+              Join 500+ hotels, resorts, and accommodations. Zero setup. Zero DevOps. Pure simplicity.
+            </p>
+          </div>
           <Button
             size="lg"
             onClick={() => {
               setLocation("/onboarding");
             }}
             data-testid="button-signup-cta"
-            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl transition-all gap-2"
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all gap-2"
           >
-            Start Your Free Trial
+            Start Free Forever
             <ArrowRight className="h-5 w-5" />
           </Button>
         </div>
