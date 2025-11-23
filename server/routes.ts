@@ -5010,6 +5010,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== SUPER ADMIN EMAIL/PASSWORD LOGIN =====
+  app.post("/api/auth/email-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+
+      // Find user by email
+      const user = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+      
+      if (user.length === 0 || !user[0].password) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // Compare password
+      const isValidPassword = await bcryptjs.compare(password, user[0].password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // Create session
+      req.session.userId = user[0].id;
+      req.login(user[0], (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.json({ 
+          message: "Login successful", 
+          user: { 
+            id: user[0].id, 
+            email: user[0].email, 
+            role: user[0].role,
+            firstName: user[0].firstName,
+            lastName: user[0].lastName 
+          } 
+        });
+      });
+    } catch (error: any) {
+      console.error("[EMAIL-LOGIN] Error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
