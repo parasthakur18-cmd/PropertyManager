@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -112,6 +112,14 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
       specialRequests: enquiry.specialRequests || "",
     },
   });
+
+  // Auto-populate price quoted when room is selected
+  useEffect(() => {
+    if (selectedRoom?.pricePerNight) {
+      const roomPrice = parseFloat(selectedRoom.pricePerNight.toString());
+      form.setValue("priceQuoted", roomPrice);
+    }
+  }, [selectedRoom?.id, form]);
 
   const updateEnquiryMutation = useMutation({
     mutationFn: async (data: EditEnquiryFormData) => {
