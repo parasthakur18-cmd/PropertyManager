@@ -1037,7 +1037,7 @@ export type IssueReport = typeof issueReports.$inferSelect;
 // Attendance Tracking table - daily attendance records for automatic salary deduction
 export const attendanceRecords = pgTable("attendance_records", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  staffMemberId: integer("staff_member_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   attendanceDate: timestamp("attendance_date").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("present"), // present, absent, leave, half-day
@@ -1045,7 +1045,7 @@ export const attendanceRecords = pgTable("attendance_records", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("idx_attendance_staff").on(table.staffMemberId),
+  index("idx_attendance_staff").on(table.staffId),
   index("idx_attendance_date").on(table.attendanceDate),
 ]);
 
