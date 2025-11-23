@@ -105,9 +105,7 @@ export default function SuperAdmin() {
   // Mark error as resolved - MUST be before early returns
   const resolveError = useMutation({
     mutationFn: async (crashId: number) => {
-      return await apiRequest(`/api/errors/${crashId}/resolve`, {
-        method: "PATCH",
-      });
+      return await apiRequest(`/api/errors/${crashId}/resolve`, "PATCH", {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/errors"] });
@@ -124,9 +122,7 @@ export default function SuperAdmin() {
   // Delete error crash - MUST be before early returns
   const deleteError = useMutation({
     mutationFn: async (crashId: number) => {
-      return await apiRequest(`/api/errors/${crashId}`, {
-        method: "DELETE",
-      });
+      return await apiRequest(`/api/errors/${crashId}`, "DELETE", {});
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/errors"] });
@@ -563,7 +559,7 @@ export default function SuperAdmin() {
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       {crash.page && <div><span className="text-muted-foreground">Page:</span> {crash.page}</div>}
                       {crash.userId && <div><span className="text-muted-foreground">User:</span> {crash.userId}</div>}
-                      <div><span className="text-muted-foreground">Time:</span> {format(new Date(crash.createdAt), "MMM dd, HH:mm")}</div>
+                      {crash.createdAt && <div><span className="text-muted-foreground">Time:</span> {format(new Date(crash.createdAt), "MMM dd, HH:mm")}</div>}
                     </div>
                     {crash.errorStack && (
                       <div className="bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">
