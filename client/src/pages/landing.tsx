@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Building2, Calendar, Users, BarChart3 } from "lucide-react";
+import { useNavigate } from "wouter";
 
 export default function Landing() {
+  const [, navigate] = useNavigate();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10">
       <div className="container mx-auto px-6 py-16">
@@ -18,16 +21,27 @@ export default function Landing() {
             Manage your mountain resort properties, bookings, guests, and restaurant operations from one beautiful platform
           </p>
 
-          <Button
-            size="lg"
-            onClick={() => {
-              window.location.href = "/api/login";
-            }}
-            className="text-lg px-8 py-6"
-            data-testid="button-login"
-          >
-            Sign In to Continue
-          </Button>
+          <div className="flex gap-4 flex-wrap justify-center">
+            <Button
+              size="lg"
+              onClick={() => {
+                window.location.href = "/api/login";
+              }}
+              className="text-lg px-8 py-6"
+              data-testid="button-login"
+            >
+              Sign In to Continue
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              onClick={() => navigate("/forgot-password")}
+              className="text-lg px-8 py-6"
+              data-testid="button-forgot-password"
+            >
+              Forgot Password?
+            </Button>
+          </div>
 
           <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl w-full">
             <div className="p-6 rounded-lg bg-card border border-card-border">

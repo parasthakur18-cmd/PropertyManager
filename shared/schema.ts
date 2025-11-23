@@ -1031,3 +1031,19 @@ export const insertIssueReportSchema = createInsertSchema(issueReports).omit({
 
 export type InsertIssueReport = z.infer<typeof insertIssueReportSchema>;
 export type IssueReport = typeof issueReports.$inferSelect;
+
+// Password Reset OTP table - for secure password reset via email
+export const passwordResetOtps = pgTable("password_reset_otps", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  email: varchar("email", { length: 255 }).notNull(),
+  otp: varchar("otp", { length: 10 }).notNull(), // 6-digit OTP
+  expiresAt: timestamp("expires_at").notNull(), // OTP valid for 15 minutes
+  isUsed: boolean("is_used").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPasswordResetOtpSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+export type InsertPasswordResetOtp = z.infer<typeof insertPasswordResetOtpSchema>;
