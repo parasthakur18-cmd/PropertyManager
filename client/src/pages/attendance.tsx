@@ -199,7 +199,7 @@ export default function Attendance() {
 
   const getAttendanceForDate = (staffId: string, date: Date) => {
     return attendance.find(a => 
-      a.staffMemberId === staffId && 
+      String(a.staffId) === staffId && 
       format(new Date(a.attendanceDate), "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
     );
   };
