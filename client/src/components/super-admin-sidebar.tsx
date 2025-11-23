@@ -1,69 +1,23 @@
 import {
   Building2,
   Home,
-  Hotel,
-  Calendar,
   Users,
-  MessageSquare,
-  Briefcase,
-  UtensilsCrossed,
-  ChefHat,
-  Phone,
-  Receipt,
-  IndianRupee,
-  FileText,
-  TrendingUp,
-  BarChart3,
-  Plus,
-  UserCog,
-  QrCode,
+  AlertCircle,
   Settings,
   Shield,
-  Clock,
-  DollarSign,
-  ClipboardCheck,
-  CalendarDays,
-  FileBarChart,
-  MenuSquare,
   LogOut,
-  BookOpen,
-  Search,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 
-const adminMenuItems = [
-  { title: "Dashboard", url: "/", icon: Home },
-  { title: "Properties", url: "/properties", icon: Building2 },
-  { title: "Rooms", url: "/rooms", icon: Hotel },
-  { title: "Bookings", url: "/bookings", icon: Calendar },
-  { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
-  { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
-  { title: "Guests", url: "/guests", icon: Users },
-  { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
-  { title: "Contact Leads", url: "/contact-enquiries", icon: Plus },
-  { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
-  { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
-  { title: "Kitchen", url: "/kitchen", icon: ChefHat },
-  { title: "Quick Order", url: "/quick-order", icon: Phone },
-  { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
-  { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
-  { title: "Booking Analytics", url: "/booking-analytics", icon: BarChart3 },
-  { title: "Add-ons", url: "/addons", icon: Plus },
-  { title: "Users", url: "/users", icon: UserCog },
-  { title: "QR Codes", url: "/qr-codes", icon: QrCode },
-];
-
-const financeMenuItems = [
-  { title: "Billing", url: "/billing", icon: Receipt },
-  { title: "Leases", url: "/leases", icon: IndianRupee },
-  { title: "Expenses", url: "/expenses", icon: FileText },
-  { title: "Financials", url: "/financials", icon: TrendingUp },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Attendance", url: "/attendance", icon: Clock },
-  { title: "Salaries", url: "/salaries", icon: DollarSign },
+// Super Admin only sees system-level features, not property operations
+const systemMenuItems = [
+  { title: "Dashboard", url: "/super-admin", icon: Home },
+  { title: "All Properties", url: "/properties", icon: Building2 },
+  { title: "All Users", url: "/users", icon: Users },
+  { title: "Issue Reports", url: "/super-admin", icon: AlertCircle },
 ];
 
 export function SuperAdminSidebar() {
@@ -87,14 +41,14 @@ export function SuperAdminSidebar() {
         <p className="text-xs text-slate-500 dark:text-slate-400">Super Admin</p>
       </div>
 
-      {/* Admin Features Section */}
+      {/* System Management Section */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
-        {/* Admin Operations */}
+        {/* System Operations - Only super admin level features */}
         <div>
-          <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">Admin Features</h3>
+          <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">System Management</h3>
           <div className="space-y-1">
-            {adminMenuItems.map((item) => {
-              const isActive = location === item.url;
+            {systemMenuItems.map((item) => {
+              const isActive = location === item.url || (item.url === "/super-admin" && location?.includes("super-admin"));
               return (
                 <button
                   key={item.title}
@@ -104,6 +58,7 @@ export function SuperAdminSidebar() {
                       ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
                       : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
                   }`}
+                  data-testid={`button-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm font-medium">{item.title}</span>
@@ -113,33 +68,16 @@ export function SuperAdminSidebar() {
           </div>
         </div>
 
-        {/* Finance Operations */}
-        <div>
-          <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">Finance</h3>
-          <div className="space-y-1">
-            {financeMenuItems.map((item) => {
-              const isActive = location === item.url;
-              return (
-                <button
-                  key={item.title}
-                  onClick={() => window.location.href = item.url}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
-                    isActive
-                      ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
-                      : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
-                  }`}
-                >
-                  <item.icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="text-sm font-medium">{item.title}</span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Info Box */}
+        <div className="mx-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+          <p className="text-xs text-blue-900 dark:text-blue-300">
+            <span className="font-semibold">Super Admin:</span> Manage all properties and users. Each property admin handles their own operations.
+          </p>
         </div>
 
-        {/* System */}
+        {/* Settings */}
         <div>
-          <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">System</h3>
+          <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">Configuration</h3>
           <div className="space-y-1">
             <button
               onClick={() => window.location.href = "/settings"}
@@ -148,6 +86,7 @@ export function SuperAdminSidebar() {
                   ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
                   : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
               }`}
+              data-testid="button-nav-settings"
             >
               <Settings className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm font-medium">Settings</span>
