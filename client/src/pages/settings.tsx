@@ -58,10 +58,10 @@ export default function Settings() {
                 <span className="text-muted-foreground">Email</span>
                 <span data-testid="text-user-email-detail">{user?.email || "N/A"}</span>
               </div>
-              {user?.assignedPropertyId && (
+              {user?.assignedPropertyIds && user.assignedPropertyIds.length > 0 && (
                 <div className="flex justify-between py-2 border-b">
-                  <span className="text-muted-foreground">Assigned Property</span>
-                  <span className="font-mono" data-testid="text-user-assigned-property">#{user.assignedPropertyId}</span>
+                  <span className="text-muted-foreground">Assigned Properties</span>
+                  <span className="font-mono" data-testid="text-user-assigned-properties">{user.assignedPropertyIds.join(", ")}</span>
                 </div>
               )}
             </div>
