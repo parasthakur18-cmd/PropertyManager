@@ -300,6 +300,15 @@ export interface IStorage {
   createContactEnquiry(enquiry: InsertContactEnquiry): Promise<ContactEnquiry>;
   updateContactEnquiryStatus(id: number, status: string): Promise<ContactEnquiry>;
 
+  // Attendance operations
+  getAllAttendance(): Promise<AttendanceRecord[]>;
+  getAttendanceByStaffMember(staffId: number): Promise<AttendanceRecord[]>;
+  getAttendanceByProperty(propertyId: number): Promise<AttendanceRecord[]>;
+  getAttendanceByDate(attendanceDate: Date): Promise<AttendanceRecord[]>;
+  createAttendance(attendance: InsertAttendanceRecord): Promise<AttendanceRecord>;
+  updateAttendance(id: number, attendance: Partial<InsertAttendanceRecord>): Promise<AttendanceRecord>;
+  deleteAttendance(id: number): Promise<void>;
+
   // Dashboard stats
   getDashboardStats(propertyId?: number): Promise<any>;
   getAnalytics(): Promise<any>;
@@ -2050,6 +2059,66 @@ export class DatabaseStorage implements IStorage {
   async deleteStaffMember(id: number): Promise<void> {
     await db.delete(staffMembers).where(eq(staffMembers.id, id));
     eventBus.emit('staff-member:deleted', { id });
+  }
+
+  // Attendance operations
+  async getAllAttendance(): Promise<AttendanceRecord[]> {
+    return await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.attendanceDate));
+  }
+
+  async getAttendanceByStaffMember(staffId: number): Promise<AttendanceRecord[]> {
+    return await db
+      .select()
+      .from(attendanceRecords)
+      .where(eq(attendanceRecords.userId, String(staffId)))
+      .orderBy(desc(attendanceRecords.attendanceDate));
+  }
+
+  async getAttendanceByProperty(propertyId: number): Promise<AttendanceRecord[]> {
+    return await db
+      .select()
+      .from(attendanceRecords)
+      .where(eq(attendanceRecords.propertyId, propertyId))
+      .orderBy(desc(attendanceRecords.attendanceDate));
+  }
+
+  async getAttendanceByDate(attendanceDate: Date): Promise<AttendanceRecord[]> {
+    const startOfDay = new Date(attendanceDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(attendanceDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    return await db
+      .select()
+      .from(attendanceRecords)
+      .where(
+        and(
+          gte(attendanceRecords.attendanceDate, startOfDay),
+          lte(attendanceRecords.attendanceDate, endOfDay)
+        )
+      )
+      .orderBy(desc(attendanceRecords.attendanceDate));
+  }
+
+  async createAttendance(attendance: InsertAttendanceRecord): Promise<AttendanceRecord> {
+    const [created] = await db.insert(attendanceRecords).values(attendance).returning();
+    eventBus.emit('attendance:created', created);
+    return created;
+  }
+
+  async updateAttendance(id: number, attendance: Partial<InsertAttendanceRecord>): Promise<AttendanceRecord> {
+    const [updated] = await db
+      .update(attendanceRecords)
+      .set({ ...attendance, updatedAt: new Date() })
+      .where(eq(attendanceRecords.id, id))
+      .returning();
+    eventBus.emit('attendance:updated', updated);
+    return updated;
+  }
+
+  async deleteAttendance(id: number): Promise<void> {
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.id, id));
+    eventBus.emit('attendance:deleted', { id });
   }
 
   // Staff Salary operations
