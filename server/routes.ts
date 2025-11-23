@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { randomUUID } from "crypto";
+import bcryptjs from "bcryptjs";
 import {
   insertPropertySchema,
   insertRoomSchema,
@@ -50,21 +51,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Seed default expense categories
   await storage.seedDefaultCategories();
 
-  // Seed default super-admin user
+  // Seed default super-admin user with email/password
   try {
     const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
     if (existingSuperAdmins.length === 0) {
       const superAdminId = randomUUID();
+      const hashedPassword = await bcryptjs.hash('admin@123', 10);
       await db.insert(users).values({
         id: superAdminId,
         email: 'admin@hostezee.in',
         firstName: 'Hostezee',
         lastName: 'Admin',
+        password: hashedPassword,
         role: 'super-admin',
         status: 'active',
         businessName: 'Hostezee System',
       });
-      console.log('[SEED] Default super-admin created: admin@hostezee.in');
+      console.log('[SEED] Default super-admin created: admin@hostezee.in with password admin@123');
     }
   } catch (error) {
     console.error('[SEED ERROR] Failed to seed super-admin:', error);

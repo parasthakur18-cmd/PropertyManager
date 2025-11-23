@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  password: varchar("password"), // Hashed password for email/password auth
   role: varchar("role", { length: 20 }).notNull().default("staff"), // admin, super-admin, manager, staff, kitchen
   status: varchar("status", { length: 20 }).notNull().default("active"), // active, suspended
   businessName: varchar("business_name", { length: 255 }), // For new registrations - user's business/company name
