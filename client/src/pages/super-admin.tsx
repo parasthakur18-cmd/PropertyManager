@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
 import { format } from "date-fns";
+import { useLocation } from "wouter";
 
 interface ContactEnquiry {
   id: number;
@@ -27,6 +28,13 @@ export default function SuperAdmin() {
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [location, setLocation] = useLocation();
+  
+  // Get active tab from URL search params or default to "users"
+  const activeTab = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') || 'users';
+  }, [location]);
 
   // Fetch all users
   const { data: users = [] } = useQuery<User[]>({
@@ -132,7 +140,7 @@ export default function SuperAdmin() {
         <p className="text-muted-foreground">System-wide management & monitoring</p>
       </div>
 
-      <Tabs defaultValue="users" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={(tab) => setLocation(`/super-admin?tab=${tab}`)} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />

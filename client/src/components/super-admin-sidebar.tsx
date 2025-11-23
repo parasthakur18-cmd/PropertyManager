@@ -15,20 +15,23 @@ import { useAuth } from "@/hooks/useAuth";
 
 // Super Admin only sees system-level features, not property operations
 const systemMenuItems = [
-  { title: "Dashboard", url: "/super-admin", icon: Home },
-  { title: "All Properties", url: "/super-admin", icon: Building2 },
-  { title: "All Users", url: "/super-admin", icon: Users },
-  { title: "Contact Leads", url: "/super-admin", icon: MessageSquare },
-  { title: "Issue Reports", url: "/super-admin", icon: AlertCircle },
+  { title: "Dashboard", tab: "users", icon: Home },
+  { title: "All Properties", tab: "properties", icon: Building2 },
+  { title: "All Users", tab: "users", icon: Users },
+  { title: "Contact Leads", tab: "enquiries", icon: MessageSquare },
+  { title: "Issue Reports", tab: "reports", icon: AlertCircle },
 ];
 
 export function SuperAdminSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user } = useAuth();
 
   const userInitials = user
     ? `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase() || "U"
     : "U";
+
+  // Get current active tab from URL
+  const currentTab = new URLSearchParams(window.location.search).get('tab') || 'users';
 
   return (
     <div className="w-64 bg-slate-50 dark:bg-slate-900/50 border-r border-slate-200 dark:border-slate-800 flex flex-col h-screen overflow-hidden">
@@ -50,12 +53,12 @@ export function SuperAdminSidebar() {
           <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">System Management</h3>
           <div className="space-y-1">
             {systemMenuItems.map((item) => {
-              const isActive = location === item.url || (item.url === "/super-admin" && location?.includes("super-admin"));
+              const isActive = currentTab === item.tab;
               return (
-                <Link
+                <button
                   key={item.title}
-                  href={item.url}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left block ${
+                  onClick={() => setLocation(`/super-admin?tab=${item.tab}`)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
                     isActive
                       ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
                       : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
@@ -64,7 +67,7 @@ export function SuperAdminSidebar() {
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm font-medium">{item.title}</span>
-                </Link>
+                </button>
               );
             })}
           </div>
