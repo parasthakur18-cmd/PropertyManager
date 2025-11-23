@@ -6,7 +6,7 @@ import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogO
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { format, isToday } from "date-fns";
+import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import type { Booking, Guest, Room, Property } from "@shared/schema";
 
 interface Order {
@@ -80,6 +80,16 @@ export default function Dashboard() {
     isToday(new Date(b.checkOutDate)) && b.status === "checked-in"
   ) || [];
 
+  // Upcoming check-ins (next 7 days, excluding today)
+  const upcomingCheckIns = bookings?.filter(b => {
+    const checkInDate = new Date(b.checkInDate);
+    const tomorrow = addDays(startOfDay(new Date()), 1);
+    const sevenDaysFromNow = addDays(startOfDay(new Date()), 7);
+    return (b.status === "pending" || b.status === "confirmed") && 
+           isAfter(checkInDate, tomorrow) && 
+           isBefore(checkInDate, sevenDaysFromNow);
+  }) || [];
+
   const activeOrders = orders?.filter(o => 
     o.status === "pending" || o.status === "preparing" || o.status === "ready"
   ) || [];
@@ -152,6 +162,11 @@ export default function Dashboard() {
             <LogOut className="h-5 w-5 mb-1" />
             <span className="text-xs font-medium">Check-outs</span>
             <Badge variant="secondary" className="mt-1 text-xs h-5">{todayCheckOuts.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="upcoming-checkins" className="flex flex-col h-auto py-3 px-2" data-testid="tab-upcoming-checkins">
+            <Calendar className="h-5 w-5 mb-1" />
+            <span className="text-xs font-medium">Upcoming</span>
+            <Badge variant="secondary" className="mt-1 text-xs h-5">{upcomingCheckIns.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="active-orders" className="flex flex-col h-auto py-3 px-2" data-testid="tab-active-orders">
             <ChefHat className="h-5 w-5 mb-1" />
