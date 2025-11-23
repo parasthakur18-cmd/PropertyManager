@@ -40,6 +40,7 @@ import CustomerMenu from "@/pages/customer-menu";
 import BookingAnalytics from "@/pages/booking-analytics";
 import QRCodes from "@/pages/qr-codes";
 import Salaries from "@/pages/salaries";
+import Attendance from "@/pages/attendance";
 import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
 import SuperAdmin from "@/pages/super-admin";
@@ -109,6 +110,7 @@ function Router() {
           <Route path="/addons" component={AddOnServices} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/salaries" component={Salaries} />
+          <Route path="/attendance" component={Attendance} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/super-admin" component={SuperAdmin} />

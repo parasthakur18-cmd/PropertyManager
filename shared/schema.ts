@@ -1033,6 +1033,32 @@ export const insertIssueReportSchema = createInsertSchema(issueReports).omit({
 export type InsertIssueReport = z.infer<typeof insertIssueReportSchema>;
 export type IssueReport = typeof issueReports.$inferSelect;
 
+// Attendance Tracking table - daily attendance records for automatic salary deduction
+export const attendanceRecords = pgTable("attendance_records", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  attendanceDate: timestamp("attendance_date").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("present"), // present, absent, leave, half-day
+  remarks: text("remarks"), // Notes about the attendance
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_attendance_user").on(table.userId),
+  index("idx_attendance_date").on(table.attendanceDate),
+]);
+
+export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  attendanceDate: z.coerce.date(),
+});
+
+export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
+export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
+
 // Password Reset OTP table - for secure password reset via email or SMS
 export const passwordResetOtps = pgTable("password_reset_otps", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
