@@ -430,12 +430,9 @@ export default function Attendance() {
                               size="sm"
                               variant="outline"
                               onClick={() => {
-                                const staff = staffMembers.find(s => String(s.id) === stat.staffId);
-                                if (staff) {
-                                  setEditingStaffId(staff.id);
-                                  editStaffForm.reset({ baseSalary: staff.baseSalary || 0 });
-                                  setIsEditStaffDialogOpen(true);
-                                }
+                                setEditingStaffId(parseInt(stat.staffId));
+                                editStaffForm.reset({ baseSalary: stat.baseSalary || 0 });
+                                setIsEditStaffDialogOpen(true);
                               }}
                               data-testid={`button-edit-salary-table-${stat.staffId}`}
                             >
