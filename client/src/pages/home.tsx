@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
@@ -5,6 +6,43 @@ import { Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, Arrow
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const [formData, setFormData] = useState({ name: "", email: "", property: "", message: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formStatus, setFormStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.email || !formData.message) {
+      setFormStatus({ type: "error", message: "Please fill in all required fields" });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Send enquiry to backend
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      if (response.ok) {
+        setFormStatus({ type: "success", message: "Thank you! We'll get back to you within 24 hours." });
+        setFormData({ name: "", email: "", property: "", message: "" });
+      } else {
+        setFormStatus({ type: "error", message: "Failed to send message. Please try again." });
+      }
+    } catch (error) {
+      setFormStatus({ type: "error", message: "Failed to send message. Please email us directly at support@hostezze.in" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950">
@@ -313,10 +351,13 @@ export default function Home() {
             <form className="space-y-4" data-testid="contact-form">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Full Name
+                  Full Name *
                 </label>
                 <input
                   type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleFormChange}
                   placeholder="Your name"
                   data-testid="input-contact-name"
                   className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -325,10 +366,13 @@ export default function Home() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Email Address
+                  Email Address *
                 </label>
                 <input
                   type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleFormChange}
                   placeholder="your@email.com"
                   data-testid="input-contact-email"
                   className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -341,6 +385,9 @@ export default function Home() {
                 </label>
                 <input
                   type="text"
+                  name="property"
+                  value={formData.property}
+                  onChange={handleFormChange}
                   placeholder="Your property name"
                   data-testid="input-contact-property"
                   className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
@@ -349,9 +396,12 @@ export default function Home() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                  Message
+                  Message *
                 </label>
                 <textarea
+                  name="message"
+                  value={formData.message}
+                  onChange={handleFormChange}
                   placeholder="Tell us about your inquiry..."
                   rows={4}
                   data-testid="textarea-contact-message"
@@ -359,12 +409,20 @@ export default function Home() {
                 />
               </div>
 
+              {formStatus && (
+                <div className={`p-3 rounded-lg text-sm ${formStatus.type === "success" ? "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300" : "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"}`}>
+                  {formStatus.message}
+                </div>
+              )}
+
               <Button
                 type="submit"
+                onClick={handleFormSubmit}
+                disabled={isSubmitting}
                 data-testid="button-contact-submit"
                 className="w-full bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white"
               >
-                Send Message
+                {isSubmitting ? "Sending..." : "Send Message"}
               </Button>
               <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
                 We'll get back to you within 24 hours
