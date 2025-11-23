@@ -17,6 +17,7 @@ import {
   insertExpenseCategorySchema,
   insertBankTransactionSchema,
   insertContactEnquirySchema,
+  insertAttendanceRecordSchema,
   orders,
   bills,
   extraServices,
@@ -3940,6 +3941,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== ATTENDANCE ENDPOINTS =====
+  // GET /api/attendance - Get all attendance records
+  app.get("/api/attendance", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { staffMemberId, propertyId, attendanceDate } = req.query;
+
+      if (staffMemberId) {
+        const records = await storage.getAttendanceByStaffMember(parseInt(staffMemberId as string));
+        return res.json(records);
+      }
+
+      if (propertyId) {
+        const records = await storage.getAttendanceByProperty(parseInt(propertyId as string));
+        return res.json(records);
+      }
+
+      if (attendanceDate) {
+        const date = new Date(attendanceDate as string);
+        const records = await storage.getAttendanceByDate(date);
+        return res.json(records);
+      }
+
+      const allRecords = await storage.getAllAttendance();
+      res.json(allRecords);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/attendance - Create attendance record
+  app.post("/api/attendance", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      // Validate the request data
+      const validatedData = insertAttendanceRecordSchema.parse({
+        ...req.body,
+        userId: user.id,
+        attendanceDate: new Date(req.body.attendanceDate),
+      });
+
+      // Create the attendance record
+      const attendance = await storage.createAttendance(validatedData);
+
+      res.status(201).json(attendance);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/attendance/stats - Get attendance statistics
+  app.get("/api/attendance/stats", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { propertyId, startDate, endDate } = req.query;
+
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+
+      const start = startDate ? new Date(startDate as string) : new Date();
+      start.setDate(start.getDate() - 30); // Default to last 30 days
+
+      const end = endDate ? new Date(endDate as string) : new Date();
+
+      // Get all staff members for the property
+      const staffMembers = await storage.getStaffMembersByProperty(parseInt(propertyId as string));
+      
+      // Get attendance records for the period
+      const attendanceRecords = await storage.getAttendanceByProperty(parseInt(propertyId as string));
+      
+      // Calculate stats for each staff member
+      const stats = staffMembers.map((staff) => {
+        const staffAttendance = attendanceRecords.filter(
+          (record) => record.userId === String(staff.id)
+        );
+
+        const presentDays = staffAttendance.filter((a) => a.status === "present").length;
+        const absentDays = staffAttendance.filter((a) => a.status === "absent").length;
+        const leaveDays = staffAttendance.filter((a) => a.status === "leave").length;
+        const halfDays = staffAttendance.filter((a) => a.status === "half-day").length;
+        const totalDays = staffAttendance.length;
+
+        const attendancePercentage = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
+
+        return {
+          staffId: staff.id,
+          staffName: staff.name,
+          presentDays,
+          absentDays,
+          leaveDays,
+          halfDays,
+          totalDays,
+          attendancePercentage,
+          baseSalary: staff.baseSalary,
+          netSalary: staff.baseSalary || 0, // Will be calculated properly with deductions
+        };
+      });
+
+      res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
