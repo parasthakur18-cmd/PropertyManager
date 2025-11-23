@@ -4175,6 +4175,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== ADMIN PORTAL ENDPOINTS (Separate from PMS) =====
+  
+  // Admin Portal Login
+  app.post("/api/admin-portal/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      const user = await storage.getUser(email);
+      if (!user || user.role !== 'super-admin') {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      
+      if (user.status === 'suspended') {
+        return res.status(403).json({ error: "Account suspended" });
+      }
+      
+      // In production, verify password hash
+      // For now, create session
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ error: "Login failed" });
+        res.json({ message: "Logged in", user });
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all users
+  app.get("/api/admin-portal/users", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allUsers = await storage.getAllUsers?.();
+      res.json(allUsers || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all properties
+  app.get("/api/admin-portal/properties", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allProperties = await storage.getAllProperties?.();
+      res.json(allProperties || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get system stats
+  app.get("/api/admin-portal/stats", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const users = await storage.getAllUsers?.() || [];
+      const properties = await storage.getAllProperties?.() || [];
+      const bookings = await storage.getAllBookings?.() || [];
+
+      res.json({
+        totalUsers: users.length,
+        totalProperties: properties.length,
+        totalBookings: bookings.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Suspend user
+  app.patch("/api/admin-portal/users/:id/suspend", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, 'suspended');
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Activate user
+  app.patch("/api/admin-portal/users/:id/activate", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, 'active');
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Login as user from admin portal
+  app.post("/api/admin-portal/login-as/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      req.login(targetUser, (err) => {
+        if (err) return res.status(500).json({ message: "Login failed" });
+        res.json({ message: "Logged in as user", user: targetUser });
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Guest Self Check-in endpoints
   app.get("/api/guest-self-checkin/booking/:bookingId", async (req, res) => {
     try {

@@ -46,6 +46,8 @@ import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
 import GuestSelfCheckin from "@/pages/guest-self-checkin";
+import AdminPortalLogin from "@/pages/admin-portal-login";
+import AdminPortalDashboard from "@/pages/admin-portal-dashboard";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -71,6 +73,8 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/verify-otp" component={VerifyOTP} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/admin-portal" component={AdminPortalLogin} />
+      <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
       
       {!isAuthenticated ? (
         <Route path="/" component={Landing} />
