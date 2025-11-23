@@ -5163,6 +5163,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== AI CHATBOT =====
+  app.post("/api/chat", isAuthenticated, async (req, res) => {
+    try {
+      const { messages } = req.body;
+      
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ message: "Messages array required" });
+      }
+
+      const { ChatOpenAI } = await import("@langchain/openai");
+      
+      const chat = new ChatOpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        model: "gpt-4o-mini",
+        temperature: 0.7,
+      });
+
+      const systemMessage = `You are Hostezee's intelligent AI Assistant, helping users with property management questions. 
+You can provide guidance on:
+- Booking and reservation management
+- Guest information and check-in/check-out procedures
+- Room and property management
+- Billing and financial inquiries
+- Menu management and restaurant operations
+- User account and role management
+- System features and how to use them
+
+Be helpful, professional, and concise. If a user asks about something outside your scope, politely redirect them to the relevant feature or contact support.`;
+
+      const chatMessages = [
+        { role: "system", content: systemMessage },
+        ...messages.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      ];
+
+      const response = await chat.invoke(chatMessages);
+      
+      res.json({
+        message: response.content,
+      });
+    } catch (error: any) {
+      console.error("[CHAT] Error:", error);
+      res.status(500).json({ message: "Chat service error. Please try again." });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

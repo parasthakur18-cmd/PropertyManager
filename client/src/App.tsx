@@ -66,6 +66,7 @@ import ContactEnquiries from "@/pages/contact-enquiries";
 import Register from "@/pages/register";
 import ReportIssue from "@/pages/report-issue";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { Chatbot } from "@/components/chatbot";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -227,6 +228,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       {children}
+      <Chatbot />
     </div>
   );
 }
