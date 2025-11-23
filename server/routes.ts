@@ -4458,6 +4458,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== CONTACT ENQUIRY ROUTES =====
+  // POST /api/contact - Accept contact form submissions from landing page
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { name, email, propertyName, message } = req.body;
+
+      // Validate required fields
+      if (!name || !email || !message) {
+        return res.status(400).json({ message: "Name, email, and message are required" });
+      }
+
+      // Validate and parse with zod schema
+      const validated = insertContactEnquirySchema.parse({
+        name,
+        email,
+        propertyName: propertyName || null,
+        message,
+      });
+
+      // Create enquiry in database
+      const enquiry = await storage.createContactEnquiry(validated);
+
+      res.status(201).json({ message: "Thank you for your enquiry. We'll be in touch soon!", enquiry });
+    } catch (error: any) {
+      console.error("[CONTACT] Error creating enquiry:", error);
+      res.status(500).json({ message: "Failed to submit enquiry. Please try again." });
+    }
+  });
+
+  // GET /api/contact - Get all contact enquiries (admin only)
+  app.get("/api/contact", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const user = await storage.getUser(userId);
+
+      // Only super-admin can view all enquiries
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const enquiries = await storage.getAllContactEnquiries();
+      res.json(enquiries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/contact/:id - Update enquiry status (admin only)
+  app.patch("/api/contact/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { status } = req.body;
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+
+      const updated = await storage.updateContactEnquiryStatus(parseInt(req.params.id), status);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
