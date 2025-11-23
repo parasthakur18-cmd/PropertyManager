@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
-import type { Booking, Guest, Room, Property } from "@shared/schema";
+import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
   id: number;
@@ -69,7 +69,11 @@ export default function Dashboard() {
     queryKey: ["/api/orders"],
   });
 
-  const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading;
+  const { data: enquiries, isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
+    queryKey: ["/api/enquiries"],
+  });
+
+  const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
 
   // Filter data for tabs
   const todayCheckIns = bookings?.filter(b => 
@@ -92,6 +96,10 @@ export default function Dashboard() {
 
   const activeOrders = orders?.filter(o => 
     o.status === "pending" || o.status === "preparing" || o.status === "ready"
+  ) || [];
+
+  const yetToConfirmedEnquiries = enquiries?.filter(e => 
+    e.status !== "confirmed"
   ) || [];
 
   if (isLoading) {
@@ -177,6 +185,11 @@ export default function Dashboard() {
             <Receipt className="h-5 w-5 mb-1" />
             <span className="text-xs font-medium">Bookings</span>
             <Badge variant="secondary" className="mt-1 text-xs h-5">{bookings?.length || 0}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="yet-to-confirmed" className="flex flex-col h-auto py-3 px-2" data-testid="tab-yet-to-confirmed">
+            <Clock className="h-5 w-5 mb-1" />
+            <span className="text-xs font-medium">Pending</span>
+            <Badge variant="secondary" className="mt-1 text-xs h-5">{yetToConfirmedEnquiries.length}</Badge>
           </TabsTrigger>
           <TabsTrigger 
             value="new-booking" 
