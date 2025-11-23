@@ -82,6 +82,9 @@ import {
   contactEnquiries,
   type ContactEnquiry,
   type InsertContactEnquiry,
+  errorCrashes,
+  type ErrorCrash,
+  type InsertErrorCrash,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -300,6 +303,12 @@ export interface IStorage {
   getAllContactEnquiries(): Promise<ContactEnquiry[]>;
   createContactEnquiry(enquiry: InsertContactEnquiry): Promise<ContactEnquiry>;
   updateContactEnquiryStatus(id: number, status: string): Promise<ContactEnquiry>;
+
+  // Error Crash operations
+  getAllErrorCrashes(): Promise<ErrorCrash[]>;
+  createErrorCrash(crash: InsertErrorCrash): Promise<ErrorCrash>;
+  markErrorAsResolved(id: number): Promise<ErrorCrash>;
+  deleteErrorCrash(id: number): Promise<void>;
 
   // Attendance operations
   getAllAttendance(): Promise<AttendanceRecord[]>;
@@ -2372,6 +2381,31 @@ export class DatabaseStorage implements IStorage {
       .returning();
     eventBus.emit('contact-enquiry:updated', updated);
     return updated;
+  }
+
+  // Error Crash operations
+  async getAllErrorCrashes(): Promise<ErrorCrash[]> {
+    return await db.select().from(errorCrashes).orderBy(desc(errorCrashes.createdAt));
+  }
+
+  async createErrorCrash(crash: InsertErrorCrash): Promise<ErrorCrash> {
+    const [created] = await db.insert(errorCrashes).values(crash).returning();
+    eventBus.emit('error-crash:created', created);
+    return created;
+  }
+
+  async markErrorAsResolved(id: number): Promise<ErrorCrash> {
+    const [updated] = await db
+      .update(errorCrashes)
+      .set({ isResolved: true })
+      .where(eq(errorCrashes.id, id))
+      .returning();
+    eventBus.emit('error-crash:resolved', updated);
+    return updated;
+  }
+
+  async deleteErrorCrash(id: number): Promise<void> {
+    await db.delete(errorCrashes).where(eq(errorCrashes.id, id));
   }
 }
 
