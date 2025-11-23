@@ -148,6 +148,12 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
       ...data,
       bedsBooked: selectedRoom?.roomCategory === "dormitory" ? data.numberOfGuests : null,
     };
+    console.log("🔍 FORM SUBMIT - Data being sent:", {
+      ...updateData,
+      priceQuoted: updateData.priceQuoted,
+      roomId: updateData.roomId,
+      selectedRoom: selectedRoom?.id,
+    });
     updateEnquiryMutation.mutate(updateData);
   };
 

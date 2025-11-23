@@ -2753,7 +2753,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         specialRequests: z.string().optional().nullable(),
       });
       const data = updateSchema.parse(req.body);
+      console.log("📝 ENQUIRY PATCH - Received data:", {
+        enquiryId: req.params.id,
+        priceQuoted: data.priceQuoted,
+        roomId: data.roomId,
+        allData: JSON.stringify(data),
+      });
       const enquiry = await storage.updateEnquiry(parseInt(req.params.id), data);
+      console.log("✅ ENQUIRY PATCH - Updated enquiry:", {
+        id: enquiry.id,
+        priceQuoted: enquiry.priceQuoted,
+        roomId: enquiry.roomId,
+      });
       if (!enquiry) {
         return res.status(404).json({ message: "Enquiry not found" });
       }
