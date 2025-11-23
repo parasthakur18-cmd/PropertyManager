@@ -85,14 +85,15 @@ export function Chatbot() {
     <>
       {isOpen ? (
         <div 
-          className="fixed z-50"
           style={{
-            bottom: '1rem',
-            right: '1rem',
+            position: 'fixed',
+            bottom: '16px',
+            right: '16px',
             width: '384px',
             height: '384px',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            zIndex: 9999
           }}
         >
           <Card className="w-full h-full shadow-xl flex flex-col">
@@ -165,7 +166,13 @@ export function Chatbot() {
       ) : (
         <Button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 right-4 rounded-full w-14 h-14 shadow-xl z-50 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          style={{
+            position: 'fixed',
+            bottom: '16px',
+            right: '16px',
+            zIndex: 9999
+          }}
+          className="rounded-full w-14 h-14 shadow-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
           size="icon"
           data-testid="button-open-chatbot"
         >
