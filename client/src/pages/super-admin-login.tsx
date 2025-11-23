@@ -1,10 +1,13 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Building2, LogIn, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
+import { useState } from "react";
 
 export default function SuperAdminLogin() {
   const [, setLocation] = useLocation();
+  const [email, setEmail] = useState("");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 via-white to-cyan-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
@@ -73,15 +76,31 @@ export default function SuperAdminLogin() {
               </div>
             </div>
 
+            {/* Email Input */}
+            <div className="space-y-2 pt-2">
+              <label className="text-sm font-medium text-slate-900 dark:text-white">
+                Email Address
+              </label>
+              <Input
+                type="email"
+                placeholder="admin@hostezee.in"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                data-testid="input-super-admin-email"
+                className="h-12"
+              />
+            </div>
+
             {/* Action Buttons */}
             <div className="space-y-3 pt-4">
               <Button
                 size="lg"
                 className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white"
                 onClick={() => {
-                  // First login with the Replit auth
+                  // Login with the Replit auth
                   window.location.href = "/api/login";
                 }}
+                disabled={!email || !email.includes("@")}
               >
                 <LogIn className="h-4 w-4 mr-2" />
                 Login with Replit Auth
