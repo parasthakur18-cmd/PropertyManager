@@ -141,6 +141,13 @@ export default function Dashboard() {
       bgColor: "bg-chart-4/10",
     },
     {
+      title: "Active Users",
+      value: stats?.activeUsers || 0,
+      icon: Users,
+      color: "text-purple-600",
+      bgColor: "bg-purple-600/10",
+    },
+    {
       title: "Total Guests",
       value: stats?.totalGuests || 0,
       icon: Users,

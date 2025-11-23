@@ -1772,6 +1772,11 @@ export class DatabaseStorage implements IStorage {
       ? Math.round((occupiedRoomsCount.count / roomsCount.count) * 100)
       : 0;
 
+    const [activeUsersCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users)
+      .where(eq(users.status, 'active'));
+
     const currentMonth = new Date();
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
@@ -1799,6 +1804,7 @@ export class DatabaseStorage implements IStorage {
       totalRooms: roomsCount.count,
       activeBookings: activeBookingsCount.count,
       totalGuests: guestsCount.count,
+      activeUsers: activeUsersCount.count,
       occupancyRate,
       monthlyRevenue: parseFloat(monthlyRevenueResult.total),
     };
