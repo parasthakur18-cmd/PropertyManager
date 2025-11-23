@@ -74,6 +74,10 @@ import {
   type InsertSalaryAdvance,
   type SalaryPayment,
   type InsertSalaryPayment,
+  issueReports,
+  type IssueReport,
+  passwordResetOtps,
+  type InsertPasswordResetOtp,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -2142,6 +2146,50 @@ export class DatabaseStorage implements IStorage {
   async deleteSalaryPayment(id: number): Promise<void> {
     await db.delete(salaryPayments).where(eq(salaryPayments.id, id));
     eventBus.emit('salary-payment:deleted', { id });
+  }
+
+  // Super Admin operations
+  async getAllIssueReports(): Promise<IssueReport[]> {
+    return await db.select().from(issueReports).orderBy(desc(issueReports.createdAt));
+  }
+
+  // Password Reset operations
+  async createPasswordResetOtp(data: InsertPasswordResetOtp): Promise<any> {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    
+    const [created] = await db.insert(passwordResetOtps).values({
+      email: data.email || null,
+      phone: data.phone || null,
+      channel: data.channel,
+      otp,
+      expiresAt,
+      isUsed: false,
+    }).returning();
+    return created;
+  }
+
+  async verifyPasswordResetOtp(channel: string, identifier: string, otp: string): Promise<{ resetToken: string }> {
+    const query = channel === "email" 
+      ? eq(passwordResetOtps.email, identifier)
+      : eq(passwordResetOtps.phone, identifier);
+    
+    const [record] = await db.select().from(passwordResetOtps)
+      .where(and(query, eq(passwordResetOtps.otp, otp), eq(passwordResetOtps.isUsed, false)))
+      .limit(1);
+    
+    if (!record || new Date() > record.expiresAt) {
+      throw new Error("Invalid or expired OTP");
+    }
+
+    await db.update(passwordResetOtps).set({ isUsed: true }).where(eq(passwordResetOtps.id, record.id));
+
+    const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    return { resetToken };
+  }
+
+  async resetPassword(resetToken: string, newPassword: string): Promise<void> {
+    throw new Error("Password reset requires session token storage");
   }
 }
 

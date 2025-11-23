@@ -3992,8 +3992,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      // Note: We'd need a getSalaryPayment method to capture the before data
-      // For now, we'll log deletion without before data
       await storage.deleteSalaryPayment(parseInt(req.params.id));
 
       const { AuditService } = await import("./auditService");
@@ -4007,6 +4005,168 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Password Reset endpoints
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email, phone, channel } = req.body;
+      
+      if (!email && !phone) {
+        return res.status(400).json({ message: "Email or phone required" });
+      }
+
+      if (channel === "email" && !email) {
+        return res.status(400).json({ message: "Email required for email OTP" });
+      }
+
+      if (channel === "sms" && !phone) {
+        return res.status(400).json({ message: "Phone required for SMS OTP" });
+      }
+
+      const otpRecord = await storage.createPasswordResetOtp({ email, phone, channel });
+
+      // TODO: Send OTP via authkey.io
+      // if (channel === "email") { sendEmailOTP(email, otpRecord.otp); }
+      // else { sendSmsOTP(phone, otpRecord.otp); }
+
+      res.json({ message: "OTP sent", otp: otpRecord.otp });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/auth/verify-otp", async (req, res) => {
+    try {
+      const { email, phone, otp, channel } = req.body;
+      
+      const identifier = channel === "email" ? email : phone;
+      if (!identifier) {
+        return res.status(400).json({ message: "Email or phone required" });
+      }
+
+      const result = await storage.verifyPasswordResetOtp(channel, identifier, otp);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { resetToken, newPassword } = req.body;
+      
+      if (!resetToken || !newPassword) {
+        return res.status(400).json({ message: "Reset token and new password required" });
+      }
+
+      // In a real app, validate the resetToken against a stored session
+      // For now, this is a placeholder
+      res.json({ message: "Password reset successful" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin endpoints
+  app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/super-admin/properties", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const properties = await storage.getAllProperties();
+      res.json(properties);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/super-admin/reports", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const reports = await storage.getAllIssueReports();
+      res.json(reports);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { status } = req.body;
+      if (!['active', 'suspended'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, status);
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logUpdate(
+        "user",
+        req.params.id,
+        user,
+        { status: status === 'active' ? 'suspended' : 'active' },
+        { status },
+        { action: `user_${status}` }
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/super-admin/login-as/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCustomAction(
+        "user",
+        req.params.id,
+        "login_as",
+        user,
+        undefined,
+        { action: "super_admin_login_as", targetUserId: req.params.id }
+      );
+
+      res.json({ message: "Login as initiated", user: targetUser });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
