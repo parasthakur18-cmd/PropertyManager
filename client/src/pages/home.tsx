@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
-import { Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, ArrowRight, Mountain } from "lucide-react";
+import { Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, ArrowRight, Mountain, Instagram } from "lucide-react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -260,8 +260,8 @@ export default function Home() {
                 <div>
                   <h5 className="font-semibold text-slate-900 dark:text-white mb-1">Email</h5>
                   <p className="text-slate-600 dark:text-slate-400">
-                    <a href="mailto:support@hostezee.com" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
-                      support@hostezee.com
+                    <a href="mailto:support@hostezze.in" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+                      support@hostezze.in
                     </a>
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">We respond within 24 hours</p>
@@ -430,11 +430,12 @@ export default function Home() {
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-4">Legal</h4>
+              <h4 className="font-semibold text-white mb-4">Connect</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white transition">Privacy</a></li>
-                <li><a href="#" className="hover:text-white transition">Terms</a></li>
-                <li><a href="#" className="hover:text-white transition">Status</a></li>
+                <li><a href="https://www.instagram.com/hostezee?igsh=MXB5ZXl3bXBpcjZqcw%3D%3D" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-white transition">
+                  <Instagram className="h-4 w-4" />
+                  Instagram
+                </a></li>
               </ul>
             </div>
           </div>
