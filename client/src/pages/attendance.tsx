@@ -237,64 +237,15 @@ export default function Attendance() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
-                          <DialogTrigger asChild>
-                            <Button type="button" size="icon" variant="outline" data-testid="button-add-staff">
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Add New Staff Member</DialogTitle>
-                            </DialogHeader>
-                            <Form {...addStaffForm}>
-                              <form onSubmit={addStaffForm.handleSubmit((data) => addStaffMutation.mutate(data))} className="space-y-4">
-                                <FormField
-                                  control={addStaffForm.control}
-                                  name="firstName"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>First Name</FormLabel>
-                                      <FormControl>
-                                        <Input {...field} data-testid="input-first-name" />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={addStaffForm.control}
-                                  name="lastName"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Last Name</FormLabel>
-                                      <FormControl>
-                                        <Input {...field} data-testid="input-last-name" />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={addStaffForm.control}
-                                  name="position"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Position</FormLabel>
-                                      <FormControl>
-                                        <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-position" />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <Button type="submit" disabled={addStaffMutation.isPending} className="w-full">
-                                  {addStaffMutation.isPending ? "Adding..." : "Add Staff Member"}
-                                </Button>
-                              </form>
-                            </Form>
-                          </DialogContent>
-                        </Dialog>
+                        <Button 
+                          type="button" 
+                          size="icon" 
+                          variant="outline" 
+                          data-testid="button-add-staff"
+                          onClick={() => setIsAddStaffDialogOpen(true)}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
                       </div>
                       <FormMessage />
                     </FormItem>
@@ -368,6 +319,60 @@ export default function Attendance() {
                   data-testid="button-submit"
                 >
                   {createAttendanceMutation.isPending ? "Recording..." : "Record"}
+                </Button>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add New Staff Member</DialogTitle>
+            </DialogHeader>
+            <Form {...addStaffForm}>
+              <form onSubmit={addStaffForm.handleSubmit((data) => addStaffMutation.mutate(data))} className="space-y-4">
+                <FormField
+                  control={addStaffForm.control}
+                  name="firstName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-first-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addStaffForm.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl>
+                        <Input {...field} data-testid="input-last-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addStaffForm.control}
+                  name="position"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Position</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-position" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={addStaffMutation.isPending} className="w-full">
+                  {addStaffMutation.isPending ? "Adding..." : "Add Staff Member"}
                 </Button>
               </form>
             </Form>
