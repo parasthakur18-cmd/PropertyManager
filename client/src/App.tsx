@@ -78,6 +78,8 @@ function Router() {
       <Route path="/admin-portal" component={AdminPortalLogin} />
       <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
+      <Route path="/login" component={Landing} />
+      <Route path="/signup" component={Landing} />
       
       {!isAuthenticated ? (
         <Route path="/" component={Home} />
