@@ -55,6 +55,7 @@ import Onboarding from "@/pages/onboarding";
 import FAQ from "@/pages/faq";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
+import ContactEnquiries from "@/pages/contact-enquiries";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -124,6 +125,7 @@ function Router() {
           <Route path="/users" component={UsersManagement} />
           <Route path="/super-admin" component={SuperAdmin} />
           <Route path="/settings" component={Settings} />
+          <Route path="/contact-enquiries" component={ContactEnquiries} />
         </>
       )}
       <Route component={NotFound} />
