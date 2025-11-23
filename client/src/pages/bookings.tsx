@@ -1601,7 +1601,6 @@ export default function Bookings() {
           )}
         </TabsContent>
       </Tabs>
-      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -2607,5 +2606,6 @@ function CheckoutBillSummary({
         </Button>
       </DialogFooter>
     </div>
+      </div>
   );
 }
