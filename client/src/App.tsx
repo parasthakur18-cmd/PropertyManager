@@ -56,6 +56,8 @@ import FAQ from "@/pages/faq";
 import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import ContactEnquiries from "@/pages/contact-enquiries";
+import Register from "@/pages/register";
+import ReportIssue from "@/pages/report-issue";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -90,7 +92,9 @@ function Router() {
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/login" component={Landing} />
-      <Route path="/signup" component={Landing} />
+      <Route path="/signup" component={Register} />
+      <Route path="/register" component={Register} />
+      <Route path="/report-issue" component={ReportIssue} />
       
       {!isAuthenticated ? (
         <Route path="/" component={Home} />
