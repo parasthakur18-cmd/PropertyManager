@@ -5033,6 +5033,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/errors - Create error crash report (public - from error boundary)
+  app.post("/api/errors", async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const { errorMessage, errorStack, errorType, page, browserInfo } = req.body;
+
+      if (!errorMessage) {
+        return res.status(400).json({ message: "Error message is required" });
+      }
+
+      const crash = await storage.createErrorCrash({
+        userId: userId || null,
+        errorMessage,
+        errorStack: errorStack || null,
+        errorType: errorType || null,
+        page: page || null,
+        browserInfo: browserInfo || null,
+        userAgent: browserInfo?.userAgent || null,
+      });
+
+      res.status(201).json(crash);
+    } catch (error: any) {
+      console.error("[ERROR-REPORT] Failed to log error:", error);
+      res.status(500).json({ message: "Failed to report error" });
+    }
+  });
+
+  // GET /api/errors - Get all error crashes (super-admin only)
+  app.get("/api/errors", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      const crashes = await storage.getAllErrorCrashes();
+      res.json(crashes);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/errors/:id/resolve - Mark error as resolved (super-admin only)
+  app.patch("/api/errors/:id/resolve", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      const updated = await storage.markErrorAsResolved(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/errors/:id - Delete error crash (super-admin only)
+  app.delete("/api/errors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      await storage.deleteErrorCrash(parseInt(req.params.id));
+      res.json({ message: "Error crash deleted" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ===== SUPER ADMIN EMAIL/PASSWORD LOGIN =====
   app.post("/api/auth/email-login", async (req, res) => {
     try {
