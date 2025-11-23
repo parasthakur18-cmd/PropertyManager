@@ -131,7 +131,9 @@ export function AppSidebar() {
   const { setOpen, isMobile } = useSidebar();
 
   const operationsItems =
-    user?.role === "admin"
+    user?.role === "super-admin"
+      ? superAdminMenuItems
+      : user?.role === "admin"
       ? adminOperationsItems
       : user?.role === "manager"
       ? managerOperationsItems
@@ -171,9 +173,37 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent>
+        {/* Super Admin Section */}
+        {user?.role === "super-admin" && (
+          <SidebarGroup>
+            <SidebarGroupLabel>System Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {superAdminMenuItems.map((item) => {
+                  const isActive = location === item.url;
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild data-active={isActive}>
+                        <Link 
+                          href={item.url} 
+                          data-testid={`link-${item.title.toLowerCase()}`}
+                          onClick={handleNavClick}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         {/* Operations Section */}
         <SidebarGroup>
-          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarGroupLabel>{user?.role === "super-admin" ? "Account" : "Operations"}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {operationsItems.map((item) => {
