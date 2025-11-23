@@ -3463,13 +3463,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Staff Member endpoints (non-app staff) - Admin/Manager only
+  // Staff Member endpoints (non-app staff) - Admin/Manager/Staff
   app.get("/api/staff-members", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
       const { propertyId } = req.query;
 
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -3497,7 +3497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -3523,7 +3523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -3548,7 +3548,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -3578,7 +3578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
