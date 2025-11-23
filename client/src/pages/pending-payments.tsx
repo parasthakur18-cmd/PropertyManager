@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, isAfter, parseISO, isBefore } from "date-fns";
-import { IndianRupee, Clock, AlertTriangle, CheckCircle, User, Building2 } from "lucide-react";
+import { IndianRupee, Clock, AlertTriangle, CheckCircle, User, Building2, Download } from "lucide-react";
 
 interface PendingBill {
   id: number;
@@ -125,6 +125,40 @@ export default function PendingPayments() {
     return isBefore(parseISO(dueDate), new Date());
   };
 
+  // Export pending payments as CSV
+  const handleExportCSV = () => {
+    const headers = ["Guest Name", "Phone", "Travel Agent", "Total Amount", "Balance Due", "Due Date", "Status"];
+    const rows = filteredBills.map(bill => [
+      bill.guestName,
+      bill.guestPhone || "N/A",
+      bill.agentName || "Direct/Walk-in",
+      `₹${bill.totalAmount}`,
+      `₹${bill.balanceAmount}`,
+      bill.dueDate ? format(parseISO(bill.dueDate), "yyyy-MM-dd") : "N/A",
+      isOverdue(bill.dueDate) ? "Overdue" : "Pending"
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `vendor-pending-payments-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export Successful",
+      description: "Vendor pending payment ledger downloaded successfully.",
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -135,11 +169,22 @@ export default function PendingPayments() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold" data-testid="text-page-title">Pending Payments</h1>
-        <p className="text-muted-foreground" data-testid="text-page-description">
-          Track and manage outstanding payments from guests and travel agents
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">Pending Payments</h1>
+          <p className="text-muted-foreground" data-testid="text-page-description">
+            Track and manage outstanding payments from guests and travel agents
+          </p>
+        </div>
+        <Button 
+          onClick={handleExportCSV} 
+          variant="outline" 
+          className="gap-2"
+          data-testid="button-export-ledger"
+        >
+          <Download className="h-4 w-4" />
+          Export Ledger
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
