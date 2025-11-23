@@ -69,7 +69,7 @@ export default function Home() {
             </Button>
             <Button
               onClick={() => {
-                window.location.href = "/api/login";
+                setLocation("/onboarding");
               }}
               data-testid="button-signup"
               className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-lg"
@@ -113,7 +113,7 @@ export default function Home() {
                 <Button
                   size="lg"
                   onClick={() => {
-                    window.location.href = "/api/login";
+                    setLocation("/onboarding");
                   }}
                   data-testid="button-get-started"
                   className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-base h-13 px-8 gap-2 shadow-lg hover:shadow-xl transition-all"
@@ -433,7 +433,7 @@ export default function Home() {
             <Button
               size="lg"
               onClick={() => {
-                window.location.href = "/api/login";
+                setLocation("/onboarding");
               }}
               data-testid="button-cta-signup"
               className="bg-white text-teal-600 hover:bg-slate-100 text-base h-13 px-10 font-semibold shadow-lg hover:shadow-xl transition-all gap-2"

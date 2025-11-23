@@ -47,7 +47,7 @@ export default function Register() {
 
       // Redirect to login
       setTimeout(() => {
-        window.location.href = "/api/login";
+        setLocation("/onboarding");
       }, 1000);
     } catch (error: any) {
       toast({
