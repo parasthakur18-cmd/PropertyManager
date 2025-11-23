@@ -215,22 +215,138 @@ export default function Attendance() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">
-            Attendance & Salary Management
-          </h1>
-          <p className="text-muted-foreground">
-            Track attendance and automatic salary deductions
-          </p>
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-record-attendance">
-              <CalendarDays className="h-4 w-4 mr-2" />
-              Record Attendance
-            </Button>
-          </DialogTrigger>
+      <div>
+        <h1 className="text-3xl font-bold" data-testid="text-page-title">
+          Attendance & Salary Management
+        </h1>
+        <p className="text-muted-foreground">
+          Track attendance and automatic salary deductions
+        </p>
+      </div>
+
+      <Tabs defaultValue="roster" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="roster">Quick Roster</TabsTrigger>
+          <TabsTrigger value="individual">Record Attendance</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="roster" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Mark Attendance for All Staff</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Select Date</label>
+                <Input
+                  type="date"
+                  value={rosterDate}
+                  onChange={(e) => setRosterDate(e.target.value)}
+                  className="mt-1"
+                  data-testid="input-roster-date"
+                />
+              </div>
+
+              {staffMembers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No staff members added yet. Click "Add Staff" to add your first staff member.</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted">
+                        <th className="text-left p-3 font-semibold">Staff Member</th>
+                        <th className="text-center p-3 font-semibold">Present</th>
+                        <th className="text-center p-3 font-semibold">Absent</th>
+                        <th className="text-center p-3 font-semibold">Leave</th>
+                        <th className="text-center p-3 font-semibold">Half Day</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staffMembers.map((staff) => {
+                        const dayAttendance = getAttendanceForDate(staff.id, new Date(rosterDate));
+                        const currentStatus = dayAttendance?.status;
+                        return (
+                          <tr key={staff.id} className="border-b hover:bg-muted/50">
+                            <td className="p-3">
+                              <div className="font-medium">{staff.name}</div>
+                              <div className="text-xs text-muted-foreground">{staff.jobTitle}</div>
+                            </td>
+                            <td className="text-center p-2">
+                              <Button
+                                variant={currentStatus === "present" ? "default" : "outline"}
+                                size="sm"
+                                className={currentStatus === "present" ? "bg-green-600 hover:bg-green-700" : ""}
+                                onClick={() => handleRosterStatusChange(String(staff.id), "present")}
+                                data-testid={`button-present-${staff.id}`}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                            </td>
+                            <td className="text-center p-2">
+                              <Button
+                                variant={currentStatus === "absent" ? "default" : "outline"}
+                                size="sm"
+                                className={currentStatus === "absent" ? "bg-red-600 hover:bg-red-700" : ""}
+                                onClick={() => handleRosterStatusChange(String(staff.id), "absent")}
+                                data-testid={`button-absent-${staff.id}`}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            </td>
+                            <td className="text-center p-2">
+                              <Button
+                                variant={currentStatus === "leave" ? "default" : "outline"}
+                                size="sm"
+                                className={currentStatus === "leave" ? "bg-blue-600 hover:bg-blue-700" : ""}
+                                onClick={() => handleRosterStatusChange(String(staff.id), "leave")}
+                                data-testid={`button-leave-${staff.id}`}
+                              >
+                                <AlertCircle className="h-4 w-4" />
+                              </Button>
+                            </td>
+                            <td className="text-center p-2">
+                              <Button
+                                variant={currentStatus === "half-day" ? "default" : "outline"}
+                                size="sm"
+                                className={currentStatus === "half-day" ? "bg-yellow-600 hover:bg-yellow-700" : ""}
+                                onClick={() => handleRosterStatusChange(String(staff.id), "half-day")}
+                                data-testid={`button-half-day-${staff.id}`}
+                              >
+                                <AlertCircle className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => setIsAddStaffDialogOpen(true)} 
+                  variant="outline"
+                  data-testid="button-add-staff-roster"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Staff Member
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="individual" className="space-y-4">
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-record-attendance">
+                <CalendarDays className="h-4 w-4 mr-2" />
+                Record Single Attendance
+              </Button>
+            </DialogTrigger>
           <DialogContent data-testid="dialog-attendance-form">
             <DialogHeader>
               <DialogTitle>Record Attendance</DialogTitle>
@@ -347,9 +463,11 @@ export default function Attendance() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </TabsContent>
+      </Tabs>
 
-        <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
+      <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Staff Member</DialogTitle>
@@ -412,8 +530,7 @@ export default function Attendance() {
               </form>
             </Form>
           </DialogContent>
-        </Dialog>
-      </div>
+      </Dialog>
 
       {/* Month Selector */}
       <Card>
