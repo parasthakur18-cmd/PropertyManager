@@ -4667,8 +4667,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      res.json({ message: "Login as initiated", user: targetUser });
+      // Create session for target user using req.login
+      req.login(targetUser, (err) => {
+        if (err) {
+          console.error("[LOGIN-AS] Failed to create session:", err);
+          return res.status(500).json({ message: "Failed to create session" });
+        }
+        res.json({ message: "Login as successful", user: targetUser });
+      });
     } catch (error: any) {
+      console.error("[LOGIN-AS] Error:", error);
       res.status(500).json({ message: error.message });
     }
   });
