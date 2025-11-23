@@ -2921,7 +2921,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (room) {
             const checkIn = new Date(enquiry.checkInDate);
             const checkOut = new Date(enquiry.checkOutDate);
-            const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            let numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            if (numberOfNights <= 0) numberOfNights = 1; // Minimum 1 night
             const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
             totalAmount = (pricePerNight * numberOfNights).toFixed(2);
             console.log("✅ Calculated totalAmount (single room):", { roomId: enquiry.roomId, numberOfNights, pricePerNight, totalAmount });
@@ -2935,7 +2936,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (selectedRooms.length > 0) {
             const checkIn = new Date(enquiry.checkInDate);
             const checkOut = new Date(enquiry.checkOutDate);
-            const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            let numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            if (numberOfNights <= 0) numberOfNights = 1; // Minimum 1 night
             const totalPrice = selectedRooms.reduce((sum, room) => {
               const pricePerNight = parseFloat(room.pricePerNight.toString());
               return sum + (pricePerNight * numberOfNights);
