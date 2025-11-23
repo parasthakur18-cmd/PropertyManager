@@ -49,14 +49,14 @@ export default function Landing() {
                 </div>
 
                 <h1 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white leading-tight">
-                  Access Your
+                  Experience
                   <span className="block bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                    Dashboard
+                    Modern Hospitality
                   </span>
                 </h1>
 
                 <p className="text-xl text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
-                  Manage your mountain resort properties, bookings, guests, and restaurant operations from one beautiful platform.
+                  The world's leading property management platform trusted by premium hotels, resorts, and luxury accommodations worldwide. Streamline operations, maximize revenue, and delight guests at scale.
                 </p>
               </div>
 
@@ -69,7 +69,7 @@ export default function Landing() {
                   data-testid="button-login"
                   className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-base h-13 shadow-lg hover:shadow-xl transition-all gap-2 group"
                 >
-                  Sign In to Continue
+                  Access Your Dashboard
                   <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
@@ -80,32 +80,32 @@ export default function Landing() {
                   data-testid="button-forgot-password"
                   className="w-full border-slate-300 dark:border-slate-700 h-13 hover:bg-slate-50 dark:hover:bg-slate-900"
                 >
-                  Forgot Password?
+                  Reset Your Password
                 </Button>
 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-                  Don't have an account?{" "}
+                  New to Hostezee?{" "}
                   <a href="#" onClick={() => setLocation("/signup")} className="font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition">
-                    Create one now
+                    Start your free trial
                   </a>
                 </p>
               </div>
 
               {/* Trust Badges */}
               <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-4">Trusted by Property Managers</p>
-                <div className="flex flex-wrap gap-6">
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-4">Trusted Globally</p>
+                <div className="flex flex-wrap gap-8">
                   <div>
                     <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">500+</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Properties</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Premium Properties</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">50K+</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Bookings</p>
+                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">$500M+</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Revenue Managed</p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">99.9%</p>
-                    <p className="text-xs text-slate-600 dark:text-slate-400">Uptime</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Uptime Guarantee</p>
                   </div>
                 </div>
               </div>
@@ -115,9 +115,9 @@ export default function Landing() {
             <div className="relative h-96 md:h-full min-h-96 lg:min-h-80">
               <div className="space-y-6">
                 {[
-                  { icon: Calendar, title: "Smart Bookings", desc: "Real-time availability tracking", color: "from-blue-500 to-cyan-500" },
-                  { icon: Users, title: "Guest Management", desc: "Complete guest profiles and history", color: "from-teal-500 to-green-500" },
-                  { icon: BarChart3, title: "Analytics & Reports", desc: "Revenue and occupancy insights", color: "from-orange-500 to-red-500" },
+                  { icon: Calendar, title: "Intelligent Booking Engine", desc: "AI-powered availability and dynamic pricing optimization", color: "from-blue-500 to-cyan-500" },
+                  { icon: Users, title: "Guest Experience Platform", desc: "Personalized journeys from booking to checkout", color: "from-teal-500 to-green-500" },
+                  { icon: BarChart3, title: "Revenue Intelligence", desc: "Real-time analytics and predictive insights", color: "from-orange-500 to-red-500" },
                 ].map((feature, index) => (
                   <div
                     key={index}
@@ -140,7 +140,7 @@ export default function Landing() {
                 {/* Additional Info Card */}
                 <div className="relative bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-2xl border border-teal-200 dark:border-teal-800 p-6">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-teal-600 dark:text-teal-400">Enterprise-grade security</span> with role-based access, audit logs, and complete encryption
+                    <span className="font-semibold text-teal-600 dark:text-teal-400">Enterprise-grade security</span> with ISO 27001 compliance, data encryption, and SOC 2 certification
                   </p>
                 </div>
               </div>
@@ -153,7 +153,7 @@ export default function Landing() {
       <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 py-8 md:py-12">
         <div className="max-w-7xl mx-auto px-4 md:px-8 text-center">
           <p className="text-slate-600 dark:text-slate-400 mb-4">
-            New to Hostezee? Start your free 14-day trial—no credit card required
+            Join the world's leading hospitality platforms using Hostezee
           </p>
           <Button
             size="lg"
@@ -161,7 +161,7 @@ export default function Landing() {
             data-testid="button-signup-cta"
             className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl transition-all gap-2"
           >
-            Get Started Now
+            Start Your Free Trial
             <ArrowRight className="h-5 w-5" />
           </Button>
         </div>
