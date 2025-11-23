@@ -4563,10 +4563,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Super Admin endpoints
   app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
+      
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error: any) {
@@ -4576,10 +4580,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/super-admin/properties", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
+      
       const properties = await storage.getAllProperties();
       res.json(properties);
     } catch (error: any) {
@@ -4589,8 +4597,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/super-admin/reports", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -4603,8 +4614,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -4614,17 +4628,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateUserStatus(req.params.id, status);
-
-      const { AuditService } = await import("./auditService");
-      await AuditService.logUpdate(
-        "user",
-        req.params.id,
-        user,
-        { status: status === 'active' ? 'suspended' : 'active' },
-        { status },
-        { action: `user_${status}` }
-      );
-
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -4633,8 +4636,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/super-admin/login-as/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      const userId = req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -4642,16 +4648,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!targetUser) {
         return res.status(404).json({ message: "User not found" });
       }
-
-      const { AuditService } = await import("./auditService");
-      await AuditService.logCustomAction(
-        "user",
-        req.params.id,
-        "login_as",
-        user,
-        undefined,
-        { action: "super_admin_login_as", targetUserId: req.params.id }
-      );
 
       res.json({ message: "Login as initiated", user: targetUser });
     } catch (error: any) {
