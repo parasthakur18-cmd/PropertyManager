@@ -18,7 +18,7 @@ const systemMenuItems = [
   { title: "Dashboard", url: "/super-admin", icon: Home },
   { title: "All Properties", url: "/super-admin", icon: Building2 },
   { title: "All Users", url: "/super-admin", icon: Users },
-  { title: "Contact Leads", url: "/contact-enquiries", icon: MessageSquare },
+  { title: "Contact Leads", url: "/super-admin", icon: MessageSquare },
   { title: "Issue Reports", url: "/super-admin", icon: AlertCircle },
 ];
 

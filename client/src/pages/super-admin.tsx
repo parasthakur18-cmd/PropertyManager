@@ -7,9 +7,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
+import { format } from "date-fns";
+
+interface ContactEnquiry {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  propertyName?: string;
+  message: string;
+  status: string;
+  createdAt: string;
+}
 
 export default function SuperAdmin() {
   const { toast } = useToast();
@@ -31,6 +43,11 @@ export default function SuperAdmin() {
   // Fetch all issue reports
   const { data: reports = [] } = useQuery<IssueReport[]>({
     queryKey: ["/api/super-admin/reports"],
+  });
+
+  // Fetch all contact enquiries
+  const { data: enquiries = [] } = useQuery<ContactEnquiry[]>({
+    queryKey: ["/api/contact"],
   });
 
   // Suspend/unsuspend user
@@ -116,7 +133,7 @@ export default function SuperAdmin() {
       </div>
 
       <Tabs defaultValue="users" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Users ({users.length})
@@ -128,6 +145,10 @@ export default function SuperAdmin() {
           <TabsTrigger value="reports" className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" />
             Reports ({reports.length})
+          </TabsTrigger>
+          <TabsTrigger value="enquiries" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Leads ({enquiries.length})
           </TabsTrigger>
         </TabsList>
 
@@ -336,6 +357,51 @@ export default function SuperAdmin() {
                   </Card>
                 );
               })
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Contact Enquiries Tab */}
+        <TabsContent value="enquiries" className="space-y-4">
+          <div className="grid gap-4">
+            {enquiries.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                  <MessageSquare className="h-8 w-8 text-slate-400" />
+                  <p>No contact leads yet</p>
+                  <p className="text-xs">Leads will appear when users submit the contact form on your landing page</p>
+                </CardContent>
+              </Card>
+            ) : (
+              enquiries.map((enquiry) => (
+                <Card key={enquiry.id} className="hover-elevate">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-base">{enquiry.name}</CardTitle>
+                        <Badge variant="outline" className="mt-2">{enquiry.status || "new"}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{format(new Date(enquiry.createdAt), "MMM dd, yyyy")}</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex gap-3">
+                      <Mail className="h-4 w-4 text-teal-600 flex-shrink-0 mt-1" />
+                      <a href={`mailto:${enquiry.email}`} className="text-teal-600 hover:underline break-all">{enquiry.email}</a>
+                    </div>
+                    {enquiry.phone && (
+                      <div className="flex gap-3">
+                        <Phone className="h-4 w-4 text-teal-600 flex-shrink-0 mt-1" />
+                        <a href={`tel:${enquiry.phone}`} className="text-teal-600 hover:underline">{enquiry.phone}</a>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Message:</p>
+                      <p className="text-sm bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">{enquiry.message}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
             )}
           </div>
         </TabsContent>
