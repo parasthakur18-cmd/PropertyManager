@@ -4152,28 +4152,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/attendance/stats - Get attendance statistics
   app.get("/api/attendance/stats", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      const { propertyId, startDate, endDate } = req.query;
-
-      if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
-      }
-
-      const start = startDate ? new Date(startDate as string) : new Date();
-      start.setDate(start.getDate() - 30); // Default to last 30 days
-
-      const end = endDate ? new Date(endDate as string) : new Date();
-
-      // Get all staff members for the property
-      const staffMembers = await storage.getStaffMembersByProperty(parseInt(propertyId as string));
+      // Get all staff members
+      const staffMembers = await storage.getAllStaffMembers();
       
-      // Get attendance records for the period
-      const attendanceRecords = await storage.getAttendanceByProperty(parseInt(propertyId as string));
+      // Get all attendance records
+      const attendanceRecords = await storage.getAllAttendance();
       
       // Calculate stats for each staff member
       const stats = staffMembers.map((staff) => {
         const staffAttendance = attendanceRecords.filter(
-          (record) => record.userId === String(staff.id)
+          (record) => record.staffId === staff.id
         );
 
         const presentDays = staffAttendance.filter((a) => a.status === "present").length;
@@ -4191,10 +4179,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           absentDays,
           leaveDays,
           halfDays,
-          totalDays,
+          totalWorkDays: totalDays,
           attendancePercentage,
-          baseSalary: staff.baseSalary,
-          netSalary: staff.baseSalary || 0, // Will be calculated properly with deductions
+          deductionPerDay: (staff.baseSalary || 0) / 30,
+          totalDeduction: ((staff.baseSalary || 0) / 30) * absentDays,
+          baseSalary: staff.baseSalary || 0,
+          netSalary: (staff.baseSalary || 0) - (((staff.baseSalary || 0) / 30) * absentDays),
         };
       });
 

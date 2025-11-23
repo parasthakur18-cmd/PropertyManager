@@ -18,7 +18,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "
 import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus } from "lucide-react";
 
 const attendanceFormSchema = z.object({
-  staffMemberId: z.string().optional(),
+  staffMemberId: z.string().min(1, "Staff member is required"),
   attendanceDate: z.string().min(1, "Date is required"),
   status: z.enum(["present", "absent", "leave", "half-day"]),
   remarks: z.string().optional(),
