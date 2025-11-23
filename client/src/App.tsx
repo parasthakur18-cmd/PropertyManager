@@ -95,6 +95,7 @@ function Router() {
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
       <Route path="/super-admin-login" component={SuperAdminLogin} />
       <Route path="/super-admin" component={SuperAdmin} />
+      <Route path="/contact-enquiries" component={ContactEnquiries} />
       <Route path="/features" component={Features} />
       <Route path="/security" component={Security} />
       <Route path="/about" component={About} />
@@ -144,7 +145,6 @@ function Router() {
           <Route path="/users" component={UsersManagement} />
           <Route path="/super-admin" component={SuperAdmin} />
           <Route path="/settings" component={Settings} />
-          <Route path="/contact-enquiries" component={ContactEnquiries} />
         </>
       )}
       <Route component={NotFound} />
