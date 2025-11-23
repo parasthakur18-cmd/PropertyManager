@@ -143,7 +143,6 @@ function Router() {
           <Route path="/attendance" component={Attendance} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/users" component={UsersManagement} />
-          <Route path="/super-admin" component={SuperAdmin} />
           <Route path="/settings" component={Settings} />
         </>
       )}
