@@ -1087,6 +1087,7 @@ export const contactEnquiries = pgTable("contact_enquiries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
   propertyName: varchar("property_name", { length: 255 }),
   message: text("message").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("new"), // new, contacted, resolved

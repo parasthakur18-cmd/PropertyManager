@@ -4571,17 +4571,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/contact - Accept contact form submissions from landing page
   app.post("/api/contact", async (req, res) => {
     try {
-      const { name, email, propertyName, message } = req.body;
+      const { name, email, phone, propertyName, message } = req.body;
 
       // Validate required fields
-      if (!name || !email || !message) {
-        return res.status(400).json({ message: "Name, email, and message are required" });
+      if (!name || !email || !phone || !message) {
+        return res.status(400).json({ message: "Name, email, phone, and message are required" });
       }
 
       // Validate and parse with zod schema
       const validated = insertContactEnquirySchema.parse({
         name,
         email,
+        phone,
         propertyName: propertyName || null,
         message,
       });

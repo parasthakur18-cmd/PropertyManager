@@ -10,7 +10,7 @@ import {
 
 export default function Home() {
   const [, setLocation] = useLocation();
-  const [formData, setFormData] = useState({ name: "", email: "", property: "", message: "" });
+  const [formData, setFormData] = useState({ name: "", email: "", phone: "", property: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formStatus, setFormStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -21,7 +21,7 @@ export default function Home() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email || !formData.message) {
+    if (!formData.name || !formData.email || !formData.phone || !formData.message) {
       setFormStatus({ type: "error", message: "Please fill in all required fields" });
       return;
     }
@@ -36,7 +36,7 @@ export default function Home() {
 
       if (response.ok) {
         setFormStatus({ type: "success", message: "Thank you! We'll get back to you within 24 hours." });
-        setFormData({ name: "", email: "", property: "", message: "" });
+        setFormData({ name: "", email: "", phone: "", property: "", message: "" });
       } else {
         setFormStatus({ type: "error", message: "Failed to send message. Please try again." });
       }
@@ -330,7 +330,7 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-br from-teal-600/20 to-cyan-600/20 rounded-3xl blur-2xl"></div>
               <div className="relative bg-white dark:bg-slate-800 rounded-3xl p-10 border border-slate-200 dark:border-slate-700 shadow-2xl">
                 <h3 className="text-3xl font-bold text-slate-900 dark:text-white mb-8">
-                  Send us a Message
+                  Enquiry Form
                 </h3>
                 <form className="space-y-5" data-testid="contact-form">
                   <div>
@@ -359,6 +359,21 @@ export default function Home() {
                       onChange={handleFormChange}
                       placeholder="your@email.com"
                       data-testid="input-contact-email"
+                      className="w-full px-5 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                      Mobile Number
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleFormChange}
+                      placeholder="+91 9001949260"
+                      data-testid="input-contact-phone"
                       className="w-full px-5 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
                     />
                   </div>
