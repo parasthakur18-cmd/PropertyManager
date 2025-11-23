@@ -2,6 +2,7 @@ import { Building2, Calendar, Users, BarChart3, ArrowRight, Sparkles } from "luc
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Chatbot } from "@/components/chatbot";
 
 export default function Landing() {
   const [, setLocation] = useLocation();
@@ -175,6 +176,9 @@ export default function Landing() {
           </Button>
         </div>
       </div>
+
+      {/* Chatbot */}
+      <Chatbot />
     </div>
   );
 }
