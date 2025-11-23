@@ -2892,35 +2892,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const customPriceValue = enquiry.priceQuoted != null ? String(enquiry.priceQuoted) : null;
       const advanceAmountValue = enquiry.advanceAmount != null ? String(enquiry.advanceAmount) : "0";
       
+      // DEBUG: Log enquiry details
+      console.log("📋 ENQUIRY CONFIRM - Enquiry Details:", {
+        enquiryId: enquiry.id,
+        roomId: enquiry.roomId,
+        roomIds: enquiry.roomIds,
+        checkInDate: enquiry.checkInDate,
+        checkOutDate: enquiry.checkOutDate,
+        priceQuoted: enquiry.priceQuoted,
+        advanceAmount: enquiry.advanceAmount,
+      });
+
       // Calculate totalAmount based on room price and number of nights
-      let totalAmount: string | null = null;
-      if (enquiry.roomId) {
-        const allRooms = await storage.getAllRooms();
-        const room = allRooms.find(r => r.id === enquiry.roomId);
-        if (room) {
-          const checkIn = new Date(enquiry.checkInDate);
-          const checkOut = new Date(enquiry.checkOutDate);
-          const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-          const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
-          totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+      let totalAmount: string = "0"; // DEFAULT TO 0 if calculation fails
+      
+      try {
+        if (enquiry.roomId) {
+          const allRooms = await storage.getAllRooms();
+          const room = allRooms.find(r => r.id === enquiry.roomId);
+          if (room) {
+            const checkIn = new Date(enquiry.checkInDate);
+            const checkOut = new Date(enquiry.checkOutDate);
+            const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
+            totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+            console.log("✅ Calculated totalAmount (single room):", { roomId: enquiry.roomId, numberOfNights, pricePerNight, totalAmount });
+          } else {
+            console.warn("⚠️ Room not found for roomId:", enquiry.roomId);
+          }
+        } else if (enquiry.roomIds && enquiry.roomIds.length > 0) {
+          // For group bookings
+          const allRooms = await storage.getAllRooms();
+          const selectedRooms = allRooms.filter(r => enquiry.roomIds?.includes(r.id));
+          if (selectedRooms.length > 0) {
+            const checkIn = new Date(enquiry.checkInDate);
+            const checkOut = new Date(enquiry.checkOutDate);
+            const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            const totalPrice = selectedRooms.reduce((sum, room) => {
+              const pricePerNight = parseFloat(room.pricePerNight.toString());
+              return sum + (pricePerNight * numberOfNights);
+            }, 0);
+            totalAmount = totalPrice.toFixed(2);
+            console.log("✅ Calculated totalAmount (group):", { roomIds: enquiry.roomIds, numberOfNights, totalPrice: totalAmount });
+          } else {
+            console.warn("⚠️ No rooms found for group booking");
+          }
+        } else {
+          console.warn("⚠️ No roomId or roomIds found in enquiry - using default totalAmount: 0");
         }
-      } else if (enquiry.roomIds && enquiry.roomIds.length > 0) {
-        // For group bookings
-        const allRooms = await storage.getAllRooms();
-        const selectedRooms = allRooms.filter(r => enquiry.roomIds?.includes(r.id));
-        if (selectedRooms.length > 0) {
-          const checkIn = new Date(enquiry.checkInDate);
-          const checkOut = new Date(enquiry.checkOutDate);
-          const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-          const totalPrice = selectedRooms.reduce((sum, room) => {
-            const pricePerNight = parseFloat(room.pricePerNight.toString());
-            return sum + (pricePerNight * numberOfNights);
-          }, 0);
-          totalAmount = totalPrice.toFixed(2);
-        }
+      } catch (calcError) {
+        console.error("❌ Error calculating totalAmount:", calcError);
+        totalAmount = "0";
       }
       
-      console.log("Creating booking with customPrice:", customPriceValue, "advanceAmount:", advanceAmountValue, "totalAmount:", totalAmount);
+      console.log("📦 CREATING BOOKING with:", { customPrice: customPriceValue, advanceAmount: advanceAmountValue, totalAmount, status: "confirmed" });
       
       const booking = await storage.createBooking({
         propertyId: enquiry.propertyId,
