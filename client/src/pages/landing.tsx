@@ -157,7 +157,9 @@ export default function Landing() {
           </p>
           <Button
             size="lg"
-            onClick={() => setLocation("/signup")}
+            onClick={() => {
+              window.location.href = "/api/login";
+            }}
             data-testid="button-signup-cta"
             className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl transition-all gap-2"
           >

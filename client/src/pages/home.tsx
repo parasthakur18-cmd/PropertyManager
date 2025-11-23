@@ -68,7 +68,9 @@ export default function Home() {
               Login
             </Button>
             <Button
-              onClick={() => setLocation("/signup")}
+              onClick={() => {
+                window.location.href = "/api/login";
+              }}
               data-testid="button-signup"
               className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-lg"
             >
@@ -110,7 +112,9 @@ export default function Home() {
               <div className="flex flex-wrap gap-4 pt-4">
                 <Button
                   size="lg"
-                  onClick={() => setLocation("/signup")}
+                  onClick={() => {
+                    window.location.href = "/api/login";
+                  }}
                   data-testid="button-get-started"
                   className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-base h-13 px-8 gap-2 shadow-lg hover:shadow-xl transition-all"
                 >
@@ -413,7 +417,9 @@ export default function Home() {
           <div className="flex flex-wrap gap-4 justify-center">
             <Button
               size="lg"
-              onClick={() => setLocation("/signup")}
+              onClick={() => {
+                window.location.href = "/api/login";
+              }}
               data-testid="button-cta-signup"
               className="bg-white text-teal-600 hover:bg-slate-100 text-base h-13 px-10 font-semibold shadow-lg hover:shadow-xl transition-all gap-2"
             >
