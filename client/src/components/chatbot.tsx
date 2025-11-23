@@ -50,20 +50,19 @@ export function Chatbot() {
     setLoading(true);
 
     try {
-      const response = await apiRequest('/api/chat', {
-        method: 'POST',
-        body: {
-          messages: messages.concat(userMessage).map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        },
+      const response = await apiRequest('/api/chat', 'POST', {
+        messages: messages.concat(userMessage).map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
       });
+
+      const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.message,
+        content: data.message,
         timestamp: new Date(),
       };
 
