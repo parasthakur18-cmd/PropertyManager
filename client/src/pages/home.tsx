@@ -5,7 +5,7 @@ import { useLocation } from "wouter";
 import { 
   Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, 
   ArrowRight, Instagram, TrendingUp, BarChart3, MessageCircle, Lock,
-  Smartphone, Globe, Briefcase, Award, Flame, Sparkles
+  Smartphone, Globe, Briefcase, Award, Flame, Sparkles, Facebook, Twitter, Linkedin
 } from "lucide-react";
 
 export default function Home() {
@@ -494,8 +494,17 @@ export default function Home() {
             <div className="flex flex-col md:flex-row items-center justify-between">
               <p className="text-sm">&copy; 2025 Hostezee PMS. All rights reserved.</p>
               <div className="flex gap-6 mt-6 md:mt-0">
-                <a href="https://www.instagram.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition">
+                <a href="https://www.facebook.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition" data-testid="social-facebook">
+                  <Facebook className="h-5 w-5" />
+                </a>
+                <a href="https://www.twitter.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition" data-testid="social-twitter">
+                  <Twitter className="h-5 w-5" />
+                </a>
+                <a href="https://www.instagram.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition" data-testid="social-instagram">
                   <Instagram className="h-5 w-5" />
+                </a>
+                <a href="https://www.linkedin.com/company/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition" data-testid="social-linkedin">
+                  <Linkedin className="h-5 w-5" />
                 </a>
               </div>
             </div>

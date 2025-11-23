@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Building2, ArrowLeft, Calendar } from "lucide-react";
+import { Building2, ArrowLeft, Calendar, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 
 export default function Blog() {
   const [, setLocation] = useLocation();
@@ -80,12 +80,26 @@ export default function Blog() {
           <div className="mt-12 bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 rounded-xl border border-teal-200 dark:border-teal-800 p-8 text-center">
             <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Subscribe to our Newsletter</h2>
             <p className="text-slate-600 dark:text-slate-400 mb-6">Get the latest insights and tips delivered to your inbox every week.</p>
-            <form className="flex gap-2 max-w-md mx-auto">
+            <form className="flex gap-2 max-w-md mx-auto mb-8">
               <input type="email" placeholder="Enter your email" className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white" />
               <Button className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white">
                 Subscribe
               </Button>
             </form>
+            <div className="flex gap-4 justify-center text-slate-600 dark:text-slate-400">
+              <a href="https://www.facebook.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Facebook className="h-5 w-5" />
+              </a>
+              <a href="https://www.twitter.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Twitter className="h-5 w-5" />
+              </a>
+              <a href="https://www.instagram.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Instagram className="h-5 w-5" />
+              </a>
+              <a href="https://www.linkedin.com/company/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Linkedin className="h-5 w-5" />
+              </a>
+            </div>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Building2, ArrowLeft, Calendar, Users, BarChart3, Shield, Zap, CheckCircle, MessageCircle, Lock } from "lucide-react";
+import { Building2, ArrowLeft, Calendar, Users, BarChart3, Shield, Zap, CheckCircle, MessageCircle, Lock, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 
 export default function Features() {
   const [, setLocation] = useLocation();
@@ -95,10 +95,24 @@ export default function Features() {
               onClick={() => {
                 window.location.href = "/api/login";
               }}
-              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white"
+              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white mb-6"
             >
               Start Free Trial
             </Button>
+            <div className="flex gap-4 justify-center text-slate-600 dark:text-slate-400">
+              <a href="https://www.facebook.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Facebook className="h-5 w-5" />
+              </a>
+              <a href="https://www.twitter.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Twitter className="h-5 w-5" />
+              </a>
+              <a href="https://www.instagram.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Instagram className="h-5 w-5" />
+              </a>
+              <a href="https://www.linkedin.com/company/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-teal-600 dark:hover:text-teal-400 transition">
+                <Linkedin className="h-5 w-5" />
+              </a>
+            </div>
           </div>
         </div>
       </div>
