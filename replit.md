@@ -7,12 +7,11 @@ Hostezee is a comprehensive, multi-property management system for mountain resor
 Preferred communication style: Simple, everyday language.
 
 ## Recent Updates (Nov 23, 2025)
-- **Separate Admin Portal**: Built completely separate Super Admin Portal at `/admin-portal` with dedicated login page (NOT mixed with PMS). Features dark professional UI with global access to manage all users/properties/bookings. Portal includes user management (suspend/activate/login-as), property overview, and system statistics. 7 dedicated backend endpoints with proper session authentication.
-- **Guest Self Check-in System**: Built complete contactless check-in feature at `/guest-self-checkin`. Guests can scan QR code or enter booking ID, verify identity via email, upload ID proof, and complete check-in without staff assistance. Includes 2 backend endpoints (GET /api/guest-self-checkin/booking/:id, POST /api/guest-self-checkin) with audit logging.
-- **Super Admin Dashboard**: Complete implementation with 8 backend endpoints including user management, property oversight, suspend/activate users, login-as-user functionality, and system reports. All endpoints integrated with audit logging.
-- **Password Recovery System**: 3 complete endpoints (forgot-password, verify-otp, reset-password) with email/SMS OTP dual-channel support.
-- **Database Schema Complete**: All required columns added (phone, status, business_name, owner_user_id) with proper foreign key references. Schema synchronized with database.
-- **Super Admin Access**: User `paras.thakur18@gmail.com` upgraded to super-admin role for admin portal access.
+- **Premium Landing & Login Pages**: Completely redesigned landing page with GoStayy.com style - premium hero section, animated gradients, feature cards, trust indicators, and professional typography. Login page redesigned with world-class content messaging ("Experience Modern Hospitality").
+- **User Onboarding Guide**: Created comprehensive 8-step onboarding guide (`/onboarding`) for new users to launch property listings. Steps include: Add Property, Create Rooms, Configure Pricing, Set Booking Calendar, Add Restaurant Menu, Invite Team, Enable Notifications, and Go Live. Each step has detailed instructions and estimated completion times (30 minutes total setup).
+- **Free Access Model**: Platform is completely **FREE** for all users - no payment required to use all features. Razorpay payment integration planned for future (to be implemented when needed).
+- **Super Admin Navigation**: Added header with "Home" button to Super Admin page for easier navigation.
+- **Complete UI Polish**: Fixed all navigation issues, all "Start Free Trial" buttons now properly redirect to authentication flow.
 
 ## Previous Updates (Nov 19, 2025)
 - **Airbnb-Style Room Calendar**: Built new visual calendar with horizontal date grid and vertical room list. Features color-coded availability (green/red/orange), dormitory bed-level tracking, direct booking from cells, date range search, and available rooms summary panel. Uses new `/api/calendar/availability` endpoint with proper date-overlap logic.
@@ -95,3 +94,15 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
     - `AUTHKEY_WA_CHECKOUT_TEMPLATE_ID`: Checkout notification template (default: 18652)
     - `AUTHKEY_WA_PENDING_PAYMENT_TEMPLATE_ID`: Pending payment reminder template (optional)
     - `AUTHKEY_WA_ENQUIRY_TEMPLATE_ID`: Enquiry confirmation template (optional)
+
+## Pricing & Monetization
+
+### Current Model (As of Nov 23, 2025)
+- **Free Access**: Platform is 100% free for all users
+- **All Features Included**: No feature restrictions, everyone gets access to all functionality
+- **No Credit Card Required**: Users can sign up and start immediately
+
+### Future Monetization (Planned)
+- **Razorpay Integration**: Will be added when needed for payment processing
+- **Pricing Tiers**: To be determined (Freemium, Subscription, or Usage-based)
+- **Note**: Current implementation requires no changes for future payment integration
