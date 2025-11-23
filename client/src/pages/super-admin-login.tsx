@@ -80,7 +80,7 @@ export default function SuperAdminLogin() {
                 className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white"
                 onClick={() => {
                   // First login with the Replit auth
-                  window.location.href = "/api/auth/login";
+                  window.location.href = "/api/login";
                 }}
               >
                 <LogIn className="h-4 w-4 mr-2" />
