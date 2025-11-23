@@ -4182,9 +4182,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
       
-      const user = await storage.getUser(email);
+      // Find user by email from all users
+      const allUsers = await storage.getAllUsers();
+      const user = allUsers.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      
       if (!user || user.role !== 'super-admin') {
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ error: "Invalid credentials or not a super admin" });
       }
       
       if (user.status === 'suspended') {
@@ -4192,7 +4195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // In production, verify password hash
-      // For now, create session
+      // For now, create session with the found user
       req.login(user, (err) => {
         if (err) return res.status(500).json({ error: "Login failed" });
         res.json({ message: "Logged in", user });
