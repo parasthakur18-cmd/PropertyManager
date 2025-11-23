@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, isAfter, parseISO, isBefore } from "date-fns";
-import { IndianRupee, Clock, AlertTriangle, CheckCircle, User, Building2, Download } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, User, Building2, Download } from "lucide-react";
 
 interface PendingBill {
   id: number;
@@ -191,7 +191,7 @@ export default function PendingPayments() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Outstanding</CardTitle>
-            <IndianRupee className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">₹</span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-outstanding">
@@ -345,7 +345,6 @@ export default function PendingPayments() {
                           onClick={() => setSelectedBill(bill)}
                           data-testid={`button-mark-paid-${bill.id}`}
                         >
-                          <IndianRupee className="h-4 w-4 mr-1" />
                           Mark as Paid
                         </Button>
                       </TableCell>
@@ -385,9 +384,8 @@ export default function PendingPayments() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="flex items-center gap-1 text-lg font-bold">
-                        <IndianRupee className="h-4 w-4" />
-                        {data.total.toFixed(2)}
+                      <div className="text-lg font-bold">
+                        ₹{data.total.toFixed(2)}
                       </div>
                     </div>
                   </div>
