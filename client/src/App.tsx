@@ -48,6 +48,7 @@ import ResetPassword from "@/pages/reset-password";
 import GuestSelfCheckin from "@/pages/guest-self-checkin";
 import AdminPortalLogin from "@/pages/admin-portal-login";
 import AdminPortalDashboard from "@/pages/admin-portal-dashboard";
+import AdminPortalPropertyDetails from "@/pages/admin-portal-property-details";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -75,6 +76,7 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/admin-portal" component={AdminPortalLogin} />
       <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
+      <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
       
       {!isAuthenticated ? (
         <Route path="/" component={Landing} />

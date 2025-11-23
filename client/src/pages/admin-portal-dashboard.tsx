@@ -18,15 +18,17 @@ interface User {
 }
 
 interface Property {
-  id: string;
+  id: number;
   name: string;
   location: string;
   owner: string;
   totalRooms: number;
+  totalBookings?: number;
+  totalRevenue?: number;
 }
 
 export default function AdminPortalDashboard() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -302,7 +304,7 @@ export default function AdminPortalDashboard() {
               <CardHeader>
                 <CardTitle className="text-white">All Properties</CardTitle>
                 <CardDescription className="text-slate-400">
-                  View all properties in the system
+                  Click on a property to see its bookings and details
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -311,22 +313,39 @@ export default function AdminPortalDashboard() {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {properties.map((prop) => (
-                      <Card key={prop.id} className="border-slate-600 bg-slate-700">
-                        <CardHeader className="pb-3">
-                          <CardTitle className="text-white text-lg">{prop.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2 text-sm text-slate-300">
-                          <div>
-                            <span className="text-slate-400">Location:</span> {prop.location}
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Owner:</span> {prop.owner}
-                          </div>
-                          <div>
-                            <span className="text-slate-400">Rooms:</span> {prop.totalRooms}
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <button
+                        key={prop.id}
+                        onClick={() => setLocation(`/admin-portal/property?id=${prop.id}`)}
+                        className="text-left hover-elevate"
+                      >
+                        <Card className="border-slate-600 bg-slate-700 h-full cursor-pointer">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-white text-lg">{prop.name}</CardTitle>
+                          </CardHeader>
+                          <CardContent className="space-y-3 text-sm text-slate-300">
+                            <div>
+                              <span className="text-slate-400">Location:</span> {prop.location}
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Owner:</span> {prop.owner}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-600">
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-white">{prop.totalRooms}</div>
+                                <div className="text-xs text-slate-400">Rooms</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-blue-400">{prop.totalBookings || 0}</div>
+                                <div className="text-xs text-slate-400">Bookings</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-green-400">₹{(prop.totalRevenue || 0).toLocaleString()}</div>
+                                <div className="text-xs text-slate-400">Revenue</div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </button>
                     ))}
                   </div>
                 )}

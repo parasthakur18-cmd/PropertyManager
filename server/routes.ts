@@ -4309,6 +4309,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get property details
+  app.get("/api/admin-portal/property/:id", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const propertyId = parseInt(req.params.id);
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+      const totalRevenue = bookings.reduce((sum: number, b: any) => sum + (parseFloat(b.totalAmount || 0) || 0), 0);
+      const activeBookings = bookings.filter((b: any) => b.status === 'checked-in').length;
+
+      res.json({
+        id: property.id,
+        name: property.name,
+        location: property.location,
+        totalRooms: property.totalRooms,
+        totalBookings: bookings.length,
+        totalRevenue,
+        activeBookings,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get property bookings
+  app.get("/api/admin-portal/property/:id/bookings", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const propertyId = parseInt(req.params.id);
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+
+      const bookingsWithDetails = await Promise.all(
+        bookings.map(async (booking: any) => {
+          const guest = await storage.getGuest(booking.guestId);
+          const room = await storage.getRoom(booking.roomId);
+          return {
+            id: booking.id,
+            guestName: guest?.fullName || "Unknown",
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.checkOutDate,
+            status: booking.status,
+            roomNumber: room?.roomNumber || "N/A",
+            totalAmount: booking.totalAmount || 0,
+          };
+        })
+      );
+
+      res.json(bookingsWithDetails);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Guest Self Check-in endpoints
   app.get("/api/guest-self-checkin/booking/:bookingId", async (req, res) => {
     try {
