@@ -184,7 +184,12 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  // Check if user is authenticated and has claims
+  // Handle email/password authentication (session-based)
+  if ((req.session as any).userId && (req.session as any).isEmailAuth) {
+    return next();
+  }
+
+  // Handle Replit Auth (OIDC-based)
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
