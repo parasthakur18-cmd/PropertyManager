@@ -4029,9 +4029,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const otpRecord = await storage.createPasswordResetOtp({ email, phone, channel });
 
-      // TODO: Send OTP via authkey.io
-      // if (channel === "email") { sendEmailOTP(email, otpRecord.otp); }
-      // else { sendSmsOTP(phone, otpRecord.otp); }
+      // Send OTP via email or SMS
+      if (channel === "email" && email) {
+        const { sendPasswordResetEmail } = await import("./email-service");
+        await sendPasswordResetEmail(email, otpRecord.otp);
+        console.log(`[OTP] Password reset OTP sent to email: ${email}`);
+      }
 
       res.json({ message: "OTP sent", otp: otpRecord.otp });
     } catch (error: any) {
@@ -4223,6 +4226,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedBooking = await storage.updateBooking(booking.id, {
         status: "checked-in",
       });
+
+      // Send self check-in confirmation email
+      try {
+        const { sendSelfCheckinConfirmationEmail } = await import("./email-service");
+        const property = booking.roomId ? await storage.getProperty((await storage.getRoom(booking.roomId))?.propertyId || 0) : null;
+        const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+        
+        if (guest && email) {
+          await sendSelfCheckinConfirmationEmail(
+            email,
+            fullName,
+            property?.name || "Your Property",
+            new Date(booking.checkInDate).toLocaleDateString(),
+            room?.roomNumber || "TBA"
+          );
+          console.log(`[EMAIL] Self check-in confirmation sent to ${email}`);
+        }
+      } catch (emailError) {
+        console.warn(`[EMAIL] Failed to send check-in confirmation:`, emailError);
+      }
 
       // Note: Skip audit logging for public guest self-check-in endpoint
       // as there's no authenticated user context
