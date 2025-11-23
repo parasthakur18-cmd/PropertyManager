@@ -20,7 +20,9 @@ export default function Landing() {
           <div className="flex gap-3">
             <Button
               variant="ghost"
-              onClick={() => setLocation("/")}
+              onClick={() => {
+                window.location.href = "/";
+              }}
               data-testid="button-back-home"
               className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
             >
