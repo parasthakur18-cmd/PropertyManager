@@ -126,7 +126,7 @@ export default function Attendance() {
   const getAttendanceForDate = (staffId: string, date: Date) => {
     return attendance.find(a => 
       a.userId === staffId && 
-      format(new Date(a.attendanceDate), "YYYY-MM-DD") === format(date, "YYYY-MM-DD")
+      format(new Date(a.attendanceDate), "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
     );
   };
 
@@ -336,7 +336,7 @@ export default function Attendance() {
                       <div
                         key={day.toString()}
                         className="flex flex-col items-center p-2 rounded border text-xs"
-                        data-testid={`attendance-cell-${format(day, "YYYY-MM-DD")}`}
+                        data-testid={`attendance-cell-${format(day, "yyyy-MM-dd")}`}
                       >
                         <span className="font-medium">{format(day, "d")}</span>
                         <div className="mt-1">
