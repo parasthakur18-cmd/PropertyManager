@@ -16,6 +16,7 @@ import {
   updateUserRoleSchema,
   insertExpenseCategorySchema,
   insertBankTransactionSchema,
+  insertContactEnquirySchema,
   orders,
   bills,
   extraServices,

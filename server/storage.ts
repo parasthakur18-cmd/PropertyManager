@@ -293,6 +293,11 @@ export interface IStorage {
   verifyPasswordResetOtp(channel: string, identifier: string, otp: string): Promise<{ resetToken: string }>;
   resetPassword(resetToken: string, newPassword: string): Promise<void>;
 
+  // Contact Enquiry operations
+  getAllContactEnquiries(): Promise<ContactEnquiry[]>;
+  createContactEnquiry(enquiry: InsertContactEnquiry): Promise<ContactEnquiry>;
+  updateContactEnquiryStatus(id: number, status: string): Promise<ContactEnquiry>;
+
   // Dashboard stats
   getDashboardStats(propertyId?: number): Promise<any>;
   getAnalytics(): Promise<any>;
@@ -2193,6 +2198,27 @@ export class DatabaseStorage implements IStorage {
 
   async resetPassword(resetToken: string, newPassword: string): Promise<void> {
     throw new Error("Password reset requires session token storage");
+  }
+
+  // Contact Enquiry operations
+  async getAllContactEnquiries(): Promise<ContactEnquiry[]> {
+    return await db.select().from(contactEnquiries).orderBy(desc(contactEnquiries.createdAt));
+  }
+
+  async createContactEnquiry(enquiry: InsertContactEnquiry): Promise<ContactEnquiry> {
+    const [created] = await db.insert(contactEnquiries).values(enquiry).returning();
+    eventBus.emit('contact-enquiry:created', created);
+    return created;
+  }
+
+  async updateContactEnquiryStatus(id: number, status: string): Promise<ContactEnquiry> {
+    const [updated] = await db
+      .update(contactEnquiries)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(contactEnquiries.id, id))
+      .returning();
+    eventBus.emit('contact-enquiry:updated', updated);
+    return updated;
   }
 }
 
