@@ -2827,10 +2827,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log("Enquiry data:", JSON.stringify(enquiry, null, 2));
 
-      // Validate enquiry has required guest information
+      // Validate enquiry has required guest information AND room selection
       if (!enquiry.guestName || !enquiry.guestPhone) {
         console.log("Missing guest info - guestName:", enquiry.guestName, "guestPhone:", enquiry.guestPhone);
         return res.status(400).json({ message: "Enquiry is missing required guest information (name or phone)" });
+      }
+
+      // CRITICAL: Require room selection before confirming
+      if (!enquiry.roomId && (!enquiry.roomIds || enquiry.roomIds.length === 0)) {
+        console.log("❌ Cannot confirm enquiry without room selection - roomId:", enquiry.roomId, "roomIds:", enquiry.roomIds);
+        return res.status(400).json({ 
+          message: "Please select a room for this enquiry before confirming. Edit the enquiry to assign a room." 
+        });
       }
 
       // Create or find guest - match by BOTH name and phone to avoid duplicates
