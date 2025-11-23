@@ -1476,58 +1476,58 @@ export default function Bookings() {
                     }[booking.mealPlan || "EP"] || booking.mealPlan;
 
                     return (
-                      <TableRow key={booking.id} className="hover-elevate" data-testid={`row-booking-${booking.id}`}>
-                        <TableCell className="font-medium" data-testid={`text-guest-${booking.id}`}>
+                      <TableRow key={booking.id} className="hover-elevate h-12" data-testid={`row-booking-${booking.id}`}>
+                        <TableCell className="font-medium py-2" data-testid={`text-guest-${booking.id}`}>
                           <div className="flex items-center gap-2">
-                            <div>
+                            <div className="text-sm">
                               {guest?.fullName || "Unknown Guest"}
-                              <div className="text-xs text-muted-foreground mt-0.5">{guest?.phone}</div>
+                              <div className="text-xs text-muted-foreground">{guest?.phone}</div>
                             </div>
                             {guest?.phone && (
                               <a 
                                 href={`tel:${guest.phone}`} 
-                                className="p-1.5 rounded-md hover-elevate bg-primary/10 text-primary shrink-0"
+                                className="p-1 rounded hover-elevate bg-primary/10 text-primary shrink-0"
                                 onClick={(e) => e.stopPropagation()}
                                 aria-label={`Call ${guest.fullName}`}
                                 data-testid={`button-call-${booking.id}`}
                               >
-                                <Phone className="h-3.5 w-3.5" />
+                                <Phone className="h-3 w-3" />
                               </a>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell data-testid={`text-property-${booking.id}`}>
+                        <TableCell className="py-2 text-sm" data-testid={`text-property-${booking.id}`}>
                           {property?.name || "Unknown"}
                           {booking.isGroupBooking && (
                             <Badge variant="secondary" className="ml-1 text-xs bg-blue-500 text-white">Group</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="font-mono" data-testid={`text-room-${booking.id}`}>
+                        <TableCell className="font-mono py-2 text-sm" data-testid={`text-room-${booking.id}`}>
                           {roomDisplay}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap" data-testid={`text-checkin-${booking.id}`}>
-                          {format(new Date(booking.checkInDate), "dd MMM yyyy")}
+                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-checkin-${booking.id}`}>
+                          {format(new Date(booking.checkInDate), "dd MMM")}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap" data-testid={`text-checkout-${booking.id}`}>
-                          {format(new Date(booking.checkOutDate), "dd MMM yyyy")}
+                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-checkout-${booking.id}`}>
+                          {format(new Date(booking.checkOutDate), "dd MMM")}
                         </TableCell>
-                        <TableCell className="text-center" data-testid={`text-guests-${booking.id}`}>
+                        <TableCell className="text-center py-2 text-sm" data-testid={`text-guests-${booking.id}`}>
                           {booking.numberOfGuests}
                         </TableCell>
-                        <TableCell className="font-medium" data-testid={`text-meal-plan-${booking.id}`}>
+                        <TableCell className="font-medium py-2 text-xs" data-testid={`text-meal-plan-${booking.id}`}>
                           <Badge variant="outline" className="text-xs whitespace-nowrap">
                             {mealPlanDisplay}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-mono font-semibold" data-testid={`text-amount-${booking.id}`}>
-                          {booking.totalAmount ? (
-                            <div>
+                        <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
+                          {booking.totalAmount && booking.totalAmount !== "0" ? (
+                            <div className="leading-tight">
                               <div>₹{booking.totalAmount}</div>
                               {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 && (
                                 <div className="text-xs text-green-600">Adv: ₹{booking.advanceAmount}</div>
                               )}
                             </div>
-                          ) : "-"}
+                          ) : "₹-"}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
