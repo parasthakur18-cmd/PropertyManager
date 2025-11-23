@@ -66,12 +66,12 @@ export default function Landing() {
                 <Button
                   size="lg"
                   onClick={() => {
-                    setLocation("/onboarding");
+                    window.location.href = "/api/login";
                   }}
                   data-testid="button-login"
                   className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-base h-13 shadow-lg hover:shadow-xl transition-all gap-2 group"
                 >
-                  Access Your Dashboard
+                  Login to Dashboard
                   <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
@@ -87,7 +87,7 @@ export default function Landing() {
 
                 <p className="text-center text-sm text-slate-600 dark:text-slate-400">
                   New to Hostezee?{" "}
-                  <a href="#" onClick={() => setLocation("/signup")} className="font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition">
+                  <a href="#" onClick={() => setLocation("/onboarding")} className="font-semibold text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 transition">
                     Start your free trial
                   </a>
                 </p>
