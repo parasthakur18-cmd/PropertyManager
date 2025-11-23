@@ -277,8 +277,8 @@ export default function Home() {
                 <div>
                   <h5 className="font-semibold text-slate-900 dark:text-white mb-1">Phone</h5>
                   <p className="text-slate-600 dark:text-slate-400">
-                    <a href="tel:+919876543210" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
-                      +91 98765 43210
+                    <a href="tel:+919001949260" className="hover:text-teal-600 dark:hover:text-teal-400 transition-colors">
+                      +91 9001949260
                     </a>
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">Monday - Friday, 9AM - 6PM IST</p>
@@ -293,10 +293,11 @@ export default function Home() {
                   </svg>
                 </div>
                 <div>
-                  <h5 className="font-semibold text-slate-900 dark:text-white mb-1">Office</h5>
+                  <h5 className="font-semibold text-slate-900 dark:text-white mb-1">Corporate Office</h5>
                   <p className="text-slate-600 dark:text-slate-400">
-                    Dharamshala, Himachal Pradesh<br/>
-                    India
+                    Tower B, Cybercity<br/>
+                    Sector 39, Gurgaon 122001<br/>
+                    Haryana, India
                   </p>
                   <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">Visit our headquarters</p>
                 </div>
