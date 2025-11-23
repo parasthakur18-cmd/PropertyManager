@@ -14,13 +14,19 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
-import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown } from "lucide-react";
+import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus } from "lucide-react";
 
 const attendanceFormSchema = z.object({
-  userId: z.string().min(1, "Staff member is required"),
+  staffMemberId: z.string().optional(),
   attendanceDate: z.string().min(1, "Date is required"),
   status: z.enum(["present", "absent", "leave", "half-day"]),
   remarks: z.string().optional(),
+});
+
+const addStaffSchema = z.object({
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().optional(),
+  position: z.string().min(1, "Position is required"),
 });
 
 interface AttendanceStats {
@@ -41,11 +47,12 @@ interface AttendanceStats {
 export default function Attendance() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddStaffDialogOpen, setIsAddStaffDialogOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
 
-  const { data: users = [] } = useQuery<any[]>({
-    queryKey: ["/api/users"],
+  const { data: staffMembers = [], refetch: refetchStaff } = useQuery<any[]>({
+    queryKey: ["/api/staff-members"],
   });
 
   const { data: attendance = [] } = useQuery<any[]>({
@@ -75,17 +82,54 @@ export default function Attendance() {
   const form = useForm<z.infer<typeof attendanceFormSchema>>({
     resolver: zodResolver(attendanceFormSchema),
     defaultValues: {
-      userId: "",
+      staffMemberId: "",
       attendanceDate: new Date().toISOString().split("T")[0],
       status: "present",
       remarks: "",
     },
   });
 
+  const addStaffForm = useForm<z.infer<typeof addStaffSchema>>({
+    resolver: zodResolver(addStaffSchema),
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      position: "",
+    },
+  });
+
+  const addStaffMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addStaffSchema>) => {
+      return await apiRequest("/api/staff-members", "POST", {
+        firstName: data.firstName,
+        lastName: data.lastName || "",
+        position: data.position,
+        propertyId: 1, // Assuming property ID 1, adjust as needed
+        baseSalary: 0,
+      });
+    },
+    onSuccess: () => {
+      refetchStaff();
+      setIsAddStaffDialogOpen(false);
+      addStaffForm.reset();
+      toast({
+        title: "Success",
+        description: "Staff member added successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add staff member",
+        variant: "destructive",
+      });
+    },
+  });
+
   const createAttendanceMutation = useMutation({
     mutationFn: async (data: z.infer<typeof attendanceFormSchema>) => {
       return await apiRequest("/api/attendance", "POST", {
-        userId: data.userId,
+        staffMemberId: data.staffMemberId,
         attendanceDate: new Date(data.attendanceDate),
         status: data.status,
         remarks: data.remarks || null,
@@ -125,7 +169,7 @@ export default function Attendance() {
 
   const getAttendanceForDate = (staffId: string, date: Date) => {
     return attendance.find(a => 
-      a.userId === staffId && 
+      a.staffMemberId === staffId && 
       format(new Date(a.attendanceDate), "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
     );
   };
@@ -171,27 +215,87 @@ export default function Attendance() {
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="userId"
+                  name="staffMemberId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Staff Member</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-staff">
-                            <SelectValue placeholder="Select staff member" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {users.map((user) => (
-                            <SelectItem key={user.id} value={user.id}>
-                              {user.firstName} {user.lastName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Staff Member (Optional)</FormLabel>
+                      <div className="flex gap-2">
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-staff" className="flex-1">
+                              <SelectValue placeholder="Select staff member" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {staffMembers.map((staff) => (
+                              <SelectItem key={staff.id} value={String(staff.id)}>
+                                {staff.firstName} {staff.lastName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button type="button" size="icon" variant="outline" data-testid="button-add-staff">
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Add New Staff Member</DialogTitle>
+                            </DialogHeader>
+                            <Form {...addStaffForm}>
+                              <form onSubmit={addStaffForm.handleSubmit((data) => addStaffMutation.mutate(data))} className="space-y-4">
+                                <FormField
+                                  control={addStaffForm.control}
+                                  name="firstName"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>First Name</FormLabel>
+                                      <FormControl>
+                                        <Input {...field} data-testid="input-first-name" />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={addStaffForm.control}
+                                  name="lastName"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Last Name</FormLabel>
+                                      <FormControl>
+                                        <Input {...field} data-testid="input-last-name" />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={addStaffForm.control}
+                                  name="position"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Position</FormLabel>
+                                      <FormControl>
+                                        <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-position" />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <Button type="submit" disabled={addStaffMutation.isPending} className="w-full">
+                                  {addStaffMutation.isPending ? "Adding..." : "Add Staff Member"}
+                                </Button>
+                              </form>
+                            </Form>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -325,9 +429,9 @@ export default function Attendance() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6 overflow-x-auto">
-            {users.filter(u => u.role !== 'super-admin').map((staff) => (
+            {staffMembers.map((staff) => (
               <div key={staff.id} className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3">{staff.firstName} {staff.lastName}</h3>
+                <h3 className="font-semibold mb-3">{staff.firstName} {staff.lastName} - {staff.position}</h3>
                 <div className="grid grid-cols-7 gap-2">
                   {daysInMonth.map((day) => {
                     const dayAttendance = getAttendanceForDate(staff.id, day);
