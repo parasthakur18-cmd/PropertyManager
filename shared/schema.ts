@@ -1105,3 +1105,26 @@ export const insertContactEnquirySchema = createInsertSchema(contactEnquiries).o
 
 export type InsertContactEnquiry = z.infer<typeof insertContactEnquirySchema>;
 export type ContactEnquiry = typeof contactEnquiries.$inferSelect;
+
+// Error Crashes table - for automatic error reporting
+export const errorCrashes = pgTable("error_crashes", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
+  errorMessage: text("error_message").notNull(),
+  errorStack: text("error_stack"),
+  errorType: varchar("error_type", { length: 100 }), // TypeError, ReferenceError, etc
+  page: varchar("page", { length: 255 }), // Current page/route
+  browserInfo: jsonb("browser_info"), // Browser, OS, etc
+  userAgent: text("user_agent"),
+  isResolved: boolean("is_resolved").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertErrorCrashSchema = createInsertSchema(errorCrashes).omit({
+  id: true,
+  isResolved: true,
+  createdAt: true,
+});
+
+export type InsertErrorCrash = z.infer<typeof insertErrorCrashSchema>;
+export type ErrorCrash = typeof errorCrashes.$inferSelect;
