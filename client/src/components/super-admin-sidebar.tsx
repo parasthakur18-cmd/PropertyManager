@@ -8,7 +8,7 @@ import {
   LogOut,
   MessageSquare,
 } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
@@ -52,10 +52,10 @@ export function SuperAdminSidebar() {
             {systemMenuItems.map((item) => {
               const isActive = location === item.url || (item.url === "/super-admin" && location?.includes("super-admin"));
               return (
-                <button
+                <Link
                   key={item.title}
-                  onClick={() => window.location.href = item.url}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
+                  href={item.url}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left block ${
                     isActive
                       ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
                       : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
@@ -64,7 +64,7 @@ export function SuperAdminSidebar() {
                 >
                   <item.icon className="h-4 w-4 flex-shrink-0" />
                   <span className="text-sm font-medium">{item.title}</span>
-                </button>
+                </Link>
               );
             })}
           </div>
@@ -81,9 +81,9 @@ export function SuperAdminSidebar() {
         <div>
           <h3 className="px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-3">Configuration</h3>
           <div className="space-y-1">
-            <button
-              onClick={() => window.location.href = "/settings"}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
+            <Link
+              href="/settings"
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left block ${
                 location === "/settings"
                   ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
                   : "text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800"
@@ -92,7 +92,7 @@ export function SuperAdminSidebar() {
             >
               <Settings className="h-4 w-4 flex-shrink-0" />
               <span className="text-sm font-medium">Settings</span>
-            </button>
+            </Link>
           </div>
         </div>
       </div>

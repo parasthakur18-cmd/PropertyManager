@@ -44,6 +44,7 @@ import Attendance from "@/pages/attendance";
 import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
 import SuperAdmin from "@/pages/super-admin";
+import SuperAdminLogin from "@/pages/super-admin-login";
 import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
@@ -86,6 +87,7 @@ function Router() {
       <Route path="/admin-portal" component={AdminPortalLogin} />
       <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
+      <Route path="/super-admin-login" component={SuperAdminLogin} />
       <Route path="/super-admin" component={SuperAdmin} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/faq" component={FAQ} />

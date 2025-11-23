@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { randomUUID } from "crypto";
 import {
   insertPropertySchema,
   insertRoomSchema,
@@ -18,6 +19,7 @@ import {
   insertBankTransactionSchema,
   insertContactEnquirySchema,
   insertAttendanceRecordSchema,
+  users,
   orders,
   bills,
   extraServices,
@@ -47,6 +49,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Seed default expense categories
   await storage.seedDefaultCategories();
+
+  // Seed default super-admin user
+  try {
+    const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
+    if (existingSuperAdmins.length === 0) {
+      const superAdminId = randomUUID();
+      await db.insert(users).values({
+        id: superAdminId,
+        email: 'admin@hostezee.in',
+        firstName: 'Hostezee',
+        lastName: 'Admin',
+        role: 'super-admin',
+        status: 'active',
+        businessName: 'Hostezee System',
+      });
+      console.log('[SEED] Default super-admin created: admin@hostezee.in');
+    }
+  } catch (error) {
+    console.error('[SEED ERROR] Failed to seed super-admin:', error);
+  }
 
   // ===== OBJECT STORAGE ROUTES =====
   // Referenced from blueprint:javascript_object_storage integration
