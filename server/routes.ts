@@ -4988,7 +4988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/contact - Get all contact enquiries (admin and super-admin)
   app.get("/api/contact", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const user = await storage.getUser(userId);
 
       // Allow both super-admin and admin roles to view enquiries
@@ -5006,7 +5006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PATCH /api/contact/:id - Update enquiry status (admin and super-admin)
   app.patch("/api/contact/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const user = await storage.getUser(userId);
 
       if (user?.role !== "super-admin" && user?.role !== "admin") {
