@@ -132,13 +132,13 @@ export default function Attendance() {
   });
 
   const createAttendanceMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof attendanceFormSchema>) => {
+    mutationFn: async (data: any) => {
       if (!data.staffMemberId) {
         throw new Error("Staff member is required");
       }
       return await apiRequest("/api/attendance", "POST", {
         staffMemberId: parseInt(data.staffMemberId, 10),
-        propertyId: 1,
+        propertyId: data.propertyId || null,
         attendanceDate: new Date(data.attendanceDate),
         status: data.status,
         remarks: data.remarks || null,
@@ -168,8 +168,10 @@ export default function Attendance() {
   };
 
   const handleRosterStatusChange = (staffMemberId: string, status: string) => {
+    const staff = staffMembers.find(s => String(s.id) === staffMemberId);
     createAttendanceMutation.mutate({
       staffMemberId: staffMemberId,
+      propertyId: staff?.propertyId || 1,
       attendanceDate: rosterDate,
       status: status as any,
       remarks: "",
