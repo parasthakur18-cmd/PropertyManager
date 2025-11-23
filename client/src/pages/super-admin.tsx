@@ -29,11 +29,15 @@ export default function SuperAdmin() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [location, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState("users");
   
-  // Get active tab from URL search params or default to "users"
-  const activeTab = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('tab') || 'users';
+  // Update active tab when location changes
+  useMemo(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'users';
+      setActiveTab(tab);
+    }
   }, [location]);
 
   // Fetch all users
@@ -140,28 +144,35 @@ export default function SuperAdmin() {
         <p className="text-muted-foreground">System-wide management & monitoring</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(tab) => setLocation(`/super-admin?tab=${tab}`)} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Users ({users.length})
-          </TabsTrigger>
-          <TabsTrigger value="properties" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            Properties ({properties.length})
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
-            Reports ({reports.length})
-          </TabsTrigger>
-          <TabsTrigger value="enquiries" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Leads ({enquiries.length})
-          </TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        <div className="grid w-full grid-cols-4 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+          {[
+            { value: "users", label: `Users (${users.length})`, icon: Users },
+            { value: "properties", label: `Properties (${properties.length})`, icon: Building2 },
+            { value: "reports", label: `Reports (${reports.length})`, icon: AlertCircle },
+            { value: "enquiries", label: `Leads (${enquiries.length})`, icon: MessageSquare },
+          ].map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              onClick={() => {
+                setActiveTab(value);
+                setLocation(`/super-admin?tab=${value}`);
+              }}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === value
+                  ? "bg-teal-600 dark:bg-teal-500 text-white"
+                  : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Users Tab */}
-        <TabsContent value="users" className="space-y-4">
+        {activeTab === "users" && (
+        <div className="space-y-4">
           <div className="flex gap-2">
             <Input
               placeholder="Search by email or business name..."
@@ -256,10 +267,12 @@ export default function SuperAdmin() {
               ))
             )}
           </div>
-        </TabsContent>
+        </div>
+        )}
 
         {/* Properties Tab */}
-        <TabsContent value="properties" className="space-y-4">
+        {activeTab === "properties" && (
+        <div className="space-y-4">
           <div className="grid gap-4">
             {properties.length === 0 ? (
               <Card>
@@ -302,10 +315,12 @@ export default function SuperAdmin() {
               })
             )}
           </div>
-        </TabsContent>
+        </div>
+        )}
 
         {/* Reports Tab */}
-        <TabsContent value="reports" className="space-y-4">
+        {activeTab === "reports" && (
+        <div className="space-y-4">
           <div className="grid gap-4">
             {reports.length === 0 ? (
               <Card>
@@ -370,7 +385,8 @@ export default function SuperAdmin() {
         </TabsContent>
 
         {/* Contact Enquiries Tab */}
-        <TabsContent value="enquiries" className="space-y-4">
+        {activeTab === "enquiries" && (
+        <div className="space-y-4">
           <div className="grid gap-4">
             {enquiries.length === 0 ? (
               <Card>
@@ -412,8 +428,9 @@ export default function SuperAdmin() {
               ))
             )}
           </div>
-        </TabsContent>
-          </Tabs>
+        </div>
+        )}
+      </div>
           </div>
         </div>
       </div>
