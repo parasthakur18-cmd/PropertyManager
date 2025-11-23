@@ -23,6 +23,7 @@ export default function SuperAdminLogin() {
       const response = await fetch("/api/auth/email-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // Send cookies to establish session
         body: JSON.stringify({ email: email.toLowerCase(), password }),
       });
 
@@ -44,9 +45,7 @@ export default function SuperAdminLogin() {
       });
       
       // Redirect to super admin dashboard
-      setTimeout(() => {
-        setLocation("/super-admin");
-      }, 500);
+      window.location.href = "/super-admin";
     } catch (err: any) {
       setError("Connection error. Please try again.");
       toast({
