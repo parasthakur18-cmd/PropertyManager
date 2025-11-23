@@ -115,6 +115,7 @@ function Router() {
       ) : (
         <>
           <Route path="/" component={Dashboard} />
+          <Route path="/dashboard" component={Dashboard} />
           <Route path="/properties" component={Properties} />
           <Route path="/rooms" component={Rooms} />
           <Route path="/bookings" component={Bookings} />
