@@ -29,6 +29,7 @@ import {
   ClockAlert,
   Search,
   Shield,
+  Clock,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -79,6 +80,7 @@ const adminFinanceItems = [
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Financials", url: "/financials", icon: TrendingUp },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Attendance", url: "/attendance", icon: Clock },
   { title: "Salaries", url: "/salaries", icon: DollarSign },
 ];
 
