@@ -275,9 +275,8 @@ export default function Attendance() {
                             </td>
                             <td className="text-center p-2">
                               <Button
-                                variant={currentStatus === "present" ? "default" : "outline"}
                                 size="sm"
-                                className={currentStatus === "present" ? "bg-green-600 hover:bg-green-700" : ""}
+                                className={currentStatus === "present" ? "bg-green-700 hover:bg-green-800 text-white" : "bg-green-100 hover:bg-green-200 text-green-700"}
                                 onClick={() => handleRosterStatusChange(String(staff.id), "present")}
                                 data-testid={`button-present-${staff.id}`}
                               >
@@ -286,9 +285,8 @@ export default function Attendance() {
                             </td>
                             <td className="text-center p-2">
                               <Button
-                                variant={currentStatus === "absent" ? "default" : "outline"}
                                 size="sm"
-                                className={currentStatus === "absent" ? "bg-red-600 hover:bg-red-700" : ""}
+                                className={currentStatus === "absent" ? "bg-red-700 hover:bg-red-800 text-white" : "bg-red-100 hover:bg-red-200 text-red-700"}
                                 onClick={() => handleRosterStatusChange(String(staff.id), "absent")}
                                 data-testid={`button-absent-${staff.id}`}
                               >
@@ -297,9 +295,8 @@ export default function Attendance() {
                             </td>
                             <td className="text-center p-2">
                               <Button
-                                variant={currentStatus === "leave" ? "default" : "outline"}
                                 size="sm"
-                                className={currentStatus === "leave" ? "bg-blue-600 hover:bg-blue-700" : ""}
+                                className={currentStatus === "leave" ? "bg-blue-700 hover:bg-blue-800 text-white" : "bg-blue-100 hover:bg-blue-200 text-blue-700"}
                                 onClick={() => handleRosterStatusChange(String(staff.id), "leave")}
                                 data-testid={`button-leave-${staff.id}`}
                               >
@@ -308,9 +305,8 @@ export default function Attendance() {
                             </td>
                             <td className="text-center p-2">
                               <Button
-                                variant={currentStatus === "half-day" ? "default" : "outline"}
                                 size="sm"
-                                className={currentStatus === "half-day" ? "bg-yellow-600 hover:bg-yellow-700" : ""}
+                                className={currentStatus === "half-day" ? "bg-yellow-700 hover:bg-yellow-800 text-white" : "bg-yellow-100 hover:bg-yellow-200 text-yellow-700"}
                                 onClick={() => handleRosterStatusChange(String(staff.id), "half-day")}
                                 data-testid={`button-half-day-${staff.id}`}
                               >
