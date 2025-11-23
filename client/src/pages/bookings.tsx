@@ -2606,6 +2606,5 @@ function CheckoutBillSummary({
         </Button>
       </DialogFooter>
     </div>
-      </div>
   );
 }
