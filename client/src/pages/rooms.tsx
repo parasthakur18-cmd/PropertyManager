@@ -29,6 +29,7 @@ export default function Rooms() {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [filterProperty, setFilterProperty] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [quantity, setQuantity] = useState<number>(1);
   const { toast } = useToast();
 
   const { data: rooms, isLoading } = useQuery<Room[]>({
@@ -73,15 +74,31 @@ export default function Rooms() {
 
   const createMutation = useMutation({
     mutationFn: async (data: InsertRoom) => {
-      return await apiRequest("/api/rooms", "POST", data);
+      const baseRoomNumber = parseInt(data.roomNumber);
+      const roomsToCreate = [];
+      
+      for (let i = 0; i < quantity; i++) {
+        roomsToCreate.push({
+          ...data,
+          roomNumber: (baseRoomNumber + i).toString(),
+        });
+      }
+      
+      // Create all rooms in parallel
+      const results = await Promise.all(
+        roomsToCreate.map(room => apiRequest("/api/rooms", "POST", room))
+      );
+      return results;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      const count = quantity > 1 ? `${quantity} rooms` : "Room";
       toast({
         title: "Success",
-        description: "Room created successfully",
+        description: `${count} created successfully`,
       });
       setIsDialogOpen(false);
+      setQuantity(1);
       form.reset();
     },
     onError: (error: Error) => {
@@ -248,13 +265,13 @@ export default function Rooms() {
                     </FormItem>
                   )}
                 />
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FormField
                     control={form.control}
                     name="roomNumber"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Room Number</FormLabel>
+                        <FormLabel>Starting Room Number</FormLabel>
                         <FormControl>
                           <Input placeholder="101" {...field} data-testid="input-room-number" />
                         </FormControl>
@@ -275,6 +292,20 @@ export default function Rooms() {
                       </FormItem>
                     )}
                   />
+                  <FormItem>
+                    <FormLabel>How Many Rooms?</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        max="100"
+                        placeholder="1"
+                        value={quantity}
+                        onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        data-testid="input-room-quantity"
+                      />
+                    </FormControl>
+                  </FormItem>
                 </div>
                 <FormField
                   control={form.control}
@@ -357,9 +388,21 @@ export default function Rooms() {
                     )}
                   />
                 </div>
+                <div className="bg-muted p-3 rounded-md text-sm">
+                  {quantity > 1 ? (
+                    <p className="text-muted-foreground">
+                      Will create {quantity} rooms starting from room {form.watch("roomNumber")} 
+                      {form.watch("roomNumber") && !isNaN(parseInt(form.watch("roomNumber"))) && (
+                        <> (rooms {form.watch("roomNumber")} - {parseInt(form.watch("roomNumber")) + quantity - 1})</>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">Will create 1 room</p>
+                  )}
+                </div>
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-room">
-                    {createMutation.isPending ? "Creating..." : "Create Room"}
+                    {createMutation.isPending ? "Creating..." : `Create ${quantity > 1 ? quantity + " Rooms" : "Room"}`}
                   </Button>
                 </DialogFooter>
               </form>
