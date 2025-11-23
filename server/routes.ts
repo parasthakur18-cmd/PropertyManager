@@ -4130,9 +4130,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Validate the request data
       const validatedData = insertAttendanceRecordSchema.parse({
-        ...req.body,
-        userId: user.id,
+        staffMemberId: parseInt(req.body.staffMemberId, 10),
+        propertyId: req.body.propertyId ? parseInt(req.body.propertyId, 10) : undefined,
         attendanceDate: new Date(req.body.attendanceDate),
+        status: req.body.status,
+        remarks: req.body.remarks || null,
       });
 
       // Create the attendance record
