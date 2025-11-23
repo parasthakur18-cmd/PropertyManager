@@ -59,7 +59,8 @@ export default function PendingPayments() {
 
   const markAsPaidMutation = useMutation({
     mutationFn: async ({ billId, paymentMethod }: { billId: number; paymentMethod: string }) => {
-      return apiRequest("POST", `/api/bills/${billId}/mark-paid`, { paymentMethod });
+      console.log("💳 Marking bill as paid:", { billId, paymentMethod });
+      return await apiRequest(`/api/bills/${billId}/mark-paid`, "POST", { paymentMethod });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
@@ -345,6 +346,7 @@ export default function PendingPayments() {
                           onClick={() => setSelectedBill(bill)}
                           data-testid={`button-mark-paid-${bill.id}`}
                         >
+                          <IndianRupee className="h-4 w-4 mr-1" />
                           Mark as Paid
                         </Button>
                       </TableCell>

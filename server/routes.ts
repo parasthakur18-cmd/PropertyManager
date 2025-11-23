@@ -2667,8 +2667,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mark a bill as paid
   app.post("/api/bills/:id/mark-paid", isAuthenticated, async (req, res) => {
     try {
-      // Only admins can mark bills as paid
-      if (req.user?.role !== "admin") {
+      console.log("💳 MARK AS PAID REQUEST - User role:", req.user?.role, "billId:", req.params.id, "paymentMethod:", req.body.paymentMethod);
+      
+      // Allow both admin and super-admin to mark bills as paid
+      if (req.user?.role !== "admin" && req.user?.role !== "super-admin") {
         return res.status(403).json({ message: "Only administrators can mark bills as paid" });
       }
 
@@ -2680,6 +2682,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const bill = await storage.getBill(billId);
+      console.log("📋 Bill found:", bill?.id, "Current status:", bill?.paymentStatus);
+      
       if (!bill) {
         return res.status(404).json({ message: "Bill not found" });
       }
@@ -2692,8 +2696,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balanceAmount: "0.00",
       });
       
+      console.log("✅ BILL MARKED AS PAID - New status:", updatedBill.paymentStatus);
       res.json(updatedBill);
     } catch (error: any) {
+      console.error("❌ ERROR marking bill as paid:", error.message);
       res.status(500).json({ message: error.message });
     }
   });
