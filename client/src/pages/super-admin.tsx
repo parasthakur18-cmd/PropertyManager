@@ -135,6 +135,12 @@ export default function SuperAdmin() {
     },
   });
 
+  const filteredUsers = users.filter((u) =>
+    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.businessName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Render loading state without early returns
   if (isChecking) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -146,14 +152,10 @@ export default function SuperAdmin() {
     );
   }
 
+  // Render null if not authenticated
   if (!isAuthenticated) {
-    return null; // Will redirect via useEffect
+    return null;
   }
-
-  const filteredUsers = users.filter((u) =>
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.businessName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="flex h-screen bg-background">
