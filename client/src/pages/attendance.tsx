@@ -15,7 +15,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
-import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus } from "lucide-react";
+import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus, Edit2 } from "lucide-react";
 
 const attendanceFormSchema = z.object({
   staffMemberId: z.string().min(1, "Staff member is required"),
@@ -28,6 +28,11 @@ const addStaffSchema = z.object({
   name: z.string().min(1, "Full name is required"),
   jobTitle: z.string().min(1, "Job title is required"),
   propertyId: z.string().min(1, "Property is required"),
+  baseSalary: z.coerce.number().nonnegative("Base salary must be non-negative").optional(),
+});
+
+const editStaffSchema = z.object({
+  baseSalary: z.coerce.number().nonnegative("Base salary must be non-negative"),
 });
 
 interface AttendanceStats {
@@ -49,6 +54,8 @@ export default function Attendance() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAddStaffDialogOpen, setIsAddStaffDialogOpen] = useState(false);
+  const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [rosterDate, setRosterDate] = useState(new Date().toISOString().split("T")[0]);
@@ -101,6 +108,14 @@ export default function Attendance() {
       name: "",
       jobTitle: "",
       propertyId: "",
+      baseSalary: 0,
+    },
+  });
+
+  const editStaffForm = useForm<z.infer<typeof editStaffSchema>>({
+    resolver: zodResolver(editStaffSchema),
+    defaultValues: {
+      baseSalary: 0,
     },
   });
 
@@ -110,7 +125,7 @@ export default function Attendance() {
         name: data.name,
         jobTitle: data.jobTitle,
         propertyId: parseInt(data.propertyId),
-        baseSalary: 0,
+        baseSalary: data.baseSalary || 0,
       });
     },
     onSuccess: () => {
@@ -158,6 +173,32 @@ export default function Attendance() {
       toast({
         title: "Error",
         description: error.message || "Failed to record attendance",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const editStaffMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editStaffSchema>) => {
+      return await apiRequest(`/api/staff-members/${editingStaffId}`, "PATCH", {
+        baseSalary: data.baseSalary,
+      });
+    },
+    onSuccess: () => {
+      refetchStaff();
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance/stats"] });
+      setIsEditStaffDialogOpen(false);
+      editStaffForm.reset();
+      setEditingStaffId(null);
+      toast({
+        title: "Success",
+        description: "Staff salary updated successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update salary",
         variant: "destructive",
       });
     },
@@ -469,6 +510,34 @@ export default function Attendance() {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={isEditStaffDialogOpen} onOpenChange={setIsEditStaffDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Staff Salary</DialogTitle>
+          </DialogHeader>
+          <Form {...editStaffForm}>
+            <form onSubmit={editStaffForm.handleSubmit((data) => editStaffMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={editStaffForm.control}
+                name="baseSalary"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Base Salary</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="number" placeholder="e.g., 30000" data-testid="input-edit-salary" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button type="submit" disabled={editStaffMutation.isPending} className="w-full">
+                {editStaffMutation.isPending ? "Saving..." : "Save Salary"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -521,6 +590,19 @@ export default function Attendance() {
                       <FormLabel>Job Title</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-job-title" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addStaffForm.control}
+                  name="baseSalary"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Base Salary (Optional)</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" placeholder="e.g., 30000" data-testid="input-base-salary" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -590,7 +672,22 @@ export default function Attendance() {
           <div className="space-y-6 overflow-x-auto">
             {staffMembers.map((staff) => (
               <div key={staff.id} className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3">{staff.name} - {staff.jobTitle}</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold">{staff.name} - {staff.jobTitle}</h3>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setEditingStaffId(staff.id);
+                      editStaffForm.reset({ baseSalary: staff.baseSalary || 0 });
+                      setIsEditStaffDialogOpen(true);
+                    }}
+                    data-testid={`button-edit-salary-${staff.id}`}
+                  >
+                    <Edit2 className="h-4 w-4 mr-1" />
+                    Edit Salary
+                  </Button>
+                </div>
                 <div className="grid grid-cols-7 gap-2">
                   {daysInMonth.map((day) => {
                     const dayAttendance = getAttendanceForDate(staff.id, day);
