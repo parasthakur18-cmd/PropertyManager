@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocation } from "wouter";
-import { Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, ArrowRight, Mountain, Instagram } from "lucide-react";
+import { Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, ArrowRight, Instagram } from "lucide-react";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -51,7 +51,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md">
-              <Mountain className="h-6 w-6" />
+              <Building2 className="h-6 w-6" />
             </div>
             <h1 className="text-2xl font-bold font-serif text-slate-900 dark:text-white">Hostezee</h1>
           </div>
@@ -75,18 +75,11 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero Section with Mountain Theme */}
+      {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 py-24 md:py-32">
-        {/* Mountain silhouette background */}
-        <div className="absolute inset-0 opacity-5 dark:opacity-10">
-          <svg viewBox="0 0 1200 300" className="w-full h-full" preserveAspectRatio="none">
-            <path d="M0,200 Q300,50 600,120 T1200,200 L1200,300 L0,300 Z" fill="currentColor" />
-          </svg>
-        </div>
-
         <div className="relative max-w-4xl mx-auto px-6 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-500/10 border border-teal-500/20 mb-6">
-            <span className="text-sm font-semibold text-teal-500 dark:text-teal-400">✨ Built for Mountain Resorts</span>
+            <span className="text-sm font-semibold text-teal-500 dark:text-teal-400">✨ Modern Property Management</span>
           </div>
 
           <h2 className="text-5xl md:text-6xl font-bold text-white mb-6 leading-tight">
@@ -434,12 +427,6 @@ export default function Home() {
 
       {/* CTA Section */}
       <section className="relative overflow-hidden bg-gradient-to-r from-teal-600 to-cyan-600 dark:from-teal-900 dark:to-cyan-900 py-20">
-        <div className="absolute inset-0 opacity-10">
-          <svg viewBox="0 0 1200 300" className="w-full h-full" preserveAspectRatio="none">
-            <path d="M0,100 Q300,0 600,100 T1200,100 L1200,300 L0,300 Z" fill="white" />
-          </svg>
-        </div>
-
         <div className="relative max-w-4xl mx-auto px-6 text-center">
           <h3 className="text-4xl font-bold text-white mb-6">
             Ready to Transform Your Property Management?
@@ -466,11 +453,11 @@ export default function Home() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white">
-                  <Mountain className="h-5 w-5" />
+                  <Building2 className="h-5 w-5" />
                 </div>
                 <span className="font-bold text-white">Hostezee</span>
               </div>
-              <p className="text-sm">Property Management for Modern Resorts</p>
+              <p className="text-sm">Property Management System for Hotels & Resorts</p>
             </div>
             <div>
               <h4 className="font-semibold text-white mb-4">Product</h4>
