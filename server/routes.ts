@@ -5172,11 +5172,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Messages array required" });
       }
 
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+
+      if (!apiKey || !baseUrl) {
+        console.error("[CHAT] Missing environment variables:", { apiKey: !!apiKey, baseUrl: !!baseUrl });
+        return res.status(500).json({ message: "AI service not configured. Please try again later." });
+      }
+
       const { OpenAI } = await import("openai");
       
       const client = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: apiKey,
+        baseURL: baseUrl,
       });
 
       const systemMessage = `You are Hostezee's intelligent AI Assistant, helping users with property management questions. 
@@ -5211,7 +5219,7 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         message: messageText,
       });
     } catch (error: any) {
-      console.error("[CHAT] Error:", error);
+      console.error("[CHAT] Error:", error.message || error);
       res.status(500).json({ message: "Chat service error. Please try again." });
     }
   });
