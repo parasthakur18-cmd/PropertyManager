@@ -60,7 +60,6 @@ const adminOperationsItems = [
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Guests", url: "/guests", icon: Users },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
-  { title: "Contact Leads", url: "/contact-enquiries", icon: MessageSquarePlus },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
