@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearch } from "wouter";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +11,8 @@ export default function VerifyOTP() {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [, navigate] = useNavigate();
-  const search = useSearch();
+  const [location, setLocation] = useLocation();
+  const search = location.split("?")[1] || "";
   const params = new URLSearchParams(search);
   const email = params.get("email") || "";
   const phone = params.get("phone") || "";
@@ -41,7 +41,7 @@ export default function VerifyOTP() {
         title: "Success",
         description: "OTP verified! Now reset your password.",
       });
-      navigate(`/reset-password?token=${data.resetToken}`);
+      setLocation(`/reset-password?token=${data.resetToken}`);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -60,7 +60,7 @@ export default function VerifyOTP() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/forgot-password")}
+            onClick={() => setLocation("/forgot-password")}
             className="w-fit"
             data-testid="button-back"
           >

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ export default function ForgotPassword() {
   const [submitted, setSubmitted] = useState(false);
   const [channel, setChannel] = useState<"email" | "sms">("email");
   const { toast } = useToast();
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,7 +83,7 @@ export default function ForgotPassword() {
               onClick={() => {
                 const param =
                   channel === "email" ? `email=${email}` : `phone=${phone}`;
-                navigate(`/verify-otp?${param}&channel=${channel}`);
+                setLocation(`/verify-otp?${param}&channel=${channel}`);
               }}
               data-testid="button-enter-otp"
             >
@@ -102,7 +102,7 @@ export default function ForgotPassword() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/")}
+            onClick={() => setLocation("/")}
             className="w-fit"
             data-testid="button-back"
           >
