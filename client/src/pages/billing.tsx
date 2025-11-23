@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Receipt, IndianRupee, CheckCircle, Clock, Merge, Eye, Printer, DollarSign } from "lucide-react";
+import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -341,7 +341,7 @@ export default function Billing() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-              <IndianRupee className="h-4 w-4 text-chart-5" />
+              <span className="text-chart-5">₹</span>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold font-mono" data-testid="stat-total-revenue">₹{totalRevenue.toLocaleString()}</div>
@@ -513,7 +513,6 @@ export default function Billing() {
                       }}
                       data-testid={`button-mark-paid-${bill.id}`}
                     >
-                      <DollarSign className="h-4 w-4 mr-2" />
                       Mark as Paid
                     </Button>
                   )}
