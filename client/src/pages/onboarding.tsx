@@ -289,11 +289,11 @@ export default function Onboarding() {
               {/* CTA for Ready Users */}
               {activeStep === steps.length - 1 && (
                 <Button
-                  onClick={() => setLocation("/dashboard")}
+                  onClick={() => setLocation("/login")}
                   className="w-full mt-6 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white text-base h-12 gap-2 font-semibold shadow-lg"
                   data-testid="button-go-dashboard"
                 >
-                  Go to Dashboard
+                  Login to Get Started
                   <ArrowRight className="h-5 w-5" />
                 </Button>
               )}
