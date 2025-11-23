@@ -118,8 +118,9 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
     if (selectedRoom?.pricePerNight) {
       const roomPrice = parseFloat(selectedRoom.pricePerNight.toString());
       form.setValue("priceQuoted", roomPrice);
+      console.log("✅ Auto-filled priceQuoted:", roomPrice);
     }
-  }, [selectedRoom?.id, form]);
+  }, [selectedRoom?.id]);
 
   const updateEnquiryMutation = useMutation({
     mutationFn: async (data: EditEnquiryFormData) => {
