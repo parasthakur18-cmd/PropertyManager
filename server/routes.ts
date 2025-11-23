@@ -4224,16 +4224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: "checked-in",
       });
 
-      const { AuditService } = await import("./auditService");
-      await AuditService.logCustomAction(
-        "booking",
-        String(booking.id),
-        "guest_self_checkin",
-        { id: "system", role: "system", email: "system" } as any,
-        undefined,
-        { action: "guest_self_checkin", guestEmail: email }
-      );
-
+      // Note: Skip audit logging for public guest self-check-in endpoint
+      // as there's no authenticated user context
+      
       res.json({ message: "Check-in successful", booking: updatedBooking });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
