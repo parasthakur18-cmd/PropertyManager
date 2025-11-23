@@ -736,7 +736,7 @@ export default function Bookings() {
     );
   }
 
-  // Filter bookings based on tab and search query
+  // Filter bookings based on tab, search query, and check-in date
   const filteredBookings = bookings?.filter((booking) => {
     // Filter by tab
     let tabMatch = true;
@@ -749,6 +749,12 @@ export default function Bookings() {
     }
     
     if (!tabMatch) return false;
+    
+    // Filter by check-in date if selected
+    if (checkinDateFilter) {
+      const bookingCheckInDate = format(new Date(booking.checkInDate), "yyyy-MM-dd");
+      if (bookingCheckInDate !== checkinDateFilter) return false;
+    }
     
     // Filter by search query
     if (!searchQuery) return true;
@@ -783,7 +789,7 @@ export default function Bookings() {
           <h1 className="text-3xl font-bold font-serif">Bookings</h1>
           <p className="text-muted-foreground mt-1">Manage reservations and check-ins</p>
         </div>
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto">
           <div className="relative flex-1 md:flex-none md:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -794,6 +800,34 @@ export default function Bookings() {
               data-testid="input-search-bookings"
             />
           </div>
+          
+          {/* Check-in Date Filter */}
+          <div className="flex-1 md:flex-none md:w-48">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={checkinDateFilter}
+                onChange={(e) => setCheckinDateFilter(e.target.value)}
+                placeholder="Filter by check-in date"
+                className="flex-1"
+                data-testid="input-checkin-date-filter"
+              />
+              {checkinDateFilter && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setCheckinDateFilter("")}
+                  className="h-9 w-9"
+                  data-testid="button-clear-date-filter"
+                  title="Clear date filter"
+                >
+                  <span className="text-lg">✕</span>
+                </Button>
+              )}
+            </div>
+          </div>
+          
           <Dialog 
             open={isDialogOpen} 
             onOpenChange={(open) => {
