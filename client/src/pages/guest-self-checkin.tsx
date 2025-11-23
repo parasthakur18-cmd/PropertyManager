@@ -39,9 +39,11 @@ export default function GuestSelfCheckin() {
 
   const findBookingMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      return await apiRequest(`/api/guest-self-checkin/booking/${bookingId}`, "GET");
+      const response = await fetch(`/api/guest-self-checkin/booking/${bookingId}`);
+      if (!response.ok) throw new Error("Booking not found");
+      return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       setBookingData(data);
       form.setValue("email", data.guest?.email || "");
       form.setValue("fullName", data.guest?.fullName || "");
