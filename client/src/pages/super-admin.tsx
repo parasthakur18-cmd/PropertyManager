@@ -62,12 +62,18 @@ export default function SuperAdmin() {
 
   // Update active tab when location changes - MUST be before early returns
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    const updateTab = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') || 'users';
+      console.log('[SuperAdmin] Tab changed to:', tab);
       setActiveTab(tab);
-    }
-  }, [location]);
+    };
+    
+    // Update on mount and URL changes
+    updateTab();
+    window.addEventListener('popstate', updateTab);
+    return () => window.removeEventListener('popstate', updateTab);
+  }, []);
 
   // Fetch all users - MUST be before early returns
   const { data: users = [] } = useQuery<User[]>({
