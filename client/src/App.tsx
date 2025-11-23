@@ -12,6 +12,7 @@ import { connectToEventStream } from "@/lib/eventHandlers";
 import { useEffect, useRef } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
+import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import Properties from "@/pages/properties";
 import Rooms from "@/pages/rooms";
@@ -79,7 +80,7 @@ function Router() {
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
       
       {!isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <Route path="/" component={Home} />
       ) : (
         <>
           <Route path="/" component={Dashboard} />
