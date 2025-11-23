@@ -1476,7 +1476,7 @@ export class DatabaseStorage implements IStorage {
     return expenses;
   }
 
-  // Financial Reports
+  // Financial Reports - Standard (date-range based)
   async getPropertyFinancials(propertyId: number, startDate?: Date, endDate?: Date): Promise<any> {
     const start = startDate || new Date(new Date().getFullYear(), 0, 1); // Default to start of year
     const end = endDate || new Date(); // Default to today
@@ -1557,6 +1557,121 @@ export class DatabaseStorage implements IStorage {
         category: c.category,
         total: parseFloat(c.total),
       })),
+    };
+  }
+
+  // P&L Report - Lease-based (using lease period and total lease amount)
+  async getPropertyPnLReport(propertyId: number, leaseId?: number): Promise<any> {
+    // Get leases for this property
+    let leases = await this.getLeasesByProperty(propertyId);
+    
+    // If specific leaseId provided, filter to that lease
+    if (leaseId) {
+      leases = leases.filter(l => l.id === leaseId);
+    }
+
+    // If no leases, return empty report
+    if (leases.length === 0) {
+      return {
+        propertyId,
+        message: "No active leases found for this property",
+        leaseId: leaseId || null,
+        pnlData: [],
+        totalRevenue: 0,
+        totalLeaseAmount: 0,
+        totalExpenses: 0,
+        finalProfit: 0,
+      };
+    }
+
+    // Generate P&L for each lease
+    const pnlData = [];
+
+    for (const lease of leases) {
+      const leaseStartDate = new Date(lease.startDate);
+      const leaseEndDate = lease.endDate ? new Date(lease.endDate) : new Date();
+
+      // Get revenue during lease period
+      const [revenueResult] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
+        .from(bills)
+        .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+        .where(
+          and(
+            eq(bookings.propertyId, propertyId),
+            gte(bills.createdAt, leaseStartDate),
+            lte(bills.createdAt, leaseEndDate)
+          )
+        );
+
+      // Get expenses during lease period
+      const [expensesResult] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${propertyExpenses.amount}), 0)` })
+        .from(propertyExpenses)
+        .where(
+          and(
+            eq(propertyExpenses.propertyId, propertyId),
+            gte(propertyExpenses.expenseDate, leaseStartDate),
+            lte(propertyExpenses.expenseDate, leaseEndDate)
+          )
+        );
+
+      // Get expenses by category
+      const expensesByCategory = await db
+        .select({
+          category: propertyExpenses.category,
+          total: sql<string>`SUM(${propertyExpenses.amount})`,
+        })
+        .from(propertyExpenses)
+        .where(
+          and(
+            eq(propertyExpenses.propertyId, propertyId),
+            gte(propertyExpenses.expenseDate, leaseStartDate),
+            lte(propertyExpenses.expenseDate, leaseEndDate)
+          )
+        )
+        .groupBy(propertyExpenses.category);
+
+      const totalRevenue = parseFloat(revenueResult?.total || '0');
+      const totalExpenses = parseFloat(expensesResult?.total || '0');
+      const totalLeaseAmount = parseFloat(lease.totalAmount.toString());
+      
+      // P&L Calculation: Profit = Total Sales – (Total Lease Amount + Total Expenses)
+      const finalProfit = totalRevenue - (totalLeaseAmount + totalExpenses);
+      const profitMargin = totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0';
+
+      pnlData.push({
+        leaseId: lease.id,
+        leaseStartDate: leaseStartDate,
+        leaseEndDate: leaseEndDate,
+        landlordName: lease.landlordName || 'N/A',
+        totalLeaseAmount,
+        totalRevenue,
+        totalExpenses,
+        expensesByCategory: expensesByCategory.map(c => ({
+          category: c.category,
+          total: parseFloat(c.total),
+        })),
+        finalProfit,
+        profitMargin,
+      });
+    }
+
+    // Summary across all leases
+    const totalRevenue = pnlData.reduce((sum, p) => sum + p.totalRevenue, 0);
+    const totalLeaseAmount = pnlData.reduce((sum, p) => sum + p.totalLeaseAmount, 0);
+    const totalExpenses = pnlData.reduce((sum, p) => sum + p.totalExpenses, 0);
+    const finalProfit = totalRevenue - (totalLeaseAmount + totalExpenses);
+
+    return {
+      propertyId,
+      leaseId: leaseId || null,
+      pnlData,
+      totalRevenue,
+      totalLeaseAmount,
+      totalExpenses,
+      finalProfit,
+      profitMargin: totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0',
     };
   }
 

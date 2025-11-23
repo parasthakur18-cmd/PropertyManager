@@ -3372,7 +3372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Financial Reports endpoint
+  // Financial Reports endpoint (date-range based)
   app.get("/api/financials/:propertyId", isAuthenticated, async (req, res) => {
     try {
       const { startDate, endDate } = req.query;
@@ -3382,6 +3382,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endDate ? new Date(endDate as string) : undefined
       );
       res.json(financials);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // P&L Report endpoint (lease-period based with total lease amount)
+  app.get("/api/properties/:propertyId/pnl", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const propertyId = parseInt(req.params.propertyId);
+      const { leaseId } = req.query;
+
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      // Check property access for managers
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(propertyId)) {
+          return res.status(403).json({ message: "You don't have access to this property" });
+        }
+      }
+
+      const pnlReport = await storage.getPropertyPnLReport(
+        propertyId,
+        leaseId ? parseInt(leaseId as string) : undefined
+      );
+      res.json(pnlReport);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
