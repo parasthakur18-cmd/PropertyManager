@@ -78,6 +78,9 @@ import {
   type IssueReport,
   passwordResetOtps,
   type InsertPasswordResetOtp,
+  contactEnquiries,
+  type ContactEnquiry,
+  type InsertContactEnquiry,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";

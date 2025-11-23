@@ -1081,3 +1081,25 @@ export const insertPasswordResetOtpSchema = z.object({
 );
 
 export type InsertPasswordResetOtp = z.infer<typeof insertPasswordResetOtpSchema>;
+
+// Contact Enquiries table - for landing page contact form submissions
+export const contactEnquiries = pgTable("contact_enquiries", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  propertyName: varchar("property_name", { length: 255 }),
+  message: text("message").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("new"), // new, contacted, resolved
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertContactEnquirySchema = createInsertSchema(contactEnquiries).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertContactEnquiry = z.infer<typeof insertContactEnquirySchema>;
+export type ContactEnquiry = typeof contactEnquiries.$inferSelect;
