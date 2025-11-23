@@ -283,13 +283,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      // Handle both Replit Auth (with claims) and email/password auth (with id from session)
+      let userId = req.user?.claims?.sub || req.user?.id || req.session?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
       let user = await storage.getUser(userId);
       
       // Auto-create user if doesn't exist (e.g., after database wipe)
       if (!user) {
-        const email = req.user.claims.email || `${userId}@replit.user`;
-        const name = req.user.claims.name || req.user.claims.email || 'User';
+        const email = req.user?.claims?.email || `${userId}@replit.user`;
+        const name = req.user?.claims?.name || req.user?.claims?.email || 'User';
         
         // Split name into first and last name
         const nameParts = name.split(' ');
@@ -5041,10 +5047,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Create session
+      // Create session - set user id directly on request.user for email/password auth
       req.session.userId = user[0].id;
-      req.login(user[0], (err) => {
+      req.session.isEmailAuth = true; // Mark this as email-based auth
+      
+      // Set user object on request with just the id field
+      (req as any).user = { id: user[0].id };
+      
+      // Manual session save
+      req.session.save((err) => {
         if (err) {
+          console.error("Session save error:", err);
           return res.status(500).json({ message: "Login failed" });
         }
         res.json({ 
