@@ -2833,10 +2833,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Enquiry is missing required guest information (name or phone)" });
       }
 
-      // Create or find guest
+      // Create or find guest - match by BOTH name and phone to avoid duplicates
       let guestId: number;
       const existingGuests = await storage.getAllGuests();
-      const existingGuest = existingGuests.find(g => g.phone === enquiry.guestPhone);
+      const existingGuest = existingGuests.find(g => 
+        g.phone === enquiry.guestPhone && 
+        g.fullName.toLowerCase() === enquiry.guestName.toLowerCase()
+      );
       
       if (existingGuest) {
         guestId = existingGuest.id;
