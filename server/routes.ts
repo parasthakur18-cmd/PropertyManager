@@ -4206,14 +4206,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all users
-  app.get("/api/admin-portal/users", isAuthenticated, async (req, res) => {
+  app.get("/api/admin-portal/users", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
-      const allUsers = await storage.getAllUsers?.();
+      const allUsers = await storage.getAllUsers();
       res.json(allUsers || []);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -4221,14 +4221,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all properties
-  app.get("/api/admin-portal/properties", isAuthenticated, async (req, res) => {
+  app.get("/api/admin-portal/properties", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
-      const allProperties = await storage.getAllProperties?.();
+      const allProperties = await storage.getAllProperties();
       res.json(allProperties || []);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -4236,16 +4236,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get system stats
-  app.get("/api/admin-portal/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/admin-portal/stats", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
-      const users = await storage.getAllUsers?.() || [];
-      const properties = await storage.getAllProperties?.() || [];
-      const bookings = await storage.getAllBookings?.() || [];
+      const users = await storage.getAllUsers();
+      const properties = await storage.getAllProperties();
+      const bookings = await storage.getAllBookings();
 
       res.json({
         totalUsers: users.length,
@@ -4258,10 +4258,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Suspend user
-  app.patch("/api/admin-portal/users/:id/suspend", isAuthenticated, async (req, res) => {
+  app.patch("/api/admin-portal/users/:id/suspend", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -4273,10 +4273,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Activate user
-  app.patch("/api/admin-portal/users/:id/activate", isAuthenticated, async (req, res) => {
+  app.patch("/api/admin-portal/users/:id/activate", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -4288,10 +4288,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Login as user from admin portal
-  app.post("/api/admin-portal/login-as/:id", isAuthenticated, async (req, res) => {
+  app.post("/api/admin-portal/login-as/:id", async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== 'super-admin') {
+      if (!user || user.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
