@@ -2262,7 +2262,6 @@ export default function Bookings() {
         </DialogContent>
       </Dialog>
     </div>
-    </div>
   );
 }
 
