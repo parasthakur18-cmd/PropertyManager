@@ -305,9 +305,8 @@ export default function PendingPayments() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 font-medium" data-testid={`text-amount-${bill.id}`}>
-                          <IndianRupee className="h-3 w-3" />
-                          {parseFloat(bill.balanceAmount).toFixed(2)}
+                        <div className="font-medium" data-testid={`text-amount-${bill.id}`}>
+                          ₹{parseFloat(bill.balanceAmount).toFixed(2)}
                         </div>
                       </TableCell>
                       <TableCell data-testid={`text-due-date-${bill.id}`}>
