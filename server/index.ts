@@ -10,6 +10,15 @@ declare module 'http' {
     rawBody: unknown
   }
 }
+
+declare module 'express' {
+  interface User {
+    claims?: any;
+    access_token?: string;
+    refresh_token?: string;
+    expires_at?: number;
+  }
+}
 app.use(express.json({
   verify: (req, _res, buf) => {
     req.rawBody = buf;
