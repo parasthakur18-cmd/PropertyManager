@@ -36,7 +36,7 @@ export default function Rooms() {
     queryKey: ["/api/rooms"],
   });
 
-  const { data: properties } = useQuery<Property[]>({
+  const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
 
@@ -246,19 +246,26 @@ export default function Rooms() {
                       <FormLabel>Property</FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
-                        value={field.value?.toString()}
+                        value={field.value ? field.value.toString() : ""}
+                        disabled={propertiesLoading}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-room-property">
-                            <SelectValue placeholder="Select property" />
+                            <SelectValue placeholder={propertiesLoading ? "Loading properties..." : "Select property"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {properties?.map((property) => (
-                            <SelectItem key={property.id} value={property.id.toString()}>
-                              {property.name}
+                          {properties && properties.length > 0 ? (
+                            properties.map((property) => (
+                              <SelectItem key={property.id} value={property.id.toString()}>
+                                {property.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="_empty" disabled>
+                              {propertiesLoading ? "Loading..." : "No properties available"}
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -426,19 +433,26 @@ export default function Rooms() {
                       <FormLabel>Property</FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
-                        value={field.value?.toString()}
+                        value={field.value ? field.value.toString() : ""}
+                        disabled={propertiesLoading}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="edit-select-property">
-                            <SelectValue placeholder="Select property" />
+                            <SelectValue placeholder={propertiesLoading ? "Loading properties..." : "Select property"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {properties?.map((property) => (
-                            <SelectItem key={property.id} value={property.id.toString()}>
-                              {property.name}
+                          {properties && properties.length > 0 ? (
+                            properties.map((property) => (
+                              <SelectItem key={property.id} value={property.id.toString()}>
+                                {property.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="_empty" disabled>
+                              {propertiesLoading ? "Loading..." : "No properties available"}
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
