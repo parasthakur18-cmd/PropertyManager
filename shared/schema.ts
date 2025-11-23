@@ -1055,6 +1055,7 @@ export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords
   updatedAt: true,
 }).extend({
   attendanceDate: z.coerce.date(),
+  propertyId: z.number().optional().nullable(),
 });
 
 export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
