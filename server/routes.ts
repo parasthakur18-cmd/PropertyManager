@@ -3463,15 +3463,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Staff Member endpoints (non-app staff) - Admin/Manager/Staff
+  // Staff Member endpoints (non-app staff) - All authenticated users
   app.get("/api/staff-members", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
       const { propertyId } = req.query;
-
-      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
 
       let staffMembers;
       if (propertyId) {
@@ -3496,10 +3492,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/staff-members/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      
-      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
 
       const member = await storage.getStaffMember(parseInt(req.params.id));
       if (!member) {
@@ -3522,10 +3514,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/staff-members", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      
-      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
 
       const { insertStaffMemberSchema } = await import("@shared/schema");
       const validatedData = insertStaffMemberSchema.parse(req.body);
@@ -3547,10 +3535,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/staff-members/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      
-      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
 
       const member = await storage.getStaffMember(parseInt(req.params.id));
       if (!member) {
@@ -3577,10 +3561,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/staff-members/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      
-      if (!['admin', 'manager', 'staff', 'kitchen'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
 
       const member = await storage.getStaffMember(parseInt(req.params.id));
       if (!member) {
