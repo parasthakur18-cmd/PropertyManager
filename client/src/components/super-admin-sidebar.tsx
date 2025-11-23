@@ -6,7 +6,6 @@ import {
   Settings,
   Shield,
   LogOut,
-  MessageSquare,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -18,7 +17,6 @@ const systemMenuItems = [
   { title: "Dashboard", url: "/super-admin", icon: Home },
   { title: "All Properties", url: "/properties", icon: Building2 },
   { title: "All Users", url: "/users", icon: Users },
-  { title: "Contact Leads", url: "/contact-enquiries", icon: MessageSquare },
   { title: "Issue Reports", url: "/super-admin", icon: AlertCircle },
 ];
 
