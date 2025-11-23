@@ -4842,15 +4842,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GET /api/contact - Get all contact enquiries (admin only)
+  // GET /api/contact - Get all contact enquiries (admin and super-admin)
   app.get("/api/contact", isAuthenticated, async (req, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const user = await storage.getUser(userId);
 
-      // Only super-admin can view all enquiries
-      if (user?.role !== "super-admin") {
-        return res.status(403).json({ message: "Unauthorized" });
+      // Allow both super-admin and admin roles to view enquiries
+      if (user?.role !== "super-admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Unauthorized - Admin access required" });
       }
 
       const enquiries = await storage.getAllContactEnquiries();
@@ -4860,14 +4860,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PATCH /api/contact/:id - Update enquiry status (admin only)
+  // PATCH /api/contact/:id - Update enquiry status (admin and super-admin)
   app.patch("/api/contact/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const user = await storage.getUser(userId);
 
-      if (user?.role !== "super-admin") {
-        return res.status(403).json({ message: "Unauthorized" });
+      if (user?.role !== "super-admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Unauthorized - Admin access required" });
       }
 
       const { status } = req.body;
