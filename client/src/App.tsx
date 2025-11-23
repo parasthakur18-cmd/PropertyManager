@@ -45,6 +45,7 @@ import SuperAdmin from "@/pages/super-admin";
 import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
+import GuestSelfCheckin from "@/pages/guest-self-checkin";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -66,6 +67,7 @@ function Router() {
       <Route path="/menu" component={Menu} />
       <Route path="/customer-menu" component={CustomerMenu} />
       <Route path="/qr-codes" component={QRCodes} />
+      <Route path="/guest-self-checkin" component={GuestSelfCheckin} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/verify-otp" component={VerifyOTP} />
       <Route path="/reset-password" component={ResetPassword} />

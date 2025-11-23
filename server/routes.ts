@@ -4172,6 +4172,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Guest Self Check-in endpoints
+  app.get("/api/guest-self-checkin/booking/:bookingId", async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+      const booking = await storage.getBooking(bookingId);
+
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      const room = await storage.getRoom(booking.roomId);
+
+      res.json({
+        id: booking.id,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        status: booking.status,
+        guest,
+        room,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-self-checkin", async (req, res) => {
+    try {
+      const { bookingId, email, phone, fullName } = req.body;
+
+      const booking = await storage.getBooking(parseInt(bookingId));
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (guest?.email !== email) {
+        return res.status(400).json({ message: "Email does not match booking" });
+      }
+
+      // Update guest with latest details
+      await storage.updateGuest(booking.guestId, {
+        phone,
+        fullName,
+        email,
+      });
+
+      // Check in the guest
+      const updatedBooking = await storage.updateBooking(booking.id, {
+        status: "checked-in",
+      });
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCustomAction(
+        "booking",
+        String(booking.id),
+        "guest_self_checkin",
+        { id: "system", role: "system", email: "system" } as any,
+        undefined,
+        { action: "guest_self_checkin", guestEmail: email }
+      );
+
+      res.json({ message: "Check-in successful", booking: updatedBooking });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
