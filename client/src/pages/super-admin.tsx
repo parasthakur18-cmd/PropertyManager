@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport } from "@shared/schema";
 import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
 
 export default function SuperAdmin() {
   const { toast } = useToast();
@@ -87,26 +88,33 @@ export default function SuperAdmin() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation Header */}
-      <div className="sticky top-0 z-50 bg-background border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Hostezee Super Admin</h1>
-          <Button
-            variant="outline"
-            onClick={() => {
-              window.location.href = "/";
-            }}
-            className="flex items-center gap-2"
-            data-testid="button-home"
-          >
-            <Home className="h-4 w-4" />
-            Home
-          </Button>
-        </div>
-      </div>
+    <div className="flex h-screen bg-background">
+      {/* Sidebar */}
+      <SuperAdminSidebar />
 
-      <div className="space-y-6 p-6">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Header */}
+        <div className="sticky top-0 z-50 bg-background border-b border-border">
+          <div className="px-6 py-4 flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">System Administration</h1>
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = "/";
+              }}
+              className="flex items-center gap-2"
+              data-testid="button-home"
+            >
+              <Home className="h-4 w-4" />
+              Home
+            </Button>
+          </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-6 p-6">
       <div>
         <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
         <p className="text-muted-foreground">System-wide management & monitoring</p>
@@ -336,7 +344,9 @@ export default function SuperAdmin() {
             )}
           </div>
         </TabsContent>
-      </Tabs>
+          </Tabs>
+          </div>
+        </div>
       </div>
     </div>
   );
