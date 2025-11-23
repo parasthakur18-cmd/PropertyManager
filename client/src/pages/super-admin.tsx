@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,23 +60,8 @@ export default function SuperAdmin() {
     checkAuth();
   }, [setLocation]);
 
-  if (isChecking) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
-          <p className="text-muted-foreground">Verifying authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null; // Will redirect via useEffect
-  }
-  
-  // Update active tab when location changes
-  useMemo(() => {
+  // Update active tab when location changes - MUST be before early returns
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') || 'users';
@@ -84,29 +69,29 @@ export default function SuperAdmin() {
     }
   }, [location]);
 
-  // Fetch all users
+  // Fetch all users - MUST be before early returns
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/super-admin/users"],
   });
 
-  // Fetch all properties
+  // Fetch all properties - MUST be before early returns
   const { data: properties = [] } = useQuery<Array<Property & { ownerEmail?: string }>>(
     {
       queryKey: ["/api/super-admin/properties"],
     }
   );
 
-  // Fetch all issue reports
+  // Fetch all issue reports - MUST be before early returns
   const { data: reports = [] } = useQuery<IssueReport[]>({
     queryKey: ["/api/super-admin/reports"],
   });
 
-  // Fetch all contact enquiries
+  // Fetch all contact enquiries - MUST be before early returns
   const { data: enquiries = [] } = useQuery<ContactEnquiry[]>({
     queryKey: ["/api/contact"],
   });
 
-  // Suspend/unsuspend user
+  // Suspend/unsuspend user - MUST be before early returns
   const toggleUserStatus = useMutation({
     mutationFn: async ({
       userId,
@@ -133,7 +118,7 @@ export default function SuperAdmin() {
     },
   });
 
-  // Login as user
+  // Login as user - MUST be before early returns
   const loginAsUser = useMutation({
     mutationFn: async (userId: string) => {
       return apiRequest(`/api/super-admin/login-as/${userId}`, "POST", {});
@@ -149,6 +134,21 @@ export default function SuperAdmin() {
       });
     },
   });
+
+  if (isChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+          <p className="text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Will redirect via useEffect
+  }
 
   const filteredUsers = users.filter((u) =>
     u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
