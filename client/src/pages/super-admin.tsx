@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,50 @@ export default function SuperAdmin() {
   const [searchTerm, setSearchTerm] = useState("");
   const [location, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("users");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+
+  // Check if user is authenticated as super admin on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("/api/auth/user");
+        if (!response.ok) {
+          // Not authenticated, redirect to login
+          setLocation("/super-admin-login");
+          return;
+        }
+        const user = await response.json();
+        if (user.role !== "super-admin") {
+          // Not a super admin, redirect to login
+          setLocation("/super-admin-login");
+          return;
+        }
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error("Auth check failed:", error);
+        setLocation("/super-admin-login");
+      } finally {
+        setIsChecking(false);
+      }
+    };
+    checkAuth();
+  }, [setLocation]);
+
+  if (isChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+          <p className="text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Will redirect via useEffect
+  }
   
   // Update active tab when location changes
   useMemo(() => {
