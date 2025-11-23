@@ -270,6 +270,7 @@ export interface IStorage {
   createSalary(salary: InsertStaffSalary): Promise<StaffSalary>;
   updateSalary(id: number, salary: Partial<InsertStaffSalary>): Promise<StaffSalary>;
   deleteSalary(id: number): Promise<void>;
+  getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]>;
 
   // Salary Advance operations
   getAllAdvances(): Promise<SalaryAdvance[]>;
