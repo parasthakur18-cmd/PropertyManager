@@ -54,9 +54,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Seed default super-admin user with email/password
   try {
     const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
+    const hashedPassword = await bcryptjs.hash('admin@123', 10);
+    
     if (existingSuperAdmins.length === 0) {
+      // Create new super-admin
       const superAdminId = randomUUID();
-      const hashedPassword = await bcryptjs.hash('admin@123', 10);
       await db.insert(users).values({
         id: superAdminId,
         email: 'admin@hostezee.in',
@@ -68,6 +70,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         businessName: 'Hostezee System',
       });
       console.log('[SEED] Default super-admin created: admin@hostezee.in with password admin@123');
+    } else {
+      // Update existing super-admin with password if not already set
+      const superAdmin = existingSuperAdmins[0];
+      if (!superAdmin.password) {
+        await db.update(users).set({ password: hashedPassword }).where(eq(users.id, superAdmin.id));
+        console.log('[SEED] Updated super-admin with hashed password');
+      }
     }
   } catch (error) {
     console.error('[SEED ERROR] Failed to seed super-admin:', error);
