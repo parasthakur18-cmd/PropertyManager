@@ -75,7 +75,6 @@ const adminOperationsItems = [
 
 const adminFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
-  { title: "Pending Payments", url: "/pending-payments", icon: ClockAlert },
   { title: "Leases", url: "/leases", icon: IndianRupee },
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Financials", url: "/financials", icon: TrendingUp },
@@ -103,7 +102,6 @@ const managerOperationsItems = [
 
 const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
-  { title: "Pending Payments", url: "/pending-payments", icon: ClockAlert },
   { title: "Expenses", url: "/expenses", icon: FileText },
 ];
 
