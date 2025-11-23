@@ -4581,7 +4581,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Super Admin endpoints
   app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
@@ -4598,7 +4598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/super-admin/properties", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
@@ -4615,7 +4615,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/super-admin/reports", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
@@ -4632,7 +4632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
@@ -4654,7 +4654,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/super-admin/login-as/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
