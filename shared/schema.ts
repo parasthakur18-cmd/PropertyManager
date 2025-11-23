@@ -46,7 +46,7 @@ export type User = typeof users.$inferSelect;
 
 // User role update schema
 export const updateUserRoleSchema = z.object({
-  role: z.enum(["admin", "manager", "staff", "kitchen"]),
+  role: z.enum(["super-admin", "admin", "manager", "staff", "kitchen"]),
   assignedPropertyIds: z.array(z.number().int()).nullable().optional(),
 });
 
@@ -1007,3 +1007,27 @@ export interface AnalyticsResponse {
   // Metadata
   generatedAt: string;         // ISO date string
 }
+
+// Issue/Bug Reports table
+export const issueReports = pgTable("issue_reports", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  reportedByUserId: varchar("reported_by_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'set null' }), // Optional - may be reported from any context
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  category: varchar("category", { length: 50 }).notNull(), // bug, feature_request, documentation, performance, other
+  severity: varchar("severity", { length: 20 }).notNull().default("medium"), // low, medium, high, critical
+  screenshot: text("screenshot"), // Base64 encoded screenshot
+  status: varchar("status", { length: 20 }).notNull().default("open"), // open, in_progress, resolved, closed
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertIssueReportSchema = createInsertSchema(issueReports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertIssueReport = z.infer<typeof insertIssueReportSchema>;
+export type IssueReport = typeof issueReports.$inferSelect;

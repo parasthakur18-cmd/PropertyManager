@@ -28,6 +28,7 @@ import {
   Briefcase,
   ClockAlert,
   Search,
+  Shield,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -117,6 +118,11 @@ const staffMenuItems = [
 const kitchenMenuItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
+];
+
+const superAdminMenuItems = [
+  { title: "System Dashboard", url: "/super-admin", icon: Shield },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {

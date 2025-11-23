@@ -41,6 +41,7 @@ import QRCodes from "@/pages/qr-codes";
 import Salaries from "@/pages/salaries";
 import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
+import SuperAdmin from "@/pages/super-admin";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -93,6 +94,7 @@ function Router() {
           <Route path="/salaries" component={Salaries} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/users" component={UsersManagement} />
+          <Route path="/super-admin" component={SuperAdmin} />
           <Route path="/settings" component={Settings} />
         </>
       )}
