@@ -165,7 +165,7 @@ export default function Attendance() {
 
   const handleRosterStatusChange = (staffMemberId: string, status: string) => {
     createAttendanceMutation.mutate({
-      staffMemberId,
+      staffMemberId: staffMemberId,
       attendanceDate: rosterDate,
       status: status as any,
       remarks: "",
