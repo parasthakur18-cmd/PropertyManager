@@ -2892,7 +2892,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const customPriceValue = enquiry.priceQuoted != null ? String(enquiry.priceQuoted) : null;
       const advanceAmountValue = enquiry.advanceAmount != null ? String(enquiry.advanceAmount) : "0";
       
-      console.log("Creating booking with customPrice:", customPriceValue, "advanceAmount:", advanceAmountValue);
+      // Calculate totalAmount based on room price and number of nights
+      let totalAmount: string | null = null;
+      if (enquiry.roomId) {
+        const allRooms = await storage.getAllRooms();
+        const room = allRooms.find(r => r.id === enquiry.roomId);
+        if (room) {
+          const checkIn = new Date(enquiry.checkInDate);
+          const checkOut = new Date(enquiry.checkOutDate);
+          const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+          const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
+          totalAmount = (pricePerNight * numberOfNights).toString();
+        }
+      } else if (enquiry.roomIds && enquiry.roomIds.length > 0) {
+        // For group bookings
+        const allRooms = await storage.getAllRooms();
+        const selectedRooms = allRooms.filter(r => enquiry.roomIds?.includes(r.id));
+        if (selectedRooms.length > 0) {
+          const checkIn = new Date(enquiry.checkInDate);
+          const checkOut = new Date(enquiry.checkOutDate);
+          const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+          const totalPrice = selectedRooms.reduce((sum, room) => {
+            const pricePerNight = parseFloat(room.pricePerNight.toString());
+            return sum + (pricePerNight * numberOfNights);
+          }, 0);
+          totalAmount = totalPrice.toString();
+        }
+      }
+      
+      console.log("Creating booking with customPrice:", customPriceValue, "advanceAmount:", advanceAmountValue, "totalAmount:", totalAmount);
       
       const booking = await storage.createBooking({
         propertyId: enquiry.propertyId,
@@ -2906,6 +2934,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         numberOfGuests: enquiry.numberOfGuests,
         customPrice: customPriceValue,
         advanceAmount: advanceAmountValue,
+        totalAmount: totalAmount,
         status: "confirmed",
         specialRequests: enquiry.specialRequests,
         source: "walk-in",
