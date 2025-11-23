@@ -42,10 +42,7 @@ export default function SuperAdmin() {
       userId: string;
       status: "active" | "suspended";
     }) => {
-      return apiRequest(`/api/super-admin/users/${userId}/status`, {
-        method: "PATCH",
-        body: { status },
-      });
+      return apiRequest(`/api/super-admin/users/${userId}/status`, "PATCH", { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
@@ -66,9 +63,7 @@ export default function SuperAdmin() {
   // Login as user
   const loginAsUser = useMutation({
     mutationFn: async (userId: string) => {
-      return apiRequest(`/api/super-admin/login-as/${userId}`, {
-        method: "POST",
-      });
+      return apiRequest(`/api/super-admin/login-as/${userId}`, "POST", {});
     },
     onSuccess: () => {
       window.location.href = "/";
@@ -335,7 +330,7 @@ export default function SuperAdmin() {
                       <div className="flex gap-2 text-xs text-muted-foreground">
                         <span>Category: {report.category}</span>
                         <span>•</span>
-                        <span>{new Date(report.createdAt).toLocaleDateString()}</span>
+                        <span>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</span>
                       </div>
                     </CardContent>
                   </Card>

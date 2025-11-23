@@ -4434,6 +4434,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Super Admin endpoints
   app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
     try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error: any) {
@@ -4443,6 +4447,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/super-admin/properties", isAuthenticated, async (req, res) => {
     try {
+      const user = req.user as any;
+      if (user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
       const properties = await storage.getAllProperties();
       res.json(properties);
     } catch (error: any) {
