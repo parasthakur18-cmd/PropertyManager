@@ -232,3 +232,8 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+// Render chatbot at the top level outside the main layout
+if (isAuthenticated) {
+  // Chatbot will render via portal to document.body
+}

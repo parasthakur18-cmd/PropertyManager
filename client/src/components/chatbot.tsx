@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,7 +82,7 @@ export function Chatbot() {
     }
   };
 
-  return (
+  const content = (
     <>
       {isOpen ? (
         <div 
@@ -181,4 +182,6 @@ export function Chatbot() {
       )}
     </>
   );
+
+  return createPortal(content, document.body);
 }
