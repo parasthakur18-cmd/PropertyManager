@@ -272,9 +272,10 @@ export default function Attendance() {
       </div>
 
       <Tabs defaultValue="roster" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="roster">Quick Roster</TabsTrigger>
           <TabsTrigger value="individual">Record Attendance</TabsTrigger>
+          <TabsTrigger value="salary">Salary Management</TabsTrigger>
         </TabsList>
 
         <TabsContent value="roster" className="space-y-4">
@@ -377,6 +378,118 @@ export default function Attendance() {
                   <Plus className="h-4 w-4 mr-2" />
                   Add Staff Member
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="salary" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Salary Summary</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Month: {format(selectedMonth, "MMMM yyyy")}
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted">
+                      <th className="text-left p-3 font-semibold">Staff Member</th>
+                      <th className="text-right p-3 font-semibold">Base Salary</th>
+                      <th className="text-center p-3 font-semibold">Absents</th>
+                      <th className="text-right p-3 font-semibold">Deduction/Day</th>
+                      <th className="text-right p-3 font-semibold">Total Deduction</th>
+                      <th className="text-right p-3 font-semibold">Net Salary</th>
+                      <th className="text-center p-3 font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {attendanceStats.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                          No salary data available for this month
+                        </td>
+                      </tr>
+                    ) : (
+                      attendanceStats.map((stat) => (
+                        <tr key={stat.staffId} className="border-b hover:bg-muted/50">
+                          <td className="p-3 font-medium">{stat.staffName}</td>
+                          <td className="text-right p-3 font-mono">₹{stat.baseSalary.toLocaleString()}</td>
+                          <td className="text-center p-3">
+                            <Badge variant={stat.absentDays > 0 ? "destructive" : "secondary"}>
+                              {stat.absentDays}
+                            </Badge>
+                          </td>
+                          <td className="text-right p-3 font-mono">₹{stat.deductionPerDay.toLocaleString()}</td>
+                          <td className="text-right p-3 font-mono text-red-600">₹{stat.totalDeduction.toLocaleString()}</td>
+                          <td className="text-right p-3 font-mono font-semibold text-green-600">₹{stat.netSalary.toLocaleString()}</td>
+                          <td className="text-center p-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const staff = staffMembers.find(s => String(s.id) === stat.staffId);
+                                if (staff) {
+                                  setEditingStaffId(staff.id);
+                                  editStaffForm.reset({ baseSalary: staff.baseSalary || 0 });
+                                  setIsEditStaffDialogOpen(true);
+                                }
+                              }}
+                              data-testid={`button-edit-salary-table-${stat.staffId}`}
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Salary Calculation Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Salary Calculation Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded">
+                  <p className="text-xs text-muted-foreground mb-1">Total Work Days</p>
+                  <p className="font-semibold text-lg">
+                    {attendanceStats[0]?.totalWorkDays || 0}
+                  </p>
+                </div>
+                <div className="bg-green-50 dark:bg-green-950 p-3 rounded">
+                  <p className="text-xs text-muted-foreground mb-1">Total Present Days</p>
+                  <p className="font-semibold text-lg text-green-600">
+                    {attendanceStats.reduce((sum, s) => sum + s.presentDays, 0)}
+                  </p>
+                </div>
+                <div className="bg-red-50 dark:bg-red-950 p-3 rounded">
+                  <p className="text-xs text-muted-foreground mb-1">Total Absent Days</p>
+                  <p className="font-semibold text-lg text-red-600">
+                    {attendanceStats.reduce((sum, s) => sum + s.absentDays, 0)}
+                  </p>
+                </div>
+                <div className="bg-orange-50 dark:bg-orange-950 p-3 rounded">
+                  <p className="text-xs text-muted-foreground mb-1">Total Leave Days</p>
+                  <p className="font-semibold text-lg text-orange-600">
+                    {attendanceStats.reduce((sum, s) => sum + s.leaveDays, 0)}
+                  </p>
+                </div>
+              </div>
+              <div className="bg-muted p-4 rounded-lg space-y-2 font-mono text-xs">
+                <div><strong>Formula:</strong></div>
+                <div className="ml-2">Deduction Per Day = Base Salary ÷ Working Days</div>
+                <div className="ml-2">Total Deduction = Deduction Per Day × Absent Days</div>
+                <div className="border-t pt-2 mt-2">
+                  <strong>Net Salary = Base Salary - Total Deduction</strong>
+                </div>
               </div>
             </CardContent>
           </Card>
