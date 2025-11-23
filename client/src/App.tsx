@@ -51,6 +51,7 @@ import GuestSelfCheckin from "@/pages/guest-self-checkin";
 import AdminPortalLogin from "@/pages/admin-portal-login";
 import AdminPortalDashboard from "@/pages/admin-portal-dashboard";
 import AdminPortalPropertyDetails from "@/pages/admin-portal-property-details";
+import Onboarding from "@/pages/onboarding";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -80,6 +81,7 @@ function Router() {
       <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
       <Route path="/super-admin" component={SuperAdmin} />
+      <Route path="/onboarding" component={Onboarding} />
       <Route path="/login" component={Landing} />
       <Route path="/signup" component={Landing} />
       
