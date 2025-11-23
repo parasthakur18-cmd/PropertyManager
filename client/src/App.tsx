@@ -65,6 +65,7 @@ import Privacy from "@/pages/privacy";
 import ContactEnquiries from "@/pages/contact-enquiries";
 import Register from "@/pages/register";
 import ReportIssue from "@/pages/report-issue";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -162,9 +163,11 @@ export default function App() {
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <SidebarProvider style={style}>
-            <AuthWrapper>
-              <Toaster />
-            </AuthWrapper>
+            <ErrorBoundary>
+              <AuthWrapper>
+                <Toaster />
+              </AuthWrapper>
+            </ErrorBoundary>
           </SidebarProvider>
         </TooltipProvider>
       </ThemeProvider>
