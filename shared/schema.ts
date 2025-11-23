@@ -33,7 +33,9 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
-  role: varchar("role", { length: 20 }).notNull().default("staff"),
+  role: varchar("role", { length: 20 }).notNull().default("staff"), // admin, super-admin, manager, staff, kitchen
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, suspended
+  businessName: varchar("business_name", { length: 255 }), // For new registrations - user's business/company name
   assignedPropertyIds: integer("assigned_property_ids").array(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -53,6 +55,7 @@ export type UpdateUserRole = z.infer<typeof updateUserRoleSchema>;
 // Properties table
 export const properties = pgTable("properties", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: 'cascade' }), // User who owns this property
   name: varchar("name", { length: 255 }).notNull(),
   location: varchar("location", { length: 255 }),
   description: text("description"),
