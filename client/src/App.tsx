@@ -45,6 +45,12 @@ import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
 import SuperAdmin from "@/pages/super-admin";
 import SuperAdminLogin from "@/pages/super-admin-login";
+import Features from "@/pages/features";
+import Security from "@/pages/security";
+import About from "@/pages/about";
+import Blog from "@/pages/blog";
+import ContactPage from "@/pages/contact";
+import Pricing from "@/pages/pricing";
 import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
@@ -89,6 +95,12 @@ function Router() {
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
       <Route path="/super-admin-login" component={SuperAdminLogin} />
       <Route path="/super-admin" component={SuperAdmin} />
+      <Route path="/features" component={Features} />
+      <Route path="/security" component={Security} />
+      <Route path="/about" component={About} />
+      <Route path="/blog" component={Blog} />
+      <Route path="/contact" component={ContactPage} />
+      <Route path="/pricing" component={Pricing} />
       <Route path="/onboarding" component={Onboarding} />
       <Route path="/faq" component={FAQ} />
       <Route path="/terms" component={Terms} />

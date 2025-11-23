@@ -469,24 +469,24 @@ export default function Home() {
             <div>
               <h4 className="font-semibold text-white mb-5">Product</h4>
               <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition">Features</a></li>
-                <li><a href="#" className="hover:text-white transition">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition">Security</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/features"); }} className="hover:text-white transition">Features</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/pricing"); }} className="hover:text-white transition">Pricing</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/security"); }} className="hover:text-white transition">Security</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-white mb-5">Company</h4>
               <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition">About</a></li>
-                <li><a href="#" className="hover:text-white transition">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition">Contact</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/about"); }} className="hover:text-white transition">About</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/blog"); }} className="hover:text-white transition">Blog</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/contact"); }} className="hover:text-white transition">Contact</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-white mb-5">Legal</h4>
               <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition">Privacy</a></li>
-                <li><a href="#" className="hover:text-white transition">Terms</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/privacy"); }} className="hover:text-white transition">Privacy</a></li>
+                <li><a href="#" onClick={(e) => { e.preventDefault(); setLocation("/terms"); }} className="hover:text-white transition">Terms</a></li>
               </ul>
             </div>
           </div>
