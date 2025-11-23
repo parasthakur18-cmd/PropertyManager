@@ -30,6 +30,7 @@ export const sessions = pgTable(
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
+  phone: varchar("phone", { length: 20 }), // Phone number for SMS OTP
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -1032,10 +1033,12 @@ export const insertIssueReportSchema = createInsertSchema(issueReports).omit({
 export type InsertIssueReport = z.infer<typeof insertIssueReportSchema>;
 export type IssueReport = typeof issueReports.$inferSelect;
 
-// Password Reset OTP table - for secure password reset via email
+// Password Reset OTP table - for secure password reset via email or SMS
 export const passwordResetOtps = pgTable("password_reset_otps", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  email: varchar("email", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 20 }), // Phone number for SMS OTP
+  channel: varchar("channel", { length: 10 }).notNull(), // "email" or "sms"
   otp: varchar("otp", { length: 10 }).notNull(), // 6-digit OTP
   expiresAt: timestamp("expires_at").notNull(), // OTP valid for 15 minutes
   isUsed: boolean("is_used").notNull().default(false),
@@ -1043,7 +1046,12 @@ export const passwordResetOtps = pgTable("password_reset_otps", {
 });
 
 export const insertPasswordResetOtpSchema = z.object({
-  email: z.string().email("Invalid email address"),
-});
+  email: z.string().email("Invalid email").optional(),
+  phone: z.string().optional(),
+  channel: z.enum(["email", "sms"]),
+}).refine(
+  (data) => (data.channel === "email" && data.email) || (data.channel === "sms" && data.phone),
+  "Email required for email OTP or phone required for SMS OTP"
+);
 
 export type InsertPasswordResetOtp = z.infer<typeof insertPasswordResetOtpSchema>;

@@ -15,16 +15,23 @@ export default function VerifyOTP() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const email = params.get("email") || "";
+  const phone = params.get("phone") || "";
+  const channel = params.get("channel") || "email";
+  const destination = channel === "email" ? email : phone;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      const payload: any = { otp, channel };
+      if (channel === "email") payload.email = email;
+      if (channel === "sms") payload.phone = phone;
+
       const response = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) throw new Error("Invalid OTP");
@@ -62,7 +69,7 @@ export default function VerifyOTP() {
           </Button>
           <CardTitle>Verify OTP</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Enter the 6-digit code we sent to {email}
+            Enter the 6-digit code we sent to {destination}
           </p>
         </CardHeader>
         <CardContent>
