@@ -160,13 +160,25 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
+    req.logout((err) => {
+      if (err) console.error("Logout error:", err);
+      
+      // Destroy the session
+      if (req.session) {
+        req.session.destroy((sessionErr) => {
+          if (sessionErr) console.error("Session destroy error:", sessionErr);
+          
+          // Clear session cookies
+          res.clearCookie("connect.sid", { path: "/" });
+          res.clearCookie("session", { path: "/" });
+          
+          // Redirect to home (forces fresh login)
+          res.redirect("/");
+        });
+      } else {
+        res.clearCookie("connect.sid", { path: "/" });
+        res.redirect("/");
+      }
     });
   });
 }
