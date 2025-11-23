@@ -79,6 +79,7 @@ function Router() {
       <Route path="/admin-portal" component={AdminPortalLogin} />
       <Route path="/admin-portal/dashboard" component={AdminPortalDashboard} />
       <Route path="/admin-portal/property" component={AdminPortalPropertyDetails} />
+      <Route path="/super-admin" component={SuperAdmin} />
       <Route path="/login" component={Landing} />
       <Route path="/signup" component={Landing} />
       
