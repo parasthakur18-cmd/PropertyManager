@@ -152,8 +152,8 @@ export default function Dashboard() {
   return (
     <div className="p-6 md:p-8">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold font-serif mb-2">Dashboard</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-xl md:text-3xl font-bold font-serif mb-2">Dashboard</h1>
+        <p className="text-xs md:text-sm text-muted-foreground">
           Welcome back! Here's an overview of your property management system.
         </p>
       </div>
@@ -497,10 +497,10 @@ export default function Dashboard() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs md:text-sm">
                         <div>
-                          <p className="text-muted-foreground mb-1">Check-in</p>
-                          <p className="font-medium">{format(new Date(booking.checkInDate), "PP")}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground mb-1">Check-in</p>
+                          <p className="text-xs md:text-sm font-medium">{format(new Date(booking.checkInDate), "PP")}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground mb-1">Check-out</p>

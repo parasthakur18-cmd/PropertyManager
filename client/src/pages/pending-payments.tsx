@@ -169,10 +169,10 @@ export default function PendingPayments() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Pending Payments</h1>
-          <p className="text-muted-foreground" data-testid="text-page-description">
+          <h1 className="text-xl md:text-3xl font-bold" data-testid="text-page-title">Pending Payments</h1>
+          <p className="text-xs md:text-sm text-muted-foreground" data-testid="text-page-description">
             Track and manage outstanding payments from guests and travel agents
           </p>
         </div>
