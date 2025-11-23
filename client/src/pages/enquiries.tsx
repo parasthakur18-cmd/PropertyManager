@@ -688,16 +688,16 @@ export default function Enquiries() {
                       </TableRow>
                     ) : 
                       filteredEnquiries.map((enquiry) => (
-                      <TableRow key={enquiry.id} data-testid={`row-enquiry-${enquiry.id}`}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
+                      <TableRow key={enquiry.id} className="h-10" data-testid={`row-enquiry-${enquiry.id}`}>
+                        <TableCell className="py-1 px-2">
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3 text-muted-foreground" />
                             <div>
                               <div className="flex items-center gap-2">
-                                <p className="font-medium">{enquiry.guestName}</p>
+                                <p className="font-medium text-sm">{enquiry.guestName}</p>
                                 {enquiry.specialRequests && (
                                   <div className="group relative">
-                                    <FileText className="h-4 w-4 text-amber-500 cursor-help" data-testid={`icon-special-requests-${enquiry.id}`} />
+                                    <FileText className="h-3 w-3 text-amber-500 cursor-help" data-testid={`icon-special-requests-${enquiry.id}`} />
                                     <div className="invisible group-hover:visible absolute left-0 top-6 z-50 w-64 p-3 bg-popover text-popover-foreground rounded-md border shadow-md">
                                       <p className="text-xs font-semibold mb-1">Special Requests:</p>
                                       <p className="text-xs">{enquiry.specialRequests}</p>
@@ -705,7 +705,7 @@ export default function Enquiries() {
                                   </div>
                                 )}
                               </div>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-xs text-muted-foreground">
                                 {enquiry.bedsBooked 
                                   ? `${enquiry.bedsBooked} bed${enquiry.bedsBooked > 1 ? "s" : ""}`
                                   : `${enquiry.numberOfGuests} guest${enquiry.numberOfGuests > 1 ? "s" : ""}`
@@ -714,13 +714,13 @@ export default function Enquiries() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 text-sm">
+                        <TableCell className="py-1 px-2">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 text-xs">
                               <Phone className="h-3 w-3 text-muted-foreground" />
                               <a 
                                 href={`tel:${enquiry.guestPhone}`} 
-                                className="hover:underline text-blue-600 dark:text-blue-400"
+                                className="hover:underline text-blue-600 dark:text-blue-400 text-xs"
                                 data-testid={`link-call-${enquiry.id}`}
                               >
                                 {enquiry.guestPhone}
@@ -733,11 +733,11 @@ export default function Enquiries() {
                                 title="WhatsApp"
                                 data-testid={`link-whatsapp-${enquiry.id}`}
                               >
-                                <MessageCircle className="h-4 w-4" />
+                                <MessageCircle className="h-3 w-3" />
                               </a>
                             </div>
                             {enquiry.guestEmail && (
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <Mail className="h-3 w-3" />
                                 <a 
                                   href={`mailto:${enquiry.guestEmail}`}
@@ -750,26 +750,26 @@ export default function Enquiries() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <div className="text-sm">
+                        <TableCell className="py-1 px-2">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <div className="text-xs">
                               <p>{format(new Date(enquiry.checkInDate), "MMM d")}</p>
                               <p className="text-muted-foreground">
-                                to {format(new Date(enquiry.checkOutDate), "MMM d, yyyy")}
+                                to {format(new Date(enquiry.checkOutDate), "MMM d")}
                               </p>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Hotel className="h-4 w-4 text-muted-foreground" />
+                        <TableCell className="py-1 px-2">
+                          <div className="flex items-center gap-1">
+                            <Hotel className="h-3 w-3 text-muted-foreground" />
                             {enquiry.isGroupEnquiry && enquiry.roomIds && enquiry.roomIds.length > 0 ? (
-                              <span className="text-sm">
+                              <span className="text-xs">
                                 {enquiry.roomIds.length} Rooms (Group)
                               </span>
                             ) : enquiry.roomId ? (
-                              <span className="text-sm">
+                              <span className="text-xs">
                                 {rooms?.find(r => r.id === enquiry.roomId)?.roomNumber || `Room #${enquiry.roomId}`}
                                 {rooms?.find(r => r.id === enquiry.roomId)?.roomType && (
                                   <span className="text-muted-foreground text-xs ml-1">
@@ -782,18 +782,18 @@ export default function Enquiries() {
                                 )}
                               </span>
                             ) : (
-                              <span className="text-sm text-muted-foreground">No room assigned</span>
+                              <span className="text-xs text-muted-foreground">No room</span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <IndianRupee className="h-4 w-4 text-muted-foreground" />
-                              <div className="text-sm">
-                                <p className="font-medium">₹{enquiry.priceQuoted}</p>
+                        <TableCell className="py-1 px-2">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1">
+                              <IndianRupee className="h-3 w-3 text-muted-foreground" />
+                              <div className="text-xs">
+                                <p className="font-medium">₹{enquiry.priceQuoted || "-"}</p>
                                 {enquiry.advanceAmount && (
-                                  <p className="text-muted-foreground">
+                                  <p className="text-muted-foreground text-xs">
                                     Adv: ₹{enquiry.advanceAmount}
                                   </p>
                                 )}
@@ -806,18 +806,19 @@ export default function Enquiries() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>{getStatusBadge(enquiry.status)}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-2">
+                        <TableCell className="py-1 px-2">{getStatusBadge(enquiry.status)}</TableCell>
+                        <TableCell className="py-1 px-2">
+                          <div className="flex flex-col gap-1">
                             {enquiry.status !== "confirmed" && enquiry.status !== "cancelled" && (
                               <Button
                                 size="sm"
                                 variant="default"
+                                className="text-xs py-1 h-auto"
                                 onClick={() => confirmEnquiryMutation.mutate(enquiry.id)}
                                 disabled={confirmEnquiryMutation.isPending}
                                 data-testid={`button-confirm-enquiry-${enquiry.id}`}
                               >
-                                <Check className="h-4 w-4 mr-1" />
+                                <Check className="h-3 w-3 mr-1" />
                                 Confirm
                               </Button>
                             )}
@@ -825,13 +826,14 @@ export default function Enquiries() {
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="text-xs py-1 h-auto"
                                 onClick={() => {
                                   setSelectedEnquiry(enquiry);
                                   setIsEditDialogOpen(true);
                                 }}
                                 data-testid={`button-edit-enquiry-${enquiry.id}`}
                               >
-                                <Edit className="h-4 w-4 mr-1" />
+                                <Edit className="h-3 w-3 mr-1" />
                                 Edit
                               </Button>
                             )}
@@ -839,24 +841,26 @@ export default function Enquiries() {
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="text-xs py-1 h-auto"
                                 onClick={() => {
                                   setSelectedEnquiry(enquiry);
                                   setIsCancelDialogOpen(true);
                                 }}
                                 data-testid={`button-cancel-enquiry-${enquiry.id}`}
                               >
-                                <X className="h-4 w-4 mr-1" />
+                                <X className="h-3 w-3 mr-1" />
                                 Cancel
                               </Button>
                             )}
                             <Button
                               size="sm"
                               variant="outline"
+                              className="text-xs py-1 h-auto"
                               onClick={() => handleSendMessage(enquiry)}
                               data-testid={`button-send-message-${enquiry.id}`}
                             >
-                              <MessageSquare className="h-4 w-4 mr-1" />
-                              Message
+                              <MessageSquare className="h-3 w-3 mr-1" />
+                              Msg
                               </Button>
                           </div>
                         </TableCell>
