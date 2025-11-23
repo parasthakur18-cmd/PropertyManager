@@ -60,6 +60,7 @@ export default function Bookings() {
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
+  const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
   const { toast} = useToast();
 
   // Auto-open dialog when coming from dashboard with ?new=true
