@@ -117,8 +117,7 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
   useEffect(() => {
     if (selectedRoom?.pricePerNight) {
       const roomPrice = parseFloat(selectedRoom.pricePerNight.toString());
-      form.setValue("priceQuoted", roomPrice);
-      console.log("✅ Auto-filled priceQuoted:", roomPrice);
+      form.setValue("priceQuoted", roomPrice, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
     }
   }, [selectedRoom?.id]);
 

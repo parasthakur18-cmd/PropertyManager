@@ -2667,18 +2667,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mark a bill as paid
   app.post("/api/bills/:id/mark-paid", isAuthenticated, async (req, res) => {
     try {
-      // Get user role from the database user record
-      const userId = req.user?.claims?.sub || req.user?.id;
-      console.log("💳 MARK AS PAID REQUEST - userId:", userId, "billId:", req.params.id, "paymentMethod:", req.body.paymentMethod);
+      // Get userId from auth claims - req.user.claims.sub has the actual user ID
+      const userId = req.user?.claims?.sub;
       
-      // Fetch user from database to get role
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized - no user ID" });
+      }
+      
+      // Fetch user from database to verify they're admin/super-admin
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
-      const userRole = dbUser?.role;
       
-      console.log("👤 User found:", { userId, userRole });
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
       
       // Allow both admin and super-admin to mark bills as paid
-      if (userRole !== "admin" && userRole !== "super-admin") {
+      if (dbUser.role !== "admin" && dbUser.role !== "super-admin") {
         return res.status(403).json({ message: "Only administrators can mark bills as paid" });
       }
 
@@ -2690,8 +2694,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const bill = await storage.getBill(billId);
-      console.log("📋 Bill found:", bill?.id, "Current status:", bill?.paymentStatus, "Balance:", bill?.balanceAmount);
-      
       if (!bill) {
         return res.status(404).json({ message: "Bill not found" });
       }
@@ -2704,7 +2706,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balanceAmount: "0.00",
       });
       
-      console.log("✅ BILL MARKED AS PAID - New status:", updatedBill.paymentStatus);
       res.json(updatedBill);
     } catch (error: any) {
       console.error("❌ ERROR marking bill as paid:", error.message);

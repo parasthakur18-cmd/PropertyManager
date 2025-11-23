@@ -59,7 +59,6 @@ export default function PendingPayments() {
 
   const markAsPaidMutation = useMutation({
     mutationFn: async ({ billId, paymentMethod }: { billId: number; paymentMethod: string }) => {
-      console.log("💳 Marking bill as paid:", { billId, paymentMethod });
       return await apiRequest(`/api/bills/${billId}/mark-paid`, "POST", { paymentMethod });
     },
     onSuccess: () => {
