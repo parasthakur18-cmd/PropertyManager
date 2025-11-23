@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, MapPin, Phone, Mail, Edit, Trash2 } from "lucide-react";
+import { Plus, MapPin, Phone, Mail, Edit, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -82,6 +82,39 @@ export default function Properties() {
 
   const onSubmit = (data: InsertProperty) => {
     createMutation.mutate(data);
+  };
+
+  const handleExportProperty = async (propertyId: number, propertyName: string) => {
+    try {
+      const response = await fetch(`/api/properties/${propertyId}/export`);
+      if (!response.ok) {
+        toast({
+          title: "Export Failed",
+          description: "Failed to export property data",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${propertyName.replace(/\s+/g, "-")}-export-${new Date().toISOString().split("T")[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: `All data for "${propertyName}" has been downloaded`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Export Error",
+        description: error.message || "Failed to export data",
+        variant: "destructive",
+      });
+    }
   };
 
   if (isLoading) {
@@ -252,6 +285,15 @@ export default function Properties() {
                     </CardDescription>
                   </div>
                   <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleExportProperty(property.id, property.name)}
+                      title="Download all property data (rooms, bookings, bills)"
+                      data-testid={`button-export-property-${property.id}`}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"

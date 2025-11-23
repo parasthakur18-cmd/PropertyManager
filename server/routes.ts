@@ -4244,6 +4244,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Property Data Export endpoint
+  app.get("/api/properties/:id/export", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      const propertyId = parseInt(req.params.id);
+
+      // Get property to check authorization
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Check authorization: Super admin can export any, Admin can only export their assigned properties
+      if (user.role !== "super-admin") {
+        const userAssignedProperties = user.assignedPropertyIds || [];
+        if (!userAssignedProperties.includes(propertyId)) {
+          return res.status(403).json({ message: "Unauthorized to export this property" });
+        }
+      }
+
+      // Fetch all related data for this property
+      const rooms = await storage.getRoomsByProperty(propertyId);
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+      const allBills = await storage.getAllBills();
+      const bills = allBills.filter((b: any) => {
+        const booking = bookings.find((bk: any) => bk.id === b.bookingId);
+        return booking ? true : false;
+      });
+
+      // Build comprehensive CSV data
+      const headers = [
+        "PROPERTY DATA EXPORT",
+        `Property: ${property.name}`,
+        `Location: ${property.location || "N/A"}`,
+        `Export Date: ${new Date().toISOString()}`,
+        `Total Rooms: ${rooms.length}`,
+        `Total Bookings: ${bookings.length}`,
+        `Total Bills: ${bills.length}`,
+        "",
+        "=== ROOMS ===",
+        "Room Number,Type,Category,Total Beds,Status,Price Per Night",
+      ];
+
+      const roomData = rooms.map((room: any) => [
+        room.roomNumber,
+        room.roomType || "N/A",
+        room.roomCategory,
+        room.totalBeds || "N/A",
+        room.status,
+        room.pricePerNight,
+      ]);
+
+      const bookingHeaders = [
+        "",
+        "=== BOOKINGS ===",
+        "Booking ID,Guest Name,Check-In,Check-Out,Nights,Rooms,Status,Total Amount,Advance Paid,Balance",
+      ];
+
+      const bookingData = await Promise.all(
+        bookings.map(async (booking: any) => {
+          const guest = await storage.getGuest(booking.guestId);
+          const checkIn = new Date(booking.checkInDate);
+          const checkOut = new Date(booking.checkOutDate);
+          const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+          const roomCount = booking.isGroupBooking ? (booking.roomIds?.length || 1) : 1;
+
+          return [
+            booking.id,
+            guest?.fullName || "Unknown",
+            checkIn.toISOString().split("T")[0],
+            checkOut.toISOString().split("T")[0],
+            nights,
+            roomCount,
+            booking.status,
+            booking.totalAmount || "0",
+            booking.advanceAmount || "0",
+            ((booking.totalAmount || 0) - (booking.advanceAmount || 0)).toFixed(2),
+          ];
+        })
+      );
+
+      const billHeaders = [
+        "",
+        "=== BILLS ===",
+        "Bill ID,Booking ID,Guest Name,Room Charges,Food Charges,Extra Charges,GST,Service Charge,Discount,Total Amount,Payment Status",
+      ];
+
+      const billData = await Promise.all(
+        bills.map(async (bill: any) => {
+          const guest = await storage.getGuest(bill.guestId);
+          return [
+            bill.id,
+            bill.bookingId,
+            guest?.fullName || "Unknown",
+            bill.roomCharges || "0",
+            bill.foodCharges || "0",
+            bill.extraCharges || "0",
+            bill.gstAmount || "0",
+            bill.serviceChargeAmount || "0",
+            bill.discountAmount || "0",
+            bill.totalAmount || "0",
+            bill.paymentStatus || "pending",
+          ];
+        })
+      );
+
+      // Combine all data
+      const allRows = [
+        ...headers,
+        ...roomData,
+        ...bookingHeaders,
+        ...bookingData,
+        ...billHeaders,
+        ...billData,
+      ];
+
+      const csvContent = allRows
+        .map((row: any) => {
+          if (typeof row === "string") return row;
+          return row.map((cell: any) => `"${cell}"`).join(",");
+        })
+        .join("\n");
+
+      // Send as downloadable file
+      res.setHeader("Content-Type", "text/csv;charset=utf-8;");
+      res.setHeader("Content-Disposition", `attachment;filename=property-${propertyId}-export-${Date.now()}.csv`);
+      res.send(csvContent);
+    } catch (error: any) {
+      console.error("[PROPERTY EXPORT ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to export property data" });
+    }
+  });
+
   // Issue Reporting endpoint
   app.post("/api/issues", isAuthenticated, async (req, res) => {
     try {
