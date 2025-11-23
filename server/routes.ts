@@ -3742,6 +3742,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Staff Salary Summary - with pending salary calculation (gross - advances)
+  app.get("/api/salaries/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { startDate, endDate } = req.query;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const salaries = await storage.getAllSalaries();
+      const advances = await storage.getAllAdvances();
+      const allUsers = await storage.getAllUsers();
+
+      // Filter by date range if provided
+      let filteredSalaries = salaries;
+      if (startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        filteredSalaries = salaries.filter(s => {
+          const periodStart = new Date(s.periodStart);
+          const periodEnd = new Date(s.periodEnd);
+          return periodStart <= end && periodEnd >= start;
+        });
+      }
+
+      // Calculate pending salary for each staff member
+      const summaryData = filteredSalaries.map(salary => {
+        const staffAdvances = advances.filter(a => a.userId === salary.userId);
+        const totalAdvances = staffAdvances.reduce((sum, a) => sum + parseFloat(a.amount.toString()), 0);
+        const grossSalary = parseFloat(salary.grossSalary.toString());
+        const pendingSalary = grossSalary - totalAdvances;
+        const staffUser = allUsers.find(u => u.id === salary.userId);
+
+        return {
+          id: salary.id,
+          staffName: staffUser?.email || salary.userId,
+          periodStart: salary.periodStart,
+          periodEnd: salary.periodEnd,
+          grossSalary,
+          totalAdvances,
+          pendingSalary: Math.max(0, pendingSalary),
+          status: salary.status,
+          advancesCount: staffAdvances.length,
+        };
+      });
+
+      res.json(summaryData);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Advance endpoints
   app.get("/api/advances", isAuthenticated, async (req, res) => {
     try {
