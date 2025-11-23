@@ -154,7 +154,7 @@ export default function Dashboard() {
       <div className="mb-6">
         <h1 className="text-xl md:text-3xl font-bold font-serif mb-2">Dashboard</h1>
         <p className="text-xs md:text-sm text-muted-foreground">
-          Welcome to Hostezee - the world's first Replit-powered PMS. Manage everything from here.
+          Welcome to Hostezee - the world's first zero-infrastructure property management system. Deploy instantly, manage everything.
         </p>
       </div>
 
