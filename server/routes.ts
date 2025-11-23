@@ -2902,7 +2902,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const checkOut = new Date(enquiry.checkOutDate);
           const numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
           const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
-          totalAmount = (pricePerNight * numberOfNights).toString();
+          totalAmount = (pricePerNight * numberOfNights).toFixed(2);
         }
       } else if (enquiry.roomIds && enquiry.roomIds.length > 0) {
         // For group bookings
@@ -2916,7 +2916,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const pricePerNight = parseFloat(room.pricePerNight.toString());
             return sum + (pricePerNight * numberOfNights);
           }, 0);
-          totalAmount = totalPrice.toString();
+          totalAmount = totalPrice.toFixed(2);
         }
       }
       
