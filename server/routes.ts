@@ -5175,17 +5175,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
       const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
 
-      if (!apiKey || !baseUrl) {
-        console.error("[CHAT] Missing environment variables:", { apiKey: !!apiKey, baseUrl: !!baseUrl });
-        return res.status(500).json({ message: "AI service not configured. Please try again later." });
-      }
+      console.log("[CHAT] API Key present:", !!apiKey, "Base URL:", baseUrl);
 
-      const { OpenAI } = await import("openai");
-      
-      const client = new OpenAI({
-        apiKey: apiKey,
-        baseURL: baseUrl,
-      });
+      if (!apiKey || !baseUrl) {
+        console.error("[CHAT] Missing AI environment variables");
+        return res.status(500).json({ message: "AI service not configured" });
+      }
 
       const systemMessage = `You are Hostezee's intelligent AI Assistant, helping users with property management questions. 
 You can provide guidance on:
@@ -5200,26 +5195,39 @@ You can provide guidance on:
 Be helpful, professional, and concise. If a user asks about something outside your scope, politely redirect them to the relevant feature or contact support.`;
 
       const chatMessages = [
-        { role: "system" as const, content: systemMessage },
+        { role: "system", content: systemMessage },
         ...messages.map((m: any) => ({
-          role: m.role as "user" | "assistant",
+          role: m.role,
           content: m.content,
         })),
       ];
 
-      const response = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        max_tokens: 1024,
-        messages: chatMessages,
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: chatMessages,
+          max_tokens: 1024,
+          temperature: 0.7,
+        }),
       });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[CHAT] API Error:", response.status, error);
+        return res.status(500).json({ message: "AI service error" });
+      }
+
+      const data = await response.json();
+      const messageText = data.choices?.[0]?.message?.content || 'Unable to generate response';
       
-      const messageText = response.choices[0]?.message?.content || 'Unable to process response';
-      
-      res.json({
-        message: messageText,
-      });
+      res.json({ message: messageText });
     } catch (error: any) {
-      console.error("[CHAT] Error:", error.message || error);
+      console.error("[CHAT] Exception:", error.message);
       res.status(500).json({ message: "Chat service error. Please try again." });
     }
   });
