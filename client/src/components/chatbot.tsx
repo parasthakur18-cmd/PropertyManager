@@ -84,72 +84,84 @@ export function Chatbot() {
   return (
     <>
       {isOpen ? (
-        <Card className="fixed bottom-4 right-4 w-96 max-h-96 shadow-xl z-50 flex flex-col">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5 text-purple-600" />
-              <CardTitle className="text-base">Hostezee Assistant</CardTitle>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => setIsOpen(false)}
-              data-testid="button-close-chatbot"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto space-y-3 mb-3">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                    msg.role === 'user'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
-                  }`}
-                  data-testid={`message-${msg.role}-${msg.id}`}
-                >
-                  {msg.content}
-                </div>
+        <div 
+          className="fixed z-50"
+          style={{
+            bottom: '1rem',
+            right: '1rem',
+            width: '384px',
+            height: '384px',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+          <Card className="w-full h-full shadow-xl flex flex-col">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5 text-purple-600" />
+                <CardTitle className="text-base">Hostezee Assistant</CardTitle>
               </div>
-            ))}
-            {loading && (
-              <div className="flex justify-start">
-                <div className="bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg">
-                  <div className="flex gap-1">
-                    <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce"></div>
-                    <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                    <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setIsOpen(false)}
+                data-testid="button-close-chatbot"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto space-y-3 min-h-0">
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
+                      msg.role === 'user'
+                        ? 'bg-purple-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
+                    }`}
+                    data-testid={`message-${msg.role}-${msg.id}`}
+                  >
+                    {msg.content}
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
-          </CardContent>
-          <div className="border-t p-3 flex gap-2">
-            <Input
-              placeholder="Ask anything..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              disabled={loading}
-              data-testid="input-chat-message"
-              className="text-sm"
-            />
-            <Button
-              size="icon"
-              onClick={handleSendMessage}
-              disabled={loading || !input.trim()}
-              data-testid="button-send-message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </Card>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-lg">
+                    <div className="flex gap-1">
+                      <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce"></div>
+                      <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      <div className="h-2 w-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </CardContent>
+            <div className="border-t p-3 flex gap-2 flex-shrink-0">
+              <Input
+                placeholder="Ask anything..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                disabled={loading}
+                data-testid="input-chat-message"
+                className="text-sm"
+              />
+              <Button
+                size="icon"
+                onClick={handleSendMessage}
+                disabled={loading || !input.trim()}
+                data-testid="button-send-message"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        </div>
       ) : (
         <Button
           onClick={() => setIsOpen(true)}
