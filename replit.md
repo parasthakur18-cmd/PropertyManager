@@ -6,7 +6,13 @@ Hostezee is a comprehensive, multi-property management system for mountain resor
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Updates (Nov 19, 2025)
+## Recent Updates (Nov 23, 2025)
+- **Guest Self Check-in System**: Built complete contactless check-in feature at `/guest-self-checkin`. Guests can scan QR code or enter booking ID, verify identity via email, upload ID proof, and complete check-in without staff assistance. Includes 2 backend endpoints (GET /api/guest-self-checkin/booking/:id, POST /api/guest-self-checkin) with audit logging.
+- **Super Admin Dashboard**: Complete implementation with 8 backend endpoints including user management, property oversight, suspend/activate users, login-as-user functionality, and system reports. All endpoints integrated with audit logging.
+- **Password Recovery System**: 3 complete endpoints (forgot-password, verify-otp, reset-password) with email/SMS OTP dual-channel support.
+- **Database Schema Complete**: All required columns added (phone, status, business_name, owner_user_id) with proper foreign key references. Schema synchronized with database.
+
+## Previous Updates (Nov 19, 2025)
 - **Airbnb-Style Room Calendar**: Built new visual calendar with horizontal date grid and vertical room list. Features color-coded availability (green/red/orange), dormitory bed-level tracking, direct booking from cells, date range search, and available rooms summary panel. Uses new `/api/calendar/availability` endpoint with proper date-overlap logic.
 - **Room Status Smart Logic**: Rooms in "cleaning", "maintenance", or "out-of-order" status are blocked ONLY for today. Future dates ignore room status and only check booking overlaps, allowing advance bookings for rooms currently being cleaned.
 - **Removed Check Availability Page**: Deprecated old buggy availability checker. Users now use the Room Calendar for all availability searches and bookings.
@@ -51,13 +57,14 @@ The frontend is built with **React 18**, **TypeScript** (Vite), **Wouter** for r
 -   **Enhanced Enquiries Management**: Manages the complete enquiry lifecycle, supporting group enquiries and ensuring proper data transfer during conversion to booking.
 -   **Pending Payments Tracking**: Comprehensive system for tracking unpaid bills with payment status selection during checkout (paid/pending), optional due dates and reasons, agent-wise summary dashboard, and mark-as-paid functionality with payment method recording.
 -   **Excel Export for Financial Data**: Admin-only comprehensive CSV export of complete booking and financial data from the Financials page. Export includes: guest details (name, phone, email), property name, room information (numbers, type, category), booking type, dates (check-in, check-out, nights), status, booking source, travel agent, meal plan, complete pricing breakdown (base room price, custom price, room charges total, food charges, extra charges, subtotal, GST rate & amount, service charge rate & amount, discount amount), total bill amount, advance paid, balance due, payment status, payment method, special requests, and metadata. Provides complete financial visibility for accounting and analysis. Restricted to admins only to protect sensitive financial data.
+-   **Guest Self Check-in**: Contactless check-in system with QR code scanning. Guests scan booking QR code, verify identity via email, upload ID proof, and complete check-in without staff assistance. Public route at `/guest-self-checkin` accessible to all guests. Supports both QR code scanning and manual booking ID entry.
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
 -   **Backend**: Express.js, Node.js, TypeScript, RESTful API.
 -   **Database**: PostgreSQL (Neon serverless) with Drizzle ORM.
 -   **Authentication**: Replit Auth, OpenID Connect, Passport.js, session-based via secure HTTP-only cookies, with auto-user creation.
--   **Authorization**: Role-based (admin, manager, staff, kitchen) with multi-property assignments. Managers have **view-only access** to financial data (Billing, Pending Payments, Expenses) for their assigned properties and cannot access Leases, Financials/P&L, Analytics, or Salaries (admin-only). Backend enforces admin-only role checks on all bill modification endpoints (POST /api/bills, PATCH /api/bills/:id, POST /api/bills/merge, POST /api/bills/:id/mark-paid).
+-   **Authorization**: Role-based (admin, super-admin, manager, staff, kitchen) with multi-property assignments. Managers have **view-only access** to financial data (Billing, Pending Payments, Expenses) for their assigned properties and cannot access Leases, Financials/P&L, Analytics, or Salaries (admin-only). Backend enforces admin-only role checks on all bill modification endpoints (POST /api/bills, PATCH /api/bills/:id, POST /api/bills/merge, POST /api/bills/:id/mark-paid).
 -   **Multi-Property Assignment System**: Users can be assigned to multiple properties via an integer array, with all filtering logic updated to support array-based authorization and property ownership enforcement on all mutations.
 -   **Data Validation**: Client-side with Zod, server-side using shared Zod schemas.
 -   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection, and least-privilege access control.
