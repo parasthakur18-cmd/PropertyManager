@@ -156,9 +156,6 @@ export default function Dashboard() {
         <p className="text-xs md:text-sm text-muted-foreground">
           Welcome to Hostezee - the world's first Replit-powered PMS. Manage everything from here.
         </p>
-        <p className="text-xs text-purple-600 dark:text-purple-400 font-semibold mt-2">
-          ✨ Deployed on Replit • Zero Infrastructure Setup • Instant Deployment
-        </p>
       </div>
 
       {/* Quick Action Tabs - Optimized for Mobile (2x3 Grid) */}
