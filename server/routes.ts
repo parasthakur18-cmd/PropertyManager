@@ -3805,6 +3805,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/staff-salaries/detailed - Get detailed salary breakdown for all staff
+  app.get("/api/staff-salaries/detailed", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { propertyId, startDate, endDate } = req.query;
+
+      if (!propertyId || !startDate || !endDate) {
+        return res.status(400).json({ message: "propertyId, startDate, and endDate are required" });
+      }
+
+      const propId = parseInt(propertyId as string);
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      // Check user access to property
+      if (user.role === 'manager') {
+        const assignedProps = user.assignedPropertyIds || [];
+        if (!assignedProps.includes(propId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      const detailedSalaries = await storage.getDetailedStaffSalaries(propId, start, end);
+      res.json(detailedSalaries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Advance endpoints
   app.get("/api/advances", isAuthenticated, async (req, res) => {
     try {

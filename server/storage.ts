@@ -24,6 +24,7 @@ import {
   staffSalaries,
   salaryAdvances,
   salaryPayments,
+  attendanceRecords,
   type User,
   type UpsertUser,
   type Property,
@@ -2096,6 +2097,81 @@ export class DatabaseStorage implements IStorage {
   async deleteSalary(id: number): Promise<void> {
     await db.delete(staffSalaries).where(eq(staffSalaries.id, id));
     eventBus.emit('salary:deleted', { id });
+  }
+
+  // Get detailed staff salaries with attendance deductions
+  async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]> {
+    const staffList = await db.select().from(staffMembers).where(eq(staffMembers.propertyId, propertyId));
+    
+    const detailedSalaries = await Promise.all(
+      staffList.map(async (staff) => {
+        // Get attendance records for this period
+        const attendanceList = await db
+          .select()
+          .from(attendanceRecords)
+          .where(
+            and(
+              eq(attendanceRecords.propertyId, propertyId),
+              gte(attendanceRecords.attendanceDate, startDate),
+              lte(attendanceRecords.attendanceDate, endDate)
+            )
+          );
+
+        // Count attendance by status
+        const presentDays = attendanceList.filter(a => a.status === 'present').length;
+        const absentDays = attendanceList.filter(a => a.status === 'absent').length;
+        const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
+        const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
+        const totalWorkingDays = attendanceList.length;
+
+        // Calculate deductions: 1 absent = 1 day deduction, 1 half-day = 0.5 day deduction
+        const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
+        const dailyRate = baseSalaryNum / 30; // Assuming 30 days in a month
+        const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
+
+        // Get all advances for this staff member in this period
+        const advances = await db
+          .select()
+          .from(salaryAdvances)
+          .where(
+            and(
+              eq(salaryAdvances.staffMemberId, staff.id),
+              gte(salaryAdvances.advanceDate, startDate),
+              lte(salaryAdvances.advanceDate, endDate)
+            )
+          );
+
+        const totalAdvances = advances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+
+        // Final salary calculation
+        const finalSalary = baseSalaryNum - attendanceDeductions - totalAdvances;
+
+        return {
+          staffId: staff.id,
+          staffName: staff.name,
+          jobTitle: staff.jobTitle || 'N/A',
+          baseSalary: baseSalaryNum,
+          presentDays,
+          absentDays,
+          leaveDays,
+          halfDays,
+          totalWorkingDays,
+          dailyRate: Math.round(dailyRate * 100) / 100,
+          attendanceDeductions: Math.round(attendanceDeductions * 100) / 100,
+          totalAdvances: Math.round(totalAdvances * 100) / 100,
+          advances: advances.map(a => ({
+            id: a.id,
+            amount: parseFloat(a.amount.toString()),
+            date: a.advanceDate,
+            reason: a.reason,
+          })),
+          finalSalary: Math.round(finalSalary * 100) / 100,
+          status: finalSalary > 0 ? 'pending' : finalSalary === 0 ? 'paid' : 'due',
+        };
+      })
+    );
+
+    return detailedSalaries.sort((a, b) => a.staffName.localeCompare(b.staffName));
   }
 
   // Salary Advance operations
