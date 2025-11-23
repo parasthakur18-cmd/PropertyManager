@@ -382,7 +382,8 @@ export default function SuperAdmin() {
               })
             )}
           </div>
-        </TabsContent>
+        </div>
+        )}
 
         {/* Contact Enquiries Tab */}
         {activeTab === "enquiries" && (
