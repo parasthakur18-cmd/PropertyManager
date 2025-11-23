@@ -8,6 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -50,6 +51,7 @@ export default function Attendance() {
   const [isAddStaffDialogOpen, setIsAddStaffDialogOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
+  const [rosterDate, setRosterDate] = useState(new Date().toISOString().split("T")[0]);
 
   const { data: properties = [] } = useQuery<any[]>({
     queryKey: ["/api/properties"],
@@ -159,6 +161,25 @@ export default function Attendance() {
 
   const handleSubmit = (data: z.infer<typeof attendanceFormSchema>) => {
     createAttendanceMutation.mutate(data);
+  };
+
+  const handleRosterStatusChange = (staffMemberId: string, status: string) => {
+    createAttendanceMutation.mutate({
+      staffMemberId,
+      attendanceDate: rosterDate,
+      status: status as any,
+      remarks: "",
+    });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "present": return "bg-green-100 hover:bg-green-200 text-green-800";
+      case "absent": return "bg-red-100 hover:bg-red-200 text-red-800";
+      case "leave": return "bg-blue-100 hover:bg-blue-200 text-blue-800";
+      case "half-day": return "bg-yellow-100 hover:bg-yellow-200 text-yellow-800";
+      default: return "bg-gray-100 hover:bg-gray-200 text-gray-800";
+    }
   };
 
   const monthStart = startOfMonth(selectedMonth);
