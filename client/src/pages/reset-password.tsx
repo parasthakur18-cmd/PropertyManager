@@ -73,7 +73,7 @@ export default function ResetPassword() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/forgot-password")}
+            onClick={() => setLocation("/forgot-password")}
             className="w-fit"
             data-testid="button-back"
           >
