@@ -1407,7 +1407,6 @@ export default function Bookings() {
           </DialogContent>
           </Dialog>
         </div>
-      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6">
@@ -1602,6 +1601,7 @@ export default function Bookings() {
           )}
         </TabsContent>
       </Tabs>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
