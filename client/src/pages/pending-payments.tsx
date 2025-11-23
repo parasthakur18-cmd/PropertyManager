@@ -415,7 +415,9 @@ export default function PendingPayments() {
               </div>
               <div>
                 <div className="text-muted-foreground">Amount Due</div>
-                <div className="font-medium">₹{selectedBill?.balanceAmount}</div>
+                <div className="font-medium">
+                  ₹{parseFloat(selectedBill?.balanceAmount || "0").toFixed(2)}
+                </div>
               </div>
             </div>
             <div className="space-y-2">
