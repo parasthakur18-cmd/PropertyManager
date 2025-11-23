@@ -24,9 +24,9 @@ const attendanceFormSchema = z.object({
 });
 
 const addStaffSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().optional(),
-  position: z.string().min(1, "Position is required"),
+  name: z.string().min(1, "Full name is required"),
+  jobTitle: z.string().min(1, "Job title is required"),
+  propertyId: z.string().min(1, "Property is required"),
 });
 
 interface AttendanceStats {
@@ -50,6 +50,10 @@ export default function Attendance() {
   const [isAddStaffDialogOpen, setIsAddStaffDialogOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
+
+  const { data: properties = [] } = useQuery<any[]>({
+    queryKey: ["/api/properties"],
+  });
 
   const { data: staffMembers = [], refetch: refetchStaff } = useQuery<any[]>({
     queryKey: ["/api/staff-members"],
@@ -92,19 +96,18 @@ export default function Attendance() {
   const addStaffForm = useForm<z.infer<typeof addStaffSchema>>({
     resolver: zodResolver(addStaffSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
-      position: "",
+      name: "",
+      jobTitle: "",
+      propertyId: "",
     },
   });
 
   const addStaffMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addStaffSchema>) => {
       return await apiRequest("/api/staff-members", "POST", {
-        firstName: data.firstName,
-        lastName: data.lastName || "",
-        position: data.position,
-        propertyId: 1, // Assuming property ID 1, adjust as needed
+        name: data.name,
+        jobTitle: data.jobTitle,
+        propertyId: parseInt(data.propertyId),
         baseSalary: 0,
       });
     },
@@ -232,7 +235,7 @@ export default function Attendance() {
                           <SelectContent>
                             {staffMembers.map((staff) => (
                               <SelectItem key={staff.id} value={String(staff.id)}>
-                                {staff.firstName} {staff.lastName}
+                                {staff.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -334,12 +337,36 @@ export default function Attendance() {
               <form onSubmit={addStaffForm.handleSubmit((data) => addStaffMutation.mutate(data))} className="space-y-4">
                 <FormField
                   control={addStaffForm.control}
-                  name="firstName"
+                  name="propertyId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>First Name</FormLabel>
+                      <FormLabel>Property</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-property">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {properties.map((property) => (
+                            <SelectItem key={property.id} value={String(property.id)}>
+                              {property.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addStaffForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name</FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-first-name" />
+                        <Input {...field} placeholder="e.g., John Doe" data-testid="input-name" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -347,25 +374,12 @@ export default function Attendance() {
                 />
                 <FormField
                   control={addStaffForm.control}
-                  name="lastName"
+                  name="jobTitle"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Last Name</FormLabel>
+                      <FormLabel>Job Title</FormLabel>
                       <FormControl>
-                        <Input {...field} data-testid="input-last-name" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={addStaffForm.control}
-                  name="position"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Position</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-position" />
+                        <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-job-title" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -436,7 +450,7 @@ export default function Attendance() {
           <div className="space-y-6 overflow-x-auto">
             {staffMembers.map((staff) => (
               <div key={staff.id} className="border rounded-lg p-4">
-                <h3 className="font-semibold mb-3">{staff.firstName} {staff.lastName} - {staff.position}</h3>
+                <h3 className="font-semibold mb-3">{staff.name} - {staff.jobTitle}</h3>
                 <div className="grid grid-cols-7 gap-2">
                   {daysInMonth.map((day) => {
                     const dayAttendance = getAttendanceForDate(staff.id, day);
