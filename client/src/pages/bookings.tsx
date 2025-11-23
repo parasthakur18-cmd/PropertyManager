@@ -783,52 +783,82 @@ export default function Bookings() {
 
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-        <div>
-          <h1 className="text-3xl font-bold font-serif">Bookings</h1>
-          <p className="text-muted-foreground mt-1">Manage reservations and check-ins</p>
-        </div>
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-none md:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by guest, property, room, or status..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-bookings"
-            />
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6 md:p-8">
+      {/* Header Section */}
+      <div className="mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">Bookings</h1>
+            <p className="text-muted-foreground text-lg">Manage reservations and check-ins seamlessly</p>
           </div>
-          
-          {/* Check-in Date Filter */}
-          <div className="flex-1 md:flex-none md:w-48">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input
-                type="date"
-                value={checkinDateFilter}
-                onChange={(e) => setCheckinDateFilter(e.target.value)}
-                placeholder="Filter by check-in date"
-                className="flex-1"
-                data-testid="input-checkin-date-filter"
-              />
-              {checkinDateFilter && (
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setCheckinDateFilter("")}
-                  className="h-9 w-9"
-                  data-testid="button-clear-date-filter"
-                  title="Clear date filter"
-                >
-                  <span className="text-lg">✕</span>
-                </Button>
+        </div>
+
+        {/* Filter & Search Card */}
+        <Card className="border-none shadow-md hover-elevate transition-all duration-200 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+          <CardContent className="p-5">
+            <div className="flex flex-col md:flex-row gap-4 items-end">
+              {/* Search Input */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="search" className="text-sm font-medium text-muted-foreground">Search</Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-primary/60" />
+                  <Input
+                    id="search"
+                    placeholder="Guest name, property, room, status..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 border-primary/20 focus:border-primary/50 focus:ring-primary/30"
+                    data-testid="input-search-bookings"
+                  />
+                </div>
+              </div>
+              
+              {/* Check-in Date Filter */}
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="checkin-date" className="text-sm font-medium text-muted-foreground">Check-in Date</Label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-primary/60" />
+                    <Input
+                      id="checkin-date"
+                      type="date"
+                      value={checkinDateFilter}
+                      onChange={(e) => setCheckinDateFilter(e.target.value)}
+                      className="pl-10 border-primary/20 focus:border-primary/50 focus:ring-primary/30"
+                      data-testid="input-checkin-date-filter"
+                    />
+                  </div>
+                  {checkinDateFilter && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setCheckinDateFilter("")}
+                      className="border-primary/20 hover:bg-destructive/10 hover:text-destructive"
+                      data-testid="button-clear-date-filter"
+                      title="Clear date filter"
+                    >
+                      <span className="text-lg">✕</span>
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filter Badge */}
+              {(searchQuery || checkinDateFilter) && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <span className="text-xs font-medium text-primary">
+                    {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) !== 1 ? 's' : ''} active
+                  </span>
+                </div>
               )}
             </div>
-          </div>
-          
-          <Dialog 
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Action Button */}
+      <div className="flex justify-end mb-6">
+        <Dialog 
             open={isDialogOpen} 
             onOpenChange={(open) => {
               setIsDialogOpen(open);
