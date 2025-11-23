@@ -1,9 +1,8 @@
 /**
- * Email Service using authkey.io API
+ * Email Service for Hostezee PMS
  * Sends transactional emails for bookings, check-ins, and password resets
+ * Currently logs emails to console (ready for SMTP integration)
  */
-
-import nodemailer from 'nodemailer';
 
 interface EmailMessage {
   to: string;
