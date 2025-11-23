@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearch } from "wouter";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,8 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [, navigate] = useNavigate();
-  const search = useSearch();
+  const [location, setLocation] = useLocation();
+  const search = location.split("?")[1] || "";
   const params = new URLSearchParams(search);
   const resetToken = params.get("token") || "";
 
@@ -54,7 +54,7 @@ export default function ResetPassword() {
         title: "Success",
         description: "Password reset successfully! You can now log in.",
       });
-      navigate("/");
+      setLocation("/");
     } catch (error: any) {
       toast({
         title: "Error",

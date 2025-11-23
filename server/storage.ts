@@ -277,6 +277,15 @@ export interface IStorage {
   createSalaryPayment(payment: InsertSalaryPayment): Promise<SalaryPayment>;
   deleteSalaryPayment(id: number): Promise<void>;
 
+  // Super Admin operations
+  updateUserStatus(userId: string, status: "active" | "suspended"): Promise<User>;
+  getAllIssueReports(): Promise<IssueReport[]>;
+
+  // Password Reset operations
+  createPasswordResetOtp(data: InsertPasswordResetOtp): Promise<any>;
+  verifyPasswordResetOtp(channel: string, identifier: string, otp: string): Promise<{ resetToken: string }>;
+  resetPassword(resetToken: string, newPassword: string): Promise<void>;
+
   // Dashboard stats
   getDashboardStats(propertyId?: number): Promise<any>;
   getAnalytics(): Promise<any>;
@@ -302,6 +311,15 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date() 
       })
       .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateUserStatus(userId: string, status: "active" | "suspended"): Promise<User> {
+    const [updated] = await db
+      .update(users)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(users.id, userId))
       .returning();
     return updated;
   }

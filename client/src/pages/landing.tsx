@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Building2, Calendar, Users, BarChart3 } from "lucide-react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 
 export default function Landing() {
-  const [, navigate] = useNavigate();
+  const [, setLocation] = useLocation();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10">
@@ -35,7 +35,7 @@ export default function Landing() {
             <Button
               size="lg"
               variant="outline"
-              onClick={() => navigate("/forgot-password")}
+              onClick={() => setLocation("/forgot-password")}
               className="text-lg px-8 py-6"
               data-testid="button-forgot-password"
             >
