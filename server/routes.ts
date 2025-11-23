@@ -4194,6 +4194,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public Registration endpoint
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, businessName, firstName, lastName } = req.body;
+
+      // Validate input
+      if (!email || !password || !businessName) {
+        return res.status(400).json({ message: "Email, password, and business name are required" });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      // Check if user already exists
+      const existingUser = await storage.getUser("");
+      const allUsers = await storage.getAllUsers();
+      const userExists = allUsers.some((u) => u.email === email);
+
+      if (userExists) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+
+      // Create new user with admin role
+      const newUser = await storage.upsertUser({
+        email,
+        firstName: firstName || "",
+        lastName: lastName || "",
+        businessName,
+        role: "admin",
+        status: "active",
+      });
+
+      // Log the registration
+      console.log(`[REGISTRATION] New user registered: ${email} with business: ${businessName}`);
+
+      res.status(201).json({
+        message: "Registration successful",
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          businessName: newUser.businessName,
+        },
+      });
+    } catch (error: any) {
+      console.error("[REGISTRATION ERROR]", error);
+      res.status(500).json({ message: error.message || "Registration failed" });
+    }
+  });
+
+  // Issue Reporting endpoint
+  app.post("/api/issues", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { title, description, category, severity } = req.body;
+
+      // Validate required fields
+      if (!title || !description || !category || !severity) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+
+      // Validate enum values
+      const validCategories = ["bug", "feature_request", "documentation", "performance", "other"];
+      const validSeverities = ["low", "medium", "high", "critical"];
+
+      if (!validCategories.includes(category)) {
+        return res.status(400).json({ message: "Invalid category" });
+      }
+
+      if (!validSeverities.includes(severity)) {
+        return res.status(400).json({ message: "Invalid severity" });
+      }
+
+      // Create issue report
+      const report = await storage.createIssueReport({
+        reportedByUserId: userId,
+        propertyId: undefined,
+        title,
+        description,
+        category,
+        severity,
+        status: "open",
+      });
+
+      console.log(`[ISSUE REPORT] New issue reported by ${userId}: ${title}`);
+
+      res.status(201).json({
+        message: "Issue reported successfully",
+        report,
+      });
+    } catch (error: any) {
+      console.error("[ISSUE REPORT ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to report issue" });
+    }
+  });
+
   // Super Admin endpoints
   app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
     try {

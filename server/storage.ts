@@ -289,6 +289,7 @@ export interface IStorage {
   // Super Admin operations
   updateUserStatus(userId: string, status: "active" | "suspended"): Promise<User>;
   getAllIssueReports(): Promise<IssueReport[]>;
+  createIssueReport(report: InsertIssueReport): Promise<IssueReport>;
 
   // Password Reset operations
   createPasswordResetOtp(data: InsertPasswordResetOtp): Promise<any>;
@@ -2305,6 +2306,12 @@ export class DatabaseStorage implements IStorage {
   // Super Admin operations
   async getAllIssueReports(): Promise<IssueReport[]> {
     return await db.select().from(issueReports).orderBy(desc(issueReports.createdAt));
+  }
+
+  async createIssueReport(report: InsertIssueReport): Promise<IssueReport> {
+    const [created] = await db.insert(issueReports).values(report).returning();
+    eventBus.emit('issue-report:created', created);
+    return created;
   }
 
   // Password Reset operations
