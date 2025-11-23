@@ -5172,13 +5172,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Messages array required" });
       }
 
-      const { ChatOpenAI } = await import("@langchain/openai");
+      const { OpenAI } = await import("openai");
       
-      const chat = new ChatOpenAI({
+      const client = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-        model: "gpt-4o-mini",
-        temperature: 0.7,
       });
 
       const systemMessage = `You are Hostezee's intelligent AI Assistant, helping users with property management questions. 
@@ -5194,17 +5192,23 @@ You can provide guidance on:
 Be helpful, professional, and concise. If a user asks about something outside your scope, politely redirect them to the relevant feature or contact support.`;
 
       const chatMessages = [
-        { role: "system", content: systemMessage },
+        { role: "system" as const, content: systemMessage },
         ...messages.map((m: any) => ({
-          role: m.role,
+          role: m.role as "user" | "assistant",
           content: m.content,
         })),
       ];
 
-      const response = await chat.invoke(chatMessages);
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        max_tokens: 1024,
+        messages: chatMessages,
+      });
+      
+      const messageText = response.choices[0]?.message?.content || 'Unable to process response';
       
       res.json({
-        message: response.content,
+        message: messageText,
       });
     } catch (error: any) {
       console.error("[CHAT] Error:", error);
