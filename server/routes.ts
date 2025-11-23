@@ -2,8 +2,6 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import {
   insertPropertySchema,
   insertRoomSchema,
@@ -44,34 +42,6 @@ import {
 } from "./whatsapp";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Security middleware - Add helmet for HTTP security headers
-  app.use(helmet());
-
-  // Rate limiting middleware - Protect API endpoints from abuse
-  const generalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // 100 requests per windowMs
-    message: "Too many requests from this IP, please try again after 15 minutes",
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 login attempts per windowMs
-    message: "Too many login attempts, please try again after 15 minutes",
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-
-  // Apply rate limiting to general API routes
-  app.use("/api/", generalLimiter);
-
-  // Apply stricter rate limiting to auth routes
-  app.use("/api/auth", authLimiter);
-  app.use("/api/login", authLimiter);
-  app.use("/api/register", authLimiter);
-
   // Auth middleware
   await setupAuth(app);
 
