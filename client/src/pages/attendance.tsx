@@ -83,7 +83,7 @@ export default function Attendance() {
         const data = await response.json();
         console.log(`✅ [ATTENDANCE FETCH] Month: ${monthString}`);
         console.log(`📊 Total records: ${data.length}`);
-        data.forEach((record, idx) => {
+        data.forEach((record: any, idx: number) => {
           console.log(`  Record ${idx + 1}: staff_id=${record.staff_id || record.staffId}, date=${record.attendance_date || record.attendanceDate}, status=${record.status}`);
         });
         return data;
