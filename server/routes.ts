@@ -4117,6 +4117,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const allRecords = await storage.getAllAttendance();
+      console.log(`[ATTENDANCE DEBUG] Raw records from storage: ${allRecords.length} records`);
+      
+      if (allRecords.length > 0) {
+        console.log(`[ATTENDANCE DEBUG] First record:`, JSON.stringify(allRecords[0], null, 2));
+      }
       
       // Transform all records to camelCase with proper date handling
       const transformed = allRecords.map(r => {
@@ -4128,8 +4133,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
           dateStr = dateValue.toISOString().split('T')[0];
         } else {
-          dateStr = ""; // Invalid date
+          dateStr = ""; // Invalid date - skip this record
         }
+        
+        if (!dateStr) return null; // Skip records with invalid dates
         
         return {
           id: r.id,
@@ -4139,19 +4146,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: r.status,
           remarks: r.remarks
         };
-      });
+      }).filter(Boolean); // Remove null entries
+      
+      console.log(`[ATTENDANCE DEBUG] Transformed records: ${transformed.length} records`);
       
       // Filter by month if provided
       if (month) {
         const monthStr = month as string;
         const filtered = transformed.filter(record => {
-          return record.attendanceDate.substring(0, 7) === monthStr;
+          return record && record.attendanceDate && record.attendanceDate.substring(0, 7) === monthStr;
         });
+        console.log(`[ATTENDANCE DEBUG] Filtered by month ${monthStr}: ${filtered.length} records`);
         return res.json(filtered);
       }
       
       res.json(transformed);
     } catch (error: any) {
+      console.error(`[ATTENDANCE ERROR]:`, error);
       res.status(500).json({ message: error.message });
     }
   });
