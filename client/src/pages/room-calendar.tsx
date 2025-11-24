@@ -305,7 +305,7 @@ export default function RoomCalendar() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 bg-background border p-2 text-left min-w-[150px] z-10 font-semibold">
+                    <th className="sticky left-0 bg-background border p-1 md:p-2 text-left min-w-[70px] md:min-w-[150px] z-10 font-semibold text-xs md:text-sm">
                       Room
                     </th>
                     {dates.map((date) => (
@@ -324,15 +324,15 @@ export default function RoomCalendar() {
                 <tbody>
                   {sortedCalendarData.map((room) => (
                     <tr key={room.roomId} data-testid={`row-room-${room.roomId}`}>
-                      <td className="sticky left-0 bg-background border p-3 font-medium z-10">
-                        <div className="font-semibold">{room.roomNumber}</div>
+                      <td className="sticky left-0 bg-background border p-1 md:p-3 font-medium z-10">
+                        <div className="font-semibold text-xs md:text-sm">{room.roomNumber}</div>
                         {room.roomName && (
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs md:text-sm text-muted-foreground hidden md:block">
                             {room.roomName}
                           </div>
                         )}
                         {room.roomCategory === "dormitory" && (
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="text-xs text-muted-foreground mt-1 hidden md:block">
                             {room.totalBeds} beds
                           </div>
                         )}
