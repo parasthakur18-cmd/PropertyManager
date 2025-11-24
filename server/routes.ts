@@ -4098,7 +4098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/attendance", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const { staffMemberId, propertyId, attendanceDate } = req.query;
+      const { staffMemberId, propertyId, attendanceDate, month } = req.query;
 
       if (staffMemberId) {
         const records = await storage.getAttendanceByStaffMember(parseInt(staffMemberId as string));
@@ -4114,6 +4114,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const date = new Date(attendanceDate as string);
         const records = await storage.getAttendanceByDate(date);
         return res.json(records);
+      }
+
+      // Filter by month if provided (format: 2025-11)
+      if (month) {
+        const allRecords = await storage.getAllAttendance();
+        const monthStr = month as string;
+        const filtered = allRecords.filter(record => {
+          const recordDate = new Date(record.attendance_date || record.attendanceDate);
+          const recordMonth = recordDate.toISOString().slice(0, 7);
+          return recordMonth === monthStr;
+        });
+        return res.json(filtered);
       }
 
       const allRecords = await storage.getAllAttendance();

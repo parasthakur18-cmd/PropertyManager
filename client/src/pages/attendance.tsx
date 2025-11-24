@@ -79,7 +79,9 @@ export default function Attendance() {
         { credentials: "include" }
       );
       if (!response.ok) throw new Error("Failed to fetch attendance");
-      return response.json();
+      const data = await response.json();
+      console.log(`[ATTENDANCE FETCH] Month: ${monthString}, Records returned:`, data);
+      return data;
     },
   });
 
@@ -251,7 +253,11 @@ export default function Attendance() {
       const actualStaffId = a.staffId !== undefined ? a.staffId : a.staff_id;
       const actualAttendanceDate = a.attendanceDate !== undefined ? a.attendanceDate : a.attendance_date;
       const attendanceDateStr = format(new Date(actualAttendanceDate), "yyyy-MM-dd");
-      return String(actualStaffId) === staffIdStr && attendanceDateStr === dateStr;
+      const isMatch = String(actualStaffId) === staffIdStr && attendanceDateStr === dateStr;
+      if (isMatch) {
+        console.log(`[MATCH FOUND] Staff: ${staffIdStr}, Date: ${dateStr}, Status: ${a.status}`);
+      }
+      return isMatch;
     });
     return result;
   };
