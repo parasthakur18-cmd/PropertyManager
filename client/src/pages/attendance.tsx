@@ -818,20 +818,15 @@ export default function Attendance() {
                   {daysInMonth.map((day) => {
                     const dayAttendance = getAttendanceForDate(staff.id, day);
                     const status = dayAttendance?.status || "unmarked";
+                    const bgColor = status === "present" ? "bg-green-500" : status === "absent" ? "bg-red-500" : status === "leave" ? "bg-blue-500" : status === "half-day" ? "bg-yellow-500" : "bg-gray-100";
+                    const textColor = status === "unmarked" ? "text-gray-600" : "text-white font-bold";
                     return (
                       <div
                         key={day.toString()}
-                        className="flex flex-col items-center p-2 rounded border text-xs"
+                        className={`flex flex-col items-center justify-center p-2 rounded border text-xs min-h-12 ${bgColor} ${textColor}`}
                         data-testid={`attendance-cell-${format(day, "yyyy-MM-dd")}`}
                       >
                         <span className="font-medium">{format(day, "d")}</span>
-                        <div className="mt-1">
-                          {status === "unmarked" ? (
-                            <div className="h-5 w-5 border-2 border-dashed border-gray-300 rounded"></div>
-                          ) : (
-                            getStatusIcon(status)
-                          )}
-                        </div>
                       </div>
                     );
                   })}
