@@ -241,9 +241,10 @@ export default function Attendance() {
     return attendanceStats.find(s => s.staffId === staffId);
   };
 
-  const getAttendanceForDate = (staffId: string, date: Date) => {
+  const getAttendanceForDate = (staffId: string | number, date: Date) => {
+    const staffIdStr = String(staffId);
     return attendance.find(a => 
-      String(a.staffId) === staffId && 
+      String(a.staffId) === staffIdStr && 
       format(new Date(a.attendanceDate), "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
     );
   };
