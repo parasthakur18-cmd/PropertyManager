@@ -30,21 +30,22 @@ export function PendingNotifications() {
     return SCHEDULED_HOURS.includes(now.getHours());
   };
 
-  // Get storage key for today's dismissal
-  const getTodayKey = () => {
-    const today = new Date().toDateString();
-    return `pending-notif-dismissed-${today}`;
+  // Get storage key for current hour's dismissal
+  const getCurrentHourKey = () => {
+    const now = new Date();
+    const dateHour = `${now.toDateString()}-${now.getHours()}`;
+    return `pending-notif-dismissed-${dateHour}`;
   };
 
-  // Check if user already dismissed today
-  const wasDismissedToday = () => {
-    const key = getTodayKey();
+  // Check if dismissed in current hour
+  const wasDismissedThisHour = () => {
+    const key = getCurrentHourKey();
     return localStorage.getItem(key) === "true";
   };
 
-  // Mark as dismissed for the entire day
-  const markAsDismissedToday = () => {
-    const key = getTodayKey();
+  // Mark as dismissed for current hour only
+  const markAsDismissedThisHour = () => {
+    const key = getCurrentHourKey();
     localStorage.setItem(key, "true");
   };
 
@@ -52,8 +53,8 @@ export function PendingNotifications() {
     if (pendingItems && !isLoading) {
       const total = Object.values(pendingItems).reduce((a, b) => a + b, 0);
       
-      // Only show if: has pending items, at scheduled time, and not dismissed today
-      if (total > 0 && isScheduledTime() && !wasDismissedToday()) {
+      // Only show if: has pending items, at scheduled time, and not dismissed this hour
+      if (total > 0 && isScheduledTime() && !wasDismissedThisHour()) {
         setShowNotification(true);
 
         // Auto-hide after 1 hour
@@ -79,7 +80,7 @@ export function PendingNotifications() {
 
   const handleDismiss = () => {
     setShowNotification(false);
-    markAsDismissedToday(); // Mark as dismissed for the entire day
+    markAsDismissedThisHour(); // Mark as dismissed for current hour only
     if (autoHideTimer) {
       clearTimeout(autoHideTimer);
     }
@@ -129,7 +130,7 @@ export function PendingNotifications() {
             className="mt-3 text-sm underline hover:no-underline text-orange-700 dark:text-orange-300"
             data-testid="button-close-notification"
           >
-            Dismiss (won't show today)
+            Dismiss
           </button>
         </AlertDescription>
       </Alert>
