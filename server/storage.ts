@@ -505,6 +505,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRoomsWithCheckedInGuests(): Promise<any[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     const roomsWithGuests = await db
       .select({
         roomId: rooms.id,
@@ -518,7 +521,10 @@ export class DatabaseStorage implements IStorage {
       .from(rooms)
       .innerJoin(bookings, eq(bookings.roomId, rooms.id))
       .innerJoin(guests, eq(bookings.guestId, guests.id))
-      .where(eq(bookings.status, "checked-in"))
+      .where(and(
+        eq(bookings.status, "checked-in"),
+        gte(bookings.checkOutDate, today) // Only show bookings that haven't checked out yet
+      ))
       .orderBy(rooms.roomNumber);
     
     return roomsWithGuests;
