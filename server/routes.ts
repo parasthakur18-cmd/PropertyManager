@@ -4121,32 +4121,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const allRecords = await storage.getAllAttendance();
         const monthStr = month as string;
         const filtered = allRecords.filter(record => {
-          const recordDate = new Date(record.attendance_date || record.attendanceDate);
-          const recordMonth = recordDate.toISOString().slice(0, 7);
-          return recordMonth === monthStr;
+          try {
+            const dateValue = record.attendance_date || record.attendanceDate;
+            const recordDate = typeof dateValue === 'string' ? new Date(dateValue) : dateValue;
+            const recordMonth = new Date(recordDate).toISOString().slice(0, 7);
+            return recordMonth === monthStr;
+          } catch (e) {
+            console.error('Date parsing error:', record, e);
+            return false;
+          }
         });
         // Transform snake_case to camelCase
-        const transformed = filtered.map(r => ({
-          id: r.id,
-          staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
-          propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
-          attendanceDate: r.attendance_date !== undefined ? r.attendance_date : r.attendanceDate,
-          status: r.status,
-          remarks: r.remarks
-        }));
+        const transformed = filtered.map(r => {
+          const dateValue = r.attendance_date || r.attendanceDate;
+          return {
+            id: r.id,
+            staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
+            propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
+            attendanceDate: typeof dateValue === 'string' ? dateValue : new Date(dateValue).toISOString().split('T')[0],
+            status: r.status,
+            remarks: r.remarks
+          };
+        });
         return res.json(transformed);
       }
 
       const allRecords = await storage.getAllAttendance();
       // Transform all records to camelCase
-      const transformed = allRecords.map(r => ({
-        id: r.id,
-        staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
-        propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
-        attendanceDate: r.attendance_date !== undefined ? r.attendance_date : r.attendanceDate,
-        status: r.status,
-        remarks: r.remarks
-      }));
+      const transformed = allRecords.map(r => {
+        const dateValue = r.attendance_date || r.attendanceDate;
+        return {
+          id: r.id,
+          staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
+          propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
+          attendanceDate: typeof dateValue === 'string' ? dateValue : new Date(dateValue).toISOString().split('T')[0],
+          status: r.status,
+          remarks: r.remarks
+        };
+      });
       res.json(transformed);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
