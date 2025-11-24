@@ -172,6 +172,72 @@ export async function sendSelfCheckinConfirmationEmail(
 }
 
 /**
+ * Send issue report notification email to super admin
+ */
+export async function sendIssueReportNotificationEmail(
+  adminEmail: string,
+  reporterName: string,
+  title: string,
+  description: string,
+  category: string,
+  severity: string
+): Promise<EmailResponse> {
+  const subject = `[${severity.toUpperCase()}] New Issue Report: ${title}`;
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .details-box { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #dc2626; }
+          .label { font-weight: bold; color: #555; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .severity-critical { color: #dc2626; }
+          .severity-high { color: #f97316; }
+          .severity-medium { color: #eab308; }
+          .severity-low { color: #22c55e; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>New Issue Report</h1>
+          </div>
+          <div class="content">
+            <p>A user has submitted a new issue report in your PMS system.</p>
+            
+            <div class="details-box">
+              <p><span class="label">Reported By:</span> ${reporterName}</p>
+              <p><span class="label">Title:</span> ${title}</p>
+              <p><span class="label">Category:</span> ${category.replace(/_/g, " ").toUpperCase()}</p>
+              <p><span class="label severity-${severity}">Severity:</span> <span class="severity-${severity}">${severity.toUpperCase()}</span></p>
+            </div>
+
+            <p><span class="label">Description:</span></p>
+            <div style="background: white; padding: 15px; border-left: 3px solid #1e40af; white-space: pre-wrap;">${description}</div>
+
+            <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
+              <strong>Next Step:</strong> Log in to your Super Admin Portal → Reports tab to view and manage this issue.
+            </p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: adminEmail,
+    subject,
+    html,
+  });
+}
+
+/**
  * Send password reset OTP email
  */
 export async function sendPasswordResetEmail(

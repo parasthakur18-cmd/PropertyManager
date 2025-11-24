@@ -43,6 +43,7 @@ import {
   sendPendingPaymentReminder,
   sendEnquiryConfirmation
 } from "./whatsapp";
+import { sendIssueReportNotificationEmail } from "./email-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -4616,6 +4617,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       console.log(`[ISSUE REPORT] New issue reported by ${userId}: ${title}`);
+
+      // Send email notification to super admin
+      try {
+        const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+        const reporterName = dbUser ? `${dbUser.firstName} ${dbUser.lastName}` : "User";
+        
+        // Get super admin email
+        const [superAdmin] = await db.select().from(users).where(eq(users.role, 'super-admin'));
+        const superAdminEmail = superAdmin?.email || 'admin@hostezee.in';
+        
+        await sendIssueReportNotificationEmail(
+          superAdminEmail,
+          reporterName,
+          title,
+          description,
+          category,
+          severity
+        );
+        console.log(`[EMAIL] Issue report notification sent to ${superAdminEmail}`);
+      } catch (emailError) {
+        console.warn(`[EMAIL] Failed to send issue report notification:`, emailError);
+        // Don't fail the whole request if email fails
+      }
 
       res.status(201).json({
         message: "Issue reported successfully",
