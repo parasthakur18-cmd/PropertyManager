@@ -28,6 +28,7 @@ const addStaffSchema = z.object({
   name: z.string().min(1, "Full name is required"),
   jobTitle: z.string().min(1, "Job title is required"),
   propertyId: z.string().min(1, "Property is required"),
+  joiningDate: z.string().optional(),
   baseSalary: z.coerce.number().nonnegative("Base salary must be non-negative").optional(),
 });
 
@@ -108,6 +109,7 @@ export default function Attendance() {
       name: "",
       jobTitle: "",
       propertyId: "",
+      joiningDate: new Date().toISOString().split("T")[0],
       baseSalary: 0,
     },
   });

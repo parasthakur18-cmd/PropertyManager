@@ -771,7 +771,8 @@ export const staffMembers = pgTable("staff_members", {
   email: varchar("email", { length: 255 }),
   jobTitle: varchar("job_title", { length: 100 }), // Job title/position (NOT RBAC role)
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }), // Single property assignment (required)
-  joiningDate: timestamp("joining_date"),
+  joiningDate: timestamp("joining_date"), // Employee start date
+  endDate: timestamp("end_date"), // Employee end date (if left)
   isActive: boolean("is_active").notNull().default(true),
   baseSalary: decimal("base_salary", { precision: 12, scale: 2 }), // Default monthly salary
   paymentMethod: varchar("payment_method", { length: 50 }), // Preferred payment method (cash, bank transfer, UPI, etc.)
@@ -790,6 +791,7 @@ export const insertStaffMemberSchema = createInsertSchema(staffMembers).omit({
   updatedAt: true,
 }).extend({
   joiningDate: z.coerce.date().optional(),
+  endDate: z.coerce.date().optional(),
   baseSalary: z.coerce.number().nonnegative().optional(),
   propertyId: z.number().int().positive(), // Required - staff members must be assigned to a property
 });
