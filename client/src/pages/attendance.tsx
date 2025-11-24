@@ -838,28 +838,38 @@ export default function Attendance() {
                     let bgColor = "rgb(243, 244, 246)";
                     let textColor = "rgb(75, 85, 99)";
                     
-                    // Find matching attendance record
-                    for (const record of attendance) {
-                      const recordStaffId = String(record.staffId || record.staff_id);
-                      const recordDateStr = format(new Date(record.attendanceDate || record.attendance_date), "yyyy-MM-dd");
+                    // Find matching attendance record - robust matching
+                    const matchingRecord = attendance.find(record => {
+                      const recordStaffId = record.staffId !== undefined ? record.staffId : record.staff_id;
+                      const recordDate = record.attendanceDate !== undefined ? record.attendanceDate : record.attendance_date;
                       
-                      if (recordStaffId === String(staff.id) && recordDateStr === dayDate) {
-                        cellStatus = record.status || "unmarked";
-                        // Apply colors based on status
-                        if (cellStatus === "present") {
-                          bgColor = "rgb(34, 197, 94)";
-                          textColor = "white";
-                        } else if (cellStatus === "absent") {
-                          bgColor = "rgb(239, 68, 68)";
-                          textColor = "white";
-                        } else if (cellStatus === "leave") {
-                          bgColor = "rgb(59, 130, 246)";
-                          textColor = "white";
-                        } else if (cellStatus === "half-day") {
-                          bgColor = "rgb(234, 179, 8)";
-                          textColor = "white";
-                        }
-                        break;
+                      // Parse date string directly (handle ISO format or date-only format)
+                      let recordDateStr = "";
+                      if (typeof recordDate === "string") {
+                        recordDateStr = recordDate.split("T")[0]; // Remove time if present
+                      } else if (recordDate instanceof Date) {
+                        recordDateStr = format(recordDate, "yyyy-MM-dd");
+                      }
+                      
+                      // Match staff and date
+                      return Number(recordStaffId) === Number(staff.id) && recordDateStr === dayDate;
+                    });
+                    
+                    if (matchingRecord) {
+                      cellStatus = matchingRecord.status || "unmarked";
+                      // Apply colors based on status
+                      if (cellStatus === "present") {
+                        bgColor = "rgb(34, 197, 94)";
+                        textColor = "white";
+                      } else if (cellStatus === "absent") {
+                        bgColor = "rgb(239, 68, 68)";
+                        textColor = "white";
+                      } else if (cellStatus === "leave") {
+                        bgColor = "rgb(59, 130, 246)";
+                        textColor = "white";
+                      } else if (cellStatus === "half-day") {
+                        bgColor = "rgb(234, 179, 8)";
+                        textColor = "white";
                       }
                     }
                     
