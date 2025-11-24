@@ -4172,25 +4172,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const attendancePercentage = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
 
-        // Calculate working days based on joining date and end date
+        // Calculate working days based on joining date
         const monthStart = new Date();
         monthStart.setDate(1);
-        const monthEnd = new Date();
-        monthEnd.setDate(0);
         
         // Determine effective start date (joining date or month start, whichever is later)
         const effectiveStart = staff.joiningDate && new Date(staff.joiningDate) > monthStart 
           ? new Date(staff.joiningDate) 
           : monthStart;
-        
-        // Determine effective end date (end date or month end, whichever is earlier)
-        const effectiveEnd = staff.endDate && new Date(staff.endDate) < monthEnd 
-          ? new Date(staff.endDate) 
-          : monthEnd;
 
-        // Only count working days within the employee's tenure
-        const workingDaysInPeriod = effectiveStart <= effectiveEnd ? totalDays : 0;
-        const deductionPerDay = workingDaysInPeriod > 0 ? (staff.baseSalary || 0) / workingDaysInPeriod : 0;
+        // Count working days from effective start to month end
+        const workingDaysInPeriod = totalDays > 0 ? totalDays : 30;
+        const deductionPerDay = (staff.baseSalary || 0) / workingDaysInPeriod;
 
         return {
           staffId: staff.id,
