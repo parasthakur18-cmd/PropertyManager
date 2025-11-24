@@ -833,28 +833,48 @@ export default function Attendance() {
                 </div>
                 <div className="grid grid-cols-7 gap-2">
                   {daysInMonth.map((day) => {
-                    const dayAttendance = getAttendanceForDate(staff.id, day);
-                    const status = dayAttendance?.status || "unmarked";
-                    const getColor = (s: string) => {
-                      if (s === "present") return { bg: "rgb(34, 197, 94)", text: "white" };
-                      if (s === "absent") return { bg: "rgb(239, 68, 68)", text: "white" };
-                      if (s === "leave") return { bg: "rgb(59, 130, 246)", text: "white" };
-                      if (s === "half-day") return { bg: "rgb(234, 179, 8)", text: "white" };
-                      return { bg: "rgb(243, 244, 246)", text: "rgb(75, 85, 99)" };
-                    };
-                    const colors = getColor(status);
+                    const dayDate = format(day, "yyyy-MM-dd");
+                    let cellStatus = "unmarked";
+                    let bgColor = "rgb(243, 244, 246)";
+                    let textColor = "rgb(75, 85, 99)";
+                    
+                    // Find matching attendance record
+                    for (const record of attendance) {
+                      const recordStaffId = String(record.staffId || record.staff_id);
+                      const recordDateStr = format(new Date(record.attendanceDate || record.attendance_date), "yyyy-MM-dd");
+                      
+                      if (recordStaffId === String(staff.id) && recordDateStr === dayDate) {
+                        cellStatus = record.status || "unmarked";
+                        // Apply colors based on status
+                        if (cellStatus === "present") {
+                          bgColor = "rgb(34, 197, 94)";
+                          textColor = "white";
+                        } else if (cellStatus === "absent") {
+                          bgColor = "rgb(239, 68, 68)";
+                          textColor = "white";
+                        } else if (cellStatus === "leave") {
+                          bgColor = "rgb(59, 130, 246)";
+                          textColor = "white";
+                        } else if (cellStatus === "half-day") {
+                          bgColor = "rgb(234, 179, 8)";
+                          textColor = "white";
+                        }
+                        break;
+                      }
+                    }
+                    
                     return (
                       <div
-                        key={day.toString()}
+                        key={dayDate}
                         className="flex flex-col items-center justify-center p-2 rounded border text-xs font-bold"
                         style={{ 
-                          backgroundColor: colors.bg,
-                          color: colors.text,
+                          backgroundColor: bgColor,
+                          color: textColor,
                           height: "48px",
                           width: "100%",
                           border: "1px solid #ccc"
                         }}
-                        data-testid={`attendance-cell-${format(day, "yyyy-MM-dd")}`}
+                        data-testid={`attendance-cell-${dayDate}`}
                       >
                         {format(day, "d")}
                       </div>
