@@ -127,6 +127,7 @@ export default function Attendance() {
         name: data.name,
         jobTitle: data.jobTitle,
         propertyId: parseInt(data.propertyId),
+        joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
         baseSalary: data.baseSalary || 0,
       });
     },
@@ -702,6 +703,19 @@ export default function Attendance() {
                       <FormLabel>Job Title</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="e.g., Manager, Chef, Housekeeper" data-testid="input-job-title" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={addStaffForm.control}
+                  name="joiningDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Joining Date</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="date" data-testid="input-joining-date" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
