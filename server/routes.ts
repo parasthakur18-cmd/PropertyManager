@@ -4116,49 +4116,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(records);
       }
 
-      // Filter by month if provided (format: 2025-11)
-      if (month) {
-        const allRecords = await storage.getAllAttendance();
-        const monthStr = month as string;
-        const filtered = allRecords.filter(record => {
-          try {
-            const dateValue = record.attendance_date || record.attendanceDate;
-            const recordDate = typeof dateValue === 'string' ? new Date(dateValue) : dateValue;
-            const recordMonth = new Date(recordDate).toISOString().slice(0, 7);
-            return recordMonth === monthStr;
-          } catch (e) {
-            console.error('Date parsing error:', record, e);
-            return false;
-          }
-        });
-        // Transform snake_case to camelCase
-        const transformed = filtered.map(r => {
-          const dateValue = r.attendance_date || r.attendanceDate;
-          return {
-            id: r.id,
-            staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
-            propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
-            attendanceDate: typeof dateValue === 'string' ? dateValue : new Date(dateValue).toISOString().split('T')[0],
-            status: r.status,
-            remarks: r.remarks
-          };
-        });
-        return res.json(transformed);
-      }
-
       const allRecords = await storage.getAllAttendance();
-      // Transform all records to camelCase
+      
+      // Transform all records to camelCase with proper date handling
       const transformed = allRecords.map(r => {
+        let dateStr = "";
         const dateValue = r.attendance_date || r.attendanceDate;
+        
+        if (typeof dateValue === 'string') {
+          dateStr = dateValue.split('T')[0]; // Format: YYYY-MM-DD
+        } else if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+          dateStr = dateValue.toISOString().split('T')[0];
+        } else {
+          dateStr = ""; // Invalid date
+        }
+        
         return {
           id: r.id,
           staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
           propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
-          attendanceDate: typeof dateValue === 'string' ? dateValue : new Date(dateValue).toISOString().split('T')[0],
+          attendanceDate: dateStr,
           status: r.status,
           remarks: r.remarks
         };
       });
+      
+      // Filter by month if provided
+      if (month) {
+        const monthStr = month as string;
+        const filtered = transformed.filter(record => {
+          return record.attendanceDate.substring(0, 7) === monthStr;
+        });
+        return res.json(filtered);
+      }
+      
       res.json(transformed);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
