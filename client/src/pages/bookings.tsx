@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
+import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -61,6 +62,8 @@ export default function Bookings() {
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
+  const [qrBookingId, setQrBookingId] = useState<number | null>(null);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
   const { toast} = useToast();
 
   // Auto-open dialog when coming from dashboard with ?new=true
@@ -1561,6 +1564,18 @@ export default function Bookings() {
                             <Button
                               size="icon"
                               variant="ghost"
+                              onClick={() => {
+                                setQrBookingId(booking.id);
+                                setQrModalOpen(true);
+                              }}
+                              title="View Check-in QR Code"
+                              data-testid={`button-qr-${booking.id}`}
+                            >
+                              <QrCode className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
                               onClick={() => handleEditBooking(booking)}
                               data-testid={`button-edit-booking-${booking.id}`}
                             >
@@ -1601,6 +1616,35 @@ export default function Bookings() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* QR Code Dialog */}
+      <Dialog open={qrModalOpen} onOpenChange={setQrModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Guest Check-in QR Code</DialogTitle>
+            <DialogDescription>
+              Share this QR code with your guest for self check-in
+            </DialogDescription>
+          </DialogHeader>
+          {qrBookingId && (() => {
+            const booking = bookings?.find(b => b.id === qrBookingId);
+            const guest = guests?.find(g => g.id === booking?.guestId);
+            const property = properties?.find(p => p.id === booking?.propertyId);
+            if (booking && guest && property) {
+              return (
+                <BookingQRCode
+                  bookingId={booking.id}
+                  guestName={guest.fullName}
+                  checkInDate={format(new Date(booking.checkInDate), "PPP")}
+                  checkOutDate={format(new Date(booking.checkOutDate), "PPP")}
+                  propertyName={property.name}
+                />
+              );
+            }
+            return null;
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
