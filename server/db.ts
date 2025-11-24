@@ -13,3 +13,6 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
+
+// Debug logging
+console.log('[DB INIT] Using DATABASE_URL:', process.env.DATABASE_URL?.substring(0, 30) + '...');

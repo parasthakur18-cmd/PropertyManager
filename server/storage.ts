@@ -2079,7 +2079,12 @@ export class DatabaseStorage implements IStorage {
 
   // Attendance operations
   async getAllAttendance(): Promise<AttendanceRecord[]> {
-    return await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.attendanceDate));
+    const results = await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.attendanceDate));
+    console.log(`[STORAGE] getAllAttendance returned ${results.length} records`);
+    if (results.length > 0) {
+      console.log('[STORAGE] First record:', JSON.stringify(results[0], null, 2));
+    }
+    return results;
   }
 
   async getAttendanceByStaffMember(staffId: number): Promise<AttendanceRecord[]> {

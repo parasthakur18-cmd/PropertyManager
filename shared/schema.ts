@@ -11,6 +11,7 @@ import {
   text,
   boolean,
   check,
+  date,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1039,7 +1040,7 @@ export const attendanceRecords = pgTable("attendance_records", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
-  attendanceDate: timestamp("attendance_date").notNull(),
+  attendanceDate: date("attendance_date").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("present"), // present, absent, leave, half-day
   remarks: text("remarks"), // Notes about the attendance
   createdAt: timestamp("created_at").defaultNow(),
