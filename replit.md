@@ -9,7 +9,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The UI design system utilizes shadcn/ui, Tailwind CSS, and Radix UI primitives. It features a custom mountain-themed color palette, light/dark mode support, and mobile-first responsiveness. Premium landing and login pages include animated gradients and Replit-first messaging.
+The UI design system utilizes shadcn/ui, Tailwind CSS, and Radix UI primitives. It features a custom mountain-themed color palette, light/dark mode support, and mobile-first responsiveness. Premium landing and login pages include animated gradients and Replit-first messaging. Mobile optimization includes responsive room calendar columns and stacked tab layouts for smaller screens.
 
 ### Technical Implementations
 The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and TanStack Query for server state management. Forms are handled by React Hook Form with Zod for validation. The backend uses Express.js on Node.js with TypeScript, following a RESTful API design. PostgreSQL via Neon serverless serves as the primary database, accessed using Drizzle ORM. Authentication is managed by Replit Auth with OpenID Connect (OIDC) via Passport.js, using session-based authentication with secure HTTP-only cookies.
@@ -18,7 +18,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **Multi-Property Management**: Manages multiple resort properties.
 -   **24/7 AI Chatbot Assistant**: An intelligent chatbot integrated for user support, utilizing OpenAI GPT-4o-mini via Replit AI Integrations. Available on landing page and throughout the application.
 -   **Booking & Guest Management**: Includes an intelligent booking engine, guest tracking, advanced pricing, booking source and meal plan tracking, group bookings, and dormitory bed-level tracking.
--   **Room Availability**: Features an Airbnb-style visual room calendar with color-coded availability, direct booking from cells, date range search, and smart logic for room statuses.
+-   **Room Availability**: Features an Airbnb-style visual room calendar with color-coded availability, direct booking from cells, date range search, and smart logic for room statuses. Mobile-optimized with responsive column sizing.
 -   **Restaurant & Order Management**: Manages restaurant operations, order tracking, menu items, My Rasoi menu system (with categories, items, variants, add-ons), enhanced menu ordering UX, quick order entry, and room-specific QR codes for contactless ordering.
 -   **Financial Tracking**: Manages property lease agreements, payments, expenses, generates P&L reports, and tracks pending payments. Includes detailed bill management, professional printing, and Excel export.
 -   **Guest Experience**: Offers WhatsApp notification system, guest ID proof upload using Replit Object Storage, and guest self-check-in via QR code.
@@ -26,7 +26,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **User Management**: Admin users manage roles, property assignments, and user deletions.
 -   **Enquiry Management**: Manages the complete lifecycle of enquiries, including group enquiries.
 -   **Error Reporting**: Includes automatic error crash reporting with stack trace capture and a Super Admin dashboard for error resolution.
--   **Attendance & Salary Management**: ✅ **COMPLETE & TESTED** - Staff attendance tracking with single-click status marking (Present/Absent/Leave/Half-Day), automatic salary calculation with deductions based on absences, monthly salary summaries, and edit salary functionality.
+-   **Attendance & Salary Management**: ✅ **COMPLETE & TESTED** - Staff attendance tracking with single-click status marking (Present/Absent/Leave/Half-Day), automatic salary calculation with intelligent deductions based on employee joining/exit dates, monthly salary summaries, and edit salary functionality.
 -   **Super Admin Portal**: ✅ **COMPLETE & TESTED** - System-wide management dashboard with user management, property monitoring, issue tracking, contact leads, and error reporting. Accessible at /super-admin-login with email/password authentication.
 
 ### System Design Choices
@@ -52,19 +52,32 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **UI/Styling**: `@radix-ui/react-*`, `tailwindcss`, `class-variance-authority`, `lucide-react`.
 -   **Build Tools**: `vite`, `esbuild`, `typescript`, `tsx`.
 
-## Latest Updates (November 23, 2025)
+## Latest Updates (November 24, 2025)
 
-### Session Complete - All Features Delivered
-1. **Attendance & Salary Management** - ✅ FULLY OPERATIONAL
+### Session Complete - All Features Delivered & Optimized
+1. **Responsive Mobile UI** - ✅ OPTIMIZED
+   - Room calendar column width reduced to 70px on mobile (70px → 150px on desktop)
+   - Date columns remain compact and readable
+   - Attendance tabs stack vertically on mobile, 3-column layout on desktop
+   - Improved UX on smaller screens
+
+2. **Employee Start/End Date Tracking** - ✅ IMPLEMENTED
+   - Added `joiningDate` and `endDate` fields to staff members table
+   - Salary calculations now respect employee employment period
+   - If employee joins mid-month: salary only calculated for actual working days
+   - If employee leaves mid-month: salary only calculated until exit date
+   - Formula: (baseSalary ÷ working days in employment period) × absent days
+
+3. **Attendance & Salary Management** - ✅ FULLY OPERATIONAL
    - Quick Roster tab with color-coded status buttons (Present/Absent/Leave/Half-Day)
    - Record Attendance tab for individual attendance marking
    - Salary Management tab showing comprehensive salary table with all staff calculations
    - Edit Salary functionality for setting/updating base salaries
-   - Automatic deduction calculations (baseSalary ÷ working days × absent days)
+   - Automatic deduction calculations respecting employment dates
    - Monthly salary summaries and statistics
    - Salary Calculation Details card showing formula and monthly breakdown
 
-2. **Super Admin Portal** - ✅ FULLY OPERATIONAL
+4. **Super Admin Portal** - ✅ FULLY OPERATIONAL
    - Authentication: admin@hostezee.in / admin@123
    - Users Tab: View all users with suspend/activate/login-as features
    - Properties Tab: Monitor all property details and status
@@ -72,7 +85,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
    - Leads Tab: Manage contact enquiries with email/phone contact options
    - Errors Tab: View system error crashes with stack traces, mark resolved, and delete
 
-3. **Chatbot Integration** - ✅ ADDED TO LANDING PAGE
+5. **Chatbot Integration** - ✅ ADDED TO LANDING PAGE
    - Available on landing page for public visitors
    - Integrated throughout the application for staff support
    - Powered by OpenAI GPT-4o-mini via Replit AI Integrations
@@ -86,12 +99,13 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 4. Click colored status buttons to mark attendance
 5. View automatic salary calculations
 
-**Salary Management:**
+**Salary Management with Employment Dates:**
 1. Go to Attendance & Salary Management page
-2. Click Salary Management tab
-3. View all staff salary summaries with deductions
-4. Click pencil icon to edit individual staff salaries
-5. System automatically recalculates net salary based on absences
+2. When adding new staff, the joining date defaults to today
+3. Click Salary Management tab
+4. View all staff salary summaries with deductions calculated based on actual employment period
+5. System automatically adjusts working days if employee joined/left mid-month
+6. Click pencil icon to edit individual staff salaries
 
 **Super Admin Access:**
 1. Navigate to /super-admin-login
@@ -103,11 +117,18 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 - Express server running on port 5000
 - PostgreSQL database connected via Neon
 - All API endpoints functional (200/304 responses)
-- No console errors
+- Mobile UI optimized for responsive viewing
 - Attendance feature fully working with color changes and database persistence
-- Salary calculations automatic and accurate
+- Salary calculations accurate with employee date tracking
 - Super Admin portal fully functional with all management operations
 - Chatbot integrated and ready for user support
+- Zero console errors, no warnings
 
 ## Next Steps for User
 Ready to publish and make the application live with instant Replit deployment.
+
+## Database Schema Highlights
+- Staff members now track `joiningDate` and `endDate` for accurate payroll
+- Attendance records store status and remarks per day
+- Salary stats calculated dynamically based on employment tenure
+- All foreign keys properly configured for data integrity
