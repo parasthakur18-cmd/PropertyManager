@@ -245,10 +245,12 @@ export default function Attendance() {
 
   const getAttendanceForDate = (staffId: string | number, date: Date) => {
     const staffIdStr = String(staffId);
-    return attendance.find(a => 
-      String(a.staffId) === staffIdStr && 
-      format(new Date(a.attendanceDate), "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
-    );
+    const dateStr = format(date, "yyyy-MM-dd");
+    const result = attendance.find(a => {
+      const attendanceDateStr = format(new Date(a.attendanceDate), "yyyy-MM-dd");
+      return String(a.staffId) === staffIdStr && attendanceDateStr === dateStr;
+    });
+    return result;
   };
 
   const getStatusIcon = (status: string) => {
@@ -821,13 +823,25 @@ export default function Attendance() {
                   {daysInMonth.map((day) => {
                     const dayAttendance = getAttendanceForDate(staff.id, day);
                     const status = dayAttendance?.status || "unmarked";
-                    const bgColor = status === "present" ? "#22c55e" : status === "absent" ? "#ef4444" : status === "leave" ? "#3b82f6" : status === "half-day" ? "#eab308" : "#f3f4f6";
-                    const textColor = status === "unmarked" ? "#4b5563" : "#ffffff";
+                    const getColor = (s: string) => {
+                      if (s === "present") return { bg: "rgb(34, 197, 94)", text: "white" };
+                      if (s === "absent") return { bg: "rgb(239, 68, 68)", text: "white" };
+                      if (s === "leave") return { bg: "rgb(59, 130, 246)", text: "white" };
+                      if (s === "half-day") return { bg: "rgb(234, 179, 8)", text: "white" };
+                      return { bg: "rgb(243, 244, 246)", text: "rgb(75, 85, 99)" };
+                    };
+                    const colors = getColor(status);
                     return (
                       <div
                         key={day.toString()}
-                        className="flex flex-col items-center justify-center p-2 rounded border text-xs min-h-12 font-medium"
-                        style={{ backgroundColor: bgColor, color: textColor }}
+                        className="flex flex-col items-center justify-center p-2 rounded border text-xs font-bold"
+                        style={{ 
+                          backgroundColor: colors.bg,
+                          color: colors.text,
+                          height: "48px",
+                          width: "100%",
+                          border: "1px solid #ccc"
+                        }}
                         data-testid={`attendance-cell-${format(day, "yyyy-MM-dd")}`}
                       >
                         {format(day, "d")}
