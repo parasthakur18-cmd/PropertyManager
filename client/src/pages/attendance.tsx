@@ -74,14 +74,23 @@ export default function Attendance() {
   const { data: attendance = [] } = useQuery<any[]>({
     queryKey: ["/api/attendance", monthString],
     queryFn: async () => {
-      const response = await fetch(
-        `/api/attendance?month=${monthString}`,
-        { credentials: "include" }
-      );
-      if (!response.ok) throw new Error("Failed to fetch attendance");
-      const data = await response.json();
-      console.log(`[ATTENDANCE FETCH] Month: ${monthString}, Records returned:`, data);
-      return data;
+      try {
+        const response = await fetch(
+          `/api/attendance?month=${monthString}`,
+          { credentials: "include" }
+        );
+        if (!response.ok) throw new Error("Failed to fetch attendance");
+        const data = await response.json();
+        console.log(`✅ [ATTENDANCE FETCH] Month: ${monthString}`);
+        console.log(`📊 Total records: ${data.length}`);
+        data.forEach((record, idx) => {
+          console.log(`  Record ${idx + 1}: staff_id=${record.staff_id || record.staffId}, date=${record.attendance_date || record.attendanceDate}, status=${record.status}`);
+        });
+        return data;
+      } catch (error) {
+        console.error(`❌ [ATTENDANCE ERROR]:`, error);
+        throw error;
+      }
     },
   });
 
@@ -248,17 +257,27 @@ export default function Attendance() {
   const getAttendanceForDate = (staffId: string | number, date: Date) => {
     const staffIdStr = String(staffId);
     const dateStr = format(date, "yyyy-MM-dd");
+    
+    // Debug logging every call to calendar cell
     const result = attendance.find(a => {
-      // Handle both camelCase and snake_case field names from API
-      const actualStaffId = a.staffId !== undefined ? a.staffId : a.staff_id;
-      const actualAttendanceDate = a.attendanceDate !== undefined ? a.attendanceDate : a.attendance_date;
+      const actualStaffId = a.staff_id !== undefined ? a.staff_id : a.staffId;
+      const actualAttendanceDate = a.attendance_date !== undefined ? a.attendance_date : a.attendanceDate;
+      
+      if (!actualStaffId || !actualAttendanceDate) {
+        console.warn(`⚠️ Missing field - staffId: ${actualStaffId}, date: ${actualAttendanceDate}`);
+        return false;
+      }
+      
       const attendanceDateStr = format(new Date(actualAttendanceDate), "yyyy-MM-dd");
       const isMatch = String(actualStaffId) === staffIdStr && attendanceDateStr === dateStr;
+      
       if (isMatch) {
-        console.log(`[MATCH FOUND] Staff: ${staffIdStr}, Date: ${dateStr}, Status: ${a.status}`);
+        console.log(`🎯 [MATCH] Staff:${staffIdStr}, Date:${dateStr}, Status:${a.status} → Color will be ${a.status === 'absent' ? 'RED' : a.status === 'present' ? 'GREEN' : 'OTHER'}`);
       }
+      
       return isMatch;
     });
+    
     return result;
   };
 
