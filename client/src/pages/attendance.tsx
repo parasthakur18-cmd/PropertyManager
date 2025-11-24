@@ -274,10 +274,10 @@ export default function Attendance() {
       </div>
 
       <Tabs defaultValue="roster" className="w-full">
-        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 gap-2">
-          <TabsTrigger value="roster">Quick Roster</TabsTrigger>
-          <TabsTrigger value="individual">Record Attendance</TabsTrigger>
-          <TabsTrigger value="salary">Salary Management</TabsTrigger>
+        <TabsList className="w-full flex flex-col md:flex-row h-auto md:h-10">
+          <TabsTrigger value="roster" className="flex-1">Quick Roster</TabsTrigger>
+          <TabsTrigger value="individual" className="flex-1">Record Attendance</TabsTrigger>
+          <TabsTrigger value="salary" className="flex-1">Salary Management</TabsTrigger>
         </TabsList>
 
         <TabsContent value="roster" className="space-y-4">
