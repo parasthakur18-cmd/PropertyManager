@@ -92,7 +92,8 @@ export default function GuestSelfCheckin() {
       });
 
       if (!response.ok) {
-        throw new Error("Check-in failed");
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Check-in failed");
       }
 
       return response.json();
