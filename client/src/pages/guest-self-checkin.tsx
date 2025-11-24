@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Check, Phone } from "lucide-react";
+import { Building2, Check, Phone, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 
 const findBookingSchema = z.object({
@@ -103,7 +103,13 @@ export default function GuestSelfCheckin() {
       queryClient.invalidateQueries({ queryKey: ["/api/active-bookings"] });
     },
     onError: (error: any) => {
-      toast({ title: "Check-in failed", description: error.message, variant: "destructive" });
+      const errorMsg = error.message || "Check-in failed";
+      toast({ 
+        title: "Check-in failed", 
+        description: errorMsg, 
+        variant: "destructive",
+        duration: 5000,
+      });
     },
   });
 

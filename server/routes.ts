@@ -5013,6 +5013,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Booking not found" });
       }
 
+      // Validate check-in date - must be today or in the future
+      const checkInDate = new Date(booking.checkInDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      checkInDate.setHours(0, 0, 0, 0);
+
+      if (checkInDate < today) {
+        return res.status(400).json({ 
+          message: `Cannot check in for past date. Your check-in date was ${format(new Date(booking.checkInDate), "MMM d, yyyy")}. Please contact the front desk.` 
+        });
+      }
+
       const guest = await storage.getGuest(booking.guestId);
       if (!guest) {
         return res.status(404).json({ message: "Guest not found" });
