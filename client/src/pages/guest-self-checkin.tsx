@@ -2,64 +2,83 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Check, QrCode } from "lucide-react";
+import { Building2, Check, Phone } from "lucide-react";
+import { format } from "date-fns";
 
-const selfCheckinSchema = z.object({
-  bookingId: z.string().min(1, "Booking ID is required"),
-  email: z.string().email("Invalid email"),
-  phone: z.string().min(10, "Valid phone required"),
-  idProofUrl: z.string().optional(),
-  fullName: z.string().min(1, "Name is required"),
+const findBookingSchema = z.object({
+  phone: z.string().min(10, "Valid phone number required"),
 });
 
+const selfCheckinSchema = z.object({
+  phone: z.string().min(10, "Valid phone required"),
+  email: z.string().email("Invalid email"),
+  fullName: z.string().min(1, "Name is required"),
+  idProofUrl: z.string().optional(),
+});
+
+type FindBookingForm = z.infer<typeof findBookingSchema>;
 type SelfCheckinForm = z.infer<typeof selfCheckinSchema>;
 
 export default function GuestSelfCheckin() {
   const { toast } = useToast();
-  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Find Booking, 2: Verify Details, 3: Success
+  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: Find by Phone, 2: Verify Details, 3: Success
   const [bookingData, setBookingData] = useState<any>(null);
   const [fileUpload, setFileUpload] = useState<File | null>(null);
 
-  const form = useForm<SelfCheckinForm>({
+  const findForm = useForm<FindBookingForm>({
+    resolver: zodResolver(findBookingSchema),
+    defaultValues: { phone: "" },
+  });
+
+  const verifyForm = useForm<SelfCheckinForm>({
     resolver: zodResolver(selfCheckinSchema),
     defaultValues: {
-      bookingId: "",
-      email: "",
       phone: "",
+      email: "",
       fullName: "",
     },
   });
 
   const findBookingMutation = useMutation({
-    mutationFn: async (bookingId: string) => {
-      const response = await fetch(`/api/guest-self-checkin/booking/${bookingId}`);
-      if (!response.ok) throw new Error("Booking not found");
+    mutationFn: async (phone: string) => {
+      const response = await fetch(`/api/guest-self-checkin/by-phone?phone=${encodeURIComponent(phone)}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Booking not found");
+      }
       return response.json();
     },
     onSuccess: (data: any) => {
       setBookingData(data);
-      form.setValue("email", data.guest?.email || "");
-      form.setValue("fullName", data.guest?.fullName || "");
-      form.setValue("phone", data.guest?.phone || "");
+      verifyForm.setValue("phone", data.guest?.phone || "");
+      verifyForm.setValue("email", data.guest?.email || "");
+      verifyForm.setValue("fullName", data.guest?.fullName || "");
       setStep(2);
-      toast({ title: "Booking found!", description: `Welcome ${data.guest?.fullName}` });
+      toast({ 
+        title: "Booking found!", 
+        description: `Welcome ${data.guest?.fullName}! Room ${data.room?.roomNumber} is ready for you.` 
+      });
     },
     onError: (error: any) => {
-      toast({ title: "Booking not found", description: error.message, variant: "destructive" });
+      toast({ 
+        title: "Booking not found", 
+        description: error.message || "No active booking found with this phone number", 
+        variant: "destructive" 
+      });
     },
   });
 
   const selfCheckinMutation = useMutation({
     mutationFn: async (data: SelfCheckinForm) => {
       const formData = new FormData();
-      formData.append("bookingId", data.bookingId);
+      formData.append("bookingId", bookingData.id.toString());
       formData.append("email", data.email);
       formData.append("phone", data.phone);
       formData.append("fullName", data.fullName);
@@ -80,7 +99,7 @@ export default function GuestSelfCheckin() {
     },
     onSuccess: () => {
       setStep(3);
-      toast({ title: "Check-in successful!", description: "Welcome to our property" });
+      toast({ title: "Check-in successful!", description: "Welcome to our property!" });
       queryClient.invalidateQueries({ queryKey: ["/api/active-bookings"] });
     },
     onError: (error: any) => {
@@ -88,16 +107,15 @@ export default function GuestSelfCheckin() {
     },
   });
 
-  const onFindBooking = async () => {
-    const bookingId = form.getValues("bookingId");
-    await findBookingMutation.mutateAsync(bookingId);
+  const onFindBooking = async (data: FindBookingForm) => {
+    await findBookingMutation.mutateAsync(data.phone);
   };
 
   const onSubmit = async (data: SelfCheckinForm) => {
     await selfCheckinMutation.mutateAsync(data);
   };
 
-  // Step 1: Find Booking
+  // Step 1: Find Booking by Phone
   if (step === 1) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10 flex items-center justify-center p-4">
@@ -109,22 +127,27 @@ export default function GuestSelfCheckin() {
               </div>
             </div>
             <CardTitle className="text-2xl">Guest Self Check-in</CardTitle>
+            <p className="text-sm text-muted-foreground mt-2">Welcome to our property!</p>
           </CardHeader>
           <CardContent>
-            <Form {...form}>
-              <form onSubmit={(e) => { e.preventDefault(); onFindBooking(); }} className="space-y-4">
+            <Form {...findForm}>
+              <form onSubmit={findForm.handleSubmit(onFindBooking)} className="space-y-4">
                 <FormField
-                  control={form.control}
-                  name="bookingId"
+                  control={findForm.control}
+                  name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Booking ID or Booking Reference</FormLabel>
+                      <FormLabel>Phone Number</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="Scan QR code or enter booking ID" 
-                          {...field}
-                          data-testid="input-booking-id"
-                        />
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input 
+                            placeholder="Enter your 10-digit phone number" 
+                            {...field}
+                            className="pl-10"
+                            data-testid="input-phone-number"
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -141,11 +164,14 @@ export default function GuestSelfCheckin() {
               </form>
             </Form>
 
-            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                <QrCode className="h-4 w-4 inline mr-2" />
-                Scan the QR code provided in your booking confirmation, or enter your booking ID manually.
-              </p>
+            <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-2">
+              <p className="text-sm font-medium">How it works:</p>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Enter the phone number used for your booking</li>
+                <li>We'll find your pre-allocated room</li>
+                <li>Verify your details and upload ID proof</li>
+                <li>Complete check-in in seconds</li>
+              </ul>
             </div>
           </CardContent>
         </Card>
@@ -155,21 +181,24 @@ export default function GuestSelfCheckin() {
 
   // Step 2: Verify Details & Upload ID
   if (step === 2 && bookingData) {
+    const checkInDate = new Date(bookingData.checkInDate);
+    const checkOutDate = new Date(bookingData.checkOutDate);
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10 flex items-center justify-center p-4">
         <Card className="w-full max-w-lg">
           <CardHeader>
-            <CardTitle>Complete Your Check-in</CardTitle>
-            <p className="text-sm text-muted-foreground mt-2">
-              Room: <span className="font-semibold">{bookingData.room?.roomNumber}</span> | 
-              Check-out: <span className="font-semibold">{new Date(bookingData.checkOutDate).toLocaleDateString()}</span>
+            <CardTitle>Verify Your Details</CardTitle>
+            <p className="text-sm text-muted-foreground mt-3">
+              <span className="font-semibold block text-base mb-2">Room {bookingData.room?.roomNumber}</span>
+              <span className="block">{format(checkInDate, "MMM d, yyyy")} → {format(checkOutDate, "MMM d, yyyy")}</span>
             </p>
           </CardHeader>
           <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Form {...verifyForm}>
+              <form onSubmit={verifyForm.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
-                  control={form.control}
+                  control={verifyForm.control}
                   name="fullName"
                   render={({ field }) => (
                     <FormItem>
@@ -183,7 +212,7 @@ export default function GuestSelfCheckin() {
                 />
 
                 <FormField
-                  control={form.control}
+                  control={verifyForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
@@ -197,7 +226,7 @@ export default function GuestSelfCheckin() {
                 />
 
                 <FormField
-                  control={form.control}
+                  control={verifyForm.control}
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
@@ -229,7 +258,11 @@ export default function GuestSelfCheckin() {
                   <Button 
                     type="button" 
                     variant="outline"
-                    onClick={() => setStep(1)}
+                    onClick={() => {
+                      setStep(1);
+                      findForm.reset();
+                      setBookingData(null);
+                    }}
                     className="flex-1"
                     data-testid="button-back"
                   >
@@ -253,7 +286,8 @@ export default function GuestSelfCheckin() {
   }
 
   // Step 3: Success
-  if (step === 3) {
+  if (step === 3 && bookingData) {
+    const checkOutDate = new Date(bookingData.checkOutDate);
     return (
       <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10 flex items-center justify-center p-4">
         <Card className="w-full max-w-md text-center">
@@ -274,7 +308,10 @@ export default function GuestSelfCheckin() {
                 <strong>Room:</strong> {bookingData?.room?.roomNumber}
               </p>
               <p className="text-sm">
-                <strong>Check-out:</strong> {new Date(bookingData?.checkOutDate).toLocaleDateString()}
+                <strong>Check-out:</strong> {format(checkOutDate, "PPP")}
+              </p>
+              <p className="text-sm">
+                <strong>Guest Name:</strong> {bookingData?.guest?.fullName}
               </p>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -283,8 +320,10 @@ export default function GuestSelfCheckin() {
             <Button 
               onClick={() => {
                 setStep(1);
-                form.reset();
+                findForm.reset();
+                verifyForm.reset();
                 setBookingData(null);
+                setFileUpload(null);
               }}
               className="w-full"
               data-testid="button-new-checkin"
