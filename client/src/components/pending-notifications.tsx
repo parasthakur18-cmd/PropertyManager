@@ -30,22 +30,21 @@ export function PendingNotifications() {
     return SCHEDULED_HOURS.includes(now.getHours());
   };
 
-  // Get storage key for tracking shown notifications
-  const getStorageKey = () => {
-    const now = new Date();
-    const dateHour = `${now.toDateString()}-${now.getHours()}`;
-    return `pending-notif-${dateHour}`;
+  // Get storage key for today's dismissal
+  const getTodayKey = () => {
+    const today = new Date().toDateString();
+    return `pending-notif-dismissed-${today}`;
   };
 
-  // Check if notification was already shown this hour
-  const wasShownThisHour = () => {
-    const key = getStorageKey();
+  // Check if user already dismissed today
+  const wasDismissedToday = () => {
+    const key = getTodayKey();
     return localStorage.getItem(key) === "true";
   };
 
-  // Mark notification as shown for this hour
-  const markAsShown = () => {
-    const key = getStorageKey();
+  // Mark as dismissed for the entire day
+  const markAsDismissedToday = () => {
+    const key = getTodayKey();
     localStorage.setItem(key, "true");
   };
 
@@ -53,9 +52,9 @@ export function PendingNotifications() {
     if (pendingItems && !isLoading) {
       const total = Object.values(pendingItems).reduce((a, b) => a + b, 0);
       
-      if (total > 0 && isScheduledTime() && !wasShownThisHour()) {
+      // Only show if: has pending items, at scheduled time, and not dismissed today
+      if (total > 0 && isScheduledTime() && !wasDismissedToday()) {
         setShowNotification(true);
-        markAsShown();
 
         // Auto-hide after 1 hour
         const timer = setTimeout(() => {
@@ -80,6 +79,7 @@ export function PendingNotifications() {
 
   const handleDismiss = () => {
     setShowNotification(false);
+    markAsDismissedToday(); // Mark as dismissed for the entire day
     if (autoHideTimer) {
       clearTimeout(autoHideTimer);
     }
@@ -129,7 +129,7 @@ export function PendingNotifications() {
             className="mt-3 text-sm underline hover:no-underline text-orange-700 dark:text-orange-300"
             data-testid="button-close-notification"
           >
-            Dismiss
+            Dismiss (won't show today)
           </button>
         </AlertDescription>
       </Alert>
