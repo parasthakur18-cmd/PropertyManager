@@ -501,7 +501,21 @@ export const insertPropertyLeaseSchema = createInsertSchema(propertyLeases).omit
 }).extend({
   startDate: z.coerce.date(),
   endDate: z.coerce.date().optional(),
-});
+}).refine(
+  (data) => {
+    // If endDate is provided, check that it's not more than 1 year from startDate
+    if (data.endDate) {
+      const oneYearLater = new Date(data.startDate);
+      oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+      return data.endDate <= oneYearLater;
+    }
+    return true;
+  },
+  {
+    message: "Lease end date cannot be more than 1 year from the start date",
+    path: ["endDate"],
+  }
+);
 
 export type InsertPropertyLease = z.infer<typeof insertPropertyLeaseSchema>;
 export type PropertyLease = typeof propertyLeases.$inferSelect;

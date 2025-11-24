@@ -23,7 +23,23 @@ const leaseFormSchema = insertPropertyLeaseSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().optional(),
   landlordName: z.string().min(1, "Landlord name is required"),
-});
+}).refine(
+  (data) => {
+    // If endDate is provided, check that it's not more than 1 year from startDate
+    if (data.endDate) {
+      const startDate = new Date(data.startDate);
+      const endDate = new Date(data.endDate);
+      const oneYearLater = new Date(startDate);
+      oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+      return endDate <= oneYearLater;
+    }
+    return true;
+  },
+  {
+    message: "Lease end date cannot be more than 1 year from the start date",
+    path: ["endDate"],
+  }
+);
 
 const paymentFormSchema = z.object({
   amount: z.string().min(1, "Amount is required"),
