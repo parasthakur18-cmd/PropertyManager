@@ -77,18 +77,17 @@ export default function GuestSelfCheckin() {
 
   const selfCheckinMutation = useMutation({
     mutationFn: async (data: SelfCheckinForm) => {
-      const formData = new FormData();
-      formData.append("bookingId", bookingData.id.toString());
-      formData.append("email", data.email);
-      formData.append("phone", data.phone);
-      formData.append("fullName", data.fullName);
-      if (fileUpload) {
-        formData.append("idProof", fileUpload);
-      }
+      const payload = {
+        bookingId: bookingData.id,
+        email: data.email,
+        phone: data.phone,
+        fullName: data.fullName,
+      };
 
       const response = await fetch("/api/guest-self-checkin", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {

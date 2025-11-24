@@ -5001,15 +5001,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/guest-self-checkin", async (req, res) => {
     try {
-      // Parse bookingId - can come from body or form fields
-      const bookingIdParam = req.body?.bookingId || req.body?.['0']?.filename;
-      const bookingId = parseInt(bookingIdParam || '0');
-      
-      if (!bookingId || isNaN(bookingId)) {
+      const { bookingId, email, phone, fullName } = req.body;
+
+      // Validate booking ID
+      if (!bookingId || isNaN(parseInt(bookingId))) {
         return res.status(400).json({ message: "Invalid booking ID" });
       }
 
-      const booking = await storage.getBooking(bookingId);
+      const booking = await storage.getBooking(parseInt(bookingId));
       if (!booking) {
         return res.status(404).json({ message: "Booking not found" });
       }
@@ -5019,30 +5018,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Guest not found" });
       }
 
-      // Extract data - handle both JSON and FormData
-      const email = req.body?.email || guest.email;
-      const phone = req.body?.phone || guest.phone;
-      const fullName = req.body?.fullName || guest.fullName;
+      // Use provided values or fall back to existing guest data
+      const finalEmail = email || guest.email;
+      const finalPhone = phone || guest.phone;
+      const finalFullName = fullName || guest.fullName;
 
       // Verify email matches
       if (email && guest.email && email !== guest.email) {
         return res.status(400).json({ message: "Email does not match booking" });
       }
 
-      // Update guest with verified details (only update non-null values)
+      // Update guest with verified details (only update if different)
       const updateData: any = {};
-      if (phone) updateData.phone = phone;
-      if (fullName) updateData.fullName = fullName;
-      if (email) updateData.email = email;
+      if (phone && phone !== guest.phone) updateData.phone = phone;
+      if (fullName && fullName !== guest.fullName) updateData.fullName = fullName;
 
       if (Object.keys(updateData).length > 0) {
         await storage.updateGuest(booking.guestId, updateData);
       }
 
-      // Check in the guest
-      const updatedBooking = await storage.updateBooking(booking.id, {
-        status: "checked-in",
-      });
+      // Check in the guest by updating booking status
+      const updatedBooking = await storage.updateBookingStatus(booking.id, "checked-in");
 
       // Send self check-in confirmation email
       try {
@@ -5050,15 +5046,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
         const property = room ? await storage.getProperty(room.propertyId) : null;
         
-        if (email) {
+        if (finalEmail) {
           await sendSelfCheckinConfirmationEmail(
-            email,
-            fullName || guest.fullName || "Guest",
+            finalEmail,
+            finalFullName || "Guest",
             property?.name || "Your Property",
             new Date(booking.checkInDate).toLocaleDateString(),
             room?.roomNumber || "TBA"
           );
-          console.log(`[EMAIL] Self check-in confirmation sent to ${email}`);
+          console.log(`[EMAIL] Self check-in confirmation sent to ${finalEmail}`);
         }
       } catch (emailError) {
         console.warn(`[EMAIL] Failed to send check-in confirmation:`, emailError);
