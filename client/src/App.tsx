@@ -68,6 +68,7 @@ import ReportIssue from "@/pages/report-issue";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { PendingNotifications } from "@/components/pending-notifications";
+import { CompletionNotifications } from "@/components/completion-notifications";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -231,6 +232,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       {children}
       <Chatbot />
       <PendingNotifications />
+      <CompletionNotifications />
     </div>
   );
 }

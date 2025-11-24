@@ -15,6 +15,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { insertRoomSchema, type InsertRoom, type Room, type Property } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { triggerCompletionNotification } from "@/components/completion-notifications";
 
 const statusColors = {
   available: "bg-chart-5 text-white",
@@ -137,12 +138,21 @@ export default function Rooms() {
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       return await apiRequest(`/api/rooms/${id}/status`, "PATCH", { status });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       toast({
         title: "Success",
         description: "Room status updated",
       });
+      
+      // Trigger completion notification if room becomes available
+      if (variables.status === "available") {
+        const room = rooms?.find(r => r.id === variables.id);
+        triggerCompletionNotification(
+          "room_ready",
+          `✅ Room ${room?.roomNumber} cleaning completed and is ready!`
+        );
+      }
     },
     onError: (error: Error) => {
       toast({
