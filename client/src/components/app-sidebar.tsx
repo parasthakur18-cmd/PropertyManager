@@ -30,6 +30,7 @@ import {
   Search,
   Shield,
   Clock,
+  HelpCircle,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {

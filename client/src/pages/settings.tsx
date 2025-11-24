@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, User, Shield } from "lucide-react";
+import { LogOut, User, Shield, HelpCircle } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -85,6 +86,25 @@ export default function Settings() {
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Help & Support</CardTitle>
+            <CardDescription>Report issues or provide feedback</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/report-issue">
+              <Button
+                variant="outline"
+                data-testid="button-report-issue"
+                className="w-full sm:w-auto"
+              >
+                <HelpCircle className="h-4 w-4 mr-2" />
+                Report an Issue
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
