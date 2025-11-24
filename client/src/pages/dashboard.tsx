@@ -94,6 +94,9 @@ export default function Dashboard() {
            isBefore(checkInDate, sevenDaysFromNow);
   }) || [];
 
+  // All checked-in guests
+  const checkedInGuests = bookings?.filter(b => b.status === "checked-in") || [];
+
   const activeOrders = orders?.filter(o => 
     o.status === "pending" || o.status === "preparing" || o.status === "ready"
   ) || [];
@@ -198,6 +201,11 @@ export default function Dashboard() {
             <span className="text-xs font-medium">Pending</span>
             <Badge variant="secondary" className="mt-1 text-xs h-5">{yetToConfirmedEnquiries.length}</Badge>
           </TabsTrigger>
+          <TabsTrigger value="checked-in-guests" className="flex flex-col h-auto py-3 px-2" data-testid="tab-checked-in-guests">
+            <LogIn className="h-5 w-5 mb-1 text-green-600" />
+            <span className="text-xs font-medium">In Property</span>
+            <Badge variant="secondary" className="mt-1 text-xs h-5 bg-green-500 text-white">{checkedInGuests.length}</Badge>
+          </TabsTrigger>
           <TabsTrigger 
             value="new-booking" 
             className="flex flex-col h-auto py-3 px-2 bg-primary/10 hover:bg-primary/20" 
@@ -281,6 +289,87 @@ export default function Dashboard() {
                         <div>
                           <p className="text-muted-foreground mb-1">Check-out</p>
                           <p className="font-medium">{format(new Date(booking.checkOutDate), "PPP")}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-1">Guests</p>
+                          <p className="font-medium">{booking.numberOfGuests}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-1">Phone</p>
+                          <p className="font-medium">{guest?.phone || "N/A"}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Checked-in Guests (Currently in Property) */}
+        <TabsContent value="checked-in-guests">
+          {checkedInGuests.length === 0 ? (
+            <Card className="p-12 text-center">
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-green-100 text-green-600">
+                  <LogIn className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-semibold">No guests checked in</h3>
+                <p className="text-muted-foreground">No guests are currently in the property</p>
+              </div>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {checkedInGuests.map((booking) => {
+                const guest = guests?.find(g => g.id === booking.guestId);
+                const room = rooms?.find(r => r.id === booking.roomId);
+                const property = properties?.find(p => p.id === booking.propertyId);
+                
+                const groupRooms = booking.isGroupBooking && booking.roomIds
+                  ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+                  : [];
+                
+                const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                  ? groupRooms.map(r => `Room ${r.roomNumber}`).join(", ")
+                  : room ? `Room ${room.roomNumber}` : "Room TBA";
+                
+                return (
+                  <Card key={booking.id} className="hover-elevate border-green-200" data-testid={`card-checked-in-${booking.id}`}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/10 text-green-600">
+                            <LogIn className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <CardTitle className="flex items-center gap-2 flex-wrap">
+                              {guest?.fullName || "Unknown Guest"}
+                              <Badge className="bg-green-500 text-white">
+                                Checked In
+                              </Badge>
+                              {booking.isGroupBooking && (
+                                <Badge variant="secondary" className="bg-blue-500 text-white">
+                                  Group
+                                </Badge>
+                              )}
+                            </CardTitle>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {property?.name} • {roomDisplay}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-muted-foreground mb-1">Check-in Date</p>
+                          <p className="font-medium">{format(new Date(booking.checkInDate), "MMM dd")}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-1">Check-out</p>
+                          <p className="font-medium">{format(new Date(booking.checkOutDate), "MMM dd")}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground mb-1">Guests</p>
