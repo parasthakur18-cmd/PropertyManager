@@ -4957,6 +4957,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Find booking by phone number (for universal guest QR code)
+  app.get("/api/guest-self-checkin/by-phone", async (req, res) => {
+    try {
+      const phone = req.query.phone as string;
+
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Get all bookings and find matching guest by phone
+      const allBookings = await storage.getAllBookings();
+      
+      // Look for active booking (confirmed or pending) with matching phone
+      for (const booking of allBookings) {
+        const guest = await storage.getGuest(booking.guestId);
+        
+        // Match phone number and only return active/upcoming bookings
+        if (guest?.phone === phone && (booking.status === "confirmed" || booking.status === "pending")) {
+          const room = await storage.getRoom(booking.roomId);
+          
+          return res.json({
+            id: booking.id,
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.checkOutDate,
+            status: booking.status,
+            guest,
+            room,
+          });
+        }
+      }
+
+      // No matching booking found
+      return res.status(404).json({ 
+        message: "No active booking found with this phone number. Please check your phone number or contact the front desk." 
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/guest-self-checkin", async (req, res) => {
     try {
       const { bookingId, email, phone, fullName } = req.body;
