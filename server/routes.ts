@@ -5291,9 +5291,11 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Get user's properties
-      const userProperties = await storage.getUserProperties(user.id);
-      const propertyIds = userProperties.map((p: any) => p.id);
+      // Get all properties and filter by user's assigned properties if they're a manager
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
+        ? user.assignedPropertyIds
+        : allProperties.map((p: any) => p.id);
 
       if (propertyIds.length === 0) {
         return res.json({
