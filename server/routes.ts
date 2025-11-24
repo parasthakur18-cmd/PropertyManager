@@ -4125,11 +4125,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const recordMonth = recordDate.toISOString().slice(0, 7);
           return recordMonth === monthStr;
         });
-        return res.json(filtered);
+        // Transform snake_case to camelCase
+        const transformed = filtered.map(r => ({
+          id: r.id,
+          staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
+          propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
+          attendanceDate: r.attendance_date !== undefined ? r.attendance_date : r.attendanceDate,
+          status: r.status,
+          remarks: r.remarks
+        }));
+        return res.json(transformed);
       }
 
       const allRecords = await storage.getAllAttendance();
-      res.json(allRecords);
+      // Transform all records to camelCase
+      const transformed = allRecords.map(r => ({
+        id: r.id,
+        staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
+        propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
+        attendanceDate: r.attendance_date !== undefined ? r.attendance_date : r.attendanceDate,
+        status: r.status,
+        remarks: r.remarks
+      }));
+      res.json(transformed);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -258,27 +258,11 @@ export default function Attendance() {
     const staffIdStr = String(staffId);
     const dateStr = format(date, "yyyy-MM-dd");
     
-    // Debug logging every call to calendar cell
-    const result = attendance.find(a => {
-      const actualStaffId = a.staff_id !== undefined ? a.staff_id : a.staffId;
-      const actualAttendanceDate = a.attendance_date !== undefined ? a.attendance_date : a.attendanceDate;
-      
-      if (!actualStaffId || !actualAttendanceDate) {
-        console.warn(`⚠️ Missing field - staffId: ${actualStaffId}, date: ${actualAttendanceDate}`);
-        return false;
-      }
-      
-      const attendanceDateStr = format(new Date(actualAttendanceDate), "yyyy-MM-dd");
-      const isMatch = String(actualStaffId) === staffIdStr && attendanceDateStr === dateStr;
-      
-      if (isMatch) {
-        console.log(`🎯 [MATCH] Staff:${staffIdStr}, Date:${dateStr}, Status:${a.status} → Color will be ${a.status === 'absent' ? 'RED' : a.status === 'present' ? 'GREEN' : 'OTHER'}`);
-      }
-      
-      return isMatch;
+    return attendance.find(a => {
+      const recordStaffId = String(a.staffId);
+      const recordDateStr = format(new Date(a.attendanceDate), "yyyy-MM-dd");
+      return recordStaffId === staffIdStr && recordDateStr === dateStr;
     });
-    
-    return result;
   };
 
   const getStatusIcon = (status: string) => {
