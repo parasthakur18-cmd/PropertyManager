@@ -14,6 +14,7 @@ export default function QRCodes() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   
+  const guestCheckinQRRef = useRef<HTMLCanvasElement>(null);
   const roomQRRef = useRef<HTMLCanvasElement>(null);
   const cafeQRRef = useRef<HTMLCanvasElement>(null);
   
@@ -60,6 +61,30 @@ export default function QRCodes() {
     }
   }, [selectedPropertyId, selectedRoomId, selectedRoom]);
   
+  // Generate Guest Self Check-in QR Code on mount
+  useEffect(() => {
+    const baseUrl = window.location.origin;
+    const guestCheckinUrl = `${baseUrl}/guest-self-checkin`;
+    
+    if (guestCheckinQRRef.current) {
+      QRCodeGenerator.toCanvas(
+        guestCheckinQRRef.current,
+        guestCheckinUrl,
+        {
+          width: 300,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        },
+        (error) => {
+          if (error) console.error('Guest check-in QR generation error:', error);
+        }
+      );
+    }
+  }, []);
+
   // Generate Café QR Code on mount
   useEffect(() => {
     const baseUrl = window.location.origin;
@@ -148,6 +173,43 @@ export default function QRCodes() {
           Generate room-specific QR codes for guest ordering. Each room gets its own unique QR code.
         </p>
       </div>
+
+      {/* Guest Self Check-in QR Code - Universal */}
+      <Card className="border-2 border-primary/20 bg-primary/5 mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <QrCode className="h-5 w-5 text-primary" />
+            Guest Self Check-in QR
+          </CardTitle>
+          <CardDescription>
+            Universal QR code for guests to self check-in by phone number. Print and place at property entrance.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col items-center gap-4">
+            <div className="bg-white p-4 rounded-lg border">
+              <canvas ref={guestCheckinQRRef} />
+            </div>
+            <Button
+              onClick={() => downloadQRCode(guestCheckinQRRef, "guest-checkin-qr.png")}
+              className="gap-2"
+              data-testid="button-download-guest-checkin-qr"
+            >
+              <Download className="h-4 w-4" />
+              Download QR Code
+            </Button>
+            <div className="w-full p-3 bg-blue-50 dark:bg-blue-950 rounded-lg text-sm text-muted-foreground space-y-2">
+              <p className="font-medium">How to use:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Download and print this QR code</li>
+                <li>Place it at property entrance or check-in counter</li>
+                <li>Guests scan to self check-in using their phone number</li>
+                <li>No need for individual booking QR codes for guests</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Room-Specific QR Code Generator */}
