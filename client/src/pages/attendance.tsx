@@ -247,8 +247,11 @@ export default function Attendance() {
     const staffIdStr = String(staffId);
     const dateStr = format(date, "yyyy-MM-dd");
     const result = attendance.find(a => {
-      const attendanceDateStr = format(new Date(a.attendanceDate), "yyyy-MM-dd");
-      return String(a.staffId) === staffIdStr && attendanceDateStr === dateStr;
+      // Handle both camelCase and snake_case field names from API
+      const actualStaffId = a.staffId !== undefined ? a.staffId : a.staff_id;
+      const actualAttendanceDate = a.attendanceDate !== undefined ? a.attendanceDate : a.attendance_date;
+      const attendanceDateStr = format(new Date(actualAttendanceDate), "yyyy-MM-dd");
+      return String(actualStaffId) === staffIdStr && attendanceDateStr === dateStr;
     });
     return result;
   };
