@@ -272,7 +272,7 @@ export default function Attendance() {
       </div>
 
       <Tabs defaultValue="roster" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 gap-2">
           <TabsTrigger value="roster">Quick Roster</TabsTrigger>
           <TabsTrigger value="individual">Record Attendance</TabsTrigger>
           <TabsTrigger value="salary">Salary Management</TabsTrigger>
