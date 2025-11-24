@@ -4976,6 +4976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Match phone number and only return active/upcoming bookings
         if (guest?.phone === phone && (booking.status === "confirmed" || booking.status === "pending")) {
           const room = await storage.getRoom(booking.roomId);
+          const property = room ? await storage.getProperty(room.propertyId) : null;
           
           return res.json({
             id: booking.id,
@@ -4984,6 +4985,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             status: booking.status,
             guest,
             room,
+            property,
           });
         }
       }

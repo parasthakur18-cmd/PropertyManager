@@ -190,12 +190,48 @@ export default function GuestSelfCheckin() {
         <Card className="w-full max-w-lg">
           <CardHeader>
             <CardTitle>Verify Your Details</CardTitle>
-            <p className="text-sm text-muted-foreground mt-3">
-              <span className="font-semibold block text-base mb-2">Room {bookingData.room?.roomNumber}</span>
-              <span className="block">{format(checkInDate, "MMM d, yyyy")} → {format(checkOutDate, "MMM d, yyyy")}</span>
-            </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6">
+            {/* Booking Details Summary */}
+            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-3 border border-blue-200 dark:border-blue-800">
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Property</p>
+                <p className="text-lg font-semibold">{bookingData.property?.name || "Your Property"}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Room Number</p>
+                  <p className="text-base font-semibold">{bookingData.room?.roomNumber}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">Room Type</p>
+                  <p className="text-base font-semibold">{bookingData.room?.roomType}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Guest Name</p>
+                <p className="text-base font-semibold">{bookingData.guest?.fullName}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Check-in / Check-out</p>
+                <p className="text-base font-semibold">{format(checkInDate, "MMM d, yyyy")} → {format(checkOutDate, "MMM d, yyyy")}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Booking Status</p>
+                <p className="text-base font-semibold capitalize bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200 px-3 py-1 rounded w-fit">{bookingData.status}</p>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t"></div>
+
+            {/* Form to Update/Verify Details */}
+            <div>
+              <p className="text-sm font-semibold mb-4">Verify & Update Your Information</p>
             <Form {...verifyForm}>
               <form onSubmit={verifyForm.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
