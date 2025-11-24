@@ -8,7 +8,7 @@ interface PendingItems {
   cleaningRooms: number;
   pendingSalaries: number;
   pendingEnquiries: number;
-  unresolved Issues: number;
+  unresolvedIssues: number;
   pendingBills: number;
 }
 
@@ -60,10 +60,10 @@ export function PendingNotifications() {
                 <span>{pendingItems.pendingEnquiries} new enquiries</span>
               </div>
             )}
-            {pendingItems["unresolved Issues"] > 0 && (
+            {pendingItems.unresolvedIssues > 0 && (
               <div className="flex items-center gap-2 p-2 bg-white dark:bg-orange-900/30 rounded">
                 <AlertCircle className="h-4 w-4" />
-                <span>{pendingItems["unresolved Issues"]} unresolved issues</span>
+                <span>{pendingItems.unresolvedIssues} unresolved issues</span>
               </div>
             )}
             {pendingItems.pendingBills > 0 && (

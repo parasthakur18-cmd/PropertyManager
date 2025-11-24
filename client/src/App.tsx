@@ -67,6 +67,7 @@ import Register from "@/pages/register";
 import ReportIssue from "@/pages/report-issue";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
+import { PendingNotifications } from "@/components/pending-notifications";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -229,6 +230,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       </div>
       {children}
       <Chatbot />
+      <PendingNotifications />
     </div>
   );
 }

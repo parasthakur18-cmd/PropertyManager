@@ -5281,6 +5281,72 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // GET /api/pending-items - Get count of all pending items for automation notifications
+  app.get("/api/pending-items", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Get user's properties
+      const userProperties = await storage.getUserProperties(user.id);
+      const propertyIds = userProperties.map((p: any) => p.id);
+
+      if (propertyIds.length === 0) {
+        return res.json({
+          cleaningRooms: 0,
+          pendingSalaries: 0,
+          pendingEnquiries: 0,
+          unresolvedIssues: 0,
+          pendingBills: 0,
+        });
+      }
+
+      // Count rooms in cleaning/maintenance status
+      const rooms = await storage.getAllRooms();
+      const cleaningRooms = rooms.filter((r: any) =>
+        propertyIds.includes(r.propertyId) &&
+        (r.status === "cleaning" || r.status === "maintenance")
+      ).length;
+
+      // Count pending salaries
+      const allSalaries = await storage.getAllSalaries();
+      const pendingSalaries = allSalaries.filter((s: any) =>
+        propertyIds.includes(s.propertyId) && s.status === "pending"
+      ).length;
+
+      // Count new enquiries
+      const allEnquiries = await storage.getAllEnquiries();
+      const pendingEnquiries = allEnquiries.filter((e: any) =>
+        propertyIds.includes(e.propertyId) && e.status === "new"
+      ).length;
+
+      // Count unresolved issues
+      const allIssues = await storage.getAllIssueReports();
+      const unresolvedIssues = allIssues.filter((issue: any) =>
+        propertyIds.includes(issue.propertyId) && !issue.isResolved
+      ).length;
+
+      // Count pending bills
+      const allBills = await storage.getAllBills();
+      const pendingBills = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+
+      res.json({
+        cleaningRooms,
+        pendingSalaries,
+        pendingEnquiries,
+        unresolvedIssues,
+        pendingBills,
+      });
+    } catch (error: any) {
+      console.error("[PENDING-ITEMS] Error:", error);
+      res.status(500).json({ message: "Failed to fetch pending items" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
