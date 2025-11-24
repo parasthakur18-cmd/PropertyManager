@@ -510,7 +510,9 @@ export class DatabaseStorage implements IStorage {
         roomId: rooms.id,
         roomNumber: rooms.roomNumber,
         roomType: rooms.roomType,
+        propertyId: rooms.propertyId,
         guestName: guests.fullName,
+        guestPhone: guests.phone,
         bookingId: bookings.id,
       })
       .from(rooms)
