@@ -10,19 +10,20 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPropertyLeaseSchema, type PropertyLease, type Property } from "@shared/schema";
+import { type PropertyLease, type Property } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
 import { Plus, IndianRupee, Calendar, CreditCard, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 
-const leaseFormSchema = insertPropertyLeaseSchema.extend({
+const leaseFormSchema = z.object({
   totalAmount: z.string().min(1, "Amount is required"),
   propertyId: z.number().min(1, "Property is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().optional(),
   landlordName: z.string().min(1, "Landlord name is required"),
+  notes: z.string().optional(),
 }).refine(
   (data) => {
     // If endDate is provided, check that it's not more than 1 year from startDate
