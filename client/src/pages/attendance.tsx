@@ -69,11 +69,13 @@ export default function Attendance() {
     queryKey: ["/api/staff-members"],
   });
 
+  const monthString = selectedMonth.toISOString().slice(0, 7);
+
   const { data: attendance = [] } = useQuery<any[]>({
-    queryKey: ["/api/attendance", selectedMonth],
+    queryKey: ["/api/attendance", monthString],
     queryFn: async () => {
       const response = await fetch(
-        `/api/attendance?month=${selectedMonth.toISOString().slice(0, 7)}`,
+        `/api/attendance?month=${monthString}`,
         { credentials: "include" }
       );
       if (!response.ok) throw new Error("Failed to fetch attendance");
@@ -82,10 +84,10 @@ export default function Attendance() {
   });
 
   const { data: attendanceStats = [] } = useQuery<AttendanceStats[]>({
-    queryKey: ["/api/attendance/stats", selectedMonth],
+    queryKey: ["/api/attendance/stats", monthString],
     queryFn: async () => {
       const response = await fetch(
-        `/api/attendance/stats?month=${selectedMonth.toISOString().slice(0, 7)}`,
+        `/api/attendance/stats?month=${monthString}`,
         { credentials: "include" }
       );
       if (!response.ok) throw new Error("Failed to fetch stats");
