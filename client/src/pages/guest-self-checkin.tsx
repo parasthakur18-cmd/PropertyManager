@@ -316,6 +316,7 @@ export default function GuestSelfCheckin() {
                 </div>
               </form>
             </Form>
+            </div>
           </CardContent>
         </Card>
       </div>
