@@ -41,7 +41,8 @@ import {
   sendCheckInNotification,
   sendCheckoutNotification,
   sendPendingPaymentReminder,
-  sendEnquiryConfirmation
+  sendEnquiryConfirmation,
+  sendPreBillNotification
 } from "./whatsapp";
 import { sendIssueReportNotificationEmail } from "./email-service";
 
@@ -1915,6 +1916,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Checkout error:", error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send pre-bill via WhatsApp for customer verification
+  app.post("/api/send-prebill", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, billDetails } = req.body;
+      
+      if (!bookingId || !billDetails) {
+        return res.status(400).json({ message: "Booking ID and bill details are required" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number not found" });
+      }
+
+      // Get property name
+      const property = await storage.getProperty(booking.propertyId);
+      const propertyName = property?.name || "Hotel";
+
+      // Format bill details for WhatsApp
+      const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
+      const balanceDue = `₹${parseFloat(billDetails.balanceDue).toFixed(2)}`;
+      const roomNumbers = billDetails.roomNumber || "TBD";
+      const guestName = guest.fullName || "Guest";
+
+      // Send WhatsApp notification
+      await sendPreBillNotification(
+        guest.phone,
+        guestName,
+        propertyName,
+        roomNumbers,
+        totalAmount,
+        balanceDue
+      );
+
+      console.log(`[WhatsApp] Booking #${bookingId} - Pre-bill sent to ${guestName}`);
+      res.json({ success: true, message: "Pre-bill sent via WhatsApp" });
+    } catch (error: any) {
+      console.error("Pre-bill send error:", error);
+      res.status(500).json({ message: error.message || "Failed to send pre-bill" });
     }
   });
 

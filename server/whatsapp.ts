@@ -259,6 +259,36 @@ export async function sendCheckoutNotification(
 }
 
 /**
+ * Send pre-bill notification WhatsApp message
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Property Name
+ * 3. Room Numbers
+ * 4. Total Amount
+ * 5. Balance Due
+ */
+export async function sendPreBillNotification(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  roomNumbers: string,
+  totalAmount: string,
+  balanceDue: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_CHECKOUT_DETAILS || "18667";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, totalAmount, new Date().toLocaleDateString('en-IN'), roomNumbers],
+  });
+}
+
+/**
  * Send pending payment reminder WhatsApp message
  * 
  * Template variables (in order):
