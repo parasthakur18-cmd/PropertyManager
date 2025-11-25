@@ -52,9 +52,25 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **UI/Styling**: `@radix-ui/react-*`, `tailwindcss`, `class-variance-authority`, `lucide-react`.
 -   **Build Tools**: `vite`, `esbuild`, `typescript`, `tsx`.
 
-## Latest Updates (November 24, 2025)
+## Latest Updates (November 25, 2025)
 
-### Session Complete - All Features Delivered & Optimized
+### Pre-Bill WhatsApp Approval Workflow - ✅ COMPLETE & DEPLOYED
+1. **Pre-Bill Feature Fully Implemented** - Staff can optionally send bill to customer via WhatsApp before checkout
+2. **Dual Checkout Options** - Two flexible paths:
+   - **Option A: With Pre-Bill Verification** - Send bill → Customer approves → Checkout
+   - **Option B: Direct Checkout** - Skip pre-bill → Proceed directly to final checkout
+3. **WhatsApp Template** - Using WID 19816 (prebill template) from Authkey.io
+4. **Database Integration** - `pre_bills` table created with status tracking (pending/approved/rejected)
+5. **API Endpoints Created**:
+   - `/api/send-prebill` - Sends bill via WhatsApp and creates pre-bill record
+   - `/api/prebill/approve` - Staff approves pre-bill when customer verifies
+   - `/api/prebill/booking/:bookingId` - Fetches pre-bill status
+6. **Frontend UI** - Checkout dialog shows:
+   - "Send Pre-Bill via WhatsApp" button
+   - "Skip & Checkout" button for direct checkout
+   - "Complete Checkout" button (enabled after pre-bill sent/approved OR direct skip)
+
+### Previous Session - All Features Delivered & Optimized (November 24, 2025)
 1. **CRITICAL FIX: Attendance Calendar Color Coding** - ✅ RESOLVED (Nov 24, 2025)
    - **Issue:** Calendar displayed all gray boxes despite database having attendance records
    - **Root Cause:** Drizzle schema type mismatch - used `timestamp()` for DATE column
@@ -123,14 +139,23 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 ## System Status
 ✅ **PRODUCTION READY** - All core features tested and operational
 - Express server running on port 5000
-- PostgreSQL database connected via Neon
+- PostgreSQL database connected via Neon with all tables created
 - All API endpoints functional (200/304 responses)
 - Mobile UI optimized for responsive viewing
 - Attendance feature fully working with color changes and database persistence
 - Salary calculations accurate with employee date tracking
 - Super Admin portal fully functional with all management operations
+- Pre-Bill WhatsApp feature fully deployed with optional approval workflow
 - Chatbot integrated and ready for user support
 - Zero console errors, no warnings
+
+## Pre-Bill Feature - How to Use
+1. Open an active booking in checkout dialog
+2. Review bill details (room charges, food charges, taxes, discounts)
+3. **Choose one of two options:**
+   - Click "Send Pre-Bill via WhatsApp" → Bill sent to customer → Wait for approval → Click "Complete Checkout"
+   - Click "Skip & Checkout" → Proceed directly to checkout (no WhatsApp)
+4. Complete checkout and generate bill
 
 ## Next Steps for User
 Ready to publish and make the application live with instant Replit deployment.
