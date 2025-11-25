@@ -276,7 +276,7 @@ export async function sendPreBillNotification(
   totalAmount: string,
   balanceDue: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_CHECKOUT_DETAILS || "18667";
+  const templateId = process.env.AUTHKEY_WA_PREBILL || "19816";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -284,7 +284,7 @@ export async function sendPreBillNotification(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, propertyName, totalAmount, new Date().toLocaleDateString('en-IN'), roomNumbers],
+    variables: [guestName, propertyName, roomNumbers, totalAmount, balanceDue],
   });
 }
 
