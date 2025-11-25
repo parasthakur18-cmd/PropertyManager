@@ -259,36 +259,19 @@ export async function sendCheckoutNotification(
 }
 
 /**
- * Send pre-bill notification WhatsApp message with complete bill details
+ * Send pre-bill notification WhatsApp message (Simple format)
  * 
  * Template variables (in order):
- * 1. name - Guest Name
- * 2. business_name - Property Name
- * 3. invoice_no - Pre-bill/Invoice Number
- * 4. date - Current Date
- * 5. phone - Guest Phone
- * 6. email - Guest Email
- * 7. service_name - Property/Service Name
- * 8. start_date - Check-in Date
- * 9. end_date - Check-out Date
- * 10. duration - Total Nights
- * 11. item_name - Room Number/Description
- * 12. qty - Quantity (Number of Rooms)
- * 13. price - Price Per Night
- * 14. subtotal - Total Amount
+ * 1. {{1}} - Guest Name
+ * 2. {{2}} - Room Charges
+ * 3. {{3}} - Food Charges
+ * 4. {{4}} - Total Amount
  */
 export async function sendPreBillNotification(
   phoneNumber: string,
   guestName: string,
-  guestEmail: string,
-  propertyName: string,
-  invoiceNo: string,
-  currentDate: string,
-  checkInDate: string,
-  checkOutDate: string,
-  totalNights: string,
-  roomNumber: string,
-  pricePerNight: string,
+  roomCharges: string,
+  foodCharges: string,
   totalAmount: string
 ): Promise<WhatsAppResponse> {
   const templateId = process.env.AUTHKEY_WA_PREBILL || "19816";
@@ -300,20 +283,10 @@ export async function sendPreBillNotification(
     mobile: cleanedPhone,
     templateId,
     variables: [
-      guestName,              // 1. name
-      propertyName,           // 2. business_name
-      invoiceNo,              // 3. invoice_no
-      currentDate,            // 4. date
-      cleanedPhone,           // 5. phone
-      guestEmail || "N/A",    // 6. email
-      propertyName,           // 7. service_name
-      checkInDate,            // 8. start_date
-      checkOutDate,           // 9. end_date
-      totalNights,            // 10. duration
-      roomNumber,             // 11. item_name
-      "1",                    // 12. qty (usually 1 room/booking)
-      pricePerNight,          // 13. price
-      totalAmount,            // 14. subtotal
+      guestName,      // 1. Guest Name
+      roomCharges,    // 2. Room Charges
+      foodCharges,    // 3. Food Charges
+      totalAmount,    // 4. Total Amount
     ],
   });
 }
