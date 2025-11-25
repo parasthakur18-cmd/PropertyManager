@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
 
 interface ActiveBooking {
@@ -106,13 +106,13 @@ export default function ActiveBookings() {
   const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
 
   // Fetch pre-bill status when checkout dialog opens
-  const { data: currentPreBill } = useQuery<any>({
+  const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
-    enabled: checkoutDialog.open && checkoutDialog.booking?.id,
+    enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id),
   });
 
   // Update pre-bill status when it changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (currentPreBill) {
       setPreBillStatus(currentPreBill.status);
       if (currentPreBill.status === "approved") {
