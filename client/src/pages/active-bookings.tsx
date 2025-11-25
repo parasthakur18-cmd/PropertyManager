@@ -102,6 +102,7 @@ export default function ActiveBookings() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
+  const [preBillSent, setPreBillSent] = useState(false);
 
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
@@ -131,6 +132,26 @@ export default function ActiveBookings() {
       booking.id.toString().includes(query) ||
       booking.guest.phone.includes(query)
     );
+  });
+
+  const sendPreBillMutation = useMutation({
+    mutationFn: async ({ bookingId, billDetails }: { bookingId: number; billDetails: any }) => {
+      return await apiRequest("/api/send-prebill", "POST", { bookingId, billDetails });
+    },
+    onSuccess: () => {
+      setPreBillSent(true);
+      toast({
+        title: "Pre-Bill Sent",
+        description: "Bill has been sent to customer via WhatsApp for verification",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Send Pre-Bill",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   const checkoutMutation = useMutation({
@@ -180,6 +201,7 @@ export default function ActiveBookings() {
       setIncludeGst(false); // Reset to false (0% default)
       setIncludeServiceCharge(false); // Reset to false (0% default)
       setManualCharges([{ name: "", amount: "" }]);
+      setPreBillSent(false);
     },
     onError: (error: any) => {
       toast({
@@ -232,8 +254,56 @@ export default function ActiveBookings() {
     });
   };
 
+  const handleSendPreBill = () => {
+    if (!checkoutDialog.booking) return;
+    
+    const breakdown = calculateTotalWithCharges(
+      checkoutDialog.booking, 
+      includeGst, 
+      includeServiceCharge,
+      manualCharges
+    );
+    const discountAmt = calculateDiscount(
+      breakdown.grandTotal,
+      discountType,
+      discountValue
+    );
+    const finalTotal = breakdown.grandTotal - discountAmt;
+    const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
+    const balanceDue = finalTotal - advancePaid;
+
+    const billDetails = {
+      bookingId: checkoutDialog.booking.id,
+      guestName: checkoutDialog.booking.guest.fullName,
+      guestPhone: checkoutDialog.booking.guest.phone,
+      roomNumber: checkoutDialog.booking.isGroupBooking && checkoutDialog.booking.rooms 
+        ? checkoutDialog.booking.rooms.map(r => r.roomNumber).join(", ")
+        : checkoutDialog.booking.room?.roomNumber,
+      roomCharges: breakdown.roomCharges,
+      foodCharges: breakdown.foodCharges,
+      gstAmount: breakdown.gstAmount,
+      serviceChargeAmount: breakdown.serviceChargeAmount,
+      subtotal: breakdown.subtotal,
+      discountAmount: discountAmt,
+      totalAmount: breakdown.grandTotal,
+      balanceDue: balanceDue,
+      advancePaid: advancePaid,
+    };
+
+    sendPreBillMutation.mutate({ bookingId: checkoutDialog.booking.id, billDetails });
+  };
+
   const handleCheckout = () => {
     if (!checkoutDialog.booking) return;
+    
+    if (!preBillSent) {
+      toast({
+        title: "Pre-Bill Required",
+        description: "Please send pre-bill to customer first for verification",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Check for pending food orders
     const pendingOrders = checkoutDialog.booking.orders.filter(order => 
@@ -1039,18 +1109,36 @@ export default function ActiveBookings() {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setCheckoutDialog({ open: false, booking: null })}
-              disabled={checkoutMutation.isPending}
+              onClick={() => {
+                setCheckoutDialog({ open: false, booking: null });
+                setPreBillSent(false);
+              }}
+              disabled={checkoutMutation.isPending || sendPreBillMutation.isPending}
               data-testid="button-cancel-checkout"
             >
               Cancel
             </Button>
+            {!preBillSent ? (
+              <Button
+                onClick={handleSendPreBill}
+                disabled={sendPreBillMutation.isPending}
+                variant="outline"
+                data-testid="button-send-prebill"
+              >
+                {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                <Check className="h-4 w-4" />
+                <span>Pre-Bill Sent ✓</span>
+              </div>
+            )}
             <Button
               onClick={handleCheckout}
-              disabled={checkoutMutation.isPending}
+              disabled={checkoutMutation.isPending || !preBillSent}
               data-testid="button-confirm-checkout"
             >
               {checkoutMutation.isPending ? "Processing..." : "Complete Checkout"}
