@@ -103,6 +103,23 @@ export default function ActiveBookings() {
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
+  const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
+
+  // Fetch pre-bill status when checkout dialog opens
+  const { data: currentPreBill } = useQuery<any>({
+    queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
+    enabled: checkoutDialog.open && checkoutDialog.booking?.id,
+  });
+
+  // Update pre-bill status when it changes
+  React.useEffect(() => {
+    if (currentPreBill) {
+      setPreBillStatus(currentPreBill.status);
+      if (currentPreBill.status === "approved") {
+        setPreBillSent(true);
+      }
+    }
+  }, [currentPreBill]);
 
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
@@ -139,15 +156,39 @@ export default function ActiveBookings() {
       return await apiRequest("/api/send-prebill", "POST", { bookingId, billDetails });
     },
     onSuccess: () => {
-      setPreBillSent(true);
+      setPreBillStatus("pending");
+      setPreBillSent(false);
       toast({
         title: "Pre-Bill Sent",
         description: "Bill has been sent to customer via WhatsApp for verification",
       });
+      // Refetch pre-bill status
+      queryClient.invalidateQueries({ queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id] });
     },
     onError: (error: Error) => {
       toast({
         title: "Failed to Send Pre-Bill",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const approveBillMutation = useMutation({
+    mutationFn: async (preBillId: number) => {
+      return await apiRequest("/api/prebill/approve", "POST", { preBillId, bookingId: checkoutDialog.booking?.id });
+    },
+    onSuccess: () => {
+      setPreBillStatus("approved");
+      setPreBillSent(true);
+      toast({
+        title: "Pre-Bill Approved",
+        description: "You can now proceed with checkout",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Approve Pre-Bill",
         description: error.message,
         variant: "destructive",
       });
@@ -1121,7 +1162,7 @@ export default function ActiveBookings() {
             >
               Cancel
             </Button>
-            {!preBillSent ? (
+            {preBillStatus === "pending" ? (
               <Button
                 onClick={handleSendPreBill}
                 disabled={sendPreBillMutation.isPending}
@@ -1130,11 +1171,20 @@ export default function ActiveBookings() {
               >
                 {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
               </Button>
-            ) : (
+            ) : preBillStatus === "approved" ? (
               <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
                 <Check className="h-4 w-4" />
-                <span>Pre-Bill Sent ✓</span>
+                <span>Pre-Bill Approved ✓</span>
               </div>
+            ) : (
+              <Button
+                onClick={() => currentPreBill && approveBillMutation.mutate(currentPreBill.id)}
+                disabled={approveBillMutation.isPending}
+                variant="outline"
+                data-testid="button-approve-prebill"
+              >
+                {approveBillMutation.isPending ? "Approving..." : "Approve Pre-Bill"}
+              </Button>
             )}
             <Button
               onClick={handleCheckout}

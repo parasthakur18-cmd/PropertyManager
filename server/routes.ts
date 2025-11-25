@@ -44,6 +44,7 @@ import {
   sendEnquiryConfirmation,
   sendPreBillNotification
 } from "./whatsapp";
+import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1948,6 +1949,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const roomNumbers = billDetails.roomNumber || "TBD";
       const guestName = guest.fullName || "Guest";
 
+      // Create pre-bill record
+      const preBillRecord = await storage.createPreBill({
+        bookingId,
+        totalAmount: parseFloat(billDetails.totalAmount),
+        balanceDue: parseFloat(billDetails.balanceDue),
+        roomNumber: roomNumbers,
+      });
+
       // Send WhatsApp notification
       await sendPreBillNotification(
         guest.phone,
@@ -1958,11 +1967,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balanceDue
       );
 
-      console.log(`[WhatsApp] Booking #${bookingId} - Pre-bill sent to ${guestName}`);
-      res.json({ success: true, message: "Pre-bill sent via WhatsApp" });
+      console.log(`[WhatsApp] Booking #${bookingId} - Pre-bill #${preBillRecord.id} sent to ${guestName}`);
+      res.json({ success: true, message: "Pre-bill sent via WhatsApp", preBillId: preBillRecord.id });
     } catch (error: any) {
       console.error("Pre-bill send error:", error);
       res.status(500).json({ message: error.message || "Failed to send pre-bill" });
+    }
+  });
+
+  // Approve pre-bill
+  app.post("/api/prebill/approve", isAuthenticated, async (req, res) => {
+    try {
+      const { preBillId, bookingId } = req.body;
+      
+      if (!preBillId || !bookingId) {
+        return res.status(400).json({ message: "Pre-bill ID and booking ID are required" });
+      }
+
+      const preBill = await storage.getPreBill(preBillId);
+      if (!preBill) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const guest = await storage.getGuest((await storage.getBooking(bookingId))?.guestId || 0);
+      const approvedBy = guest?.fullName || "Guest";
+
+      await storage.updatePreBillStatus(preBillId, "approved", approvedBy);
+
+      console.log(`[Pre-Bill] Booking #${bookingId} - Pre-bill #${preBillId} approved by ${approvedBy}`);
+      res.json({ success: true, message: "Pre-bill approved" });
+    } catch (error: any) {
+      console.error("Pre-bill approval error:", error);
+      res.status(500).json({ message: error.message || "Failed to approve pre-bill" });
+    }
+  });
+
+  // Get pre-bill status
+  app.get("/api/prebill/booking/:bookingId", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+      const preBill = await storage.getPreBillByBooking(bookingId);
+      res.json(preBill || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

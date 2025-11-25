@@ -85,6 +85,9 @@ import {
   errorCrashes,
   type ErrorCrash,
   type InsertErrorCrash,
+  preBills,
+  type PreBill,
+  type InsertPreBill,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -298,6 +301,12 @@ export interface IStorage {
   createPasswordResetOtp(data: InsertPasswordResetOtp): Promise<any>;
   verifyPasswordResetOtp(channel: string, identifier: string, otp: string): Promise<{ resetToken: string }>;
   resetPassword(resetToken: string, newPassword: string): Promise<void>;
+
+  // Pre-Bill operations
+  getPreBill(id: number): Promise<PreBill | undefined>;
+  getPreBillByBooking(bookingId: number): Promise<PreBill | undefined>;
+  createPreBill(preBill: InsertPreBill): Promise<PreBill>;
+  updatePreBillStatus(id: number, status: string, approvedBy?: string): Promise<PreBill>;
 
   // Contact Enquiry operations
   getAllContactEnquiries(): Promise<ContactEnquiry[]>;
@@ -2425,6 +2434,32 @@ export class DatabaseStorage implements IStorage {
 
   async deleteErrorCrash(id: number): Promise<void> {
     await db.delete(errorCrashes).where(eq(errorCrashes.id, id));
+  }
+
+  // Pre-Bill operations
+  async getPreBill(id: number): Promise<PreBill | undefined> {
+    const [preBill] = await db.select().from(preBills).where(eq(preBills.id, id));
+    return preBill;
+  }
+
+  async getPreBillByBooking(bookingId: number): Promise<PreBill | undefined> {
+    const [preBill] = await db.select().from(preBills).where(eq(preBills.bookingId, bookingId)).orderBy(desc(preBills.createdAt)).limit(1);
+    return preBill;
+  }
+
+  async createPreBill(preBill: InsertPreBill): Promise<PreBill> {
+    const [created] = await db.insert(preBills).values(preBill).returning();
+    return created;
+  }
+
+  async updatePreBillStatus(id: number, status: string, approvedBy?: string): Promise<PreBill> {
+    const updates: any = { status, updatedAt: new Date() };
+    if (status === "approved" && approvedBy) {
+      updates.approvedAt = new Date();
+      updates.approvedBy = approvedBy;
+    }
+    const [updated] = await db.update(preBills).set(updates).where(eq(preBills.id, id)).returning();
+    return updated;
   }
 }
 
