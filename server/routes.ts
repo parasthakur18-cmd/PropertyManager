@@ -1939,32 +1939,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Guest phone number not found" });
       }
 
-      // Get property name
+      // Get property and room details
       const property = await storage.getProperty(booking.propertyId);
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
       const propertyName = property?.name || "Hotel";
+      const roomNumber = room?.roomNumber || billDetails.roomNumber || "TBD";
 
-      // Format bill details for WhatsApp
-      const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
-      const balanceDue = `₹${parseFloat(billDetails.balanceDue).toFixed(2)}`;
-      const roomNumbers = billDetails.roomNumber || "TBD";
+      // Calculate number of nights
+      const checkInDate = new Date(booking.checkInDate);
+      const checkOutDate = new Date(booking.checkOutDate);
+      const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Format dates
+      const checkInFormatted = format(checkInDate, "dd MMM yyyy");
+      const checkOutFormatted = format(checkOutDate, "dd MMM yyyy");
+      const currentDateFormatted = format(new Date(), "dd MMM yyyy");
+
+      // Format bill details
+      const totalAmount = parseFloat(billDetails.totalAmount);
+      const pricePerNight = (totalAmount / nights).toFixed(2);
+      const totalAmountFormatted = totalAmount.toFixed(2);
       const guestName = guest.fullName || "Guest";
+      const guestEmail = guest.email || "";
 
       // Create pre-bill record
       const preBillRecord = await storage.createPreBill({
         bookingId,
-        totalAmount: parseFloat(billDetails.totalAmount),
+        totalAmount: totalAmount,
         balanceDue: parseFloat(billDetails.balanceDue),
-        roomNumber: roomNumbers,
+        roomNumber: roomNumber,
       });
 
-      // Send WhatsApp notification
+      // Send WhatsApp notification with complete bill details
       await sendPreBillNotification(
         guest.phone,
         guestName,
+        guestEmail,
         propertyName,
-        roomNumbers,
-        totalAmount,
-        balanceDue
+        `PRE-${preBillRecord.id}`,
+        currentDateFormatted,
+        checkInFormatted,
+        checkOutFormatted,
+        nights.toString(),
+        roomNumber,
+        `₹${pricePerNight}`,
+        `₹${totalAmountFormatted}`
       );
 
       console.log(`[WhatsApp] Booking #${bookingId} - Pre-bill #${preBillRecord.id} sent to ${guestName}`);
