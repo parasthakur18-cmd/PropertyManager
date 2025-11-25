@@ -104,6 +104,7 @@ export default function ActiveBookings() {
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
+  const [skipPreBill, setSkipPreBill] = useState(false); // Allow staff to skip pre-bill and checkout directly
 
   // Fetch pre-bill status when checkout dialog opens
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
@@ -1150,49 +1151,68 @@ export default function ActiveBookings() {
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          <DialogFooter className="gap-2 flex flex-col sm:flex-row">
             <Button
               variant="outline"
               onClick={() => {
                 setCheckoutDialog({ open: false, booking: null });
                 setPreBillSent(false);
+                setSkipPreBill(false);
               }}
               disabled={checkoutMutation.isPending || sendPreBillMutation.isPending}
               data-testid="button-cancel-checkout"
             >
               Cancel
             </Button>
-            {preBillStatus === "pending" ? (
-              <Button
-                onClick={handleSendPreBill}
-                disabled={sendPreBillMutation.isPending}
-                variant="outline"
-                data-testid="button-send-prebill"
-              >
-                {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
-              </Button>
-            ) : preBillStatus === "approved" ? (
-              <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
-                <Check className="h-4 w-4" />
-                <span>Pre-Bill Approved ✓</span>
-              </div>
-            ) : (
-              <Button
-                onClick={() => currentPreBill && approveBillMutation.mutate(currentPreBill.id)}
-                disabled={approveBillMutation.isPending}
-                variant="outline"
-                data-testid="button-approve-prebill"
-              >
-                {approveBillMutation.isPending ? "Approving..." : "Approve Pre-Bill"}
-              </Button>
+
+            {!skipPreBill && preBillStatus !== "approved" ? (
+              <>
+                {preBillStatus === "pending" && !preBillSent ? (
+                  <Button
+                    onClick={handleSendPreBill}
+                    disabled={sendPreBillMutation.isPending}
+                    variant="outline"
+                    data-testid="button-send-prebill"
+                    className="flex-1"
+                  >
+                    {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
+                  </Button>
+                ) : preBillStatus === "approved" ? (
+                  <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center">
+                    <Check className="h-4 w-4" />
+                    <span>Pre-Bill Approved ✓</span>
+                  </div>
+                ) : null}
+                
+                <Button
+                  onClick={() => setSkipPreBill(true)}
+                  variant="outline"
+                  data-testid="button-skip-prebill"
+                  className="flex-1"
+                >
+                  Skip & Checkout
+                </Button>
+              </>
+            ) : null}
+
+            {(skipPreBill || preBillStatus === "approved") && (
+              <>
+                {preBillStatus === "approved" && (
+                  <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                    <Check className="h-4 w-4" />
+                    <span>Pre-Bill Approved ✓</span>
+                  </div>
+                )}
+                <Button
+                  onClick={handleCheckout}
+                  disabled={checkoutMutation.isPending}
+                  data-testid="button-confirm-checkout"
+                  className="flex-1"
+                >
+                  {checkoutMutation.isPending ? "Processing..." : "Complete Checkout"}
+                </Button>
+              </>
             )}
-            <Button
-              onClick={handleCheckout}
-              disabled={checkoutMutation.isPending || !preBillSent}
-              data-testid="button-confirm-checkout"
-            >
-              {checkoutMutation.isPending ? "Processing..." : "Complete Checkout"}
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
