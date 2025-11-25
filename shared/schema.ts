@@ -1130,3 +1130,30 @@ export const insertErrorCrashSchema = createInsertSchema(errorCrashes).omit({
 
 export type InsertErrorCrash = z.infer<typeof insertErrorCrashSchema>;
 export type ErrorCrash = typeof errorCrashes.$inferSelect;
+
+// Pre-bills table - for tracking pre-bill approvals
+export const preBills = pgTable("pre_bills", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  balanceDue: decimal("balance_due", { precision: 10, scale: 2 }).notNull(),
+  roomNumber: varchar("room_number", { length: 50 }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, approved, rejected
+  sentAt: timestamp("sent_at").defaultNow(),
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by"), // Guest name or identifier
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPreBillSchema = createInsertSchema(preBills).omit({
+  id: true,
+  status: true,
+  sentAt: true,
+  approvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPreBill = z.infer<typeof insertPreBillSchema>;
+export type PreBill = typeof preBills.$inferSelect;
