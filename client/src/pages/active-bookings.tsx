@@ -225,7 +225,39 @@ export default function ActiveBookings() {
   // Generate UPI payment link when UPI is selected
   const generateUpiLink = async () => {
     if (paymentMethod === "upi" && checkoutDialog.booking) {
-      const billDetails = calculateBillDetails();
+      const breakdown = calculateTotalWithCharges(
+        checkoutDialog.booking, 
+        includeGst, 
+        includeServiceCharge,
+        manualCharges
+      );
+      const discountAmt = calculateDiscount(
+        breakdown.grandTotal,
+        discountType,
+        discountValue
+      );
+      const finalTotal = breakdown.grandTotal - discountAmt;
+      const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
+      const balanceDue = finalTotal - advancePaid;
+
+      const billDetails = {
+        bookingId: checkoutDialog.booking.id,
+        guestName: checkoutDialog.booking.guest.fullName,
+        guestPhone: checkoutDialog.booking.guest.phone,
+        roomNumber: checkoutDialog.booking.isGroupBooking && checkoutDialog.booking.rooms 
+          ? checkoutDialog.booking.rooms.map(r => r.roomNumber).join(", ")
+          : checkoutDialog.booking.room?.roomNumber,
+        roomCharges: breakdown.roomCharges,
+        foodCharges: breakdown.foodCharges,
+        gstAmount: breakdown.gstAmount,
+        serviceChargeAmount: breakdown.serviceChargeAmount,
+        subtotal: breakdown.subtotal,
+        discountAmount: discountAmt,
+        totalAmount: breakdown.grandTotal,
+        balanceDue: balanceDue,
+        advancePaid: advancePaid,
+      };
+
       try {
         const result = await apiRequest("/api/payment-link/generate", "POST", {
           bookingId: checkoutDialog.booking.id,
@@ -1238,8 +1270,40 @@ export default function ActiveBookings() {
                     
                     <Button
                       onClick={() => {
-                        const billDetails = calculateBillDetails();
-                        paymentLinkMutation.mutate({ bookingId: checkoutDialog.booking?.id || 0, billDetails });
+                        if (!checkoutDialog.booking) return;
+                        const breakdown = calculateTotalWithCharges(
+                          checkoutDialog.booking, 
+                          includeGst, 
+                          includeServiceCharge,
+                          manualCharges
+                        );
+                        const discountAmt = calculateDiscount(
+                          breakdown.grandTotal,
+                          discountType,
+                          discountValue
+                        );
+                        const finalTotal = breakdown.grandTotal - discountAmt;
+                        const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
+                        const balanceDue = finalTotal - advancePaid;
+
+                        const billDetails = {
+                          bookingId: checkoutDialog.booking.id,
+                          guestName: checkoutDialog.booking.guest.fullName,
+                          guestPhone: checkoutDialog.booking.guest.phone,
+                          roomNumber: checkoutDialog.booking.isGroupBooking && checkoutDialog.booking.rooms 
+                            ? checkoutDialog.booking.rooms.map(r => r.roomNumber).join(", ")
+                            : checkoutDialog.booking.room?.roomNumber,
+                          roomCharges: breakdown.roomCharges,
+                          foodCharges: breakdown.foodCharges,
+                          gstAmount: breakdown.gstAmount,
+                          serviceChargeAmount: breakdown.serviceChargeAmount,
+                          subtotal: breakdown.subtotal,
+                          discountAmount: discountAmt,
+                          totalAmount: breakdown.grandTotal,
+                          balanceDue: balanceDue,
+                          advancePaid: advancePaid,
+                        };
+                        paymentLinkMutation.mutate({ bookingId: checkoutDialog.booking.id, billDetails });
                       }}
                       disabled={paymentLinkMutation.isPending}
                       variant="outline"
