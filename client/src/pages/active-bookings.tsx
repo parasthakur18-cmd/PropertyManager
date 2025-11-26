@@ -1290,7 +1290,9 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              console.log(`[Send Payment Link] cashAmount state="${cashAmount}", cashPaid=${cashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
+                              // Explicitly parse cashAmount to ensure it's captured correctly
+                              const finalCashPaid = cashAmount && cashAmount.trim() !== "" ? parseFloat(cashAmount) : 0;
+                              console.log(`[Send Payment Link] cashAmount="${cashAmount}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
@@ -1305,7 +1307,7 @@ export default function ActiveBookings() {
                                 totalAmount: totalBill,
                                 balanceAmount: remaining,
                                 balanceDue: remaining,
-                                advancePaid: cashPaid,
+                                advancePaid: finalCashPaid,
                               };
                               console.log(`[Send Payment Link] Sending billDetails:`, billDetails);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
