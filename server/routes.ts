@@ -42,7 +42,8 @@ import {
   sendCheckoutNotification,
   sendPendingPaymentReminder,
   sendEnquiryConfirmation,
-  sendPreBillNotification
+  sendPreBillNotification,
+  sendCustomWhatsAppMessage
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
