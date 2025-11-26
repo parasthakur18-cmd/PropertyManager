@@ -46,6 +46,7 @@ import {
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
+import { createPaymentLink, getPaymentLinkStatus } from "./razorpay";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -2010,6 +2011,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(preBill || null);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Generate RazorPay payment link and send via WhatsApp
+  app.post("/api/payment-link/generate", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, billDetails } = req.body;
+      
+      if (!bookingId || !billDetails) {
+        return res.status(400).json({ message: "Booking ID and bill details are required" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number not found" });
+      }
+
+      // Create payment link via RazorPay
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        parseFloat(billDetails.totalAmount),
+        guest.fullName || "Guest",
+        guest.email || "",
+        guest.phone
+      );
+
+      console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl}`);
+      
+      // Send payment link via WhatsApp
+      const authkeyService = createAuthkeyService();
+      const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
+      
+      await authkeyService.sendMessage(
+        guest.phone,
+        `Hi ${guest.fullName},\n\nYour payment link is ready!\n\nAmount Due: ${totalAmount}\n\nClick here to pay: ${paymentLink.shortUrl}\n\nThank you!`
+      );
+
+      console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
+      
+      res.json({ 
+        success: true, 
+        message: "Payment link sent via WhatsApp",
+        paymentLink: paymentLink.shortUrl,
+        linkId: paymentLink.linkId
+      });
+    } catch (error: any) {
+      console.error("Payment link generation error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate payment link" });
     }
   });
 
