@@ -2152,23 +2152,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // RazorPay Webhook - Handle payment confirmations (NO AUTH REQUIRED - webhook from RazorPay)
   app.post("/api/webhooks/razorpay", async (req, res) => {
     try {
-      const { payment_link_id, status, amount, customer, reference_id } = req.body;
-
       console.log(`[RazorPay Webhook] ===== WEBHOOK RECEIVED =====`);
       console.log(`[RazorPay Webhook] Full Body:`, JSON.stringify(req.body, null, 2));
-      console.log(`[RazorPay Webhook] Link=${payment_link_id}, Status=${status}, Amount=${amount}, RefId=${reference_id}`);
+      
+      // RazorPay sends nested payload structure for payment_link events
+      // Structure: { event: "payment_link.paid", payload: { payment_link: { entity: {...} } } }
+      const eventType = req.body.event;
+      const paymentLinkData = req.body.payload?.payment_link?.entity;
+      
+      // Also support legacy flat format for backwards compatibility
+      const payment_link_id = paymentLinkData?.id || req.body.payment_link_id;
+      const status = paymentLinkData?.status || req.body.status;
+      const amount = paymentLinkData?.amount || req.body.amount;
+      const reference_id = paymentLinkData?.reference_id || req.body.reference_id;
+      const customer = paymentLinkData?.customer || req.body.customer;
+      
+      console.log(`[RazorPay Webhook] Event=${eventType}, Link=${payment_link_id}, Status=${status}, Amount=${amount}, RefId=${reference_id}`);
 
-      // Verify webhook if signature is provided
-      if (req.body.signature) {
-        const payload = JSON.stringify(req.body);
-        if (!verifyWebhookSignature(payload, req.body.signature)) {
+      // Verify webhook signature if provided (x-razorpay-signature header)
+      const signature = req.headers['x-razorpay-signature'] as string;
+      if (signature && process.env.RAZORPAY_WEBHOOK_SECRET) {
+        const crypto = await import('crypto');
+        const expectedSignature = crypto
+          .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET)
+          .update(JSON.stringify(req.body))
+          .digest('hex');
+        
+        if (signature !== expectedSignature) {
           console.warn("[RazorPay Webhook] Invalid signature");
           return res.status(401).json({ message: "Invalid signature" });
         }
+        console.log("[RazorPay Webhook] Signature verified successfully");
       }
 
-      // Only process paid status
-      if (status === "paid" && reference_id) {
+      // Process payment_link.paid event
+      if ((eventType === "payment_link.paid" || status === "paid") && reference_id) {
         console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
         
         // Extract booking ID from reference_id format: booking_{id}_{timestamp}
@@ -2192,6 +2210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await db.update(bills).set({
               paymentStatus: "paid",
               paymentMethod: "razorpay_online",
+              paidAt: new Date(),
               updatedAt: new Date(),
             }).where(eq(bills.id, bill.id));
 
@@ -2202,10 +2221,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (guest && guest.phone) {
               console.log(`[RazorPay Webhook] Sending confirmation to guest: ${guest.fullName} (${guest.phone})`);
               const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
+              const amountInRupees = amount ? (amount / 100).toFixed(2) : "0.00";
               await sendCustomWhatsAppMessage(
                 guest.phone,
                 templateId,
-                [guest.fullName || "Guest", `₹${(amount / 100).toFixed(2)}`]
+                [guest.fullName || "Guest", `₹${amountInRupees}`]
               );
               console.log(`[RazorPay Webhook] Confirmation sent successfully`);
             } else {
@@ -2218,10 +2238,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.warn(`[RazorPay Webhook] Booking #${bookingId} not found`);
         }
       } else {
-        console.log(`[RazorPay Webhook] Webhook status is not 'paid' (status=${status}) or no reference_id`);
+        console.log(`[RazorPay Webhook] Event not payment_link.paid or no reference_id (event=${eventType}, status=${status})`);
       }
 
-      res.json({ success: true });
+      // Always return 200 to acknowledge receipt
+      res.json({ success: true, received: true });
     } catch (error: any) {
       console.error("[RazorPay Webhook] ❌ ERROR:", error);
       res.status(500).json({ message: error.message });
