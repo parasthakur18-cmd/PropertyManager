@@ -65,6 +65,7 @@ import Privacy from "@/pages/privacy";
 import ContactEnquiries from "@/pages/contact-enquiries";
 import Register from "@/pages/register";
 import ReportIssue from "@/pages/report-issue";
+import OtaIntegrations from "@/pages/ota-integrations";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { PendingNotifications } from "@/components/pending-notifications";
@@ -146,6 +147,7 @@ function Router() {
           <Route path="/salaries" component={Salaries} />
           <Route path="/attendance" component={Attendance} />
           <Route path="/travel-agents" component={TravelAgents} />
+          <Route path="/ota-integrations" component={OtaIntegrations} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/settings" component={Settings} />
         </>

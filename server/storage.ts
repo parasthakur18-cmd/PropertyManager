@@ -88,6 +88,9 @@ import {
   preBills,
   type PreBill,
   type InsertPreBill,
+  otaIntegrations,
+  type OtaIntegration,
+  type InsertOtaIntegration,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -2467,6 +2470,39 @@ export class DatabaseStorage implements IStorage {
       updates.approvedBy = approvedBy;
     }
     const [updated] = await db.update(preBills).set(updates).where(eq(preBills.id, id)).returning();
+    return updated;
+  }
+
+  // OTA Integrations operations
+  async getAllOtaIntegrations(propertyId: number): Promise<OtaIntegration[]> {
+    return await db.select().from(otaIntegrations).where(eq(otaIntegrations.propertyId, propertyId)).orderBy(desc(otaIntegrations.createdAt));
+  }
+
+  async getOtaIntegration(propertyId: number, otaName: string): Promise<OtaIntegration | undefined> {
+    const [integration] = await db.select().from(otaIntegrations).where(and(eq(otaIntegrations.propertyId, propertyId), eq(otaIntegrations.otaName, otaName))).limit(1);
+    return integration;
+  }
+
+  async saveOtaIntegration(integration: InsertOtaIntegration): Promise<OtaIntegration> {
+    const [created] = await db.insert(otaIntegrations).values(integration).returning();
+    return created;
+  }
+
+  async updateOtaIntegration(id: number, updates: Partial<InsertOtaIntegration>): Promise<OtaIntegration> {
+    const [updated] = await db.update(otaIntegrations).set({ ...updates, updatedAt: new Date() }).where(eq(otaIntegrations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteOtaIntegration(id: number): Promise<void> {
+    await db.delete(otaIntegrations).where(eq(otaIntegrations.id, id));
+  }
+
+  async updateOtaSyncStatus(id: number, status: string, errorMessage?: string): Promise<OtaIntegration> {
+    const updates: any = { syncStatus: status, lastSyncAt: new Date(), updatedAt: new Date() };
+    if (errorMessage) {
+      updates.syncErrorMessage = errorMessage;
+    }
+    const [updated] = await db.update(otaIntegrations).set(updates).where(eq(otaIntegrations.id, id)).returning();
     return updated;
   }
 }
