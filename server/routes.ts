@@ -1719,7 +1719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, paymentMethod, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", includeGst = true, includeServiceCharge = true, manualCharges } = req.body;
+      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", includeGst = true, includeServiceCharge = true, manualCharges } = req.body;
       
       // Validate input
       if (!bookingId) {
@@ -1727,7 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Payment method is required only when marking as paid
-      if (paymentStatus === "paid" && !paymentMethod) {
+      if (paymentStatus === "paid" && !paymentMethod && (!paymentMethods || paymentMethods.length === 0)) {
         return res.status(400).json({ message: "Payment method is required when marking as paid" });
       }
 
