@@ -319,10 +319,13 @@ export interface IStorage {
   markErrorAsResolved(id: number): Promise<ErrorCrash>;
   deleteErrorCrash(id: number): Promise<void>;
 
-  // Booking.com Integration operations
-  getBookingComIntegration(propertyId: number): Promise<any>;
-  saveBookingComIntegration(integration: any): Promise<any>;
-  updateBookingComSyncStatus(propertyId: number, status: string, errorMessage?: string): Promise<any>;
+  // OTA Integrations operations (multi-portal support)
+  getAllOtaIntegrations(propertyId: number): Promise<any[]>;
+  getOtaIntegration(propertyId: number, otaName: string): Promise<any>;
+  saveOtaIntegration(integration: any): Promise<any>;
+  updateOtaIntegration(id: number, integration: Partial<any>): Promise<any>;
+  deleteOtaIntegration(id: number): Promise<void>;
+  updateOtaSyncStatus(id: number, status: string, errorMessage?: string): Promise<any>;
 
   // Attendance operations
   getAllAttendance(): Promise<AttendanceRecord[]>;

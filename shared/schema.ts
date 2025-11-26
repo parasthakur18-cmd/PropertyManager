@@ -1158,12 +1158,15 @@ export const insertPreBillSchema = createInsertSchema(preBills).omit({
 export type InsertPreBill = z.infer<typeof insertPreBillSchema>;
 export type PreBill = typeof preBills.$inferSelect;
 
-// Booking.com Integration table
-export const bookingComIntegrations = pgTable("booking_com_integrations", {
+// OTA Integrations table - Generic for all portals (Booking.com, MMT, Airbnb, OYO, etc.)
+export const otaIntegrations = pgTable("ota_integrations", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  hotelId: varchar("hotel_id", { length: 100 }).notNull(),
-  apiKey: text("api_key").notNull(), // Encrypted in production
+  otaName: varchar("ota_name", { length: 50 }).notNull(), // booking.com, mmt, airbnb, oyo, others
+  propertyId_external: varchar("property_id_external", { length: 100 }).notNull(), // Hotel ID / Property ID on the OTA
+  apiKey: text("api_key"), // Encrypted in production
+  apiSecret: text("api_secret"), // Some portals need both key and secret
+  credentials: jsonb("credentials"), // Flexible JSONB for any portal-specific data
   enabled: boolean("enabled").notNull().default(true),
   lastSyncAt: timestamp("last_sync_at"),
   syncStatus: varchar("sync_status", { length: 20 }).notNull().default("idle"), // idle, syncing, success, failed
@@ -1172,7 +1175,7 @@ export const bookingComIntegrations = pgTable("booking_com_integrations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertBookingComIntegrationSchema = createInsertSchema(bookingComIntegrations).omit({
+export const insertOtaIntegrationSchema = createInsertSchema(otaIntegrations).omit({
   id: true,
   lastSyncAt: true,
   syncStatus: true,
@@ -1181,5 +1184,5 @@ export const insertBookingComIntegrationSchema = createInsertSchema(bookingComIn
   updatedAt: true,
 });
 
-export type InsertBookingComIntegration = z.infer<typeof insertBookingComIntegrationSchema>;
-export type BookingComIntegration = typeof bookingComIntegrations.$inferSelect;
+export type InsertOtaIntegration = z.infer<typeof insertOtaIntegrationSchema>;
+export type OtaIntegration = typeof otaIntegrations.$inferSelect;

@@ -5462,83 +5462,93 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
-  // ===== BOOKING.COM INTEGRATION =====
-  app.post("/api/bookingcom/credentials", isAuthenticated, async (req, res) => {
+  // ===== MULTI-OTA INTEGRATION (Booking.com, MMT, Airbnb, OYO, etc.) =====
+  app.get("/api/ota/integrations/:propertyId", isAuthenticated, async (req, res) => {
     try {
-      const { propertyId, hotelId, apiKey } = req.body;
+      const propertyId = parseInt(req.params.propertyId);
+      const integrations = await storage.getAllOtaIntegrations(propertyId);
       
-      if (!propertyId || !hotelId || !apiKey) {
-        return res.status(400).json({ message: "Property ID, Hotel ID, and API Key are required" });
+      // Mask API keys for security
+      const safe = integrations.map((i: any) => ({
+        ...i,
+        apiKey: i.apiKey ? "***" : null,
+        apiSecret: i.apiSecret ? "***" : null,
+      }));
+
+      res.json(safe);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ota/integrations", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, otaName, propertyId_external, apiKey, apiSecret, credentials } = req.body;
+      
+      if (!propertyId || !otaName || !propertyId_external) {
+        return res.status(400).json({ message: "Property ID, OTA Name, and External Property ID required" });
       }
 
-      // Check if property exists
+      if (!apiKey && !apiSecret && !credentials) {
+        return res.status(400).json({ message: "At least one credential field is required" });
+      }
+
       const property = await storage.getProperty(propertyId);
       if (!property) {
         return res.status(404).json({ message: "Property not found" });
       }
 
-      // Get or create integration
-      let integration = await storage.getBookingComIntegration(propertyId);
-      
-      if (integration) {
-        // Update existing
-        integration = await storage.saveBookingComIntegration({
-          propertyId,
-          hotelId,
-          apiKey,
-          enabled: true,
-        });
-      } else {
-        // Create new
-        integration = await storage.saveBookingComIntegration({
-          propertyId,
-          hotelId,
-          apiKey,
-          enabled: true,
-        });
-      }
-
-      res.json({ success: true, message: "Booking.com credentials saved", integration });
-    } catch (error: any) {
-      console.error("Booking.com credentials error:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/bookingcom/credentials/:propertyId", isAuthenticated, async (req, res) => {
-    try {
-      const propertyId = parseInt(req.params.propertyId);
-      const integration = await storage.getBookingComIntegration(propertyId);
-      
-      if (!integration) {
-        return res.json(null);
-      }
-
-      // Don't send full API key to frontend for security
-      res.json({
-        ...integration,
-        apiKey: integration.apiKey ? "***" : null,
+      const integration = await storage.saveOtaIntegration({
+        propertyId,
+        otaName,
+        propertyId_external,
+        apiKey,
+        apiSecret,
+        credentials,
+        enabled: true,
       });
+
+      res.json({ success: true, message: `${otaName} integration saved`, integration });
+    } catch (error: any) {
+      console.error("OTA integration error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/ota/integrations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+
+      const integration = await storage.updateOtaIntegration(id, updates);
+      res.json({ success: true, integration });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.post("/api/bookingcom/sync/:propertyId", isAuthenticated, async (req, res) => {
+  app.delete("/api/ota/integrations/:id", isAuthenticated, async (req, res) => {
     try {
-      const propertyId = parseInt(req.params.propertyId);
-      
-      // Update status to syncing
-      await storage.updateBookingComSyncStatus(propertyId, "syncing");
+      const id = parseInt(req.params.id);
+      await storage.deleteOtaIntegration(id);
+      res.json({ success: true, message: "Integration deleted" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
 
-      // Mock sync - In production, this would call Booking.com API
-      console.log(`[BOOKING.COM] Syncing reservations for property ${propertyId}`);
+  app.post("/api/ota/sync/:integrationId", isAuthenticated, async (req, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
       
-      // Simulated API call - would fetch from Booking.com API
+      // Get integration details (would get from DB in real implementation)
+      console.log(`[OTA SYNC] Syncing reservations for integration ${integrationId}`);
+      
+      // Mock reservations
       const mockReservations = [
         {
           bookingId: `BK_${Date.now()}`,
-          guestName: "Sample Guest",
+          guestName: "Sample Guest from OTA",
           roomNumber: "101",
           checkIn: new Date(),
           checkOut: new Date(Date.now() + 86400000),
@@ -5547,17 +5557,13 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         }
       ];
 
-      // Mark sync as successful
-      await storage.updateBookingComSyncStatus(propertyId, "success");
-
       res.json({ 
         success: true, 
         message: `Synced ${mockReservations.length} reservations`,
         reservations: mockReservations,
       });
     } catch (error: any) {
-      await storage.updateBookingComSyncStatus(propertyId, "failed", error.message);
-      console.error("Booking.com sync error:", error);
+      console.error("OTA sync error:", error);
       res.status(500).json({ message: error.message });
     }
   });
