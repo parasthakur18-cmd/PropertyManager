@@ -1,4 +1,6 @@
 // RazorPay Payment Link Service
+import crypto from "crypto";
+
 export async function createPaymentLink(bookingId: number, amount: number, guestName: string, guestEmail: string, guestPhone: string) {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -32,7 +34,7 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
         email: true,
       },
       upi_link: true,
-      callback_url: `${process.env.VITE_API_URL || "http://localhost:5000"}/api/razorpay/webhook`,
+      callback_url: `${process.env.VITE_API_URL || "http://localhost:5000"}/api/webhooks/razorpay`,
       callback_method: "get",
       expire_by: Math.floor(Date.now() / 1000) + 15552000, // 180 days from now
     }),
@@ -73,4 +75,13 @@ export async function getPaymentLinkStatus(linkId: string) {
   }
 
   return await response.json();
+}
+
+// Verify RazorPay webhook signature
+export function verifyWebhookSignature(payload: string, signature: string) {
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keySecret) return false;
+
+  const hash = crypto.createHmac("sha256", keySecret).update(payload).digest("hex");
+  return hash === signature;
 }

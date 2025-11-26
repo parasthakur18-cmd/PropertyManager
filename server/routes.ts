@@ -46,7 +46,7 @@ import {
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
-import { createPaymentLink, getPaymentLinkStatus } from "./razorpay";
+import { createPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -2064,6 +2064,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Payment link generation error:", error);
       res.status(500).json({ message: error.message || "Failed to generate payment link" });
+    }
+  });
+
+  // RazorPay Webhook - Handle payment confirmations (NO AUTH REQUIRED - webhook from RazorPay)
+  app.post("/api/webhooks/razorpay", async (req, res) => {
+    try {
+      const { payment_link_id, status, amount, customer, reference_id } = req.body;
+
+      console.log(`[RazorPay Webhook] Received: Link=${payment_link_id}, Status=${status}, Amount=${amount}`);
+
+      // Verify webhook if signature is provided
+      if (req.body.signature) {
+        const payload = JSON.stringify(req.body);
+        if (!verifyWebhookSignature(payload, req.body.signature)) {
+          console.warn("[RazorPay Webhook] Invalid signature");
+          return res.status(401).json({ message: "Invalid signature" });
+        }
+      }
+
+      // Only process paid status
+      if (status === "paid" && reference_id) {
+        const bookingId = parseInt(reference_id);
+        const booking = await storage.getBooking(bookingId);
+        
+        if (booking) {
+          // Get existing bill for this booking
+          const bills = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+          
+          if (bills.length > 0) {
+            const bill = bills[0];
+            // Update bill payment status to paid
+            await db.update(bills).set({
+              paymentStatus: "paid",
+              paymentMethod: "razorpay_online",
+              updatedAt: new Date(),
+            }).where(eq(bills.id, bill.id));
+
+            console.log(`[RazorPay] Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
+
+            // Send confirmation to guest via WhatsApp
+            const guest = await storage.getGuest(booking.guestId);
+            if (guest && guest.phone) {
+              const authkeyService = createAuthkeyService();
+              await authkeyService.sendMessage(
+                guest.phone,
+                `Hi ${guest.fullName},\n\nYour payment of ₹${(amount / 100).toFixed(2)} has been received successfully!\n\nThank you for your payment.\n\nHostezee Team`
+              );
+            }
+          }
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[RazorPay Webhook] Error:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 
