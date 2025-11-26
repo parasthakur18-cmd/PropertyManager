@@ -93,11 +93,14 @@ export default function ActiveBookings() {
   const [discountType, setDiscountType] = useState<string>("none");
   const [discountValue, setDiscountValue] = useState<string>("");
   const [discountAppliesTo, setDiscountAppliesTo] = useState<string>("total");
-  const [includeGst, setIncludeGst] = useState<boolean>(false); // Changed default from true to false
-  const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false); // Changed default from true to false
+  const [includeGst, setIncludeGst] = useState<boolean>(false);
+  const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [manualCharges, setManualCharges] = useState<Array<{ name: string; amount: string }>>([
     { name: "", amount: "" }
+  ]);
+  const [paymentMethods, setPaymentMethods] = useState<Array<{ method: string; amount: string }>>([
+    { method: "cash", amount: "" }
   ]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
@@ -169,6 +172,7 @@ export default function ActiveBookings() {
       setPaymentMethod("card");
       setPaymentStatus("paid");
       setAutoCompletingCheckout(false);
+      setPaymentMethods([{ method: "cash", amount: "" }]);
     }
   }, [checkoutDialog.open]);
 
@@ -1239,23 +1243,64 @@ export default function ActiveBookings() {
                 </div>
 
                 {paymentStatus === "paid" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="payment-method">Payment Method *</Label>
-                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <SelectTrigger id="payment-method" data-testid="select-payment-method">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
-                        <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="cheque">Cheque</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      💡 Tip: Select <strong>Card</strong> or <strong>UPI</strong> to send payment links via RazorPay
-                    </p>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Payment Methods (Split Payments)</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Enter amount for each payment method. Total must match bill amount.</p>
+                      {paymentMethods.map((pm, idx) => (
+                        <div key={idx} className="flex gap-2 mb-2">
+                          <Select value={pm.method} onValueChange={(val) => {
+                            const newMethods = [...paymentMethods];
+                            newMethods[idx].method = val;
+                            setPaymentMethods(newMethods);
+                          }}>
+                            <SelectTrigger className="w-32" data-testid={`select-payment-method-${idx}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="card">Card</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
+                              <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="cheque">Cheque</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            placeholder="Amount"
+                            value={pm.amount}
+                            onChange={(e) => {
+                              const newMethods = [...paymentMethods];
+                              newMethods[idx].amount = e.target.value;
+                              setPaymentMethods(newMethods);
+                            }}
+                            data-testid={`input-payment-amount-${idx}`}
+                          />
+                          {paymentMethods.length > 1 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setPaymentMethods(paymentMethods.filter((_, i) => i !== idx))}
+                              data-testid={`button-remove-payment-${idx}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPaymentMethods([...paymentMethods, { method: "cash", amount: "" }])}
+                        className="mt-2"
+                        data-testid="button-add-payment-method"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add Payment Method
+                      </Button>
+                    </div>
                   </div>
                 )}
 

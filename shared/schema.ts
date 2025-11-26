@@ -368,7 +368,8 @@ export const bills = pgTable("bills", {
   advancePaid: decimal("advance_paid", { precision: 10, scale: 2 }).notNull().default("0"), // Advance amount received at booking
   balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }).notNull().default("0"), // Remaining amount to be paid
   paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("unpaid"),
-  paymentMethod: varchar("payment_method", { length: 50 }),
+  paymentMethod: varchar("payment_method", { length: 50 }), // Primary method (for backward compatibility)
+  paymentMethods: jsonb("payment_methods"), // Store array of {method, amount} for split payments
   paidAt: timestamp("paid_at"),
   dueDate: timestamp("due_date"), // Optional due date for pending payments
   pendingReason: text("pending_reason"), // Optional note for why payment is pending (e.g., "Corporate client - monthly billing")
