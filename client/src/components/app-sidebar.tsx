@@ -59,7 +59,6 @@ const adminOperationsItems = [
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
-  { title: "Guests", url: "/guests", icon: Users },
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
