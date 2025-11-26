@@ -2040,10 +2040,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (existingBills.length === 0) {
         // Create a new bill record with pending status so webhook can update it
-        const property = await storage.getProperty(booking.propertyId);
         const result = await db.insert(bills).values({
           bookingId: bookingId,
           propertyId: booking.propertyId,
+          guestId: booking.guestId,
           guestName: guest.fullName || "Guest",
           roomCharges: parseFloat(billDetails.roomCharges || 0),
           foodCharges: parseFloat(billDetails.foodCharges || 0),
