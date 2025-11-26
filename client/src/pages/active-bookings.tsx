@@ -105,6 +105,8 @@ export default function ActiveBookings() {
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
   const [skipPreBill, setSkipPreBill] = useState(false); // Allow staff to skip pre-bill and checkout directly
+  const [paymentMethod, setPaymentMethod] = useState<string>("prebill"); // prebill or direct-payment
+  const [paymentLinkSent, setPaymentLinkSent] = useState(false);
 
   // Fetch pre-bill status when checkout dialog opens
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
@@ -193,6 +195,27 @@ export default function ActiveBookings() {
       toast({
         title: "Failed to Approve Pre-Bill",
         description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const paymentLinkMutation = useMutation({
+    mutationFn: async ({ bookingId, billDetails }: { bookingId: number; billDetails: any }) => {
+      return await apiRequest("/api/payment-link/generate", "POST", { bookingId, billDetails });
+    },
+    onSuccess: (data) => {
+      setPaymentLinkSent(true);
+      const guest = checkoutDialog.booking?.guest;
+      toast({
+        title: "Payment Link Sent Successfully ✓",
+        description: `Payment link sent to ${guest?.fullName || 'Guest'} via WhatsApp. Awaiting payment confirmation...`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to Send Payment Link",
+        description: error.message || "Unable to send payment link via WhatsApp. Please check guest phone number and try again.",
         variant: "destructive",
       });
     },
@@ -1167,7 +1190,7 @@ export default function ActiveBookings() {
               Cancel
             </Button>
 
-            {!skipPreBill && preBillStatus !== "approved" ? (
+            {!skipPreBill && preBillStatus !== "approved" && !paymentLinkSent ? (
               <>
                 {preBillStatus === "pending" && !preBillSent ? (
                   <>
@@ -1179,6 +1202,19 @@ export default function ActiveBookings() {
                       className="flex-1"
                     >
                       {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
+                    </Button>
+                    
+                    <Button
+                      onClick={() => {
+                        const billDetails = calculateBillDetails();
+                        paymentLinkMutation.mutate({ bookingId: checkoutDialog.booking?.id || 0, billDetails });
+                      }}
+                      disabled={paymentLinkMutation.isPending}
+                      variant="outline"
+                      data-testid="button-send-payment-link"
+                      className="flex-1"
+                    >
+                      {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
                     </Button>
                     
                     <Button
@@ -1215,7 +1251,14 @@ export default function ActiveBookings() {
               </>
             ) : null}
 
-            {(skipPreBill || preBillStatus === "approved") && (
+            {paymentLinkSent && (
+              <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center px-3 py-2 border border-green-200 rounded-md bg-green-50 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400">
+                <Check className="h-4 w-4" />
+                <span>Payment Link Sent ✓ Awaiting Payment</span>
+              </div>
+            )}
+
+            {(skipPreBill || preBillStatus === "approved" || paymentLinkSent) && (
               <>
                 {preBillStatus === "approved" && (
                   <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
