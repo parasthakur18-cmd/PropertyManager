@@ -106,6 +106,8 @@ export default function ActiveBookings() {
   const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
   const [skipPreBill, setSkipPreBill] = useState(false); // Allow staff to skip pre-bill and checkout directly
   const [paymentLinkSent, setPaymentLinkSent] = useState(false);
+  const [upiPaymentLink, setUpiPaymentLink] = useState<string | null>(null);
+  const [showUpiLink, setShowUpiLink] = useState(false);
 
   // Fetch pre-bill status when checkout dialog opens
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
@@ -220,6 +222,29 @@ export default function ActiveBookings() {
     },
   });
 
+  // Generate UPI payment link when UPI is selected
+  const generateUpiLink = async () => {
+    if (paymentMethod === "upi" && checkoutDialog.booking) {
+      const billDetails = calculateBillDetails();
+      try {
+        const result = await apiRequest("/api/payment-link/generate", "POST", {
+          bookingId: checkoutDialog.booking.id,
+          billDetails
+        });
+        setUpiPaymentLink(result.paymentLink);
+        setShowUpiLink(true);
+        return result.paymentLink;
+      } catch (error) {
+        toast({
+          title: "Failed to Generate UPI Link",
+          description: "Please try again",
+          variant: "destructive",
+        });
+      }
+    }
+    return null;
+  };
+
   const checkoutMutation = useMutation({
     mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, includeGst, includeServiceCharge, manualCharges }: { 
       bookingId: number; 
@@ -234,6 +259,14 @@ export default function ActiveBookings() {
       includeServiceCharge: boolean;
       manualCharges: Array<{ name: string; amount: string }>;
     }) => {
+      // If UPI is selected, generate payment link instead of immediate checkout
+      if (paymentStatus === "paid" && paymentMethod === "upi") {
+        const link = await generateUpiLink();
+        if (!link) throw new Error("Failed to generate UPI link");
+        // Return special response to indicate UPI link generation
+        return { upiLink: link };
+      }
+      
       return await apiRequest("/api/bookings/checkout", "POST", { 
         bookingId, 
         paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
@@ -248,7 +281,7 @@ export default function ActiveBookings() {
         manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
       });
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
