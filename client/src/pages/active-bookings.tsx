@@ -1256,70 +1256,72 @@ export default function ActiveBookings() {
 
             {!skipPreBill && preBillStatus !== "approved" && !paymentLinkSent ? (
               <>
-                {preBillStatus === "pending" && !preBillSent ? (
-                  <>
-                    <Button
-                      onClick={handleSendPreBill}
-                      disabled={sendPreBillMutation.isPending}
-                      variant="outline"
-                      data-testid="button-send-prebill"
-                      className="flex-1"
-                    >
-                      {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
-                    </Button>
-                    
-                    <Button
-                      onClick={() => {
-                        if (!checkoutDialog.booking) return;
-                        if (paymentMethod !== "card" && paymentMethod !== "upi") {
-                          toast({
-                            title: "Invalid Payment Method",
-                            description: "Please change payment method to 'Card' or 'UPI' to send payment link",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        const booking = checkoutDialog.booking;
-                        const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
-                        const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
-                        const finalTotal = breakdown.grandTotal - discountAmt;
-                        const advancePaid = parseFloat(booking.charges.advancePaid);
-                        const balanceDue = finalTotal - advancePaid;
-                        const billDetails = {
-                          bookingId: booking.id,
-                          guestName: booking.guest.fullName,
-                          guestPhone: booking.guest.phone,
-                          roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
-                          roomCharges: breakdown.roomCharges,
-                          foodCharges: breakdown.foodCharges,
-                          gstAmount: breakdown.gstAmount,
-                          serviceChargeAmount: breakdown.serviceChargeAmount,
-                          subtotal: breakdown.subtotal,
-                          discountAmount: discountAmt,
-                          totalAmount: breakdown.grandTotal,
-                          balanceDue: balanceDue,
-                          advancePaid: advancePaid,
-                        };
-                        paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
-                      }}
-                      disabled={paymentLinkMutation.isPending}
-                      variant="outline"
-                      data-testid="button-send-payment-link"
-                      className="flex-1"
-                    >
-                      {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
-                    </Button>
-                    
-                    <Button
-                      onClick={() => setSkipPreBill(true)}
-                      variant="outline"
-                      data-testid="button-skip-prebill"
-                      className="flex-1"
-                    >
-                      Skip & Checkout
-                    </Button>
-                  </>
-                ) : preBillStatus === "sent" || preBillSent ? (
+                {preBillStatus === "pending" && !preBillSent && (
+                  <Button
+                    onClick={handleSendPreBill}
+                    disabled={sendPreBillMutation.isPending}
+                    variant="outline"
+                    data-testid="button-send-prebill"
+                    className="flex-1"
+                  >
+                    {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
+                  </Button>
+                )}
+                
+                <Button
+                  onClick={() => {
+                    if (!checkoutDialog.booking) return;
+                    if (paymentMethod !== "card" && paymentMethod !== "upi") {
+                      toast({
+                        title: "Invalid Payment Method",
+                        description: "Please change payment method to 'Card' or 'UPI' to send payment link",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    const booking = checkoutDialog.booking;
+                    const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
+                    const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
+                    const finalTotal = breakdown.grandTotal - discountAmt;
+                    const advancePaid = parseFloat(booking.charges.advancePaid);
+                    const balanceDue = finalTotal - advancePaid;
+                    const billDetails = {
+                      bookingId: booking.id,
+                      guestName: booking.guest.fullName,
+                      guestPhone: booking.guest.phone,
+                      roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
+                      roomCharges: breakdown.roomCharges,
+                      foodCharges: breakdown.foodCharges,
+                      gstAmount: breakdown.gstAmount,
+                      serviceChargeAmount: breakdown.serviceChargeAmount,
+                      subtotal: breakdown.subtotal,
+                      discountAmount: discountAmt,
+                      totalAmount: breakdown.grandTotal,
+                      balanceDue: balanceDue,
+                      advancePaid: advancePaid,
+                    };
+                    paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
+                  }}
+                  disabled={paymentLinkMutation.isPending}
+                  variant="outline"
+                  data-testid="button-send-payment-link"
+                  className="flex-1"
+                >
+                  {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
+                </Button>
+                
+                {preBillStatus === "pending" && !preBillSent && (
+                  <Button
+                    onClick={() => setSkipPreBill(true)}
+                    variant="outline"
+                    data-testid="button-skip-prebill"
+                    className="flex-1"
+                  >
+                    Skip & Checkout
+                  </Button>
+                )}
+
+                {(preBillStatus === "sent" || preBillSent) && (
                   <>
                     <div className="flex items-center gap-2 text-blue-600 text-sm font-medium flex-1 justify-center px-3 py-2 border border-blue-200 rounded-md bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400">
                       <div className="h-2 w-2 bg-blue-600 rounded-full animate-pulse"></div>
@@ -1335,12 +1337,14 @@ export default function ActiveBookings() {
                       {approveBillMutation.isPending ? "Marking..." : "Mark as Approved & Proceed"}
                     </Button>
                   </>
-                ) : preBillStatus === "approved" ? (
+                )}
+
+                {preBillStatus === "approved" && (
                   <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center">
                     <Check className="h-4 w-4" />
                     <span>Pre-Bill Approved ✓</span>
                   </div>
-                ) : null}
+                )}
               </>
             ) : null}
 
