@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Hotel, Edit, Trash2, Filter } from "lucide-react";
+import { Plus, Hotel, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -16,6 +16,7 @@ import { insertRoomSchema, type InsertRoom, type Room, type Property } from "@sh
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { triggerCompletionNotification } from "@/components/completion-notifications";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const statusColors = {
   available: "bg-chart-5 text-white",
@@ -30,6 +31,7 @@ export default function Rooms() {
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [filterProperty, setFilterProperty] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterRoomType, setFilterRoomType] = useState<string>("all");
   const [quantity, setQuantity] = useState<number>(1);
   const { toast } = useToast();
 
@@ -212,6 +214,7 @@ export default function Rooms() {
   const filteredRooms = rooms?.filter((room) => {
     if (filterProperty !== "all" && room.propertyId !== parseInt(filterProperty)) return false;
     if (filterStatus !== "all" && room.status !== filterStatus) return false;
+    if (filterRoomType !== "all" && room.roomCategory !== filterRoomType) return false;
     return true;
   });
 
@@ -615,32 +618,43 @@ export default function Rooms() {
         </Dialog>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <Select value={filterProperty} onValueChange={setFilterProperty}>
-          <SelectTrigger className="w-48" data-testid="filter-property">
-            <SelectValue placeholder="All Properties" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Properties</SelectItem>
-            {properties?.map((property) => (
-              <SelectItem key={property.id} value={property.id.toString()}>
-                {property.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-48" data-testid="filter-status">
-            <SelectValue placeholder="All Statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="available">Available</SelectItem>
-            <SelectItem value="occupied">Occupied</SelectItem>
-            <SelectItem value="maintenance">Maintenance</SelectItem>
-            <SelectItem value="cleaning">Cleaning</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="space-y-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Select value={filterProperty} onValueChange={setFilterProperty}>
+            <SelectTrigger className="w-48" data-testid="filter-property">
+              <SelectValue placeholder="All Properties" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Properties</SelectItem>
+              {properties?.map((property) => (
+                <SelectItem key={property.id} value={property.id.toString()}>
+                  {property.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterRoomType} onValueChange={setFilterRoomType}>
+            <SelectTrigger className="w-48" data-testid="filter-room-type">
+              <SelectValue placeholder="All Room Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Room Types</SelectItem>
+              <SelectItem value="standard">Standard</SelectItem>
+              <SelectItem value="deluxe">Deluxe</SelectItem>
+              <SelectItem value="suite">Suite</SelectItem>
+              <SelectItem value="dormitory">Dormitory</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-4" data-testid="status-tabs">
+            <TabsTrigger value="all" data-testid="tab-all-statuses">All</TabsTrigger>
+            <TabsTrigger value="available" data-testid="tab-available">Available</TabsTrigger>
+            <TabsTrigger value="cleaning" data-testid="tab-cleaning">Cleaning</TabsTrigger>
+            <TabsTrigger value="maintenance" data-testid="tab-maintenance">Maintenance</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {!filteredRooms || filteredRooms.length === 0 ? (
