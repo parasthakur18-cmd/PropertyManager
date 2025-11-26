@@ -2085,6 +2085,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.log(`[Payment-Link] Final paymentAmount: ${paymentAmount}`);
       
+      // Handle overpayment or fully paid scenarios
+      if (paymentAmount <= 0) {
+        console.log(`[Payment-Link] No payment link needed - cash covers or exceeds total (paymentAmount: ${paymentAmount})`);
+        
+        // Update bill to PAID status since cash covers everything
+        await db.update(bills)
+          .set({ 
+            paymentStatus: "paid",
+            paymentMethod: "cash",
+            paymentMethods: [{ method: "cash", amount: parseFloat(billDetails.totalAmount) }],
+            updatedAt: new Date()
+          })
+          .where(eq(bills.id, billId));
+        
+        // Send a confirmation message instead of payment link
+        const advancePaid = parseFloat(billDetails.advancePaid || 0);
+        const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
+        const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
+        const totalAmount = `₹${parseFloat(billDetails.totalAmount || 0).toFixed(2)}`;
+        
+        // Use a simple thank you message - could be a different template
+        console.log(`[Payment-Link] Bill fully paid with cash. Guest: ${guest.fullName}, Total: ${totalAmount}, Cash: ₹${advancePaid.toFixed(2)}`);
+        
+        return res.json({ 
+          success: true, 
+          message: "Payment completed in cash - no payment link needed",
+          paymentLink: null,
+          linkId: null,
+          billId: billId,
+          fullyPaidByCash: true
+        });
+      }
+      
+      // RazorPay minimum is ₹1 (100 paise)
+      if (paymentAmount < 1) {
+        console.log(`[Payment-Link] Amount too small for payment link (₹${paymentAmount}), marking as paid`);
+        
+        await db.update(bills)
+          .set({ 
+            paymentStatus: "paid",
+            paymentMethod: "cash",
+            updatedAt: new Date()
+          })
+          .where(eq(bills.id, billId));
+        
+        return res.json({ 
+          success: true, 
+          message: "Remaining amount too small - marked as paid",
+          paymentLink: null,
+          linkId: null,
+          billId: billId,
+          fullyPaidByCash: true
+        });
+      }
+      
       // Create payment link via RazorPay
       const paymentLink = await createPaymentLink(
         bookingId,
