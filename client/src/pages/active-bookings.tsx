@@ -1283,10 +1283,8 @@ export default function ActiveBookings() {
             {!paymentLinkSent && !skipPreBill && preBillStatus !== "approved" && (
               <Button
                 onClick={() => {
-                  console.log("Send Payment Link clicked. Current paymentMethod:", paymentMethod);
                   if (!checkoutDialog.booking) return;
                   if (paymentMethod !== "card" && paymentMethod !== "upi") {
-                    console.warn("Invalid payment method detected:", paymentMethod);
                     toast({
                       title: "Invalid Payment Method",
                       description: "Please change payment method to 'Card' or 'UPI' to send payment link",
@@ -1294,7 +1292,6 @@ export default function ActiveBookings() {
                     });
                     return;
                   }
-                  console.log("Payment method validated, proceeding with payment link generation");
                   const booking = checkoutDialog.booking;
                   const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
                   const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
