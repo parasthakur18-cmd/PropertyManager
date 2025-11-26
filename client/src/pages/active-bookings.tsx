@@ -108,11 +108,19 @@ export default function ActiveBookings() {
   const [paymentLinkSent, setPaymentLinkSent] = useState(false);
   const [upiPaymentLink, setUpiPaymentLink] = useState<string | null>(null);
   const [showUpiLink, setShowUpiLink] = useState(false);
+  const [autoCompletingCheckout, setAutoCompletingCheckout] = useState(false);
 
   // Fetch pre-bill status when checkout dialog opens
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id),
+  });
+
+  // Poll bill status when payment link is sent - to detect when payment is completed
+  const { data: currentBill } = useQuery<{ paymentStatus: string; id: number } | null>({
+    queryKey: ["/api/bills/booking", checkoutDialog.booking?.id],
+    enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id && paymentLinkSent && !autoCompletingCheckout),
+    refetchInterval: 5000, // Poll every 5 seconds when waiting for payment
   });
 
   // Update pre-bill status when it changes
@@ -125,6 +133,32 @@ export default function ActiveBookings() {
     }
   }, [currentPreBill]);
 
+  // Auto-complete checkout when payment is confirmed via webhook
+  useEffect(() => {
+    if (currentBill && currentBill.paymentStatus === "paid" && paymentLinkSent && !autoCompletingCheckout && checkoutDialog.booking) {
+      setAutoCompletingCheckout(true);
+      toast({
+        title: "Payment Confirmed ✓",
+        description: "Payment received! Completing checkout automatically...",
+      });
+      
+      // Auto-trigger checkout after a short delay
+      setTimeout(() => {
+        checkoutMutation.mutate({
+          bookingId: checkoutDialog.booking!.id,
+          paymentMethod: paymentMethod,
+          paymentStatus: "paid",
+          discountType: discountType === "none" ? undefined : discountType,
+          discountValue: discountType === "none" || !discountValue ? undefined : parseFloat(discountValue),
+          discountAppliesTo: discountType === "none" ? undefined : discountAppliesTo,
+          includeGst,
+          includeServiceCharge,
+          manualCharges,
+        });
+      }, 1000);
+    }
+  }, [currentBill, paymentLinkSent, autoCompletingCheckout, checkoutDialog.booking]);
+
   // Reset checkout states when dialog closes
   useEffect(() => {
     if (!checkoutDialog.open) {
@@ -134,6 +168,7 @@ export default function ActiveBookings() {
       setPaymentLinkSent(false);
       setPaymentMethod("card");
       setPaymentStatus("paid");
+      setAutoCompletingCheckout(false);
     }
   }, [checkoutDialog.open]);
 
