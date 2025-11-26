@@ -13,6 +13,7 @@
  * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout/billing (default: 18667)
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
+ * - AUTHKEY_WA_PREBILL: Template for pre-bill verification (default: 19852)
  * 
  * Template variables are passed in order: var1, var2, var3, etc.
  * Ensure your authkey templates match the variable order!
@@ -259,13 +260,21 @@ export async function sendCheckoutNotification(
 }
 
 /**
- * Send pre-bill notification WhatsApp message (Simple format)
+ * Send pre-bill notification WhatsApp message (APPROVED TEMPLATE - WID 19852)
+ * 
+ * Template Format:
+ * "Dear {{1}} , here is your pre-bill for summary
+ * Nights: 2
+ * Room Charges: ₹ {{2}}
+ * Food Charges: ₹ {{3}}
+ * Total Amount: ₹ {{4}}
+ * If you have any questions, please let us know."
  * 
  * Template variables (in order):
- * 1. {{1}} - Guest Name
- * 2. {{2}} - Room Charges
- * 3. {{3}} - Food Charges
- * 4. {{4}} - Total Amount
+ * 1. Guest Name (e.g., "Yogita")
+ * 2. Room Charges (e.g., "₹ 5000.00")
+ * 3. Food Charges (e.g., "₹ 1500.00")
+ * 4. Total Amount (e.g., "₹ 6500.00")
  */
 export async function sendPreBillNotification(
   phoneNumber: string,
@@ -274,7 +283,7 @@ export async function sendPreBillNotification(
   foodCharges: string,
   totalAmount: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_PREBILL || "19816";
+  const templateId = process.env.AUTHKEY_WA_PREBILL || "19852";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
