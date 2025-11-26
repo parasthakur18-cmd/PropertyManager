@@ -2113,7 +2113,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { payment_link_id, status, amount, customer, reference_id } = req.body;
 
-      console.log(`[RazorPay Webhook] Received: Link=${payment_link_id}, Status=${status}, Amount=${amount}`);
+      console.log(`[RazorPay Webhook] ===== WEBHOOK RECEIVED =====`);
+      console.log(`[RazorPay Webhook] Full Body:`, JSON.stringify(req.body, null, 2));
+      console.log(`[RazorPay Webhook] Link=${payment_link_id}, Status=${status}, Amount=${amount}, RefId=${reference_id}`);
 
       // Verify webhook if signature is provided
       if (req.body.signature) {
@@ -2126,17 +2128,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Only process paid status
       if (status === "paid" && reference_id) {
+        console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
+        
         // Extract booking ID from reference_id format: booking_{id}_{timestamp}
         const bookingIdMatch = reference_id.match(/booking_(\d+)_/);
         const bookingId = bookingIdMatch ? parseInt(bookingIdMatch[1]) : parseInt(reference_id);
+        console.log(`[RazorPay Webhook] Extracted booking ID: ${bookingId}`);
+        
         const booking = await storage.getBooking(bookingId);
+        console.log(`[RazorPay Webhook] Booking found: ${booking ? 'YES' : 'NO'}`);
         
         if (booking) {
           // Get existing bill for this booking
-          const bills = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+          const billsResult = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+          console.log(`[RazorPay Webhook] Bills found for booking: ${billsResult.length}`);
           
-          if (bills.length > 0) {
-            const bill = bills[0];
+          if (billsResult.length > 0) {
+            const bill = billsResult[0];
+            console.log(`[RazorPay Webhook] Updating bill #${bill.id} status to PAID`);
+            
             // Update bill payment status to paid
             await db.update(bills).set({
               paymentStatus: "paid",
@@ -2144,25 +2154,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
               updatedAt: new Date(),
             }).where(eq(bills.id, bill.id));
 
-            console.log(`[RazorPay] Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
+            console.log(`[RazorPay] ✅ Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
 
             // Send confirmation to guest via WhatsApp
             const guest = await storage.getGuest(booking.guestId);
             if (guest && guest.phone) {
+              console.log(`[RazorPay Webhook] Sending confirmation to guest: ${guest.fullName} (${guest.phone})`);
               const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
               await sendCustomWhatsAppMessage(
                 guest.phone,
                 templateId,
                 [guest.fullName || "Guest", `₹${(amount / 100).toFixed(2)}`]
               );
+              console.log(`[RazorPay Webhook] Confirmation sent successfully`);
+            } else {
+              console.warn(`[RazorPay Webhook] Guest not found or no phone number`);
             }
+          } else {
+            console.warn(`[RazorPay Webhook] No bill found for booking #${bookingId}`);
           }
+        } else {
+          console.warn(`[RazorPay Webhook] Booking #${bookingId} not found`);
         }
+      } else {
+        console.log(`[RazorPay Webhook] Webhook status is not 'paid' (status=${status}) or no reference_id`);
       }
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("[RazorPay Webhook] Error:", error);
+      console.error("[RazorPay Webhook] ❌ ERROR:", error);
       res.status(500).json({ message: error.message });
     }
   });

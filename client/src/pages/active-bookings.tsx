@@ -1301,6 +1301,7 @@ export default function ActiveBookings() {
                                 serviceChargeAmount: breakdown.serviceChargeAmount,
                                 subtotal: breakdown.subtotal,
                                 discountAmount: discountAmt,
+                                totalAmount: totalBill,
                                 balanceAmount: remaining,
                                 balanceDue: remaining,
                                 advancePaid: cashPaid,
