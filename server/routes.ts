@@ -5386,38 +5386,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Destroy existing session completely
-      req.session.destroy((destroyErr) => {
-        if (destroyErr) {
-          console.warn("[EMAIL-LOGIN] Warning destroying session:", destroyErr);
+      // Clear all authentication related cookies first
+      res.clearCookie("connect.sid", { path: "/" });
+      res.clearCookie("session", { path: "/" });
+      res.clearCookie("passport", { path: "/" });
+      
+      // Logout any existing passport auth
+      req.logout((logoutErr) => {
+        // Ignore logout errors, we're replacing the session anyway
+        
+        // Destroy old session
+        if (req.session) {
+          req.session.destroy((destroyErr) => {
+            // Ignore destroy errors
+          });
         }
 
-        // Create completely fresh session
-        req.sessionID = undefined;
-        req.session = req.sessionStore.createSession(req);
-        
-        // Set email-auth flags
-        req.session.userId = user[0].id;
-        req.session.isEmailAuth = true;
-        req.session.regenerate = false;
-        
-        // Save session
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error("[EMAIL-LOGIN] Session save error:", saveErr);
+        // Create brand new session with email auth
+        req.sessionStore.createSession(req, (createErr, sess) => {
+          if (createErr) {
+            console.error("[EMAIL-LOGIN] Create session error:", createErr);
             return res.status(500).json({ message: "Login failed" });
           }
+
+          // Set email-auth data on new session
+          sess.userId = user[0].id;
+          sess.isEmailAuth = true;
+          req.session = sess;
           
-          console.log(`[EMAIL-LOGIN] ✓ New session created - userId: ${user[0].id}, email: ${user[0].email}, role: ${user[0].role}`);
-          res.json({ 
-            message: "Login successful", 
-            user: { 
-              id: user[0].id, 
-              email: user[0].email, 
-              role: user[0].role,
-              firstName: user[0].firstName,
-              lastName: user[0].lastName 
-            } 
+          // Save new session
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error("[EMAIL-LOGIN] Save error:", saveErr);
+              return res.status(500).json({ message: "Login failed" });
+            }
+            
+            console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);
+            res.json({ 
+              message: "Login successful", 
+              user: { 
+                id: user[0].id, 
+                email: user[0].email, 
+                role: user[0].role,
+                firstName: user[0].firstName,
+                lastName: user[0].lastName 
+              } 
+            });
           });
         });
       });
