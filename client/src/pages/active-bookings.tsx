@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
 
 interface ActiveBooking {
@@ -100,7 +100,6 @@ export default function ActiveBookings() {
     { name: "", amount: "" }
   ]);
   const [cashAmount, setCashAmount] = useState<string>("");
-  const cashInputRef = useRef<HTMLInputElement>(null);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
@@ -1253,7 +1252,6 @@ export default function ActiveBookings() {
                       <div className="space-y-2">
                         <Label htmlFor="cash-amount">Cash Received</Label>
                         <Input
-                          ref={cashInputRef}
                           id="cash-amount"
                           type="number"
                           placeholder="0"
@@ -1292,10 +1290,19 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              // Use useRef for bulletproof capture - bypasses state system entirely
-                              const refValue = cashInputRef.current?.value || "";
-                              const finalCashPaid = refValue ? Number(refValue) : 0;
-                              console.log(`[Send Payment Link] REF VALUE="${refValue}" -> finalCashPaid=${finalCashPaid}`);
+                              // Read cash amount directly from DOM and state (bulletproof dual approach)
+                              let finalCashPaid = 0;
+                              try {
+                                const elem = document.getElementById("cash-amount") as HTMLInputElement | null;
+                                if (elem && elem.value) {
+                                  finalCashPaid = Number(elem.value);
+                                } else if (cashAmount) {
+                                  finalCashPaid = Number(cashAmount);
+                                }
+                              } catch (e) {
+                                finalCashPaid = Number(cashAmount) || 0;
+                              }
+                              console.log(`[Payment Link] Captured cash: ${finalCashPaid}, state: ${cashAmount}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
@@ -1312,7 +1319,6 @@ export default function ActiveBookings() {
                                 balanceDue: remaining,
                                 advancePaid: finalCashPaid,
                               };
-                              console.log(`[Send Payment Link] Sending advancePaid=${finalCashPaid}`, billDetails);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                             }}
                             disabled={paymentLinkMutation.isPending}
