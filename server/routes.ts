@@ -2044,13 +2044,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl}`);
       
-      // Send payment link via WhatsApp
-      const authkeyService = createAuthkeyService();
+      // Send payment link via WhatsApp using custom message
       const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
+      const templateId = "19852"; // Payment link template ID
       
-      await authkeyService.sendMessage(
+      await sendCustomWhatsAppMessage(
         guest.phone,
-        `Hi ${guest.fullName},\n\nYour payment link is ready!\n\nAmount Due: ${totalAmount}\n\nClick here to pay: ${paymentLink.shortUrl}\n\nThank you!`
+        templateId,
+        [guest.fullName || "Guest", totalAmount, paymentLink.shortUrl]
       );
 
       console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
@@ -2106,10 +2107,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Send confirmation to guest via WhatsApp
             const guest = await storage.getGuest(booking.guestId);
             if (guest && guest.phone) {
-              const authkeyService = createAuthkeyService();
-              await authkeyService.sendMessage(
+              const templateId = "19853"; // Payment confirmation template ID
+              await sendCustomWhatsAppMessage(
                 guest.phone,
-                `Hi ${guest.fullName},\n\nYour payment of ₹${(amount / 100).toFixed(2)} has been received successfully!\n\nThank you for your payment.\n\nHostezee Team`
+                templateId,
+                [guest.fullName || "Guest", `₹${(amount / 100).toFixed(2)}`]
               );
             }
           }
