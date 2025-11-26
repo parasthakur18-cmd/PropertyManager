@@ -1271,10 +1271,10 @@ export default function ActiveBookings() {
                     <Button
                       onClick={() => {
                         if (!checkoutDialog.booking) return;
-                        if (paymentMethod !== "online" && paymentMethod !== "upi") {
+                        if (paymentMethod !== "card" && paymentMethod !== "upi") {
                           toast({
                             title: "Invalid Payment Method",
-                            description: "Please change payment method to 'Online' or 'UPI' to send payment link",
+                            description: "Please change payment method to 'Card' or 'UPI' to send payment link",
                             variant: "destructive",
                           });
                           return;
