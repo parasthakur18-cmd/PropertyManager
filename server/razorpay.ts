@@ -36,7 +36,7 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
       },
       upi_link: true,
       callback_url: `${process.env.VITE_API_URL || "http://localhost:5000"}/api/webhooks/razorpay`,
-      callback_method: "get",
+      callback_method: "post",
       expire_by: Math.floor(Date.now() / 1000) + 15552000, // 180 days from now
     }),
   });
