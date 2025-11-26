@@ -1197,7 +1197,7 @@ export default function ActiveBookings() {
                       <span>Pre-Bill Sent ✓ Waiting for Approval...</span>
                     </div>
                     <Button
-                      onClick={() => approveBillMutation.mutate(checkoutDialog.booking?.id || 0)}
+                      onClick={() => approveBillMutation.mutate(currentPreBill?.id || 0)}
                       disabled={approveBillMutation.isPending}
                       variant="default"
                       data-testid="button-mark-approved"
