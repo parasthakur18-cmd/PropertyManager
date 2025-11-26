@@ -9,7 +9,7 @@ import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
 import { connectToEventStream } from "@/lib/eventHandlers";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
@@ -182,9 +182,10 @@ export default function App() {
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
-  const [location] = useLocation();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const [, setForceUpdate] = useState(0);
 
+  // MUST be before any early returns to maintain hook order
   useEffect(() => {
     if (isAuthenticated && !eventSourceRef.current) {
       console.log('[App] Connecting to event stream...');
@@ -199,6 +200,19 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       }
     };
   }, [isAuthenticated]);
+
+  // MUST be before any early returns to maintain hook order
+  useEffect(() => {
+    const handleNavigation = () => {
+      setForceUpdate(prev => prev + 1);
+    };
+    window.addEventListener('popstate', handleNavigation);
+    window.addEventListener('hashchange', handleNavigation);
+    return () => {
+      window.removeEventListener('popstate', handleNavigation);
+      window.removeEventListener('hashchange', handleNavigation);
+    };
+  }, []);
 
   if (isLoading) {
     return (
@@ -221,7 +235,9 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   }
 
   // Hide main sidebar on super admin pages (they have their own sidebar)
-  const isSuperAdminPage = location.startsWith('/super-admin');
+  // Use window.location.pathname instead of wouter location to get real-time updates
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isSuperAdminPage = currentPath.startsWith('/super-admin');
 
   return (
     <div className="flex h-screen w-full">
