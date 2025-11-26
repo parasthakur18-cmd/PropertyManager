@@ -1319,7 +1319,7 @@ export default function ActiveBookings() {
                       disabled={paymentLinkMutation.isPending}
                       variant="outline"
                       data-testid="button-send-payment-link"
-                      className={`flex-1 ${paymentLinkMutation.isPending ? 'opacity-60' : ''}`}
+                      className="flex-1"
                     >
                       {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
                     </Button>
