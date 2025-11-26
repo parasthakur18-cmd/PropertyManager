@@ -1290,9 +1290,10 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              // Explicitly parse cashAmount to ensure it's captured correctly
-                              const finalCashPaid = cashAmount && cashAmount.trim() !== "" ? parseFloat(cashAmount) : 0;
-                              console.log(`[Send Payment Link] cashAmount="${cashAmount}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
+                              // Read directly from the DOM input element to ensure we capture the actual value
+                              const inputElement = document.getElementById("cash-amount") as HTMLInputElement;
+                              const finalCashPaid = inputElement && inputElement.value ? parseFloat(inputElement.value) : 0;
+                              console.log(`[Send Payment Link] Direct DOM read: input.value="${inputElement?.value}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
