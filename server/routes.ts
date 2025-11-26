@@ -2034,6 +2034,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Guest phone number not found" });
       }
 
+      // Check if bill already exists for this booking
+      const existingBills = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+      let billId: number;
+
+      if (existingBills.length === 0) {
+        // Create a new bill record with pending status so webhook can update it
+        const property = await storage.getProperty(booking.propertyId);
+        const result = await db.insert(bills).values({
+          bookingId: bookingId,
+          propertyId: booking.propertyId,
+          guestName: guest.fullName || "Guest",
+          roomCharges: parseFloat(billDetails.roomCharges || 0),
+          foodCharges: parseFloat(billDetails.foodCharges || 0),
+          extraCharges: parseFloat(billDetails.extraCharges || 0),
+          subtotal: parseFloat(billDetails.subtotal || billDetails.totalAmount),
+          gstAmount: parseFloat(billDetails.gstAmount || 0),
+          serviceChargeAmount: parseFloat(billDetails.serviceChargeAmount || 0),
+          totalAmount: parseFloat(billDetails.totalAmount),
+          advancePaid: parseFloat(billDetails.advancePaid || 0),
+          balanceAmount: parseFloat(billDetails.balanceAmount || billDetails.totalAmount),
+          paymentStatus: "pending",
+          paymentMethod: "razorpay_online",
+          paymentMethods: [{ method: "razorpay_online", amount: parseFloat(billDetails.totalAmount) }],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning({ id: bills.id });
+        billId = result[0]?.id || 0;
+        console.log(`[RazorPay] Created preliminary bill #${billId} for booking #${bookingId}`);
+      } else {
+        billId = existingBills[0].id;
+      }
+
       // Create payment link via RazorPay
       const paymentLink = await createPaymentLink(
         bookingId,
@@ -2063,7 +2095,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: "Payment link sent via WhatsApp",
         paymentLink: paymentLink.shortUrl,
-        linkId: paymentLink.linkId
+        linkId: paymentLink.linkId,
+        billId: billId
       });
     } catch (error: any) {
       console.error("Payment link generation error:", error);
