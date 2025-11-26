@@ -327,7 +327,7 @@ export default function ActiveBookings() {
   };
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, includeGst, includeServiceCharge, manualCharges }: { 
+    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, includeGst, includeServiceCharge, manualCharges, cashAmount, onlineAmount }: { 
       bookingId: number; 
       paymentMethod?: string;
       paymentStatus: string;
@@ -339,6 +339,8 @@ export default function ActiveBookings() {
       includeGst: boolean;
       includeServiceCharge: boolean;
       manualCharges: Array<{ name: string; amount: string }>;
+      cashAmount?: number;
+      onlineAmount?: number;
     }) => {
       // If UPI is selected, generate payment link instead of immediate checkout
       if (paymentStatus === "paid" && paymentMethod === "upi") {
@@ -360,6 +362,8 @@ export default function ActiveBookings() {
         includeGst,
         includeServiceCharge,
         manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
+        cashAmount,
+        onlineAmount,
       });
     },
     onSuccess: (data: any) => {
@@ -500,6 +504,21 @@ export default function ActiveBookings() {
       return;
     }
     
+    // Calculate cash and online amounts for split payment tracking
+    const breakdown = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge, manualCharges);
+    const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
+    const finalTotal = breakdown.grandTotal - discountAmt;
+    const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
+    const balanceDue = finalTotal - advancePaid;
+    
+    // Parse cash amount from input or state
+    const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
+    const parsedCash = cashInput?.value ? parseFloat(cashInput.value) : (cashAmount ? parseFloat(cashAmount) : 0);
+    const finalCashAmount = Math.max(0, parsedCash);
+    const finalOnlineAmount = Math.max(0, balanceDue - finalCashAmount);
+    
+    console.log(`[Checkout] Balance Due: ${balanceDue}, Cash: ${finalCashAmount}, Online: ${finalOnlineAmount}`);
+    
     checkoutMutation.mutate({
       bookingId: checkoutDialog.booking.id,
       paymentMethod: paymentStatus === "paid" ? paymentMethod : undefined,
@@ -512,6 +531,8 @@ export default function ActiveBookings() {
       includeGst,
       includeServiceCharge,
       manualCharges,
+      cashAmount: finalCashAmount > 0 ? finalCashAmount : undefined,
+      onlineAmount: finalOnlineAmount > 0 ? finalOnlineAmount : undefined,
     });
   };
 
@@ -1326,9 +1347,8 @@ export default function ActiveBookings() {
                               console.log(`[PAYMENT LINK] Full billDetails:`, billDetails);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                               
-                              // Clear the input after sending
-                              if (cashInput) cashInput.value = "";
-                              setCashAmount("");
+                              // Keep the cash amount for checkout - just update the state from DOM
+                              setCashAmount(rawCashValue);
                             }}
                             disabled={paymentLinkMutation.isPending}
                             data-testid="button-send-payment-link-balance"

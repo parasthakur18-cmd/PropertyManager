@@ -1719,7 +1719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", includeGst = true, includeServiceCharge = true, manualCharges } = req.body;
+      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", includeGst = true, includeServiceCharge = true, manualCharges, cashAmount, onlineAmount } = req.body;
       
       // Validate input
       if (!bookingId) {
@@ -1841,6 +1841,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create/Update bill with server-calculated amounts
       // When payment status is "paid", set balance to 0 (payment collected)
       // When payment status is "pending", keep calculated balance (payment to be collected later)
+      
+      // Build payment methods array for split payment tracking
+      // Store payment breakdown regardless of payment status for P&L visibility
+      let splitPaymentMethods: Array<{method: string, amount: number}> | null = null;
+      if (cashAmount || onlineAmount) {
+        splitPaymentMethods = [];
+        if (cashAmount && cashAmount > 0) {
+          splitPaymentMethods.push({ method: "cash", amount: cashAmount });
+        }
+        if (onlineAmount && onlineAmount > 0) {
+          splitPaymentMethods.push({ method: "online", amount: onlineAmount });
+        }
+      } else if (paymentStatus === "paid" && paymentMethod) {
+        // If no split payment amounts, but marked as paid with a single method
+        splitPaymentMethods = [{ method: paymentMethod, amount: balanceAmount }];
+      }
+      
       const billData = {
         bookingId,
         guestId: booking.guestId,
@@ -1862,6 +1879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         balanceAmount: paymentStatus === "paid" ? "0.00" : balanceAmount.toFixed(2),
         paymentStatus: paymentStatus,
         paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
+        paymentMethods: splitPaymentMethods,
         paidAt: paymentStatus === "paid" ? new Date() : null,
         dueDate: dueDate ? new Date(dueDate) : null,
         pendingReason: pendingReason || null,

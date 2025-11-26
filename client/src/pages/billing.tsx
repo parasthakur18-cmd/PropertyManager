@@ -489,12 +489,28 @@ export default function Billing() {
                       <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{bill.serviceChargeAmount}</p>
                     </div>
                   )}
-                  {bill.paymentMethod && (
+                  {/* Payment Method/Split Payment Display */}
+                  {bill.paymentMethods && Array.isArray(bill.paymentMethods) && bill.paymentMethods.length > 0 ? (
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground mb-1">Payment Breakdown</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(bill.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
+                          <Badge 
+                            key={idx} 
+                            variant="outline" 
+                            className={pm.method === "cash" ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-200 text-blue-700"}
+                          >
+                            {pm.method === "cash" ? "Cash" : "Online"}: ₹{Number(pm.amount).toFixed(2)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : bill.paymentMethod ? (
                     <div>
                       <p className="text-muted-foreground mb-1">Payment Method</p>
                       <p className="font-semibold capitalize">{bill.paymentMethod}</p>
                     </div>
-                  )}
+                  ) : null}
                   {bill.paidAt && (
                     <div>
                       <p className="text-muted-foreground mb-1">Paid On</p>
@@ -708,12 +724,28 @@ export default function Billing() {
                     {billDetails.paymentStatus}
                   </Badge>
                 </div>
-                {billDetails.paymentMethod && (
+                {/* Payment Method/Split Payment Display */}
+                {billDetails.paymentMethods && Array.isArray(billDetails.paymentMethods) && billDetails.paymentMethods.length > 0 ? (
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground mb-1">Payment Breakdown</p>
+                    <div className="flex flex-wrap gap-2">
+                      {(billDetails.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
+                        <Badge 
+                          key={idx} 
+                          variant="outline" 
+                          className={pm.method === "cash" ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300" : "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"}
+                        >
+                          {pm.method === "cash" ? "Cash" : "Online"}: ₹{Number(pm.amount).toFixed(2)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : billDetails.paymentMethod ? (
                   <div>
                     <p className="text-muted-foreground">Payment Method</p>
                     <p className="font-semibold capitalize">{billDetails.paymentMethod}</p>
                   </div>
-                )}
+                ) : null}
                 {billDetails.paidAt && (
                   <div>
                     <p className="text-muted-foreground">Paid On</p>
