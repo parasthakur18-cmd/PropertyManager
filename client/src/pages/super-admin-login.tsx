@@ -44,8 +44,10 @@ export default function SuperAdminLogin() {
         description: "Welcome to Super Admin Dashboard",
       });
       
-      // Redirect to super admin dashboard
-      window.location.href = "/super-admin";
+      // Small delay to ensure session is set, then redirect
+      setTimeout(() => {
+        window.location.href = "/super-admin";
+      }, 100);
     } catch (err: any) {
       setError("Connection error. Please try again.");
       toast({
