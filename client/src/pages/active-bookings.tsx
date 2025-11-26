@@ -1179,6 +1179,11 @@ export default function ActiveBookings() {
                   >
                     {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
                   </Button>
+                ) : preBillStatus === "sent" && !preBillSent ? null : preBillStatus === "sent" || preBillSent ? (
+                  <div className="flex items-center gap-2 text-blue-600 text-sm font-medium flex-1 justify-center px-3 py-2 border border-blue-200 rounded-md bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400">
+                    <div className="h-2 w-2 bg-blue-600 rounded-full animate-pulse"></div>
+                    <span>Pre-Bill Sent ✓ Waiting for Approval...</span>
+                  </div>
                 ) : preBillStatus === "approved" ? (
                   <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center">
                     <Check className="h-4 w-4" />
