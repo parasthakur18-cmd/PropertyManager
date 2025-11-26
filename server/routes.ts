@@ -2096,17 +2096,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl} for amount ₹${paymentAmount}`);
       
-      // Send payment link via WhatsApp using Bill Payment template (19873)
+      // Determine which template to use based on whether cash was received
+      const advancePaid = parseFloat(billDetails.advancePaid || 0);
       const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
       const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
-      const paymentAmountFormatted = `₹${paymentAmount.toFixed(2)}`;
-      const templateId = "19873"; // Bill Payment template with room/food/total charges and payment link
+      const totalAmount = `₹${parseFloat(billDetails.totalAmount || 0).toFixed(2)}`;
+      const balanceAmount = `₹${paymentAmount.toFixed(2)}`;
+      const cashReceivedFormatted = `₹${advancePaid.toFixed(2)}`;
       
-      await sendCustomWhatsAppMessage(
-        guest.phone,
-        templateId,
-        [guest.fullName || "Guest", roomCharges, foodCharges, paymentAmountFormatted, paymentLink.shortUrl]
-      );
+      let templateId: string;
+      let variables: string[];
+      
+      if (advancePaid > 0) {
+        // Use new split payment template when cash is received (19892)
+        templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+        variables = [
+          guest.fullName || "Guest",
+          roomCharges,
+          foodCharges,
+          cashReceivedFormatted,
+          balanceAmount,
+          paymentLink.shortUrl
+        ];
+        console.log(`[WhatsApp] Using split payment template (${templateId}) for advance payment of ₹${advancePaid}`);
+      } else {
+        // Use standard bill payment template when no cash received (19873)
+        templateId = "19873"; // Bill Payment template with room/food/total charges and payment link
+        variables = [
+          guest.fullName || "Guest",
+          roomCharges,
+          foodCharges,
+          totalAmount,
+          paymentLink.shortUrl
+        ];
+        console.log(`[WhatsApp] Using standard payment template (${templateId})`);
+      }
+      
+      await sendCustomWhatsAppMessage(guest.phone, templateId, variables);
 
       console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
       

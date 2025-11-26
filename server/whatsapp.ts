@@ -14,6 +14,7 @@
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
  * - AUTHKEY_WA_PREBILL: Template for pre-bill verification (default: 19852)
+ * - AUTHKEY_WA_SPLIT_PAYMENT: Template for split/advance payments (default: 19892)
  * 
  * Template variables are passed in order: var1, var2, var3, etc.
  * Ensure your authkey templates match the variable order!
