@@ -3372,12 +3372,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           current.setDate(current.getDate() + 1);
         }
         
-        // Mark booked dates
+        // Mark booked dates (excluding checkout date - guest can check in on checkout day)
         roomBookings.forEach(booking => {
           const bookingStart = new Date(booking.checkInDate);
           const bookingEnd = new Date(booking.checkOutDate);
           
+          // Normalize to start of day for accurate comparison
+          bookingStart.setHours(0, 0, 0, 0);
+          bookingEnd.setHours(0, 0, 0, 0);
+          
           let bookingDate = new Date(bookingStart);
+          // Mark all dates from check-in up to (but NOT including) check-out
           while (bookingDate < bookingEnd) {
             const dateKey = bookingDate.toISOString().split('T')[0];
             
