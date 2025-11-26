@@ -222,6 +222,11 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 
   // Hide main sidebar on super admin pages (they have their own sidebar)
   const isSuperAdminPage = location.startsWith('/super-admin');
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('[AuthWrapper] Location changed to:', location, 'isSuperAdminPage:', isSuperAdminPage);
+  }, [location, isSuperAdminPage]);
 
   return (
     <div className="flex h-screen w-full">
