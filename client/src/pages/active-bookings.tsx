@@ -99,9 +99,7 @@ export default function ActiveBookings() {
   const [manualCharges, setManualCharges] = useState<Array<{ name: string; amount: string }>>([
     { name: "", amount: "" }
   ]);
-  const [paymentMethods, setPaymentMethods] = useState<Array<{ method: string; amount: string }>>([
-    { method: "cash", amount: "" }
-  ]);
+  const [cashAmount, setCashAmount] = useState<string>("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
@@ -172,7 +170,7 @@ export default function ActiveBookings() {
       setPaymentMethod("card");
       setPaymentStatus("paid");
       setAutoCompletingCheckout(false);
-      setPaymentMethods([{ method: "cash", amount: "" }]);
+      setCashAmount("");
     }
   }, [checkoutDialog.open]);
 
@@ -1242,67 +1240,83 @@ export default function ActiveBookings() {
                   </p>
                 </div>
 
-                {paymentStatus === "paid" && (
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Payment Methods (Split Payments)</Label>
-                      <p className="text-xs text-muted-foreground mb-2">Enter amount for each payment method. Total must match bill amount.</p>
-                      {paymentMethods.map((pm, idx) => (
-                        <div key={idx} className="flex gap-2 mb-2">
-                          <Select value={pm.method} onValueChange={(val) => {
-                            const newMethods = [...paymentMethods];
-                            newMethods[idx].method = val;
-                            setPaymentMethods(newMethods);
-                          }}>
-                            <SelectTrigger className="w-32" data-testid={`select-payment-method-${idx}`}>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="cash">Cash</SelectItem>
-                              <SelectItem value="card">Card</SelectItem>
-                              <SelectItem value="upi">UPI</SelectItem>
-                              <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                              <SelectItem value="cheque">Cheque</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            placeholder="Amount"
-                            value={pm.amount}
-                            onChange={(e) => {
-                              const newMethods = [...paymentMethods];
-                              newMethods[idx].amount = e.target.value;
-                              setPaymentMethods(newMethods);
-                            }}
-                            data-testid={`input-payment-amount-${idx}`}
-                          />
-                          {paymentMethods.length > 1 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setPaymentMethods(paymentMethods.filter((_, i) => i !== idx))}
-                              data-testid={`button-remove-payment-${idx}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
+                {paymentStatus === "paid" && checkoutDialog.booking && (() => {
+                  const breakdown = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge, manualCharges);
+                  const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
+                  const totalBill = breakdown.grandTotal - discountAmt;
+                  const cashPaid = cashAmount ? parseFloat(cashAmount) : 0;
+                  const remaining = Math.max(0, totalBill - cashPaid);
+                  
+                  return (
+                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+                      <div className="space-y-2">
+                        <Label htmlFor="cash-amount">Cash Received</Label>
+                        <Input
+                          id="cash-amount"
+                          type="number"
+                          placeholder="0"
+                          value={cashAmount}
+                          onChange={(e) => setCashAmount(e.target.value)}
+                          data-testid="input-cash-amount"
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2 pt-2 border-t">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Bill Total:</span>
+                          <span className="font-medium">₹{totalBill.toFixed(2)}</span>
                         </div>
-                      ))}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setPaymentMethods([...paymentMethods, { method: "cash", amount: "" }])}
-                        className="mt-2"
-                        data-testid="button-add-payment-method"
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Payment Method
-                      </Button>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Cash Paid:</span>
+                          <span className="font-medium">₹{cashPaid.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-semibold pt-1 border-t">
+                          <span>Remaining Balance:</span>
+                          <span className={remaining > 0 ? "text-orange-600" : "text-green-600"}>
+                            ₹{remaining.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {remaining > 0 && (
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => {
+                              if (!checkoutDialog.booking) return;
+                              const booking = checkoutDialog.booking;
+                              const billDetails = {
+                                bookingId: booking.id,
+                                guestName: booking.guest.fullName,
+                                guestPhone: booking.guest.phone,
+                                roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
+                                roomCharges: breakdown.roomCharges,
+                                foodCharges: breakdown.foodCharges,
+                                gstAmount: breakdown.gstAmount,
+                                serviceChargeAmount: breakdown.serviceChargeAmount,
+                                subtotal: breakdown.subtotal,
+                                discountAmount: discountAmt,
+                                totalAmount: remaining,
+                                balanceDue: remaining,
+                                advancePaid: cashPaid,
+                              };
+                              paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
+                            }}
+                            disabled={paymentLinkMutation.isPending}
+                            data-testid="button-send-payment-link-balance"
+                          >
+                            {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {paymentStatus === "pending" && (
                   <>
