@@ -2020,6 +2020,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { bookingId, billDetails } = req.body;
       
+      console.log(`[Payment-Link] DEBUG - Received billDetails:`, JSON.stringify(billDetails, null, 2));
+      
       if (!bookingId || !billDetails) {
         return res.status(400).json({ message: "Booking ID and bill details are required" });
       }
@@ -2068,7 +2070,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Use remaining balance for payment link (not total amount)
       // If balanceAmount is provided, use it; otherwise fall back to totalAmount
+      console.log(`[Payment-Link] balanceAmount="${billDetails.balanceAmount}", balanceDue="${billDetails.balanceDue}", totalAmount="${billDetails.totalAmount}"`);
       const paymentAmount = parseFloat(billDetails.balanceAmount || billDetails.balanceDue || billDetails.totalAmount);
+      console.log(`[Payment-Link] Calculated paymentAmount: ${paymentAmount}`);
       
       // Create payment link via RazorPay
       const paymentLink = await createPaymentLink(
