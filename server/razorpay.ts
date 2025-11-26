@@ -12,6 +12,10 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
   // Create basic auth header
   const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
 
+  // Generate unique reference_id: booking_{id}_{timestamp} to allow multiple links per booking
+  const timestamp = Math.floor(Date.now() / 1000);
+  const uniqueReferenceId = `booking_${bookingId}_${timestamp}`;
+
   // RazorPay Payment Link API
   const response = await fetch("https://api.razorpay.com/v1/payment_links", {
     method: "POST",
@@ -24,7 +28,7 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
       currency: "INR",
       accept_partial: false,
       description: `Payment for Booking #${bookingId}`,
-      reference_id: `${bookingId}`, // Store booking ID so webhook can identify which booking paid
+      reference_id: uniqueReferenceId, // Unique ID combining booking ID and timestamp
       customer: {
         name: guestName,
         email: guestEmail,

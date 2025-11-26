@@ -2089,7 +2089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Only process paid status
       if (status === "paid" && reference_id) {
-        const bookingId = parseInt(reference_id);
+        // Extract booking ID from reference_id format: booking_{id}_{timestamp}
+        const bookingIdMatch = reference_id.match(/booking_(\d+)_/);
+        const bookingId = bookingIdMatch ? parseInt(bookingIdMatch[1]) : parseInt(reference_id);
         const booking = await storage.getBooking(bookingId);
         
         if (booking) {
