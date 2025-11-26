@@ -186,12 +186,20 @@ export default function Rooms() {
   });
 
   const onSubmit = (data: InsertRoom) => {
-    createMutation.mutate(data);
+    const formattedData = {
+      ...data,
+      pricePerNight: parseFloat(data.pricePerNight as any).toString(),
+    };
+    createMutation.mutate(formattedData);
   };
 
   const onEditSubmit = (data: InsertRoom) => {
     if (editingRoom) {
-      updateMutation.mutate({ id: editingRoom.id, data });
+      const formattedData = {
+        ...data,
+        pricePerNight: parseFloat(data.pricePerNight as any).toString(),
+      };
+      updateMutation.mutate({ id: editingRoom.id, data: formattedData });
     }
   };
 
@@ -737,7 +745,7 @@ export default function Rooms() {
                           <span>• {room.totalBeds} beds</span>
                         )}
                       </div>
-                      <p className="font-semibold font-mono text-lg" data-testid={`text-room-price-${room.id}`}>₹{room.pricePerNight}{room.roomCategory === "dormitory" ? "/bed/night" : "/night"}</p>
+                      <p className="font-semibold font-mono text-lg" data-testid={`text-room-price-${room.id}`}>₹{typeof room.pricePerNight === 'string' ? parseFloat(room.pricePerNight).toFixed(2) : (room.pricePerNight as any)?.toFixed?.(2) || room.pricePerNight}{room.roomCategory === "dormitory" ? "/bed/night" : "/night"}</p>
                       <p className="text-muted-foreground" data-testid={`text-room-occupancy-${room.id}`}>Max: {room.maxOccupancy} guests</p>
                     </div>
                     <Select
