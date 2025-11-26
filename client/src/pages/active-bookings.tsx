@@ -1290,11 +1290,12 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              // Read directly from input element to get the actual value entered
+                              // Get cash amount from both state and DOM for bulletproof capture
+                              const stateValue = Number(cashAmount) || 0;
                               const inputElement = document.getElementById("cash-amount") as HTMLInputElement;
-                              const inputValue = inputElement?.value?.trim() || "";
-                              const finalCashPaid = inputValue ? parseFloat(inputValue) : 0;
-                              console.log(`[Send Payment Link] DOM input value="${inputValue}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
+                              const domValue = inputElement ? Number(inputElement.value) || 0 : 0;
+                              const finalCashPaid = Math.max(stateValue, domValue);
+                              console.log(`[Send Payment Link] state="${cashAmount}" (num: ${stateValue}), DOM="${inputElement?.value}" (num: ${domValue}), final=${finalCashPaid}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
@@ -1311,7 +1312,7 @@ export default function ActiveBookings() {
                                 balanceDue: remaining,
                                 advancePaid: finalCashPaid,
                               };
-                              console.log(`[Send Payment Link] Sending billDetails:`, billDetails);
+                              console.log(`[Send Payment Link] Final billDetails.advancePaid=${billDetails.advancePaid}`);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                             }}
                             disabled={paymentLinkMutation.isPending}
