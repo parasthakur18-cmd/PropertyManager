@@ -2044,14 +2044,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl}`);
       
-      // Send payment link via WhatsApp using Payment Confirmation template
+      // Send payment link via WhatsApp using Bill Payment template (19873)
+      const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
+      const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
       const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
-      const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment confirmation template
+      const templateId = "19873"; // Bill Payment template with room/food/total charges and payment link
       
       await sendCustomWhatsAppMessage(
         guest.phone,
         templateId,
-        [guest.fullName || "Guest", totalAmount, paymentLink.shortUrl]
+        [guest.fullName || "Guest", roomCharges, foodCharges, totalAmount, paymentLink.shortUrl]
       );
 
       console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
