@@ -1157,3 +1157,29 @@ export const insertPreBillSchema = createInsertSchema(preBills).omit({
 
 export type InsertPreBill = z.infer<typeof insertPreBillSchema>;
 export type PreBill = typeof preBills.$inferSelect;
+
+// Booking.com Integration table
+export const bookingComIntegrations = pgTable("booking_com_integrations", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  hotelId: varchar("hotel_id", { length: 100 }).notNull(),
+  apiKey: text("api_key").notNull(), // Encrypted in production
+  enabled: boolean("enabled").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncStatus: varchar("sync_status", { length: 20 }).notNull().default("idle"), // idle, syncing, success, failed
+  syncErrorMessage: text("sync_error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBookingComIntegrationSchema = createInsertSchema(bookingComIntegrations).omit({
+  id: true,
+  lastSyncAt: true,
+  syncStatus: true,
+  syncErrorMessage: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertBookingComIntegration = z.infer<typeof insertBookingComIntegrationSchema>;
+export type BookingComIntegration = typeof bookingComIntegrations.$inferSelect;

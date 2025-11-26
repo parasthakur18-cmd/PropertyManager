@@ -319,6 +319,11 @@ export interface IStorage {
   markErrorAsResolved(id: number): Promise<ErrorCrash>;
   deleteErrorCrash(id: number): Promise<void>;
 
+  // Booking.com Integration operations
+  getBookingComIntegration(propertyId: number): Promise<any>;
+  saveBookingComIntegration(integration: any): Promise<any>;
+  updateBookingComSyncStatus(propertyId: number, status: string, errorMessage?: string): Promise<any>;
+
   // Attendance operations
   getAllAttendance(): Promise<AttendanceRecord[]>;
   getAttendanceByStaffMember(staffId: number): Promise<AttendanceRecord[]>;

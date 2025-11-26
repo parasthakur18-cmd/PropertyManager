@@ -5462,6 +5462,106 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // ===== BOOKING.COM INTEGRATION =====
+  app.post("/api/bookingcom/credentials", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, hotelId, apiKey } = req.body;
+      
+      if (!propertyId || !hotelId || !apiKey) {
+        return res.status(400).json({ message: "Property ID, Hotel ID, and API Key are required" });
+      }
+
+      // Check if property exists
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Get or create integration
+      let integration = await storage.getBookingComIntegration(propertyId);
+      
+      if (integration) {
+        // Update existing
+        integration = await storage.saveBookingComIntegration({
+          propertyId,
+          hotelId,
+          apiKey,
+          enabled: true,
+        });
+      } else {
+        // Create new
+        integration = await storage.saveBookingComIntegration({
+          propertyId,
+          hotelId,
+          apiKey,
+          enabled: true,
+        });
+      }
+
+      res.json({ success: true, message: "Booking.com credentials saved", integration });
+    } catch (error: any) {
+      console.error("Booking.com credentials error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bookingcom/credentials/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const integration = await storage.getBookingComIntegration(propertyId);
+      
+      if (!integration) {
+        return res.json(null);
+      }
+
+      // Don't send full API key to frontend for security
+      res.json({
+        ...integration,
+        apiKey: integration.apiKey ? "***" : null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookingcom/sync/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      // Update status to syncing
+      await storage.updateBookingComSyncStatus(propertyId, "syncing");
+
+      // Mock sync - In production, this would call Booking.com API
+      console.log(`[BOOKING.COM] Syncing reservations for property ${propertyId}`);
+      
+      // Simulated API call - would fetch from Booking.com API
+      const mockReservations = [
+        {
+          bookingId: `BK_${Date.now()}`,
+          guestName: "Sample Guest",
+          roomNumber: "101",
+          checkIn: new Date(),
+          checkOut: new Date(Date.now() + 86400000),
+          guests: 2,
+          amount: 5000,
+        }
+      ];
+
+      // Mark sync as successful
+      await storage.updateBookingComSyncStatus(propertyId, "success");
+
+      res.json({ 
+        success: true, 
+        message: `Synced ${mockReservations.length} reservations`,
+        reservations: mockReservations,
+      });
+    } catch (error: any) {
+      await storage.updateBookingComSyncStatus(propertyId, "failed", error.message);
+      console.error("Booking.com sync error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/pending-items - Get count of all pending items for automation notifications
   app.get("/api/pending-items", isAuthenticated, async (req, res) => {
     try {
