@@ -476,10 +476,11 @@ export default function ActiveBookings() {
   const handleCheckout = () => {
     if (!checkoutDialog.booking) return;
     
-    if (!preBillSent) {
+    // Allow checkout if: pre-bill sent, OR skip pre-bill, OR payment link sent
+    if (!preBillSent && !skipPreBill && !paymentLinkSent) {
       toast({
-        title: "Pre-Bill Required",
-        description: "Please send pre-bill to customer first for verification",
+        title: "Pre-Bill or Payment Link Required",
+        description: "Please send pre-bill or payment link to customer first",
         variant: "destructive",
       });
       return;
