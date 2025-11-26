@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,15 @@ interface Order {
   completedAt?: Date | null;
 }
 
+interface PaymentNotification {
+  billId: number;
+  bookingId: number;
+  guestName: string;
+  totalAmount: string;
+  paidAt: string;
+  paymentMethod?: string;
+}
+
 const statusColors = {
   pending: "bg-amber-500 text-white",
   confirmed: "bg-chart-2 text-white",
@@ -44,6 +53,8 @@ const orderStatusColors = {
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("today-checkins");
   const [, setLocation] = useLocation();
+  const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
+  const [seenPaymentIds, setSeenPaymentIds] = useState<Set<number>>(new Set());
   
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
@@ -72,6 +83,25 @@ export default function Dashboard() {
   const { data: enquiries, isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
   });
+
+  // Fetch recent payments every 5 seconds
+  useEffect(() => {
+    const fetchRecentPayments = async () => {
+      try {
+        const response = await fetch("/api/recent-payments");
+        if (response.ok) {
+          const payments: PaymentNotification[] = await response.json();
+          setRecentPayments(payments);
+        }
+      } catch (error) {
+        console.error("Failed to fetch recent payments:", error);
+      }
+    };
+
+    fetchRecentPayments();
+    const interval = setInterval(fetchRecentPayments, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
 
@@ -161,6 +191,41 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 md:p-8">
+      {/* Payment Notifications */}
+      {recentPayments.length > 0 && (
+        <div className="mb-6 space-y-2 max-h-96 overflow-y-auto">
+          {recentPayments.map((payment) => {
+            const isNew = !seenPaymentIds.has(payment.billId);
+            if (isNew) {
+              setSeenPaymentIds(prev => new Set([...prev, payment.billId]));
+            }
+            return (
+              <div
+                key={payment.billId}
+                className={`p-4 rounded-lg border-l-4 flex items-center gap-3 ${
+                  isNew
+                    ? "bg-green-50 dark:bg-green-950 border-l-green-500 animate-pulse"
+                    : "bg-green-50/50 dark:bg-green-950/50 border-l-green-400"
+                }`}
+                data-testid={`notification-payment-${payment.billId}`}
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white flex-shrink-0">
+                  <Check className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-green-900 dark:text-green-100">
+                    Payment Received
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-200 truncate">
+                    {payment.guestName} paid ₹{parseFloat(payment.totalAmount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mb-6">
         <h1 className="text-xl md:text-3xl font-bold font-serif mb-2">Dashboard</h1>
         <p className="text-xs md:text-sm text-muted-foreground">

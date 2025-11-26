@@ -5718,6 +5718,54 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // GET /api/recent-payments - Get recently paid bills for payment notifications
+  app.get("/api/recent-payments", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Get all properties and filter by user's assigned properties if they're a manager
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
+        ? user.assignedPropertyIds
+        : allProperties.map((p: any) => p.id);
+
+      // Get all bills that were paid in the last 5 minutes
+      const allBills = await storage.getAllBills();
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      const recentPayments = allBills
+        .filter((b: any) => {
+          const paidAt = b.paidAt ? new Date(b.paidAt) : null;
+          return (
+            propertyIds.includes(b.propertyId) &&
+            b.paymentStatus === "paid" &&
+            paidAt &&
+            paidAt >= fiveMinutesAgo
+          );
+        })
+        .map((b: any) => ({
+          billId: b.id,
+          bookingId: b.bookingId,
+          guestName: b.guestName || "Guest",
+          totalAmount: b.totalAmount,
+          paidAt: b.paidAt,
+          paymentMethod: b.paymentMethod,
+        }))
+        .sort((a: any, b: any) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+      res.json(recentPayments);
+    } catch (error: any) {
+      console.error("[RECENT-PAYMENTS] Error:", error);
+      res.status(500).json({ message: "Failed to fetch recent payments" });
+    }
+  });
+
   // GET /api/pending-items - Get count of all pending items for automation notifications
   app.get("/api/pending-items", isAuthenticated, async (req, res) => {
     try {
