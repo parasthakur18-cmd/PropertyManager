@@ -1415,7 +1415,15 @@ export default function ActiveBookings() {
                   const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
                   const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
                   const finalTotal = breakdown.grandTotal - discountAmt;
-                  const advancePaid = parseFloat(booking.charges.advancePaid);
+                  
+                  // Read cash amount from the input field (split payment support)
+                  const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
+                  const cashFromInput = cashInput?.value?.trim() ? Number(cashInput.value) : 0;
+                  const storedAdvance = parseFloat(booking.charges.advancePaid) || 0;
+                  const advancePaid = Math.max(cashFromInput, storedAdvance);
+                  
+                  console.log(`[Payment Link Footer] Cash input value: ${cashFromInput}, Stored advance: ${storedAdvance}, Using: ${advancePaid}`);
+                  
                   const balanceDue = finalTotal - advancePaid;
                   const billDetails = {
                     bookingId: booking.id,
@@ -1432,6 +1440,7 @@ export default function ActiveBookings() {
                     balanceDue: balanceDue,
                     advancePaid: advancePaid,
                   };
+                  console.log(`[Payment Link Footer] Sending billDetails:`, billDetails);
                   paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                 }}
                 disabled={paymentLinkMutation.isPending || (paymentMethod !== "card" && paymentMethod !== "upi")}
