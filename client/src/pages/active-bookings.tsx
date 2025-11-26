@@ -1290,9 +1290,11 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              // Use the cashAmount state directly
-                              const finalCashPaid = cashAmount ? parseFloat(cashAmount) : 0;
-                              console.log(`[Send Payment Link] Using state cashAmount="${cashAmount}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
+                              // Read directly from input element to get the actual value entered
+                              const inputElement = document.getElementById("cash-amount") as HTMLInputElement;
+                              const inputValue = inputElement?.value?.trim() || "";
+                              const finalCashPaid = inputValue ? parseFloat(inputValue) : 0;
+                              console.log(`[Send Payment Link] DOM input value="${inputValue}" -> finalCashPaid=${finalCashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
