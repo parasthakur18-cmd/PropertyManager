@@ -156,12 +156,14 @@ export default function ActiveBookings() {
     mutationFn: async ({ bookingId, billDetails }: { bookingId: number; billDetails: any }) => {
       return await apiRequest("/api/send-prebill", "POST", { bookingId, billDetails });
     },
-    onSuccess: () => {
-      setPreBillStatus("pending");
-      setPreBillSent(false);
+    onSuccess: (data) => {
+      setPreBillStatus("sent");
+      setPreBillSent(true);
+      const guest = checkoutDialog.booking?.guest;
+      const phone = guest?.phone || "customer";
       toast({
-        title: "Pre-Bill Sent",
-        description: "Bill has been sent to customer via WhatsApp for verification",
+        title: "Pre-Bill Sent Successfully ✓",
+        description: `Bill sent to ${guest?.fullName || 'Guest'} via WhatsApp on ${phone}. Waiting for customer approval...`,
       });
       // Refetch pre-bill status
       queryClient.invalidateQueries({ queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id] });
@@ -169,7 +171,7 @@ export default function ActiveBookings() {
     onError: (error: Error) => {
       toast({
         title: "Failed to Send Pre-Bill",
-        description: error.message,
+        description: error.message || "Unable to send bill via WhatsApp. Please check guest phone number and try again.",
         variant: "destructive",
       });
     },
