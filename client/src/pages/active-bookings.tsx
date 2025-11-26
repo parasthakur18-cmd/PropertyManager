@@ -1218,6 +1218,9 @@ export default function ActiveBookings() {
                         <SelectItem value="cheque">Cheque</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      💡 Tip: Select <strong>Card</strong> or <strong>UPI</strong> to send payment links via RazorPay
+                    </p>
                   </div>
                 )}
 
@@ -1315,10 +1318,11 @@ export default function ActiveBookings() {
                   };
                   paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                 }}
-                disabled={paymentLinkMutation.isPending}
-                variant="outline"
+                disabled={paymentLinkMutation.isPending || (paymentMethod !== "card" && paymentMethod !== "upi")}
+                variant={paymentMethod !== "card" && paymentMethod !== "upi" ? "secondary" : "outline"}
                 data-testid="button-send-payment-link"
                 className="flex-1"
+                title={paymentMethod !== "card" && paymentMethod !== "upi" ? "Payment links only work with Card or UPI. Please change payment method above." : "Send payment link via RazorPay"}
               >
                 {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
               </Button>
