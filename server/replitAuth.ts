@@ -188,6 +188,12 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   // Handle email/password authentication (session-based)
   if ((req.session as any).userId && (req.session as any).isEmailAuth) {
+    // Ensure req.user is set for email-based auth so downstream code can access it
+    if (!req.user) {
+      (req as any).user = {};
+    }
+    (req as any).user.id = (req.session as any).userId;
+    (req as any).user.isEmailAuth = true;
     return next();
   }
 

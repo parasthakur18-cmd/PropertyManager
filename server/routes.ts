@@ -4748,13 +4748,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
-      if (!dbUser || dbUser.role !== 'super-admin') {
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/USERS] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/USERS] User ${userId} is ${dbUser.role}, not super-admin`);
         return res.status(403).json({ message: "Super admin access required" });
       }
       
       const allUsers = await storage.getAllUsers();
       res.json(allUsers);
     } catch (error: any) {
+      console.error(`[SUPER-ADMIN/USERS] Error:`, error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -4765,13 +4771,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
-      if (!dbUser || dbUser.role !== 'super-admin') {
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/PROPERTIES] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/PROPERTIES] User ${userId} is ${dbUser.role}, not super-admin`);
         return res.status(403).json({ message: "Super admin access required" });
       }
       
       const properties = await storage.getAllProperties();
       res.json(properties);
     } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PROPERTIES] Error:`, error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -4782,13 +4794,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       
       const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
-      if (!dbUser || dbUser.role !== 'super-admin') {
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/REPORTS] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/REPORTS] User ${userId} is ${dbUser.role}, not super-admin`);
         return res.status(403).json({ message: "Super admin access required" });
       }
 
       const reports = await storage.getAllIssueReports();
       res.json(reports);
     } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REPORTS] Error:`, error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -5367,8 +5385,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.userId = user[0].id;
       req.session.isEmailAuth = true; // Mark this as email-based auth
       
-      // Set user object on request with just the id field
-      (req as any).user = { id: user[0].id };
+      // Set user object on request with id and email so middleware can access it
+      (req as any).user = { 
+        id: user[0].id, 
+        email: user[0].email,
+        isEmailAuth: true 
+      };
       
       // Manual session save
       req.session.save((err) => {
@@ -5376,6 +5398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Session save error:", err);
           return res.status(500).json({ message: "Login failed" });
         }
+        console.log(`[EMAIL-LOGIN] Session created for user ${user[0].id} (${user[0].email}) with role: ${user[0].role}`);
         res.json({ 
           message: "Login successful", 
           user: { 
