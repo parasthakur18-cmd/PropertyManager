@@ -218,6 +218,20 @@ export default function Rooms() {
     return true;
   });
 
+  // Calculate counts for tabs (considering property and room type filters)
+  const baseFiltered = rooms?.filter((room) => {
+    if (filterProperty !== "all" && room.propertyId !== parseInt(filterProperty)) return false;
+    if (filterRoomType !== "all" && room.roomCategory !== filterRoomType) return false;
+    return true;
+  });
+
+  const statusCounts = {
+    all: baseFiltered?.length || 0,
+    available: baseFiltered?.filter(r => r.status === "available").length || 0,
+    cleaning: baseFiltered?.filter(r => r.status === "cleaning").length || 0,
+    maintenance: baseFiltered?.filter(r => r.status === "maintenance").length || 0,
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 md:p-8">
@@ -649,10 +663,10 @@ export default function Rooms() {
 
         <Tabs value={filterStatus} onValueChange={setFilterStatus} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-4" data-testid="status-tabs">
-            <TabsTrigger value="all" data-testid="tab-all-statuses">All</TabsTrigger>
-            <TabsTrigger value="available" data-testid="tab-available">Available</TabsTrigger>
-            <TabsTrigger value="cleaning" data-testid="tab-cleaning">Cleaning</TabsTrigger>
-            <TabsTrigger value="maintenance" data-testid="tab-maintenance">Maintenance</TabsTrigger>
+            <TabsTrigger value="all" data-testid="tab-all-statuses">All ({statusCounts.all})</TabsTrigger>
+            <TabsTrigger value="available" data-testid="tab-available">Available ({statusCounts.available})</TabsTrigger>
+            <TabsTrigger value="cleaning" data-testid="tab-cleaning">Cleaning ({statusCounts.cleaning})</TabsTrigger>
+            <TabsTrigger value="maintenance" data-testid="tab-maintenance">Maintenance ({statusCounts.maintenance})</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
