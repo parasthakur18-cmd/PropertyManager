@@ -2044,9 +2044,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl}`);
       
-      // Send payment link via WhatsApp using custom message
+      // Send payment link via WhatsApp using Payment Confirmation template
       const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
-      const templateId = "19852"; // Payment link template ID
+      const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment confirmation template
       
       await sendCustomWhatsAppMessage(
         guest.phone,
@@ -2107,7 +2107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Send confirmation to guest via WhatsApp
             const guest = await storage.getGuest(booking.guestId);
             if (guest && guest.phone) {
-              const templateId = "19853"; // Payment confirmation template ID
+              const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
               await sendCustomWhatsAppMessage(
                 guest.phone,
                 templateId,
