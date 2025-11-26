@@ -24,6 +24,7 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
       currency: "INR",
       accept_partial: false,
       description: `Payment for Booking #${bookingId}`,
+      reference_id: `${bookingId}`, // Store booking ID so webhook can identify which booking paid
       customer: {
         name: guestName,
         email: guestEmail,
