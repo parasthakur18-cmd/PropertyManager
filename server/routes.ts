@@ -2068,11 +2068,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         billId = existingBills[0].id;
       }
 
-      // Use remaining balance for payment link (not total amount)
-      // If balanceAmount is provided, use it; otherwise fall back to totalAmount
-      console.log(`[Payment-Link] balanceAmount="${billDetails.balanceAmount}", balanceDue="${billDetails.balanceDue}", totalAmount="${billDetails.totalAmount}"`);
-      const paymentAmount = parseFloat(billDetails.balanceAmount || billDetails.balanceDue || billDetails.totalAmount);
-      console.log(`[Payment-Link] Calculated paymentAmount: ${paymentAmount}`);
+      // Use remaining balance for payment link - prioritize balanceAmount over balanceDue
+      console.log(`[Payment-Link] balanceAmount="${billDetails.balanceAmount}", balanceDue="${billDetails.balanceDue}", totalAmount="${billDetails.totalAmount}", advancePaid="${billDetails.advancePaid}"`);
+      
+      // Always use balanceAmount if it exists (remaining balance after cash)
+      let paymentAmount = 0;
+      if (billDetails.balanceAmount !== undefined && billDetails.balanceAmount !== null && billDetails.balanceAmount !== "") {
+        paymentAmount = parseFloat(billDetails.balanceAmount as any);
+        console.log(`[Payment-Link] Using balanceAmount: ${paymentAmount}`);
+      } else if (billDetails.balanceDue !== undefined && billDetails.balanceDue !== null) {
+        paymentAmount = parseFloat(billDetails.balanceDue as any);
+        console.log(`[Payment-Link] Using balanceDue: ${paymentAmount}`);
+      } else {
+        paymentAmount = parseFloat(billDetails.totalAmount as any);
+        console.log(`[Payment-Link] Fallback to totalAmount: ${paymentAmount}`);
+      }
+      console.log(`[Payment-Link] Final paymentAmount: ${paymentAmount}`);
       
       // Create payment link via RazorPay
       const paymentLink = await createPaymentLink(

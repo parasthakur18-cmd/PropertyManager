@@ -1290,6 +1290,7 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
+                              console.log(`[Send Payment Link] cashAmount state="${cashAmount}", cashPaid=${cashPaid}, remaining=${remaining}, totalBill=${totalBill}`);
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
@@ -1306,6 +1307,7 @@ export default function ActiveBookings() {
                                 balanceDue: remaining,
                                 advancePaid: cashPaid,
                               };
+                              console.log(`[Send Payment Link] Sending billDetails:`, billDetails);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                             }}
                             disabled={paymentLinkMutation.isPending}
