@@ -1256,7 +1256,11 @@ export default function ActiveBookings() {
                           type="number"
                           placeholder="0"
                           value={cashAmount}
-                          onChange={(e) => setCashAmount(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            console.log(`[Cash Input] User typed: "${val}"`);
+                            setCashAmount(val);
+                          }}
                           data-testid="input-cash-amount"
                           min="0"
                           step="0.01"
@@ -1290,19 +1294,17 @@ export default function ActiveBookings() {
                             onClick={() => {
                               if (!checkoutDialog.booking) return;
                               const booking = checkoutDialog.booking;
-                              // Read cash amount directly from DOM and state (bulletproof dual approach)
-                              let finalCashPaid = 0;
-                              try {
-                                const elem = document.getElementById("cash-amount") as HTMLInputElement | null;
-                                if (elem && elem.value) {
-                                  finalCashPaid = Number(elem.value);
-                                } else if (cashAmount) {
-                                  finalCashPaid = Number(cashAmount);
-                                }
-                              } catch (e) {
-                                finalCashPaid = Number(cashAmount) || 0;
-                              }
-                              console.log(`[Payment Link] Captured cash: ${finalCashPaid}, state: ${cashAmount}`);
+                              
+                              // BULLETPROOF: Read ONLY from DOM, never from state
+                              const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
+                              const rawCashValue = cashInput?.value?.trim() || "0";
+                              const finalCashPaid = Math.max(0, Number(rawCashValue));
+                              
+                              console.log(`[PAYMENT LINK] Input element found: ${!!cashInput}`);
+                              console.log(`[PAYMENT LINK] Raw value from input: "${rawCashValue}"`);
+                              console.log(`[PAYMENT LINK] Parsed as number: ${finalCashPaid}`);
+                              console.log(`[PAYMENT LINK] Sending advancePaid: ${finalCashPaid}`);
+                              
                               const billDetails = {
                                 bookingId: booking.id,
                                 guestName: booking.guest.fullName,
@@ -1319,7 +1321,13 @@ export default function ActiveBookings() {
                                 balanceDue: remaining,
                                 advancePaid: finalCashPaid,
                               };
+                              
+                              console.log(`[PAYMENT LINK] Full billDetails:`, billDetails);
                               paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
+                              
+                              // Clear the input after sending
+                              if (cashInput) cashInput.value = "";
+                              setCashAmount("");
                             }}
                             disabled={paymentLinkMutation.isPending}
                             data-testid="button-send-payment-link-balance"
