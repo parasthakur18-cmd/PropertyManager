@@ -216,7 +216,7 @@ export default function SuperAdmin() {
             <Button
               variant="outline"
               onClick={() => {
-                window.location.href = "/";
+                setLocation("/");
               }}
               className="flex items-center gap-2"
               data-testid="button-home"
