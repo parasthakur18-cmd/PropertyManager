@@ -1271,39 +1271,17 @@ export default function ActiveBookings() {
                     <Button
                       onClick={() => {
                         if (!checkoutDialog.booking) return;
-                        
-                        // Validate payment method
-                        if (paymentMethod !== "online" && paymentMethod !== "upi") {
-                          toast({
-                            title: "Invalid Payment Method",
-                            description: "Please change payment method to 'Online' or 'UPI' to send payment link",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        
-                        const breakdown = calculateTotalWithCharges(
-                          checkoutDialog.booking, 
-                          includeGst, 
-                          includeServiceCharge,
-                          manualCharges
-                        );
-                        const discountAmt = calculateDiscount(
-                          breakdown.grandTotal,
-                          discountType,
-                          discountValue
-                        );
+                        const booking = checkoutDialog.booking;
+                        const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
+                        const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
                         const finalTotal = breakdown.grandTotal - discountAmt;
-                        const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
+                        const advancePaid = parseFloat(booking.charges.advancePaid);
                         const balanceDue = finalTotal - advancePaid;
-
                         const billDetails = {
-                          bookingId: checkoutDialog.booking.id,
-                          guestName: checkoutDialog.booking.guest.fullName,
-                          guestPhone: checkoutDialog.booking.guest.phone,
-                          roomNumber: checkoutDialog.booking.isGroupBooking && checkoutDialog.booking.rooms 
-                            ? checkoutDialog.booking.rooms.map(r => r.roomNumber).join(", ")
-                            : checkoutDialog.booking.room?.roomNumber,
+                          bookingId: booking.id,
+                          guestName: booking.guest.fullName,
+                          guestPhone: booking.guest.phone,
+                          roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
                           roomCharges: breakdown.roomCharges,
                           foodCharges: breakdown.foodCharges,
                           gstAmount: breakdown.gstAmount,
@@ -1314,7 +1292,7 @@ export default function ActiveBookings() {
                           balanceDue: balanceDue,
                           advancePaid: advancePaid,
                         };
-                        paymentLinkMutation.mutate({ bookingId: checkoutDialog.booking.id, billDetails });
+                        paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
                       }}
                       disabled={paymentLinkMutation.isPending}
                       variant="outline"
