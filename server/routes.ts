@@ -2066,27 +2066,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         billId = existingBills[0].id;
       }
 
+      // Use remaining balance for payment link (not total amount)
+      // If balanceAmount is provided, use it; otherwise fall back to totalAmount
+      const paymentAmount = parseFloat(billDetails.balanceAmount || billDetails.balanceDue || billDetails.totalAmount);
+      
       // Create payment link via RazorPay
       const paymentLink = await createPaymentLink(
         bookingId,
-        parseFloat(billDetails.totalAmount),
+        paymentAmount,
         guest.fullName || "Guest",
         guest.email || "",
         guest.phone
       );
 
-      console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl}`);
+      console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl} for amount ₹${paymentAmount}`);
       
       // Send payment link via WhatsApp using Bill Payment template (19873)
       const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
       const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
-      const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
+      const paymentAmountFormatted = `₹${paymentAmount.toFixed(2)}`;
       const templateId = "19873"; // Bill Payment template with room/food/total charges and payment link
       
       await sendCustomWhatsAppMessage(
         guest.phone,
         templateId,
-        [guest.fullName || "Guest", roomCharges, foodCharges, totalAmount, paymentLink.shortUrl]
+        [guest.fullName || "Guest", roomCharges, foodCharges, paymentAmountFormatted, paymentLink.shortUrl]
       );
 
       console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
