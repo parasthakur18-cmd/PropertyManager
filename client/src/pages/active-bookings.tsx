@@ -105,7 +105,6 @@ export default function ActiveBookings() {
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
   const [skipPreBill, setSkipPreBill] = useState(false); // Allow staff to skip pre-bill and checkout directly
-  const [paymentMethod, setPaymentMethod] = useState<string>("prebill"); // prebill or direct-payment
   const [paymentLinkSent, setPaymentLinkSent] = useState(false);
 
   // Fetch pre-bill status when checkout dialog opens
