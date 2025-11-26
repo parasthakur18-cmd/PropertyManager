@@ -286,8 +286,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      // Handle both Replit Auth (with claims) and email/password auth (with id from session)
-      let userId = req.user?.claims?.sub || req.user?.id || req.session?.userId;
+      // PRIORITY: Check email-based auth first (session-based login takes precedence)
+      let userId = req.session?.userId;
+      
+      // If no email-based session, check Replit Auth
+      if (!userId) {
+        userId = req.user?.claims?.sub || req.user?.id;
+      }
       
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -5381,33 +5386,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Create session - set user id directly on request.user for email/password auth
-      req.session.userId = user[0].id;
-      req.session.isEmailAuth = true; // Mark this as email-based auth
-      
-      // Set user object on request with id and email so middleware can access it
-      (req as any).user = { 
-        id: user[0].id, 
-        email: user[0].email,
-        isEmailAuth: true 
-      };
-      
-      // Manual session save
-      req.session.save((err) => {
+      // First logout any existing auth session (Replit Auth)
+      req.logout((err) => {
         if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).json({ message: "Login failed" });
+          console.warn("[EMAIL-LOGIN] Warning during logout:", err);
+          // Continue anyway - we'll create the new session
         }
-        console.log(`[EMAIL-LOGIN] Session created for user ${user[0].id} (${user[0].email}) with role: ${user[0].role}`);
-        res.json({ 
-          message: "Login successful", 
-          user: { 
+
+        // Create new email-based session
+        req.session.regenerate((regenerateErr) => {
+          if (regenerateErr) {
+            console.error("[EMAIL-LOGIN] Session regenerate error:", regenerateErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+
+          // Set user id directly on session for email/password auth
+          req.session.userId = user[0].id;
+          req.session.isEmailAuth = true; // Mark this as email-based auth
+          
+          // Set user object on request with id and email so middleware can access it
+          (req as any).user = { 
             id: user[0].id, 
-            email: user[0].email, 
-            role: user[0].role,
-            firstName: user[0].firstName,
-            lastName: user[0].lastName 
-          } 
+            email: user[0].email,
+            isEmailAuth: true 
+          };
+          
+          // Manual session save
+          req.session.save((err) => {
+            if (err) {
+              console.error("[EMAIL-LOGIN] Session save error:", err);
+              return res.status(500).json({ message: "Login failed" });
+            }
+            console.log(`[EMAIL-LOGIN] ✓ Session created for user ${user[0].id} (${user[0].email}) with role: ${user[0].role}`);
+            res.json({ 
+              message: "Login successful", 
+              user: { 
+                id: user[0].id, 
+                email: user[0].email, 
+                role: user[0].role,
+                firstName: user[0].firstName,
+                lastName: user[0].lastName 
+              } 
+            });
+          });
         });
       });
     } catch (error: any) {
