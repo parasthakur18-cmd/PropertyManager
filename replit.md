@@ -28,6 +28,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **Error Reporting**: Includes automatic error crash reporting with stack trace capture and a Super Admin dashboard for error resolution.
 -   **Attendance & Salary Management**: ✅ **COMPLETE & TESTED** - Staff attendance tracking with single-click status marking (Present/Absent/Leave/Half-Day), automatic salary calculation with intelligent deductions based on employee joining/exit dates, monthly salary summaries, and edit salary functionality.
 -   **Super Admin Portal**: ✅ **COMPLETE & TESTED** - System-wide management dashboard with user management, property monitoring, issue tracking, contact leads, and error reporting. Accessible at /super-admin-login with email/password authentication.
+-   **RazorPay Payment Link Integration**: ✅ **COMPLETE & TESTED** - Direct payment collection via RazorPay payment links sent via WhatsApp, automatic payment confirmation via webhook, bill status auto-update to PAID, and customer WhatsApp confirmation.
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
@@ -43,8 +44,9 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 ### Third-Party Services
 -   **Replit Auth OIDC**: User authentication.
 -   **Neon Serverless PostgreSQL**: Primary database.
--   **Authkey.io**: (Optional) For WhatsApp and SMS messaging.
+-   **Authkey.io**: For WhatsApp and SMS messaging.
 -   **OpenAI GPT-4o-mini**: Integrated via Replit AI for the chatbot assistant.
+-   **RazorPay**: Payment processing and payment link generation with webhook support.
 
 ### Key NPM Packages
 -   **Backend**: `express`, `drizzle-orm`, `@neondatabase/serverless`, `passport`, `openid-client`, `express-session`, `connect-pg-simple`.
@@ -52,9 +54,37 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 -   **UI/Styling**: `@radix-ui/react-*`, `tailwindcss`, `class-variance-authority`, `lucide-react`.
 -   **Build Tools**: `vite`, `esbuild`, `typescript`, `tsx`.
 
-## Latest Updates (November 25, 2025)
+## Latest Updates (November 26, 2025)
 
-### Pre-Bill WhatsApp Approval Workflow - ✅ COMPLETE & DEPLOYED
+### RazorPay Payment Link Integration - ✅ COMPLETE & DEPLOYED
+1. **Payment Link Generation** - Staff can send payment links via WhatsApp to customers with bill summary
+2. **WhatsApp Integration** - Using approved Authkey template ID 19873 with 5 variables:
+   - {{1}} Guest name
+   - {{2}} Room charges
+   - {{3}} Food charges
+   - {{4}} Total amount
+   - {{5}} Payment link URL
+3. **Backend API Endpoints**:
+   - `/api/payment-link/generate` - Creates RazorPay payment link and sends via WhatsApp
+   - `/api/webhooks/razorpay` - Receives payment confirmation webhooks
+4. **Automatic Payment Confirmation**:
+   - RazorPay webhook notifies app when customer pays
+   - Bill status automatically updates to "PAID" in database
+   - Customer receives WhatsApp confirmation
+   - Payment method tracked as "razorpay_online"
+5. **Frontend UI Features**:
+   - "Send Payment Link" button in checkout dialog with visual feedback
+   - Displays bill with room charges, food charges, GST, discounts, and total
+   - Color-coded status indicator when link is sent and awaiting payment
+   - Toast notifications for success/failure feedback
+6. **Webhook Configuration** (COMPLETED):
+   - Webhook URL: `https://hostezee.in/api/webhooks/razorpay`
+   - Status: Enabled and active in RazorPay dashboard
+   - Events received: 31+ confirmations
+
+### Previous Session Features (November 25, 2025)
+
+#### Pre-Bill WhatsApp Approval Workflow - ✅ COMPLETE & DEPLOYED
 1. **Pre-Bill Feature Fully Implemented** - Staff can optionally send bill to customer via WhatsApp before checkout
 2. **Dual Checkout Options** - Two flexible paths:
    - **Option A: With Pre-Bill Verification** - Send bill → Customer approves → Checkout
@@ -67,63 +97,39 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
    - `/api/prebill/booking/:bookingId` - Fetches pre-bill status
 6. **Frontend UI** - Checkout dialog shows:
    - "Send Pre-Bill via WhatsApp" button
+   - "Send Payment Link" button (NEW - RazorPay integration)
    - "Skip & Checkout" button for direct checkout
    - "Complete Checkout" button (enabled after pre-bill sent/approved OR direct skip)
 
-### Previous Session - All Features Delivered & Optimized (November 24, 2025)
-1. **CRITICAL FIX: Attendance Calendar Color Coding** - ✅ RESOLVED (Nov 24, 2025)
-   - **Issue:** Calendar displayed all gray boxes despite database having attendance records
-   - **Root Cause:** Drizzle schema type mismatch - used `timestamp()` for DATE column
-   - **Fix:** Changed schema from `timestamp("attendance_date")` to `date("attendance_date")`
-   - **Result:** Calendar now displays proper color-coding (red/green/blue/yellow)
-   - **Impact:** API returns 5 records (was 0), attendance calendar fully functional
-   - **Technical:** Added `date` to drizzle-orm/pg-core imports
+## How to Use Key Features
 
-2. **Responsive Mobile UI** - ✅ OPTIMIZED
-   - Room calendar column width reduced to 70px on mobile (70px → 150px on desktop)
-   - Date columns remain compact and readable
-   - Attendance tabs stack vertically on mobile, 3-column layout on desktop
-   - Improved UX on smaller screens
+### Payment Link via RazorPay:
+1. Open an active booking in the checkout dialog
+2. Select payment method as "Online" or "UPI" (recommended)
+3. Review bill details (room charges, food charges, taxes, discounts)
+4. Click "Send Payment Link" button
+5. Customer receives payment link via WhatsApp with bill summary
+6. Customer clicks link and completes payment on RazorPay
+7. Bill status automatically updates to "PAID" in the app
+8. Customer receives WhatsApp payment confirmation
 
-3. **Employee Start/End Date Tracking** - ✅ IMPLEMENTED
-   - Added `joiningDate` and `endDate` fields to staff members table
-   - Salary calculations now respect employee employment period
-   - If employee joins mid-month: salary only calculated for actual working days
-   - If employee leaves mid-month: salary only calculated until exit date
-   - Formula: (baseSalary ÷ working days in employment period) × absent days
+### Pre-Bill Feature:
+1. Open an active booking in checkout dialog
+2. Review bill details (room charges, food charges, taxes, discounts)
+3. **Choose one of three options:**
+   - Click "Send Pre-Bill via WhatsApp" → Bill sent to customer → Wait for approval → Click "Complete Checkout"
+   - Click "Send Payment Link" → Payment link sent via WhatsApp → Customer pays on RazorPay → Auto-confirmation
+   - Click "Skip & Checkout" → Proceed directly to checkout (no WhatsApp)
+4. Complete checkout and generate bill
 
-4. **Attendance & Salary Management** - ✅ FULLY OPERATIONAL
-   - Quick Roster tab with color-coded status buttons (Present/Absent/Leave/Half-Day)
-   - Record Attendance tab for individual attendance marking
-   - Salary Management tab showing comprehensive salary table with all staff calculations
-   - Edit Salary functionality for setting/updating base salaries
-   - Automatic deduction calculations respecting employment dates
-   - Monthly salary summaries and statistics
-   - Salary Calculation Details card showing formula and monthly breakdown
-
-5. **Super Admin Portal** - ✅ FULLY OPERATIONAL
-   - Authentication: admin@hostezee.in / admin@123
-   - Users Tab: View all users with suspend/activate/login-as features
-   - Properties Tab: Monitor all property details and status
-   - Reports Tab: Track issue reports by severity and status
-   - Leads Tab: Manage contact enquiries with email/phone contact options
-   - Errors Tab: View system error crashes with stack traces, mark resolved, and delete
-
-6. **Chatbot Integration** - ✅ ADDED TO LANDING PAGE
-   - Available on landing page for public visitors
-   - Integrated throughout the application for staff support
-   - Powered by OpenAI GPT-4o-mini via Replit AI Integrations
-
-### How to Use Key Features
-
-**Attendance Marking:**
+### Attendance Marking:
 1. Go to Attendance & Salary Management page
 2. Click Quick Roster tab
 3. Select a date
 4. Click colored status buttons to mark attendance
 5. View automatic salary calculations
 
-**Salary Management with Employment Dates:**
+### Salary Management with Employment Dates:
 1. Go to Attendance & Salary Management page
 2. When adding new staff, the joining date defaults to today
 3. Click Salary Management tab
@@ -131,7 +137,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 5. System automatically adjusts working days if employee joined/left mid-month
 6. Click pencil icon to edit individual staff salaries
 
-**Super Admin Access:**
+### Super Admin Access:
 1. Navigate to /super-admin-login
 2. Login with admin@hostezee.in / admin@123
 3. Access all system management features from the dashboard
@@ -146,22 +152,18 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, and 
 - Salary calculations accurate with employee date tracking
 - Super Admin portal fully functional with all management operations
 - Pre-Bill WhatsApp feature fully deployed with optional approval workflow
+- **RazorPay payment link feature fully deployed with webhook confirmation**
 - Chatbot integrated and ready for user support
 - Zero console errors, no warnings
-
-## Pre-Bill Feature - How to Use
-1. Open an active booking in checkout dialog
-2. Review bill details (room charges, food charges, taxes, discounts)
-3. **Choose one of two options:**
-   - Click "Send Pre-Bill via WhatsApp" → Bill sent to customer → Wait for approval → Click "Complete Checkout"
-   - Click "Skip & Checkout" → Proceed directly to checkout (no WhatsApp)
-4. Complete checkout and generate bill
-
-## Next Steps for User
-Ready to publish and make the application live with instant Replit deployment.
 
 ## Database Schema Highlights
 - Staff members now track `joiningDate` and `endDate` for accurate payroll
 - Attendance records store status and remarks per day
 - Salary stats calculated dynamically based on employment tenure
+- Payment links stored with status tracking (pending/paid)
 - All foreign keys properly configured for data integrity
+
+## Next Steps for User
+Ready to publish and make the application live with instant Replit deployment. Consider implementing:
+- Multi-OTA integration system (Booking.com, MakeMyTrip, Airbnb, Agoda, Expedia, OYO, Goibibo, TripAdvisor)
+- Facial recognition self-check-in capability (planned for future)
