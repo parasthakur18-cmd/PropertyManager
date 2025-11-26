@@ -86,7 +86,7 @@ export default function ActiveBookings() {
     open: false,
     booking: null,
   });
-  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [paymentMethod, setPaymentMethod] = useState<string>("card");
   const [paymentStatus, setPaymentStatus] = useState<string>("paid");
   const [dueDate, setDueDate] = useState<string>("");
   const [pendingReason, setPendingReason] = useState<string>("");
@@ -124,6 +124,18 @@ export default function ActiveBookings() {
       }
     }
   }, [currentPreBill]);
+
+  // Reset checkout states when dialog closes
+  useEffect(() => {
+    if (!checkoutDialog.open) {
+      setPreBillSent(false);
+      setPreBillStatus("pending");
+      setSkipPreBill(false);
+      setPaymentLinkSent(false);
+      setPaymentMethod("card");
+      setPaymentStatus("paid");
+    }
+  }, [checkoutDialog.open]);
 
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
