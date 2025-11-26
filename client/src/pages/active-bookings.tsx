@@ -1271,6 +1271,14 @@ export default function ActiveBookings() {
                     <Button
                       onClick={() => {
                         if (!checkoutDialog.booking) return;
+                        if (paymentMethod !== "online" && paymentMethod !== "upi") {
+                          toast({
+                            title: "Invalid Payment Method",
+                            description: "Please change payment method to 'Online' or 'UPI' to send payment link",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
                         const booking = checkoutDialog.booking;
                         const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
                         const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
