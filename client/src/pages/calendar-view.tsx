@@ -152,7 +152,7 @@ export default function CalendarView() {
 
   const updateRoomStatusMutation = useMutation({
     mutationFn: async ({ roomId, status }: { roomId: number; status: string }) => {
-      return apiRequest("PATCH", `/api/rooms/${roomId}`, { status });
+      return apiRequest("PATCH", `/api/rooms/${roomId}/status`, { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
