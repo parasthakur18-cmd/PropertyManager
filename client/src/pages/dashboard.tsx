@@ -1323,7 +1323,19 @@ export default function Dashboard() {
                           setCashReceived("0");
                           toast({ title: "Success", description: "Checkout completed" });
                         } catch (error: any) {
-                          toast({ title: "Error", description: error.message || "Checkout failed", variant: "destructive" });
+                          const errorMsg = error.message || "Checkout failed";
+                          if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {
+                            toast({ 
+                              title: "⚠️ Cannot Checkout", 
+                              description: errorMsg.includes("food order") 
+                                ? "Complete all pending food orders before checkout. Go to Orders column and mark orders as completed."
+                                : errorMsg,
+                              variant: "destructive",
+                              className: "border-2 border-destructive"
+                            });
+                          } else {
+                            toast({ title: "Error", description: errorMsg, variant: "destructive" });
+                          }
                         }
                       }}
                     >
