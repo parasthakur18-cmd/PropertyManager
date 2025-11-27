@@ -25,6 +25,9 @@ import {
   bills,
   extraServices,
   enquiries,
+  notifications,
+  changeApprovals,
+  insertChangeApprovalSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
@@ -6199,6 +6202,203 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     } catch (error: any) {
       console.error("[PENDING-ITEMS] Error:", error);
       res.status(500).json({ message: "Failed to fetch pending items" });
+    }
+  });
+
+  // ===== NOTIFICATION CENTER ROUTES =====
+  
+  // Get notifications for current user
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const userNotifications = await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(50);
+      res.json(userNotifications);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Mark notification as read
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      await db
+        .update(notifications)
+        .set({ isRead: true })
+        .where(eq(notifications.id, notificationId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete notification
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      await db
+        .delete(notifications)
+        .where(eq(notifications.id, notificationId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== CHANGE APPROVAL ROUTES =====
+  
+  // Create change approval request
+  app.post("/api/change-approvals", isAuthenticated, async (req: any, res) => {
+    try {
+      const { changeType, bookingId, roomId, description, oldValue, newValue } = req.body;
+      const userId = req.user.claims.sub;
+      
+      const validated = insertChangeApprovalSchema.parse({
+        userId,
+        changeType,
+        bookingId,
+        roomId,
+        description,
+        oldValue,
+        newValue,
+      });
+
+      const approval = await db
+        .insert(changeApprovals)
+        .values(validated)
+        .returning();
+
+      // Create notification for admins
+      const allUsers = await storage.getAllUsers();
+      const adminUsers = allUsers.filter(u => u.role === "admin" || u.role === "super-admin");
+
+      for (const admin of adminUsers) {
+        await db.insert(notifications).values({
+          userId: admin.id,
+          type: "approval_pending",
+          title: "Change Approval Needed",
+          message: `${changeType} change request: ${description}`,
+          soundType: "warning",
+          relatedId: approval[0].id,
+          relatedType: "change_approval",
+          isRead: false,
+        });
+      }
+
+      res.status(201).json(approval[0]);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get pending change approvals
+  app.get("/api/change-approvals", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const approvals = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.status, "pending"))
+        .orderBy(desc(changeApprovals.createdAt));
+      res.json(approvals);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Approve change request
+  app.post("/api/change-approvals/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const approvalId = parseInt(req.params.id);
+      const approvedBy = req.user.claims.sub;
+      const user = await storage.getUser(approvedBy);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const original = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.id, approvalId));
+
+      if (!original[0]) {
+        return res.status(404).json({ message: "Change request not found" });
+      }
+
+      const approval = await db
+        .update(changeApprovals)
+        .set({
+          status: "approved",
+          approvedBy,
+          approvedAt: new Date(),
+        })
+        .where(eq(changeApprovals.id, approvalId))
+        .returning();
+
+      // Create notification for requester
+      await db.insert(notifications).values({
+        userId: original[0].userId,
+        type: "approval_approved",
+        title: "Change Approved",
+        message: `Your ${original[0].changeType} change has been approved`,
+        soundType: "payment",
+        relatedId: approvalId,
+        relatedType: "change_approval",
+        isRead: false,
+      });
+
+      res.json(approval[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject change request
+  app.post("/api/change-approvals/:id/reject", isAuthenticated, async (req: any, res) => {
+    try {
+      const approvalId = parseInt(req.params.id);
+      const { rejectionReason } = req.body;
+      const approvedBy = req.user.claims.sub;
+      const user = await storage.getUser(approvedBy);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const original = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.id, approvalId));
+
+      if (!original[0]) {
+        return res.status(404).json({ message: "Change request not found" });
+      }
+
+      const approval = await db
+        .update(changeApprovals)
+        .set({
+          status: "rejected",
+          approvedBy,
+          approvedAt: new Date(),
+          rejectionReason,
+        })
+        .where(eq(changeApprovals.id, approvalId))
+        .returning();
+
+      res.json(approval[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

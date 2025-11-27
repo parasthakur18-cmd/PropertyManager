@@ -70,6 +70,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { PendingNotifications } from "@/components/pending-notifications";
 import { CompletionNotifications } from "@/components/completion-notifications";
+import { NotificationCenter } from "@/components/notification-center";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -245,7 +246,10 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       <div className="flex flex-col flex-1 overflow-hidden">
         <header className="flex items-center justify-between p-4 border-b bg-background">
           {!isSuperAdminPage && <SidebarTrigger data-testid="button-sidebar-toggle" />}
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <NotificationCenter />
+            <ThemeToggle />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto bg-background">
           <Router />
