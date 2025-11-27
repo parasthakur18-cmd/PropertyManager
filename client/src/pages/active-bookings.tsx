@@ -965,79 +965,8 @@ export default function ActiveBookings() {
               </div>
             );
           })()}
-                        <span className="font-medium">+₹{parseFloat(charge.amount).toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </>
-                )}
-                {(() => {
-                  const breakdown = calculateTotalWithCharges(
-                    checkoutDialog.booking, 
-                    includeGst, 
-                    includeServiceCharge,
-                    manualCharges
-                  );
-                  const discountAmt = calculateDiscount(
-                    breakdown.grandTotal,
-                    discountType,
-                    discountValue
-                  );
-                  const finalTotal = breakdown.grandTotal - discountAmt;
-                  const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
-                  const balanceDue = finalTotal - advancePaid;
-
-                  return (
-                    <>
-                      <div className="flex justify-between font-medium pt-2 border-t">
-                        <span>Subtotal</span>
-                        <span>₹{breakdown.subtotal.toFixed(2)}</span>
-                      </div>
-                      
-                      {includeGst && breakdown.gstAmount > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">GST (5% on room charges only)</span>
-                          <span className="font-medium" data-testid="text-gst-amount">+₹{breakdown.gstAmount.toFixed(2)}</span>
-                        </div>
-                      )}
-                      
-                      {includeServiceCharge && breakdown.serviceChargeAmount > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Service Charge (10% on room charges only)</span>
-                          <span className="font-medium" data-testid="text-service-charge-amount">+₹{breakdown.serviceChargeAmount.toFixed(2)}</span>
-                        </div>
-                      )}
-                      
-                      <div className="flex justify-between font-bold text-lg pt-2 border-t">
-                        <span>Total Amount</span>
-                        <span data-testid="text-checkout-total">₹{breakdown.grandTotal.toFixed(2)}</span>
-                      </div>
-                      
-                      {discountAmt > 0 && (
-                        <>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">
-                              Discount {discountType === "percentage" ? `(${discountValue}%)` : "(Fixed)"}
-                            </span>
-                            <span className="text-green-600">-₹{discountAmt.toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between font-semibold">
-                            <span>Amount After Discount</span>
-                            <span>₹{finalTotal.toFixed(2)}</span>
-                          </div>
-                        </>
-                      )}
-                      {advancePaid > 0 && (
-                        <>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Advance Paid</span>
-                            <span className="text-green-600">-₹{checkoutDialog.booking.charges.advancePaid}</span>
-                          </div>
-                          <div className="flex justify-between font-semibold text-destructive">
-                            <span>Balance Due</span>
-                            <span>₹{balanceDue.toFixed(2)}</span>
-                          </div>
-                        </>
-                      )}
+        </DialogContent>
+      </Dialog>
                     </>
                   );
                 })()}
