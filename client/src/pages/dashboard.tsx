@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -18,7 +18,6 @@ import {
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { CheckoutBillSummary } from "@/components/CheckoutBillSummary";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
@@ -1078,25 +1077,103 @@ export default function Dashboard() {
           setCheckinIdProof(null);
         }
       }}>
-        <DialogContent data-testid="dialog-checkin-verification">
+        <DialogContent data-testid="dialog-checkin-verification" className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Check-In Guest</DialogTitle>
+            <DialogTitle>Upload ID Proof</DialogTitle>
             <DialogDescription>
-              Please upload or capture the guest's ID proof to complete check-in
+              Capture or upload guest's ID (Aadhar, PAN, Passport, etc.)
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            <IdVerificationUpload
-              onUploadComplete={(objectKey) => {
-                setCheckinIdProof(objectKey);
+            <input
+              type="file"
+              accept="image/*"
+              id="checkin-file-upload"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                
+                try {
+                  // Get upload URL
+                  const uploadRes = await fetch('/api/objects/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                  if (!uploadRes.ok) throw new Error('Failed to get upload URL');
+                  const { uploadURL } = await uploadRes.json();
+                  
+                  // Upload file
+                  const putRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+                  if (!putRes.ok) throw new Error('Failed to upload file');
+                  
+                  // Set ACL
+                  const aclRes = await fetch('/api/guest-id-proofs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idProofUrl: uploadURL }) });
+                  if (!aclRes.ok) throw new Error('Failed to secure ID proof');
+                  const { objectPath } = await aclRes.json();
+                  
+                  setCheckinIdProof(objectPath);
+                  toast({ title: "Success", description: "ID proof uploaded" });
+                } catch (error: any) {
+                  toast({ title: "Error", description: error.message || "Upload failed", variant: "destructive" });
+                }
               }}
+              data-testid="input-checkin-file"
+            />
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              id="checkin-camera-capture"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                
+                try {
+                  const uploadRes = await fetch('/api/objects/upload', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+                  if (!uploadRes.ok) throw new Error('Failed to get upload URL');
+                  const { uploadURL } = await uploadRes.json();
+                  
+                  const putRes = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+                  if (!putRes.ok) throw new Error('Failed to upload file');
+                  
+                  const aclRes = await fetch('/api/guest-id-proofs', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idProofUrl: uploadURL }) });
+                  if (!aclRes.ok) throw new Error('Failed to secure ID proof');
+                  const { objectPath } = await aclRes.json();
+                  
+                  setCheckinIdProof(objectPath);
+                  toast({ title: "Success", description: "ID proof captured" });
+                } catch (error: any) {
+                  toast({ title: "Error", description: error.message || "Upload failed", variant: "destructive" });
+                }
+              }}
+              data-testid="input-checkin-camera"
             />
             
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => document.getElementById('checkin-file-upload')?.click()}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Photo
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => document.getElementById('checkin-camera-capture')?.click()}
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                Take Photo
+              </Button>
+            </div>
+            
             {checkinIdProof && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
+              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
                 <Upload className="h-4 w-4" />
-                ID proof uploaded successfully
+                ID uploaded successfully
               </div>
             )}
           </div>
