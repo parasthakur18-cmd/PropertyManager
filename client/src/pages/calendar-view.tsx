@@ -142,6 +142,7 @@ export default function CalendarView() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }); // Refresh notifications
       setShowCreateBooking(false);
       setGuestName("");
       setCheckInDate(format(today, "yyyy-MM-dd"));
