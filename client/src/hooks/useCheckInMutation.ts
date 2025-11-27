@@ -7,7 +7,7 @@ export function useCheckInMutation() {
 
   return useMutation({
     mutationFn: async (bookingId: number) => {
-      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-in" });
+      return apiRequest(`/api/bookings/${bookingId}`, "PATCH", { status: "checked-in" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
@@ -25,7 +25,7 @@ export function useCheckOutMutation() {
 
   return useMutation({
     mutationFn: async (bookingId: number) => {
-      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-out" });
+      return apiRequest(`/api/bookings/${bookingId}`, "PATCH", { status: "checked-out" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
