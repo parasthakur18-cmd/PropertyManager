@@ -344,7 +344,7 @@ export default function CalendarView() {
         {/* Left Sidebar */}
         <div className={cn(
           "border-r bg-white dark:bg-card transition-all duration-300 flex-shrink-0 flex flex-col",
-          showRoomSidebar ? "w-[180px]" : "w-0 overflow-hidden"
+          showRoomSidebar ? "md:w-[220px] w-full" : "w-0 overflow-hidden"
         )}>
           {/* Toolbar */}
           <div className="flex items-center gap-1 p-2 border-b bg-slate-50 dark:bg-muted/30">
