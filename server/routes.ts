@@ -870,9 +870,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/guests/:id", isAuthenticated, async (req, res) => {
     try {
+      console.log(`[PATCH /api/guests/${req.params.id}] Request body:`, JSON.stringify(req.body));
       const guest = await storage.updateGuest(parseInt(req.params.id), req.body);
+      console.log(`[PATCH /api/guests/${req.params.id}] Updated guest:`, JSON.stringify({ id: guest.id, idProofImage: guest.idProofImage }));
       res.json(guest);
     } catch (error: any) {
+      console.error(`[PATCH /api/guests/${req.params.id}] Error:`, error.message);
       res.status(500).json({ message: error.message });
     }
   });
