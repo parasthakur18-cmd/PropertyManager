@@ -119,6 +119,32 @@ export default function CalendarView() {
     queryKey: ["/api/guests"],
   });
 
+  const createBookingMutation = useMutation({
+    mutationFn: async () => {
+      if (!guestName.trim() || !selectedRoomId) throw new Error("Fill all fields");
+      const roomId = parseInt(selectedRoomId);
+      const room = rooms.find(r => r.id === roomId);
+      if (!room) throw new Error("Room not found");
+      
+      return apiRequest("POST", "/api/bookings", {
+        guestName: guestName.trim(),
+        checkInDate: checkInDate,
+        checkOutDate: checkOutDate,
+        roomId,
+        propertyId: room.propertyId,
+        status: "confirmed",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      setShowCreateBooking(false);
+      setGuestName("");
+      setCheckInDate(format(today, "yyyy-MM-dd"));
+      setCheckOutDate(format(addDays(today, 1), "yyyy-MM-dd"));
+      setSelectedRoomId("");
+    },
+  });
+
   // Sync vertical scroll between sidebar and calendar
   useEffect(() => {
     const calendar = calendarRef.current;
@@ -306,7 +332,13 @@ export default function CalendarView() {
             <Button size="icon" variant="ghost" className="h-8 w-8">
               <Search className="h-4 w-4" />
             </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8">
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="h-8 w-8"
+              onClick={() => setShowCreateBooking(true)}
+              data-testid="button-create-booking"
+            >
               <Plus className="h-4 w-4" />
             </Button>
           </div>
