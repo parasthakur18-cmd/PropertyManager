@@ -814,6 +814,16 @@ export default function Dashboard() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setLocation("/enquiries?new=true")}
+              className="h-8"
+              data-testid="btn-quick-enquiry"
+            >
+              <MessageSquarePlus className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">Enquiry</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setLocation("/bookings?new=true")}
               className="h-8"
               data-testid="btn-quick-booking"
