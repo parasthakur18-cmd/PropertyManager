@@ -152,12 +152,19 @@ export default function CalendarView() {
 
   const updateRoomStatusMutation = useMutation({
     mutationFn: async ({ roomId, status }: { roomId: number; status: string }) => {
-      return apiRequest(`/api/rooms/${roomId}/status`, "PATCH", { status });
+      console.log("[MUTATION] Updating room status", { roomId, status });
+      const response = await apiRequest(`/api/rooms/${roomId}/status`, "PATCH", { status });
+      console.log("[MUTATION] Response:", response);
+      return response;
     },
     onSuccess: () => {
+      console.log("[MUTATION] Success!");
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       setActiveRoomMenu(null);
+    },
+    onError: (error) => {
+      console.log("[MUTATION] Error:", error);
     },
   });
 
@@ -415,12 +422,15 @@ export default function CalendarView() {
                     {/* Quick Action Buttons */}
                     <div className="flex items-center gap-0.5 flex-shrink-0">
                       <button
+                        type="button"
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                          console.log("[BUTTON] Available clicked for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "available" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-green-100 dark:hover:bg-green-950 rounded transition-colors"
+                        className="p-1 hover:bg-green-100 dark:hover:bg-green-950 rounded transition-colors cursor-pointer"
                         title="Mark as Available"
                         data-testid={`button-available-${room.id}`}
                       >
@@ -428,12 +438,15 @@ export default function CalendarView() {
                       </button>
                       
                       <button
+                        type="button"
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                          console.log("[BUTTON] Block clicked for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "blocked" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-950 rounded transition-colors"
+                        className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-950 rounded transition-colors cursor-pointer"
                         title="Block Room"
                         data-testid={`button-block-${room.id}`}
                       >
@@ -441,12 +454,15 @@ export default function CalendarView() {
                       </button>
                       
                       <button
+                        type="button"
                         onClick={(e) => {
+                          e.preventDefault();
                           e.stopPropagation();
+                          console.log("[BUTTON] Out of service clicked for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "out-of-service" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-red-100 dark:hover:bg-red-950 rounded transition-colors"
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-950 rounded transition-colors cursor-pointer"
                         title="Out of Service"
                         data-testid={`button-out-of-service-${room.id}`}
                       >
