@@ -1386,7 +1386,7 @@ export default function Dashboard() {
                     queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
 
                     // Update booking status and wait for completion
-                    await apiRequest("PATCH", `/api/bookings/${checkinBookingId}`, {
+                    await apiRequest("PATCH", `/api/bookings/${checkinBookingId}/status`, {
                       status: "checked-in"
                     });
 
