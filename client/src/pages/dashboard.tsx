@@ -875,154 +875,206 @@ export default function Dashboard() {
       )}
 
       {/* Main Content Area - Scrollable */}
-      <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 md:pb-4">
-        {/* Desktop: Multi-Column Layout */}
-        <div className="hidden lg:grid lg:grid-cols-4 gap-4">
-          {/* In-House Guests Column */}
+      <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 lg:pb-4">
+        {/* Desktop: 3-Column Full Section Layout */}
+        <div className="hidden lg:grid lg:grid-cols-3 gap-4">
+          {/* Check-In Column */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Home className="h-4 w-4 text-green-600" />
-                In-House
-              </h3>
-              <Badge className="bg-green-500 text-white">{checkedInGuests.length}</Badge>
-            </div>
-            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {checkedInGuests.slice(0, 8).map(booking => {
-                const { guest, roomDisplay } = getGuestInfo(booking);
-                return (
-                  <Card key={booking.id} className="p-3 hover-elevate cursor-pointer" onClick={() => setLocation(`/bookings/${booking.id}`)}>
-                    <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
-                    <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
-                  </Card>
-                );
-              })}
-              {checkedInGuests.length > 8 && (
-                <Button variant="ghost" size="sm" className="w-full" onClick={() => setMobileTab("inhouse")}>
-                  View all {checkedInGuests.length} guests
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Check-ins Column */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                <LogIn className="h-4 w-4 text-blue-600" />
-                Check-ins
-              </h3>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <LogIn className="h-5 w-5 text-blue-600" />
+                Check-Ins
+              </h2>
               <Badge className="bg-blue-500 text-white">{todayCheckIns.length}</Badge>
             </div>
-            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {todayCheckIns.slice(0, 8).map(booking => {
-                const { guest, roomDisplay } = getGuestInfo(booking);
-                return (
-                  <Card key={booking.id} className="p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
-                        <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        className="h-7 bg-green-500 hover:bg-green-600"
-                        onClick={() => handleCheckInWithValidation(booking)}
-                        disabled={updateStatusMutation.isPending}
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
-              {todayCheckIns.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No check-ins today</p>
-              )}
-            </div>
-          </div>
-
-          {/* Check-outs Column */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                <LogOut className="h-4 w-4 text-amber-600" />
-                Check-outs
-              </h3>
-              <Badge className="bg-amber-500 text-white">{todayCheckOuts.length}</Badge>
-            </div>
-            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {todayCheckOuts.slice(0, 8).map(booking => {
-                const { guest, roomDisplay } = getGuestInfo(booking);
-                const isOverdue = checkoutReminders.some(r => r.bookingId === booking.id);
-                return (
-                  <Card key={booking.id} className={`p-3 ${isOverdue ? "border-destructive" : ""}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
-                        <div className="flex items-center gap-1">
-                          <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
-                          {isOverdue && <Badge variant="destructive" className="text-[10px] h-4">Late</Badge>}
+            <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+              {todayCheckIns.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <LogIn className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No check-ins today</p>
+                </Card>
+              ) : (
+                todayCheckIns.map(booking => {
+                  const { guest, roomDisplay, property } = getGuestInfo(booking);
+                  return (
+                    <Card key={booking.id} className="overflow-hidden" data-testid={`card-checkin-desktop-${booking.id}`}>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                                <LogIn className="h-5 w-5 text-blue-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                                <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {property?.name || "Property"}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Users className="h-3 w-3" />
+                                {booking.numberOfGuests} guest(s)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          {guest?.phone && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="flex-1 h-11"
+                              onClick={() => window.open(`tel:${guest.phone}`, "_self")}
+                              data-testid={`btn-call-checkin-${booking.id}`}
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              Call
+                            </Button>
+                          )}
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="flex-1 h-11 bg-blue-500 hover:bg-blue-600"
+                            onClick={() => handleCheckIn(booking.id)}
+                            data-testid={`btn-checkin-action-${booking.id}`}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Check In
+                          </Button>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        className="h-7 bg-amber-500 hover:bg-amber-600"
-                        onClick={() => handleCheckout(booking.id)}
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
-              {todayCheckOuts.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No check-outs today</p>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </div>
 
-          {/* Orders Column */}
+          {/* In-House Column */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Utensils className="h-4 w-4 text-purple-600" />
-                Orders
-              </h3>
-              <div className="flex items-center gap-2">
-                <Badge className="bg-purple-500 text-white">{activeOrders.length}</Badge>
-                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setLocation("/orders?new=true")}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Home className="h-5 w-5 text-green-600" />
+                In-House
+              </h2>
+              <Badge className="bg-green-500 text-white">{checkedInGuests.length}</Badge>
             </div>
-            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
-              {activeOrders.slice(0, 8).map(order => {
-                const { room } = getOrderInfo(order);
-                return (
-                  <Card key={order.id} className="p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm">#{order.id}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {order.orderType === "room" ? `Room ${room?.roomNumber}` : order.customerName || "Walk-in"}
-                        </p>
+            <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+              {checkedInGuests.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Home className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No guests checked in</p>
+                </Card>
+              ) : (
+                checkedInGuests.map(booking => {
+                  const { guest, roomDisplay, property } = getGuestInfo(booking);
+                  return (
+                    <Card key={booking.id} className="overflow-hidden cursor-pointer hover-elevate" onClick={() => setLocation(`/bookings/${booking.id}`)} data-testid={`card-inhouse-desktop-${booking.id}`}>
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                            <User className="h-5 w-5 text-green-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                            <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{property?.name || "Property"}</p>
+                          </div>
+                        </div>
                       </div>
-                      <Badge className={orderStatusColors[order.status] || "bg-gray-500 text-white"}>
-                        {order.status}
-                      </Badge>
-                    </div>
-                  </Card>
-                );
-              })}
-              {activeOrders.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">No active orders</p>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Check-Out Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <LogOut className="h-5 w-5 text-amber-600" />
+                Check-Outs
+              </h2>
+              <Badge className="bg-amber-500 text-white">{todayCheckOuts.length}</Badge>
+            </div>
+            <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+              {todayCheckOuts.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <LogOut className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No check-outs today</p>
+                </Card>
+              ) : (
+                todayCheckOuts.map(booking => {
+                  const { guest, roomDisplay, property } = getGuestInfo(booking);
+                  const isOverdue = checkoutReminders.some(r => r.bookingId === booking.id);
+                  return (
+                    <Card key={booking.id} className={`overflow-hidden ${isOverdue ? "border-destructive" : ""}`} data-testid={`card-checkout-desktop-${booking.id}`}>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="h-10 w-10 rounded-full bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                                <LogOut className="h-5 w-5 text-amber-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                                <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {property?.name || "Property"}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Users className="h-3 w-3" />
+                                {booking.numberOfGuests} guest(s)
+                              </span>
+                              {isOverdue && (
+                                <Badge variant="destructive" className="animate-pulse">Overdue</Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          {guest?.phone && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="flex-1 h-11"
+                              onClick={() => window.open(`tel:${guest.phone}`, "_self")}
+                              data-testid={`btn-call-checkout-${booking.id}`}
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              Call
+                            </Button>
+                          )}
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="flex-1 h-11 bg-amber-500 hover:bg-amber-600"
+                            onClick={() => handleCheckout(booking.id)}
+                            data-testid={`btn-checkout-action-${booking.id}`}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-2" />
+                            Complete Checkout
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })
               )}
             </div>
           </div>
         </div>
 
-        {/* Mobile: Tab Content */}
+        {/* Mobile/Tablet: Tab Content */}
         <div className="lg:hidden">
           {renderMobileContent()}
         </div>
