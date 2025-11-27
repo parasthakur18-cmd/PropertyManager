@@ -160,7 +160,7 @@ export type TravelAgent = typeof travelAgents.$inferSelect;
 export const bookings = pgTable("bookings", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   propertyId: integer("property_id").notNull().references(() => properties.id),
-  roomId: integer("room_id").references(() => rooms.id), // Single room for standard bookings
+  roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }), // Single room for standard bookings
   roomIds: integer("room_ids").array(), // Multiple rooms for group bookings
   isGroupBooking: boolean("is_group_booking").notNull().default(false), // True if booking multiple rooms
   bedsBooked: integer("beds_booked"), // For dormitory bookings - number of beds booked
@@ -292,7 +292,7 @@ export type MenuItemAddOn = typeof menuItemAddOns.$inferSelect;
 export const orders = pgTable("orders", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   propertyId: integer("property_id").references(() => properties.id), // Nullable for restaurant/walk-in orders
-  roomId: integer("room_id").references(() => rooms.id),
+  roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }),
   bookingId: integer("booking_id").references(() => bookings.id),
   guestId: integer("guest_id").references(() => guests.id),
   items: jsonb("items").notNull(),
@@ -396,7 +396,7 @@ export const enquiries = pgTable("enquiries", {
   guestEmail: varchar("guest_email", { length: 255 }),
   checkInDate: timestamp("check_in_date").notNull(),
   checkOutDate: timestamp("check_out_date").notNull(),
-  roomId: integer("room_id").references(() => rooms.id), // Single room for standard enquiries
+  roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }), // Single room for standard enquiries
   roomIds: integer("room_ids").array(), // Multiple rooms for group enquiries
   isGroupEnquiry: boolean("is_group_enquiry").notNull().default(false), // True if enquiry for multiple rooms
   bedsBooked: integer("beds_booked"), // For dormitory enquiries - number of beds to book
