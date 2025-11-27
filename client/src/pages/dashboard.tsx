@@ -346,9 +346,10 @@ export default function Dashboard() {
 
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
-    if (!selectedPropertyId) return orders;
-    return orders.filter(o => o.propertyId === selectedPropertyId);
-  }, [orders, selectedPropertyId]);
+    // Always show all orders regardless of property filter to ensure consistency between mobile and desktop
+    // The property filter applies to bookings and other sections, but orders should always be visible
+    return orders;
+  }, [orders]);
 
   const todayCheckIns = useMemo(() => 
     filteredBookings.filter(b => 
