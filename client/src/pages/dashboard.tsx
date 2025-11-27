@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -36,7 +37,20 @@ interface PaymentNotification {
   paymentMethod?: string;
 }
 
-const statusColors = {
+interface DashboardStats {
+  totalProperties: number;
+  totalRooms: number;
+  activeBookings: number;
+  activeUsers: number;
+  totalGuests: number;
+  occupancyRate: number;
+  occupiedRooms: number;
+  adr: number;
+  revpar: number;
+  monthlyRevenue: number;
+}
+
+const statusColors: Record<string, string> = {
   pending: "bg-amber-500 text-white",
   confirmed: "bg-chart-2 text-white",
   "checked-in": "bg-chart-5 text-white",
@@ -44,7 +58,7 @@ const statusColors = {
   cancelled: "bg-destructive text-destructive-foreground",
 };
 
-const orderStatusColors = {
+const orderStatusColors: Record<string, string> = {
   pending: "bg-amber-500 text-white",
   preparing: "bg-blue-500 text-white",
   ready: "bg-green-500 text-white",
@@ -60,9 +74,11 @@ interface CheckoutReminder {
   hoursOverdue: number;
 }
 
+type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders";
+
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState("today-checkins");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("inhouse");
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
   const [seenPaymentIds, setSeenPaymentIds] = useState<Set<number>>(new Set());
@@ -71,7 +87,7 @@ export default function Dashboard() {
   const [shownReminderIds, setShownReminderIds] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats"],
   });
 
@@ -99,7 +115,47 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
-  // Create notification with error handling
+  const checkInMutation = useMutation({
+    mutationFn: async (bookingId: number) => {
+      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-in" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Guest Checked In", description: "Guest has been successfully checked in." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to check in guest", variant: "destructive" });
+    },
+  });
+
+  const checkOutMutation = useMutation({
+    mutationFn: async (bookingId: number) => {
+      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-out" });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Guest Checked Out", description: "Guest has been successfully checked out." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to check out guest", variant: "destructive" });
+    },
+  });
+
+  const updateOrderMutation = useMutation({
+    mutationFn: async ({ orderId, status }: { orderId: number; status: string }) => {
+      return apiRequest("PATCH", `/api/orders/${orderId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({ title: "Order Updated", description: "Order status has been updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update order", variant: "destructive" });
+    },
+  });
+
   const createNotification = async (type: string, title: string, message: string, soundType: "info" | "warning" | "critical" | "payment") => {
     try {
       const response = await fetch("/api/notifications", {
@@ -120,13 +176,11 @@ export default function Dashboard() {
     }
   };
 
-  // Check for checkout reminders (12 PM+) and force auto-checkout (4 PM+)
   useEffect(() => {
     const checkoutFlow = async () => {
       const now = new Date();
       const currentHour = now.getHours();
 
-      // From 12 PM onwards: Show reminders
       if (currentHour >= 12) {
         try {
           console.log("[CHECKOUT_FLOW] Fetching checkout reminders...");
@@ -137,14 +191,9 @@ export default function Dashboard() {
           const reminders: CheckoutReminder[] = await response.json();
           setCheckoutReminders(reminders);
           
-          // Show reminder popups for unseen reminders
           reminders.forEach(reminder => {
             if (!shownReminderIds.has(reminder.bookingId)) {
-              console.log(`[CHECKOUT_REMINDER] Showing reminder for booking ${reminder.bookingId}:`, {
-                guestName: reminder.guestName,
-                roomNumber: reminder.roomNumber,
-                hoursOverdue: reminder.hoursOverdue,
-              });
+              console.log(`[CHECKOUT_REMINDER] Showing reminder for booking ${reminder.bookingId}`);
               
               toast({
                 title: "Checkout Reminder",
@@ -152,7 +201,6 @@ export default function Dashboard() {
                 duration: 10000,
               });
               
-              // Create notification
               createNotification(
                 "checkout_reminder",
                 "Checkout Reminder",
@@ -160,19 +208,14 @@ export default function Dashboard() {
                 "warning"
               );
               
-              setShownReminderIds(prev => new Set([...prev, reminder.bookingId]));
+              setShownReminderIds(prev => new Set(Array.from(prev).concat(reminder.bookingId)));
             }
           });
         } catch (error: any) {
-          console.error("[CHECKOUT_ERROR] Failed to fetch checkout reminders:", {
-            timestamp: new Date().toISOString(),
-            error: error?.message || "Unknown error",
-            stack: error?.stack,
-          });
+          console.error("[CHECKOUT_ERROR] Failed to fetch checkout reminders:", error?.message);
         }
       }
 
-      // At 4 PM (16:00) onwards: Force auto-checkout
       if (currentHour >= 16) {
         try {
           console.log("[AUTO_CHECKOUT] Executing force auto-checkout at 4 PM...");
@@ -182,10 +225,7 @@ export default function Dashboard() {
           }
           const data = await response.json();
           if (data.processedCount > 0) {
-            console.log("[AUTO_CHECKOUT_SUCCESS] Force auto-checked out bookings:", {
-              timestamp: new Date().toISOString(),
-              processedCount: data.processedCount,
-            });
+            console.log("[AUTO_CHECKOUT_SUCCESS] Force auto-checked out bookings:", data.processedCount);
             
             setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
             toast({
@@ -194,7 +234,6 @@ export default function Dashboard() {
               duration: 8000,
             });
             
-            // Create notification
             createNotification(
               "auto_checkout",
               "Auto-Checkout Executed",
@@ -205,11 +244,7 @@ export default function Dashboard() {
             setShownReminderIds(new Set());
           }
         } catch (error: any) {
-          console.error("[AUTO_CHECKOUT_ERROR] Failed to process force auto-checkout:", {
-            timestamp: new Date().toISOString(),
-            error: error?.message || "Unknown error",
-            stack: error?.stack,
-          });
+          console.error("[AUTO_CHECKOUT_ERROR] Failed to process force auto-checkout:", error?.message);
         }
       }
     };
@@ -224,16 +259,11 @@ export default function Dashboard() {
         const payments: PaymentNotification[] = await response.json();
         setRecentPayments(payments);
         
-        // Create notifications for new payments
+        const newPaymentIds: number[] = [];
         payments.forEach(payment => {
           if (!seenPaymentIds.has(payment.billId)) {
-            console.log("[PAYMENT_RECEIVED] New payment recorded:", {
-              timestamp: new Date().toISOString(),
-              billId: payment.billId,
-              guestName: payment.guestName,
-              amount: payment.totalAmount,
-              method: payment.paymentMethod,
-            });
+            console.log("[PAYMENT_RECEIVED] New payment recorded:", payment.billId);
+            newPaymentIds.push(payment.billId);
             
             createNotification(
               "payment_received",
@@ -243,12 +273,12 @@ export default function Dashboard() {
             );
           }
         });
+        
+        if (newPaymentIds.length > 0) {
+          setSeenPaymentIds(prev => new Set(Array.from(prev).concat(newPaymentIds)));
+        }
       } catch (error: any) {
-        console.error("[PAYMENTS_ERROR] Failed to fetch recent payments:", {
-          timestamp: new Date().toISOString(),
-          error: error?.message || "Unknown error",
-          stack: error?.stack,
-        });
+        console.error("[PAYMENTS_ERROR] Failed to fetch recent payments:", error?.message);
       }
     };
 
@@ -257,116 +287,478 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       checkoutFlow();
       fetchRecentPayments();
-    }, 900000); // Check every 15 minutes
+    }, 900000);
     
     return () => clearInterval(interval);
   }, [shownReminderIds, toast, seenPaymentIds]);
 
   const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
 
-  // Filter data for tabs
-  const todayCheckIns = bookings?.filter(b => 
-    isToday(new Date(b.checkInDate)) && (b.status === "pending" || b.status === "confirmed")
-  ) || [];
+  const filteredBookings = useMemo(() => {
+    if (!bookings) return [];
+    if (!selectedPropertyId) return bookings;
+    return bookings.filter(b => b.propertyId === selectedPropertyId);
+  }, [bookings, selectedPropertyId]);
 
-  const todayCheckOuts = bookings?.filter(b => 
-    isToday(new Date(b.checkOutDate)) && b.status === "checked-in"
-  ) || [];
+  const filteredOrders = useMemo(() => {
+    if (!orders) return [];
+    if (!selectedPropertyId) return orders;
+    return orders.filter(o => o.propertyId === selectedPropertyId);
+  }, [orders, selectedPropertyId]);
 
-  // Upcoming check-ins (next 7 days, excluding today)
-  const upcomingCheckIns = bookings?.filter(b => {
-    const checkInDate = new Date(b.checkInDate);
-    const tomorrow = addDays(startOfDay(new Date()), 1);
-    const sevenDaysFromNow = addDays(startOfDay(new Date()), 7);
-    return (b.status === "pending" || b.status === "confirmed") && 
-           isAfter(checkInDate, tomorrow) && 
-           isBefore(checkInDate, sevenDaysFromNow);
-  }) || [];
+  const todayCheckIns = useMemo(() => 
+    filteredBookings.filter(b => 
+      isToday(new Date(b.checkInDate)) && (b.status === "pending" || b.status === "confirmed")
+    ), [filteredBookings]
+  );
 
-  // All checked-in guests
-  const checkedInGuests = bookings?.filter(b => b.status === "checked-in") || [];
+  const todayCheckOuts = useMemo(() => 
+    filteredBookings.filter(b => 
+      isToday(new Date(b.checkOutDate)) && b.status === "checked-in"
+    ), [filteredBookings]
+  );
 
-  const activeOrders = orders?.filter(o => 
-    o.status === "pending" || o.status === "preparing" || o.status === "ready"
-  ) || [];
+  const checkedInGuests = useMemo(() => 
+    filteredBookings.filter(b => b.status === "checked-in"), [filteredBookings]
+  );
 
-  const yetToConfirmedEnquiries = enquiries?.filter(e => 
-    e.status !== "confirmed"
-  ) || [];
+  const activeOrders = useMemo(() => 
+    filteredOrders.filter(o => 
+      o.status === "pending" || o.status === "preparing" || o.status === "ready"
+    ), [filteredOrders]
+  );
+
+  const yetToConfirmedEnquiries = useMemo(() => 
+    enquiries?.filter(e => e.status !== "confirmed") || [], [enquiries]
+  );
+
+  const getGuestInfo = (booking: Booking) => {
+    const guest = guests?.find(g => g.id === booking.guestId);
+    const room = rooms?.find(r => r.id === booking.roomId);
+    const property = properties?.find(p => p.id === booking.propertyId);
+    
+    const groupRooms = booking.isGroupBooking && booking.roomIds
+      ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+      : [];
+    
+    const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+      ? groupRooms.map(r => r.roomNumber).join(", ")
+      : room?.roomNumber || "TBA";
+    
+    return { guest, room, property, roomDisplay };
+  };
+
+  const getOrderInfo = (order: Order) => {
+    const room = order.roomId ? rooms?.find(r => r.id === order.roomId) : null;
+    const property = order.propertyId ? properties?.find(p => p.id === order.propertyId) : null;
+    return { room, property };
+  };
 
   if (isLoading) {
     return (
-      <div className="p-6 md:p-8">
-        <div className="mb-8">
-          <Skeleton className="h-10 w-64 mb-2" />
-          <Skeleton className="h-6 w-96" />
+      <div className="h-screen flex flex-col bg-background">
+        <div className="p-4 border-b">
+          <Skeleton className="h-8 w-48" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
+        <div className="flex-1 p-4 space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
           ))}
+        </div>
+        <div className="h-16 border-t">
+          <Skeleton className="h-full" />
         </div>
       </div>
     );
   }
 
-  const statCards = [
-    {
-      title: "Total Properties",
-      value: stats?.totalProperties || 0,
-      icon: Building2,
-      color: "text-chart-1",
-      bgColor: "bg-chart-1/10",
-    },
-    {
-      title: "Total Rooms",
-      value: stats?.totalRooms || 0,
-      icon: Hotel,
-      color: "text-chart-2",
-      bgColor: "bg-chart-2/10",
-    },
-    {
-      title: "Active Bookings",
-      value: stats?.activeBookings || 0,
-      icon: Calendar,
-      color: "text-chart-4",
-      bgColor: "bg-chart-4/10",
-    },
-    {
-      title: "Active Users",
-      value: stats?.activeUsers || 0,
-      icon: Users,
-      color: "text-purple-600",
-      bgColor: "bg-purple-600/10",
-    },
-    {
-      title: "Total Guests",
-      value: stats?.totalGuests || 0,
-      icon: Users,
-      color: "text-chart-5",
-      bgColor: "bg-chart-5/10",
-    },
+  const mobileTabConfig = [
+    { key: "inhouse" as MobileTab, label: "In-House", icon: Home, count: checkedInGuests.length, color: "text-green-600" },
+    { key: "checkins" as MobileTab, label: "Check-ins", icon: LogIn, count: todayCheckIns.length, color: "text-blue-600" },
+    { key: "checkouts" as MobileTab, label: "Check-outs", icon: LogOut, count: todayCheckOuts.length, color: "text-amber-600" },
+    { key: "orders" as MobileTab, label: "Orders", icon: Utensils, count: activeOrders.length, color: "text-purple-600" },
   ];
 
-  // Calculate daily target (assuming ₹50K daily target)
-  const dailyTarget = 50000;
+  const renderMobileContent = () => {
+    switch (mobileTab) {
+      case "inhouse":
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold">In-House Guests</h2>
+              <Badge variant="secondary" className="bg-green-500 text-white">{checkedInGuests.length}</Badge>
+            </div>
+            {checkedInGuests.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Home className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No guests currently in property</p>
+              </Card>
+            ) : (
+              checkedInGuests.map(booking => {
+                const { guest, property, roomDisplay } = getGuestInfo(booking);
+                return (
+                  <Card key={booking.id} className="overflow-hidden" data-testid={`card-inhouse-${booking.id}`}>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                              <User className="h-5 w-5 text-green-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                              <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {property?.name || "Property"}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Users className="h-3 w-3" />
+                              {booking.numberOfGuests} guest(s)
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Out: {format(new Date(booking.checkOutDate), "MMM dd")}
+                            </span>
+                          </div>
+                        </div>
+                        {booking.isGroupBooking && (
+                          <Badge variant="secondary" className="bg-blue-500 text-white flex-shrink-0">Group</Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        {guest?.phone && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 h-11"
+                            onClick={() => window.open(`tel:${guest.phone}`, "_self")}
+                            data-testid={`btn-call-${booking.id}`}
+                          >
+                            <Phone className="h-4 w-4 mr-2" />
+                            Call
+                          </Button>
+                        )}
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          className="flex-1 h-11 bg-amber-500 hover:bg-amber-600"
+                          onClick={() => checkOutMutation.mutate(booking.id)}
+                          disabled={checkOutMutation.isPending}
+                          data-testid={`btn-checkout-${booking.id}`}
+                        >
+                          <LogOut className="h-4 w-4 mr-2" />
+                          Check Out
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        );
+
+      case "checkins":
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold">Today's Check-ins</h2>
+              <Badge variant="secondary" className="bg-blue-500 text-white">{todayCheckIns.length}</Badge>
+            </div>
+            {todayCheckIns.length === 0 ? (
+              <Card className="p-8 text-center">
+                <LogIn className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No check-ins scheduled for today</p>
+              </Card>
+            ) : (
+              todayCheckIns.map(booking => {
+                const { guest, property, roomDisplay } = getGuestInfo(booking);
+                return (
+                  <Card key={booking.id} className="overflow-hidden" data-testid={`card-checkin-${booking.id}`}>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                              <LogIn className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                              <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {property?.name || "Property"}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Users className="h-3 w-3" />
+                              {booking.numberOfGuests} guest(s)
+                            </span>
+                            <Badge className={statusColors[booking.status] || "bg-gray-500 text-white"}>
+                              {booking.status}
+                            </Badge>
+                          </div>
+                        </div>
+                        {booking.isGroupBooking && (
+                          <Badge variant="secondary" className="bg-blue-500 text-white flex-shrink-0">Group</Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        {guest?.phone && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 h-11"
+                            onClick={() => window.open(`tel:${guest.phone}`, "_self")}
+                            data-testid={`btn-call-checkin-${booking.id}`}
+                          >
+                            <Phone className="h-4 w-4 mr-2" />
+                            Call
+                          </Button>
+                        )}
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          className="flex-1 h-11 bg-green-500 hover:bg-green-600"
+                          onClick={() => checkInMutation.mutate(booking.id)}
+                          disabled={checkInMutation.isPending}
+                          data-testid={`btn-checkin-${booking.id}`}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Check In
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        );
+
+      case "checkouts":
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold">Today's Check-outs</h2>
+              <Badge variant="secondary" className="bg-amber-500 text-white">{todayCheckOuts.length}</Badge>
+            </div>
+            {checkoutReminders.length > 0 && (
+              <Alert variant="destructive" className="mb-3">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {checkoutReminders.length} guest(s) overdue for checkout
+                </AlertDescription>
+              </Alert>
+            )}
+            {todayCheckOuts.length === 0 ? (
+              <Card className="p-8 text-center">
+                <LogOut className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No check-outs scheduled for today</p>
+              </Card>
+            ) : (
+              todayCheckOuts.map(booking => {
+                const { guest, property, roomDisplay } = getGuestInfo(booking);
+                const isOverdue = checkoutReminders.some(r => r.bookingId === booking.id);
+                return (
+                  <Card 
+                    key={booking.id} 
+                    className={`overflow-hidden ${isOverdue ? "border-destructive border-2" : ""}`}
+                    data-testid={`card-checkout-${booking.id}`}
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${isOverdue ? "bg-destructive/10" : "bg-amber-500/10"}`}>
+                              <LogOut className={`h-5 w-5 ${isOverdue ? "text-destructive" : "text-amber-600"}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                              <p className="text-sm text-muted-foreground">Room {roomDisplay}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 mt-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {property?.name || "Property"}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Users className="h-3 w-3" />
+                              {booking.numberOfGuests} guest(s)
+                            </span>
+                            {isOverdue && (
+                              <Badge variant="destructive" className="animate-pulse">Overdue</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-4">
+                        {guest?.phone && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 h-11"
+                            onClick={() => window.open(`tel:${guest.phone}`, "_self")}
+                            data-testid={`btn-call-checkout-${booking.id}`}
+                          >
+                            <Phone className="h-4 w-4 mr-2" />
+                            Call
+                          </Button>
+                        )}
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          className="flex-1 h-11 bg-amber-500 hover:bg-amber-600"
+                          onClick={() => checkOutMutation.mutate(booking.id)}
+                          disabled={checkOutMutation.isPending}
+                          data-testid={`btn-checkout-action-${booking.id}`}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-2" />
+                          Complete Checkout
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        );
+
+      case "orders":
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold">Active Orders</h2>
+              <div className="flex gap-2">
+                <Badge variant="secondary" className="bg-purple-500 text-white">{activeOrders.length}</Badge>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setLocation("/orders?new=true")}
+                  data-testid="btn-new-order"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  New
+                </Button>
+              </div>
+            </div>
+            {activeOrders.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Utensils className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No active orders</p>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setLocation("/orders?new=true")}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create New Order
+                </Button>
+              </Card>
+            ) : (
+              activeOrders.map(order => {
+                const { room, property } = getOrderInfo(order);
+                const nextStatus = order.status === "pending" ? "preparing" : order.status === "preparing" ? "ready" : "completed";
+                const nextStatusLabel = order.status === "pending" ? "Start Preparing" : order.status === "preparing" ? "Mark Ready" : "Complete";
+                const nextStatusIcon = order.status === "pending" ? CookingPot : order.status === "preparing" ? CheckCircle2 : Check;
+                const NextIcon = nextStatusIcon;
+                
+                return (
+                  <Card key={order.id} className="overflow-hidden" data-testid={`card-order-${order.id}`}>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                              <ChefHat className="h-5 w-5 text-purple-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base">Order #{order.id}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {order.orderType === "room" 
+                                  ? `Room ${room?.roomNumber || "N/A"}`
+                                  : order.customerName || "Walk-in"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="mt-3 space-y-1">
+                            <div className="flex flex-wrap gap-1">
+                              {Array.isArray(order.items) && order.items.slice(0, 3).map((item: any, idx: number) => (
+                                <Badge key={idx} variant="outline" className="text-xs">
+                                  {item.name} x{item.quantity}
+                                </Badge>
+                              ))}
+                              {Array.isArray(order.items) && order.items.length > 3 && (
+                                <Badge variant="outline" className="text-xs">+{order.items.length - 3} more</Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                              <Badge className={orderStatusColors[order.status] || "bg-gray-500 text-white"}>
+                                {order.status}
+                              </Badge>
+                              <span className="font-mono font-bold text-foreground">₹{parseFloat(order.totalAmount).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {order.specialInstructions && (
+                        <div className="mt-3 p-2 rounded bg-muted text-xs">
+                          <span className="font-medium">Note:</span> {order.specialInstructions}
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-4">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1 h-11 text-destructive border-destructive"
+                          onClick={() => updateOrderMutation.mutate({ orderId: order.id, status: "cancelled" })}
+                          disabled={updateOrderMutation.isPending}
+                          data-testid={`btn-cancel-order-${order.id}`}
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Cancel
+                        </Button>
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          className="flex-1 h-11"
+                          onClick={() => updateOrderMutation.mutate({ orderId: order.id, status: nextStatus })}
+                          disabled={updateOrderMutation.isPending}
+                          data-testid={`btn-update-order-${order.id}`}
+                        >
+                          <NextIcon className="h-4 w-4 mr-2" />
+                          {nextStatusLabel}
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Header with Property Selector */}
-      <div className="border-b bg-card p-4 md:p-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold font-serif">Dashboard</h1>
-            <p className="text-xs md:text-sm text-muted-foreground">Real-time operational overview</p>
-          </div>
-          
-          {/* Property Selector */}
+      {/* Compact Header with KPIs - Mobile Optimized */}
+      <div className="border-b bg-card p-3 md:p-4 flex-shrink-0">
+        <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
+            <h1 className="text-lg md:text-xl font-bold">Dashboard</h1>
             <select
               value={selectedPropertyId || ""}
               onChange={(e) => setSelectedPropertyId(e.target.value ? parseInt(e.target.value) : null)}
-              className="px-3 py-2 rounded-md border bg-background text-sm flex items-center gap-2"
+              className="px-2 py-1 rounded-md border bg-background text-xs md:text-sm"
               data-testid="select-property"
             >
               <option value="">All Properties</option>
@@ -375,233 +767,257 @@ export default function Dashboard() {
               ))}
             </select>
           </div>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setLocation("/bookings?new=true")}
+              className="h-8"
+              data-testid="btn-quick-booking"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">Booking</span>
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {/* KPI Ribbon */}
-      <div className="border-b bg-card p-4 md:p-6 overflow-x-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 min-w-max md:min-w-0">
-          {/* Occupancy % */}
-          <div className="flex flex-col gap-1 min-w-max">
-            <div className="flex items-center gap-1">
-              <Activity className="h-4 w-4 text-blue-500" />
-              <span className="text-xs font-medium text-muted-foreground">Occupancy</span>
+        {/* KPI Strip - Horizontal Scroll on Mobile */}
+        <div className="flex gap-4 overflow-x-auto pb-1 -mx-3 px-3">
+          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+            <Activity className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Occupancy</p>
+              <p className="text-lg font-bold font-mono" data-testid="kpi-occupancy">{stats?.occupancyRate || 0}%</p>
             </div>
-            <div className="text-2xl md:text-3xl font-bold font-mono" data-testid="kpi-occupancy">
-              {stats?.occupancyRate || 0}%
-            </div>
-            <p className="text-xs text-muted-foreground">{stats?.occupiedRooms || 0} / {stats?.totalRooms || 0} rooms</p>
           </div>
-
-          {/* ADR */}
-          <div className="flex flex-col gap-1 min-w-max">
-            <div className="flex items-center gap-1">
-              <IndianRupee className="h-4 w-4 text-green-500" />
-              <span className="text-xs font-medium text-muted-foreground">ADR</span>
+          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+            <IndianRupee className="h-4 w-4 text-green-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">ADR</p>
+              <p className="text-lg font-bold font-mono text-green-600" data-testid="kpi-adr">₹{(stats?.adr || 0).toLocaleString()}</p>
             </div>
-            <div className="text-2xl md:text-3xl font-bold font-mono text-green-600 dark:text-green-400" data-testid="kpi-adr">
-              ₹{(stats?.adr || 0).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">per room night</p>
           </div>
-
-          {/* RevPAR */}
-          <div className="flex flex-col gap-1 min-w-max">
-            <div className="flex items-center gap-1">
-              <TrendingUp className="h-4 w-4 text-chart-5" />
-              <span className="text-xs font-medium text-muted-foreground">RevPAR</span>
+          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+            <TrendingUp className="h-4 w-4 text-chart-5" />
+            <div>
+              <p className="text-xs text-muted-foreground">RevPAR</p>
+              <p className="text-lg font-bold font-mono text-chart-5" data-testid="kpi-revpar">₹{(stats?.revpar || 0).toLocaleString()}</p>
             </div>
-            <div className="text-2xl md:text-3xl font-bold font-mono text-chart-5" data-testid="kpi-revpar">
-              ₹{(stats?.revpar || 0).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">revenue metric</p>
           </div>
-
-          {/* Today's Revenue vs Target */}
-          <div className="flex flex-col gap-1 min-w-max">
-            <div className="flex items-center gap-1">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              <span className="text-xs font-medium text-muted-foreground">Today</span>
+          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+            <Receipt className="h-4 w-4 text-amber-500" />
+            <div>
+              <p className="text-xs text-muted-foreground">Revenue</p>
+              <p className="text-lg font-bold font-mono" data-testid="kpi-revenue">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
             </div>
-            <div className="text-2xl md:text-3xl font-bold font-mono" data-testid="kpi-revenue-today">
-              ₹{(stats?.monthlyRevenue || 0).toLocaleString()}
-            </div>
-            <p className="text-xs text-muted-foreground">vs ₹{(dailyTarget).toLocaleString()} target</p>
           </div>
         </div>
       </div>
 
-      {/* Main Content - Multi-panel Layout */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row gap-4 p-4 md:p-6">
-        {/* Left Sidebar - Quick Actions */}
-        <div className="w-full md:w-64 flex flex-col gap-4 overflow-y-auto">
-          <Card className="flex-shrink-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <button
-                onClick={() => setLocation("/bookings?new=true")}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent text-sm hover-elevate"
-                data-testid="action-new-booking"
-              >
-                <Plus className="h-4 w-4" />
-                New Booking
-              </button>
-              <button
-                onClick={() => setLocation("/new-enquiry")}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent text-sm hover-elevate"
-                data-testid="action-new-enquiry"
-              >
-                <MessageSquarePlus className="h-4 w-4" />
-                New Enquiry
-              </button>
-            </CardContent>
-          </Card>
-
-          {/* Key Metrics Cards */}
-          <Card className="flex-shrink-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Key Metrics</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Active Bookings</span>
-                <span className="font-bold" data-testid="metric-active-bookings">{stats?.activeBookings || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Guests</span>
-                <span className="font-bold" data-testid="metric-total-guests">{stats?.totalGuests || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Monthly Revenue</span>
-                <span className="font-bold font-mono">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</span>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Payment Notifications Banner */}
+      {recentPayments.length > 0 && (
+        <div className="border-b bg-green-50 dark:bg-green-950 px-3 py-2 flex-shrink-0">
+          {recentPayments.slice(0, 1).map((payment) => (
+            <div
+              key={payment.billId}
+              className="flex items-center gap-2 text-sm"
+              data-testid={`notification-payment-${payment.billId}`}
+            >
+              <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+              <p className="text-green-900 dark:text-green-100 truncate">
+                <span className="font-semibold">{payment.guestName}</span> paid ₹{parseFloat(payment.totalAmount).toLocaleString('en-IN')}
+              </p>
+            </div>
+          ))}
         </div>
+      )}
 
-        {/* Center - Timeline View */}
-        <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-w-0">
-          {/* Payment Notifications */}
-          {recentPayments.length > 0 && (
-            <div className="space-y-2">
-              {recentPayments.map((payment) => {
-                const isNew = !seenPaymentIds.has(payment.billId);
-                if (isNew) {
-                  setSeenPaymentIds(prev => new Set([...prev, payment.billId]));
-                }
+      {/* Main Content Area - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 md:pb-4">
+        {/* Desktop: Multi-Column Layout */}
+        <div className="hidden lg:grid lg:grid-cols-4 gap-4">
+          {/* In-House Guests Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Home className="h-4 w-4 text-green-600" />
+                In-House
+              </h3>
+              <Badge className="bg-green-500 text-white">{checkedInGuests.length}</Badge>
+            </div>
+            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {checkedInGuests.slice(0, 8).map(booking => {
+                const { guest, roomDisplay } = getGuestInfo(booking);
                 return (
-                  <div
-                    key={payment.billId}
-                    className={`p-3 rounded-lg border-l-4 flex items-center gap-3 text-sm ${
-                      isNew
-                        ? "bg-green-50 dark:bg-green-950 border-l-green-500 animate-pulse"
-                        : "bg-green-50/50 dark:bg-green-950/50 border-l-green-400"
-                    }`}
-                    data-testid={`notification-payment-${payment.billId}`}
-                  >
-                    <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-green-900 dark:text-green-100">
-                        {payment.guestName} paid ₹{parseFloat(payment.totalAmount).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  </div>
+                  <Card key={booking.id} className="p-3 hover-elevate cursor-pointer" onClick={() => setLocation(`/bookings/${booking.id}`)}>
+                    <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
+                    <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
+                  </Card>
                 );
               })}
+              {checkedInGuests.length > 8 && (
+                <Button variant="ghost" size="sm" className="w-full" onClick={() => setMobileTab("inhouse")}>
+                  View all {checkedInGuests.length} guests
+                </Button>
+              )}
             </div>
-          )}
+          </div>
 
-          {/* Today's Timeline */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Today's Schedule</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {todayCheckIns.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Check-ins ({todayCheckIns.length})</p>
-                  {todayCheckIns.slice(0, 3).map(b => {
-                    const guest = guests?.find(g => g.id === b.guestId);
-                    return (
-                      <div key={b.id} className="text-xs p-2 rounded bg-green-50 dark:bg-green-950">
-                        {guest?.fullName || "Guest"} - Room TBA
+          {/* Check-ins Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <LogIn className="h-4 w-4 text-blue-600" />
+                Check-ins
+              </h3>
+              <Badge className="bg-blue-500 text-white">{todayCheckIns.length}</Badge>
+            </div>
+            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {todayCheckIns.slice(0, 8).map(booking => {
+                const { guest, roomDisplay } = getGuestInfo(booking);
+                return (
+                  <Card key={booking.id} className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
+                        <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
                       </div>
-                    );
-                  })}
-                </div>
+                      <Button 
+                        size="sm" 
+                        className="h-7 bg-green-500 hover:bg-green-600"
+                        onClick={() => checkInMutation.mutate(booking.id)}
+                        disabled={checkInMutation.isPending}
+                      >
+                        <CheckCircle2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+              {todayCheckIns.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No check-ins today</p>
               )}
-              {todayCheckOuts.length > 0 && (
-                <div className="space-y-2 pt-2">
-                  <p className="text-xs font-medium text-muted-foreground">Check-outs ({todayCheckOuts.length})</p>
-                  {todayCheckOuts.slice(0, 3).map(b => {
-                    const guest = guests?.find(g => g.id === b.guestId);
-                    return (
-                      <div key={b.id} className="text-xs p-2 rounded bg-amber-50 dark:bg-amber-950">
-                        {guest?.fullName || "Guest"} - Checkout due
+            </div>
+          </div>
+
+          {/* Check-outs Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <LogOut className="h-4 w-4 text-amber-600" />
+                Check-outs
+              </h3>
+              <Badge className="bg-amber-500 text-white">{todayCheckOuts.length}</Badge>
+            </div>
+            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {todayCheckOuts.slice(0, 8).map(booking => {
+                const { guest, roomDisplay } = getGuestInfo(booking);
+                const isOverdue = checkoutReminders.some(r => r.bookingId === booking.id);
+                return (
+                  <Card key={booking.id} className={`p-3 ${isOverdue ? "border-destructive" : ""}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{guest?.fullName || "Guest"}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground">Room {roomDisplay}</p>
+                          {isOverdue && <Badge variant="destructive" className="text-[10px] h-4">Late</Badge>}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
+                      <Button 
+                        size="sm" 
+                        className="h-7 bg-amber-500 hover:bg-amber-600"
+                        onClick={() => checkOutMutation.mutate(booking.id)}
+                        disabled={checkOutMutation.isPending}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+              {todayCheckOuts.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No check-outs today</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+
+          {/* Orders Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Utensils className="h-4 w-4 text-purple-600" />
+                Orders
+              </h3>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-purple-500 text-white">{activeOrders.length}</Badge>
+                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setLocation("/orders?new=true")}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto">
+              {activeOrders.slice(0, 8).map(order => {
+                const { room } = getOrderInfo(order);
+                return (
+                  <Card key={order.id} className="p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm">#{order.id}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {order.orderType === "room" ? `Room ${room?.roomNumber}` : order.customerName || "Walk-in"}
+                        </p>
+                      </div>
+                      <Badge className={orderStatusColors[order.status] || "bg-gray-500 text-white"}>
+                        {order.status}
+                      </Badge>
+                    </div>
+                  </Card>
+                );
+              })}
+              {activeOrders.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">No active orders</p>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Right Panel - Alerts & Tasks */}
-        <div className="w-full md:w-64 flex flex-col gap-4 overflow-y-auto">
-          <Card className="flex-shrink-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-destructive" />
-                Alerts & Tasks
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {checkoutReminders.length > 0 && (
-                <div className="p-2 rounded bg-destructive/10 border border-destructive/20">
-                  <p className="font-medium text-destructive">
-                    {checkoutReminders.length} overdue checkout(s)
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {checkoutReminders[0]?.guestName} in Room {checkoutReminders[0]?.roomNumber}
-                  </p>
-                </div>
-              )}
-              {activeOrders.length > 0 && (
-                <div className="p-2 rounded bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
-                  <p className="font-medium text-blue-900 dark:text-blue-100">
-                    {activeOrders.length} active order(s)
-                  </p>
-                </div>
-              )}
-              {yetToConfirmedEnquiries.length > 0 && (
-                <div className="p-2 rounded bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
-                  <p className="font-medium text-amber-900 dark:text-amber-100">
-                    {yetToConfirmedEnquiries.length} pending enquiry(ies)
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Mobile: Tab Content */}
+        <div className="lg:hidden">
+          {renderMobileContent()}
+        </div>
+      </div>
 
-          {/* Properties Overview */}
-          <Card className="flex-shrink-0">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Properties</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total</span>
-                <span className="font-bold">{stats?.totalProperties || 0}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total Rooms</span>
-                <span className="font-bold">{stats?.totalRooms || 0}</span>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Mobile Bottom Navigation - Fixed */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 border-t bg-card z-50">
+        <div className="flex">
+          {mobileTabConfig.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = mobileTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setMobileTab(tab.key)}
+                className={`flex-1 flex flex-col items-center justify-center py-2 px-1 min-h-[60px] transition-colors ${
+                  isActive ? "bg-accent" : ""
+                }`}
+                data-testid={`tab-${tab.key}`}
+              >
+                <div className="relative">
+                  <Icon className={`h-5 w-5 ${isActive ? tab.color : "text-muted-foreground"}`} />
+                  {tab.count > 0 && (
+                    <span className={`absolute -top-1 -right-2 h-4 min-w-[16px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                      isActive ? "bg-primary text-primary-foreground" : "bg-muted-foreground text-background"
+                    }`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </div>
+                <span className={`text-[10px] mt-1 font-medium ${isActive ? "text-foreground" : "text-muted-foreground"}`}>
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
