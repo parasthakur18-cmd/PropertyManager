@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Settings, Grid3x3, List, DoubleChevronLeft, DoubleChevronRight } from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval, differenceInDays } from "date-fns";
 import {
   Select,
