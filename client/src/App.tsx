@@ -32,6 +32,7 @@ import Financials from "@/pages/financials";
 import AddOnServices from "@/pages/addons";
 import UsersManagement from "@/pages/users";
 import ActiveBookings from "@/pages/active-bookings";
+import CheckIns from "@/pages/check-ins";
 import RoomCalendar from "@/pages/room-calendar";
 import FoodOrdersReport from "@/pages/food-orders-report";
 import MenuManagement from "@/pages/menu-management";
@@ -126,6 +127,7 @@ function Router() {
           <Route path="/properties" component={Properties} />
           <Route path="/rooms" component={Rooms} />
           <Route path="/bookings" component={Bookings} />
+          <Route path="/check-ins" component={CheckIns} />
           <Route path="/active-bookings" component={ActiveBookings} />
           <Route path="/room-calendar" component={RoomCalendar} />
           <Route path="/guests" component={Guests} />
