@@ -98,6 +98,27 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
+  // Create notification with error handling
+  const createNotification = async (type: string, title: string, message: string, soundType: "info" | "warning" | "critical" | "payment") => {
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, title, message, soundType, isRead: false }),
+      });
+      if (!response.ok) {
+        console.warn(`[NOTIFICATION] Failed to create ${type} notification: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error(`[NOTIFICATION_ERROR] Failed to create ${type} notification:`, {
+        timestamp: new Date().toISOString(),
+        type,
+        message,
+        error: error?.message || "Unknown error",
+      });
+    }
+  };
+
   // Check for checkout reminders (12 PM+) and force auto-checkout (4 PM+)
   useEffect(() => {
     const checkoutFlow = async () => {
@@ -107,60 +128,126 @@ export default function Dashboard() {
       // From 12 PM onwards: Show reminders
       if (currentHour >= 12) {
         try {
+          console.log("[CHECKOUT_FLOW] Fetching checkout reminders...");
           const response = await fetch("/api/bookings/checkout-reminders");
-          if (response.ok) {
-            const reminders: CheckoutReminder[] = await response.json();
-            setCheckoutReminders(reminders);
-            
-            // Show reminder popups for unseen reminders
-            reminders.forEach(reminder => {
-              if (!shownReminderIds.has(reminder.bookingId)) {
-                toast({
-                  title: "Checkout Reminder",
-                  description: `Guest ${reminder.guestName} in Room ${reminder.roomNumber} was due for checkout at ${reminder.checkOutTime} (${reminder.hoursOverdue}h ago). Please checkout manually.`,
-                  duration: 10000,
-                });
-                setShownReminderIds(prev => new Set([...prev, reminder.bookingId]));
-              }
-            });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-        } catch (error) {
-          console.error("Failed to fetch checkout reminders:", error);
+          const reminders: CheckoutReminder[] = await response.json();
+          setCheckoutReminders(reminders);
+          
+          // Show reminder popups for unseen reminders
+          reminders.forEach(reminder => {
+            if (!shownReminderIds.has(reminder.bookingId)) {
+              console.log(`[CHECKOUT_REMINDER] Showing reminder for booking ${reminder.bookingId}:`, {
+                guestName: reminder.guestName,
+                roomNumber: reminder.roomNumber,
+                hoursOverdue: reminder.hoursOverdue,
+              });
+              
+              toast({
+                title: "Checkout Reminder",
+                description: `Guest ${reminder.guestName} in Room ${reminder.roomNumber} was due for checkout at ${reminder.checkOutTime} (${reminder.hoursOverdue}h ago). Please checkout manually.`,
+                duration: 10000,
+              });
+              
+              // Create notification
+              createNotification(
+                "checkout_reminder",
+                "Checkout Reminder",
+                `${reminder.guestName} (Room ${reminder.roomNumber}) overdue by ${reminder.hoursOverdue}h`,
+                "warning"
+              );
+              
+              setShownReminderIds(prev => new Set([...prev, reminder.bookingId]));
+            }
+          });
+        } catch (error: any) {
+          console.error("[CHECKOUT_ERROR] Failed to fetch checkout reminders:", {
+            timestamp: new Date().toISOString(),
+            error: error?.message || "Unknown error",
+            stack: error?.stack,
+          });
         }
       }
 
       // At 4 PM (16:00) onwards: Force auto-checkout
       if (currentHour >= 16) {
         try {
+          console.log("[AUTO_CHECKOUT] Executing force auto-checkout at 4 PM...");
           const response = await fetch("/api/bookings/force-auto-checkout", { method: "POST" });
-          if (response.ok) {
-            const data = await response.json();
-            if (data.processedCount > 0) {
-              console.log(`[Dashboard] Force auto-checked out ${data.processedCount} bookings at 4 PM`);
-              setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
-              toast({
-                title: "Forced Auto-Checkout Executed",
-                description: `${data.processedCount} booking(s) auto-checked out at 4 PM. Guest notifications sent via WhatsApp.`,
-                duration: 8000,
-              });
-              setShownReminderIds(new Set());
-            }
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-        } catch (error) {
-          console.error("Failed to process force auto-checkout:", error);
+          const data = await response.json();
+          if (data.processedCount > 0) {
+            console.log("[AUTO_CHECKOUT_SUCCESS] Force auto-checked out bookings:", {
+              timestamp: new Date().toISOString(),
+              processedCount: data.processedCount,
+            });
+            
+            setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
+            toast({
+              title: "Forced Auto-Checkout Executed",
+              description: `${data.processedCount} booking(s) auto-checked out at 4 PM. Guest notifications sent via WhatsApp.`,
+              duration: 8000,
+            });
+            
+            // Create notification
+            createNotification(
+              "auto_checkout",
+              "Auto-Checkout Executed",
+              `${data.processedCount} booking(s) auto-checked out. WhatsApp notifications sent.`,
+              "critical"
+            );
+            
+            setShownReminderIds(new Set());
+          }
+        } catch (error: any) {
+          console.error("[AUTO_CHECKOUT_ERROR] Failed to process force auto-checkout:", {
+            timestamp: new Date().toISOString(),
+            error: error?.message || "Unknown error",
+            stack: error?.stack,
+          });
         }
       }
     };
 
     const fetchRecentPayments = async () => {
       try {
+        console.log("[PAYMENTS] Fetching recent payments...");
         const response = await fetch("/api/recent-payments");
-        if (response.ok) {
-          const payments: PaymentNotification[] = await response.json();
-          setRecentPayments(payments);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-      } catch (error) {
-        console.error("Failed to fetch recent payments:", error);
+        const payments: PaymentNotification[] = await response.json();
+        setRecentPayments(payments);
+        
+        // Create notifications for new payments
+        payments.forEach(payment => {
+          if (!seenPaymentIds.has(payment.billId)) {
+            console.log("[PAYMENT_RECEIVED] New payment recorded:", {
+              timestamp: new Date().toISOString(),
+              billId: payment.billId,
+              guestName: payment.guestName,
+              amount: payment.totalAmount,
+              method: payment.paymentMethod,
+            });
+            
+            createNotification(
+              "payment_received",
+              "Payment Received",
+              `${payment.guestName} paid ₹${payment.totalAmount} via ${payment.paymentMethod || "online"}`,
+              "payment"
+            );
+          }
+        });
+      } catch (error: any) {
+        console.error("[PAYMENTS_ERROR] Failed to fetch recent payments:", {
+          timestamp: new Date().toISOString(),
+          error: error?.message || "Unknown error",
+          stack: error?.stack,
+        });
       }
     };
 
@@ -172,7 +259,7 @@ export default function Dashboard() {
     }, 900000); // Check every 15 minutes
     
     return () => clearInterval(interval);
-  }, [shownReminderIds, toast]);
+  }, [shownReminderIds, toast, seenPaymentIds]);
 
   const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
 
