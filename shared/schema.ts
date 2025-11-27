@@ -1187,3 +1187,48 @@ export const insertOtaIntegrationSchema = createInsertSchema(otaIntegrations).om
 
 export type InsertOtaIntegration = z.infer<typeof insertOtaIntegrationSchema>;
 export type OtaIntegration = typeof otaIntegrations.$inferSelect;
+
+// Notifications table - for notification center
+export const notifications = pgTable("notifications", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: varchar("type", { length: 50 }).notNull(), // checkout_reminder, auto_checkout, approval_pending, payment_received
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  soundType: varchar("sound_type", { length: 20 }).default("info"), // info, warning, critical, payment
+  relatedId: integer("related_id"), // booking_id, bill_id, etc
+  relatedType: varchar("related_type", { length: 50 }), // booking, bill, change_request
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+
+// Change Approvals table - for approving sensitive changes
+export const changeApprovals = pgTable("change_approvals", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'set null' }),
+  changeType: varchar("change_type", { length: 50 }).notNull(), // price_change, discount, manual_charge
+  bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'set null' }),
+  roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }),
+  description: text("description").notNull(),
+  oldValue: varchar("old_value", { length: 255 }),
+  newValue: varchar("new_value", { length: 255 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, approved, rejected
+  approvedBy: varchar("approved_by").references(() => users.id, { onDelete: 'set null' }),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type ChangeApproval = typeof changeApprovals.$inferSelect;
+export const insertChangeApprovalSchema = createInsertSchema(changeApprovals).omit({
+  id: true,
+  status: true,
+  approvedBy: true,
+  approvedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertChangeApproval = z.infer<typeof insertChangeApprovalSchema>;
