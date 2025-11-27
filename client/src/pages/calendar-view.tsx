@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Settings, Grid3x3, List, DoubleChevronLeft, DoubleChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Settings, Grid3x3, List, Menu, X } from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval, differenceInDays } from "date-fns";
 import {
   Select,
@@ -49,6 +49,8 @@ export default function CalendarView() {
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">("all");
+  const [showRoomSidebar, setShowRoomSidebar] = useState<boolean>(true);
+  const [searchQuery, setSearchQuery] = useState<string>("");
   
   const endDate = addDays(startDate, 13); // 2 weeks view
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
@@ -120,14 +122,50 @@ export default function CalendarView() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-card p-4 flex-shrink-0">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      <div className="border-b bg-card p-3 flex-shrink-0 space-y-3">
+        {/* Top Row - Main controls */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Button 
+              size="icon" 
+              variant="ghost"
+              onClick={() => setShowRoomSidebar(!showRoomSidebar)}
+              data-testid="button-toggle-room-sidebar"
+            >
+              {showRoomSidebar ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </Button>
             <CalendarIcon className="h-5 w-5" />
-            <h1 className="text-xl font-bold">Room Calendar</h1>
+            <h1 className="text-lg font-bold">Room Calendar</h1>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setStartDate(today)} data-testid="button-today">
+              Today
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Bottom Row - Search and tools */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 max-w-sm">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search reservations, guests..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8"
+                data-testid="input-search-calendar"
+              />
+            </div>
           </div>
           <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-40">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -137,24 +175,16 @@ export default function CalendarView() {
               ))}
             </SelectContent>
           </Select>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, -7))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setStartDate(today)}>
-              Today
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, 7))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button size="icon" variant="ghost" data-testid="button-view-settings">
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
       {/* Calendar Content */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left Sidebar - Rooms */}
-        <div className="w-48 border-r overflow-y-auto bg-background">
+        <div className={cn("border-r overflow-y-auto bg-background transition-all duration-300", showRoomSidebar ? "w-48" : "w-0")}>
           <div className="sticky top-0 bg-card border-b p-3 font-semibold text-sm">
             {Object.keys(roomsByType).length} Room Type{Object.keys(roomsByType).length !== 1 ? 's' : ''}
           </div>
