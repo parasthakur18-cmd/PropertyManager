@@ -404,37 +404,39 @@ export default function CalendarView() {
                 </div>
 
                 {/* Room Rows */}
-                {expandedTypes[type] && typeRooms.map(room => (
+                {expandedTypes[type] && typeRooms.map(room => {
+                  const isLoading = updateRoomStatusMutation.isPending;
+                  return (
                   <div
                     key={room.id}
-                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative pr-2"
+                    className="flex items-center justify-between px-2 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative"
                     style={{ height: ROW_HEIGHT }}
                     data-testid={`room-row-${room.id}`}
                   >
                     <div 
-                      className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
+                      className="flex items-center gap-1 cursor-pointer flex-1 min-w-0"
                       onClick={() => navigate(`/rooms/${room.id}`)}
                     >
                       <span className="font-medium text-sm truncate">{room.roomNumber}</span>
                       <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                     </div>
                     
-                    {/* Quick Action Buttons */}
-                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {/* Quick Action Buttons - Test with visible background */}
+                    <div className="flex items-center gap-1 flex-shrink-0 bg-blue-50 dark:bg-blue-950 p-1 rounded">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log("[BUTTON] Available clicked for room", room.id);
+                          console.log("[BUTTON-CLICK] Available for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "available" });
                         }}
-                        disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-green-100 dark:hover:bg-green-950 rounded transition-colors cursor-pointer"
-                        title="Mark as Available"
+                        disabled={isLoading}
+                        className="p-1 bg-green-500 hover:bg-green-600 rounded cursor-pointer text-white min-w-fit"
+                        title="Available"
                         data-testid={`button-available-${room.id}`}
                       >
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <CheckCircle2 className="h-3 w-3" />
                       </button>
                       
                       <button
@@ -442,15 +444,15 @@ export default function CalendarView() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log("[BUTTON] Block clicked for room", room.id);
+                          console.log("[BUTTON-CLICK] Block for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "blocked" });
                         }}
-                        disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-950 rounded transition-colors cursor-pointer"
-                        title="Block Room"
+                        disabled={isLoading}
+                        className="p-1 bg-yellow-500 hover:bg-yellow-600 rounded cursor-pointer text-white min-w-fit"
+                        title="Block"
                         data-testid={`button-block-${room.id}`}
                       >
-                        <Lock className="h-4 w-4 text-yellow-600" />
+                        <Lock className="h-3 w-3" />
                       </button>
                       
                       <button
@@ -458,19 +460,20 @@ export default function CalendarView() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log("[BUTTON] Out of service clicked for room", room.id);
+                          console.log("[BUTTON-CLICK] Out-of-service for room", room.id);
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "out-of-service" });
                         }}
-                        disabled={updateRoomStatusMutation.isPending}
-                        className="p-1 hover:bg-red-100 dark:hover:bg-red-950 rounded transition-colors cursor-pointer"
+                        disabled={isLoading}
+                        className="p-1 bg-red-500 hover:bg-red-600 rounded cursor-pointer text-white min-w-fit"
                         title="Out of Service"
                         data-testid={`button-out-of-service-${room.id}`}
                       >
-                        <Wrench className="h-4 w-4 text-red-600" />
+                        <Wrench className="h-3 w-3" />
                       </button>
                     </div>
                   </div>
-                ))}
+                );
+                })}
               </div>
             ))}
           </div>
