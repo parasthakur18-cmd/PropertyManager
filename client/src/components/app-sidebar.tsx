@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   Building2,
   Home,
@@ -158,6 +159,13 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const { setOpen, isMobile } = useSidebar();
+
+  // Ensure sidebar is open on initial load (not on mobile)
+  useEffect(() => {
+    if (!isMobile) {
+      setOpen(true);
+    }
+  }, []);
 
   // Get menu items based on role
   const getMenuConfig = () => {
