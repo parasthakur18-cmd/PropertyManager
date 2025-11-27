@@ -435,6 +435,26 @@ export default function Enquiries() {
     },
   });
 
+  const sendAdvancePaymentLinkMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/enquiries/${id}/send-advance-payment-link`, "POST", {});
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enquiries"] });
+      toast({
+        title: "Payment Link Sent!",
+        description: data.message || "Advance payment link has been sent via WhatsApp.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Send Payment Link",
+        description: error.message || "Could not send the payment link. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const sendMessageMutation = useMutation({
     mutationFn: async (data: any) => {
       return await apiRequest("/api/communications", "POST", data);
@@ -841,6 +861,21 @@ export default function Enquiries() {
                               >
                                 <Edit className="h-3 w-3 mr-1" />
                                 Edit
+                              </Button>
+                            )}
+                            {enquiry.status !== "confirmed" && enquiry.status !== "cancelled" && 
+                             enquiry.advanceAmount && parseFloat(String(enquiry.advanceAmount)) > 0 && 
+                             enquiry.paymentStatus !== "received" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs py-1 h-auto text-green-600 border-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+                                onClick={() => sendAdvancePaymentLinkMutation.mutate(enquiry.id)}
+                                disabled={sendAdvancePaymentLinkMutation.isPending}
+                                data-testid={`button-send-payment-link-${enquiry.id}`}
+                              >
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                {sendAdvancePaymentLinkMutation.isPending ? "Sending..." : "Pay Link"}
                               </Button>
                             )}
                             {enquiry.status !== "confirmed" && enquiry.status !== "cancelled" && (

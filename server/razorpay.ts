@@ -56,6 +56,73 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
   };
 }
 
+// Create payment link specifically for enquiry advance payments
+export async function createEnquiryPaymentLink(enquiryId: number, amount: number, guestName: string, guestEmail: string, guestPhone: string) {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (!keyId || !keySecret) {
+    throw new Error("RazorPay credentials not configured. Please add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to your secrets.");
+  }
+
+  // Validate and sanitize phone number
+  if (!guestPhone || typeof guestPhone !== 'string') {
+    throw new Error("Guest phone number is required to create payment link");
+  }
+  
+  const cleanedPhone = guestPhone.replace(/[^\d]/g, "");
+  if (cleanedPhone.length < 10) {
+    throw new Error("Invalid phone number. Please enter a valid 10-digit phone number.");
+  }
+
+  // Validate amount
+  if (!amount || amount <= 0) {
+    throw new Error("Invalid payment amount. Amount must be greater than zero.");
+  }
+
+  const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+  const timestamp = Math.floor(Date.now() / 1000);
+  const uniqueReferenceId = `enquiry_${enquiryId}_${timestamp}`;
+
+  const response = await fetch("https://api.razorpay.com/v1/payment_links", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      amount: Math.round(amount * 100),
+      currency: "INR",
+      accept_partial: false,
+      description: `Advance Payment for Enquiry #${enquiryId}`,
+      reference_id: uniqueReferenceId,
+      customer: {
+        name: guestName || "Guest",
+        email: guestEmail || "guest@example.com",
+        contact: cleanedPhone,
+      },
+      notify: {
+        sms: true,
+        email: !!guestEmail,
+      },
+      upi_link: true,
+      expire_by: Math.floor(Date.now() / 1000) + 604800, // 7 days for advance payment
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`RazorPay error: ${error.error?.description || "Failed to create payment link"}`);
+  }
+
+  const data: any = await response.json();
+  return {
+    linkId: data.id,
+    shortUrl: data.short_url,
+    paymentLink: data.short_url,
+  };
+}
+
 export async function getPaymentLinkStatus(linkId: string) {
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;

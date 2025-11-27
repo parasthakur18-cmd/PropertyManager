@@ -50,7 +50,7 @@ import {
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
-import { createPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
+import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -3531,6 +3531,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid payment status", errors: error.errors });
       }
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send advance payment link for enquiry via WhatsApp
+  app.post("/api/enquiries/:id/send-advance-payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const enquiryId = parseInt(req.params.id);
+      const [enquiry] = await db.select().from(enquiries).where(eq(enquiries.id, enquiryId));
+      
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+
+      // Validate phone number exists and has minimum digits
+      if (!enquiry.guestPhone || enquiry.guestPhone.trim() === "") {
+        return res.status(400).json({ message: "Guest phone number is required to send payment link. Please edit the enquiry and add a phone number." });
+      }
+      
+      const cleanedPhone = enquiry.guestPhone.replace(/[^\d]/g, "");
+      if (cleanedPhone.length < 10) {
+        return res.status(400).json({ message: "Invalid phone number. Please enter a valid 10-digit phone number in the enquiry." });
+      }
+
+      const advanceAmount = enquiry.advanceAmount ? parseFloat(String(enquiry.advanceAmount)) : 0;
+      if (advanceAmount <= 0) {
+        return res.status(400).json({ message: "Please enter an advance amount before sending the payment link" });
+      }
+
+      console.log(`[Enquiry Payment] Creating RazorPay link for enquiry #${enquiryId}, amount: ₹${advanceAmount}`);
+
+      // Create RazorPay payment link
+      const paymentLink = await createEnquiryPaymentLink(
+        enquiryId,
+        advanceAmount,
+        enquiry.guestName,
+        enquiry.guestEmail || "",
+        enquiry.guestPhone
+      );
+
+      const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+      console.log(`[Enquiry Payment] Payment link created: ${paymentLinkUrl}`);
+
+      // Send via WhatsApp using Authkey
+      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+      const result = await sendCustomWhatsAppMessage(
+        enquiry.guestPhone,
+        templateId,
+        [enquiry.guestName, `₹${advanceAmount.toFixed(2)}`, paymentLinkUrl]
+      );
+
+      if (result.success) {
+        // Update enquiry status to payment_pending
+        await storage.updateEnquiryStatus(enquiryId, "payment_pending");
+        
+        console.log(`[Enquiry Payment] Payment link sent successfully to ${enquiry.guestPhone}`);
+        res.json({ 
+          success: true, 
+          message: "Advance payment link sent successfully via WhatsApp",
+          paymentLinkUrl 
+        });
+      } else {
+        console.error(`[Enquiry Payment] Failed to send WhatsApp: ${result.error}`);
+        res.status(500).json({ message: result.error || "Failed to send payment link via WhatsApp" });
+      }
+    } catch (error: any) {
+      console.error("[Enquiry Payment] Error:", error);
+      res.status(500).json({ message: error.message || "Failed to send advance payment link" });
     }
   });
 
