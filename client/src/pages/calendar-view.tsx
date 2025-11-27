@@ -1,10 +1,24 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search, Settings, Menu, X, Circle } from "lucide-react";
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Calendar as CalendarIcon, 
+  Search, 
+  Settings, 
+  Menu, 
+  X, 
+  List, 
+  LayoutGrid, 
+  Plus,
+  ChevronDown,
+  ChevronUp,
+  Link2,
+  AlertTriangle
+} from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval } from "date-fns";
 import {
   Select,
@@ -17,16 +31,48 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { Property, Booking, Room } from "@shared/schema";
 
-const STATUS_COLORS = {
-  confirmed: "bg-emerald-400",
-  pending: "bg-blue-400",
-  "checked-in": "bg-emerald-500",
-  "checked-out": "bg-gray-300",
-  cancelled: "bg-red-400",
-  blocked: "bg-gray-400",
+const STATUS_COLORS: Record<string, { bg: string; text: string; gradient: string }> = {
+  confirmed: { 
+    bg: "bg-teal-400", 
+    text: "text-teal-900",
+    gradient: "linear-gradient(135deg, #4fd1c5 0%, #38b2ac 100%)"
+  },
+  pending: { 
+    bg: "bg-blue-300", 
+    text: "text-blue-900",
+    gradient: "linear-gradient(135deg, #90cdf4 0%, #63b3ed 100%)"
+  },
+  "checked-in": { 
+    bg: "bg-emerald-500", 
+    text: "text-white",
+    gradient: "linear-gradient(135deg, #48bb78 0%, #38a169 100%)"
+  },
+  "checked-out": { 
+    bg: "bg-gray-300", 
+    text: "text-gray-700",
+    gradient: "linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%)"
+  },
+  cancelled: { 
+    bg: "bg-red-400", 
+    text: "text-red-900",
+    gradient: "linear-gradient(135deg, #fc8181 0%, #f56565 100%)"
+  },
+  blocked: { 
+    bg: "bg-gray-400", 
+    text: "text-gray-900",
+    gradient: "linear-gradient(135deg, #a0aec0 0%, #718096 100%)"
+  },
+  "out-of-service": {
+    bg: "bg-rose-400",
+    text: "text-rose-900", 
+    gradient: "linear-gradient(135deg, #fda4af 0%, #fb7185 100%)"
+  }
 };
 
-const CELL_WIDTH = 96; // px
+const CELL_WIDTH = 80;
+const ROW_HEIGHT = 48;
+const TYPE_ROW_HEIGHT = 40;
+const SIDEBAR_WIDTH = 180;
 
 export default function CalendarView() {
   const [, navigate] = useLocation();
@@ -35,8 +81,11 @@ export default function CalendarView() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">("all");
   const [showRoomSidebar, setShowRoomSidebar] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   
-  const endDate = addDays(startDate, 13); // 2 weeks view
+  const endDate = addDays(startDate, 11);
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
 
   const { data: properties = [], isLoading: propertiesLoading } = useQuery<Property[]>({
@@ -55,19 +104,58 @@ export default function CalendarView() {
     queryKey: ["/api/guests"],
   });
 
+  // Sync vertical scroll between sidebar and calendar
+  useEffect(() => {
+    const calendar = calendarRef.current;
+    const sidebar = sidebarRef.current;
+    if (!calendar || !sidebar) return;
+
+    const handleCalendarScroll = () => {
+      sidebar.scrollTop = calendar.scrollTop;
+    };
+    const handleSidebarScroll = () => {
+      calendar.scrollTop = sidebar.scrollTop;
+    };
+
+    calendar.addEventListener('scroll', handleCalendarScroll);
+    sidebar.addEventListener('scroll', handleSidebarScroll);
+    return () => {
+      calendar.removeEventListener('scroll', handleCalendarScroll);
+      sidebar.removeEventListener('scroll', handleSidebarScroll);
+    };
+  }, []);
+
+  // Initialize all types as expanded
+  useEffect(() => {
+    if (Object.keys(expandedTypes).length === 0 && rooms.length > 0) {
+      const types: Record<string, boolean> = {};
+      rooms.forEach(room => {
+        const type = room.roomType || "Other";
+        types[type] = true;
+      });
+      setExpandedTypes(types);
+    }
+  }, [rooms, expandedTypes]);
+
   const filteredRooms = useMemo(() => {
     let filtered = rooms;
     if (selectedPropertyId !== "all") {
       filtered = filtered.filter(r => r.propertyId === selectedPropertyId);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.roomNumber.toLowerCase().includes(q) ||
+        (r.roomType && r.roomType.toLowerCase().includes(q))
+      );
     }
     return filtered.sort((a, b) => {
       const numA = parseInt(a.roomNumber.replace(/\D/g, '') || '0');
       const numB = parseInt(b.roomNumber.replace(/\D/g, '') || '0');
       return numA - numB;
     });
-  }, [rooms, selectedPropertyId]);
+  }, [rooms, selectedPropertyId, searchQuery]);
 
-  // Group rooms by type
   const roomsByType = useMemo(() => {
     const grouped: Record<string, Room[]> = {};
     filteredRooms.forEach(room => {
@@ -106,37 +194,19 @@ export default function CalendarView() {
     return Math.round((occupiedCount / totalRooms) * 100);
   };
 
-  const calculateBookingPosition = (booking: Booking, dateIndex: number) => {
-    const checkInDate = startOfDay(new Date(booking.checkInDate));
-    const checkOutDate = startOfDay(new Date(booking.checkOutDate));
-    const rangeStart = startOfDay(startDate);
-    
-    const checkInIndex = Math.max(0, Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)));
-    const checkOutIndex = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (dateIndex < checkInIndex || dateIndex >= checkOutIndex) return null;
-    
-    const isCheckInDay = dateIndex === checkInIndex;
-    const isCheckOutDay = dateIndex === checkOutIndex - 1;
-    
-    let leftOffset = 0;
-    let width = CELL_WIDTH;
-    
-    if (isCheckInDay) {
-      leftOffset = CELL_WIDTH / 2; // Start halfway
-      width = CELL_WIDTH / 2;
-    }
-    
-    if (isCheckOutDay) {
-      width = CELL_WIDTH / 2; // End halfway
-    }
-    
-    if (isCheckInDay && isCheckOutDay) {
-      leftOffset = CELL_WIDTH / 2;
-      width = 0; // Same day (edge case)
-    }
-    
-    return { leftOffset, width };
+  const getAvailableRoomsForType = (typeRooms: Room[], date: Date) => {
+    return typeRooms.filter(room => !getBookingForDate(room.id, date)).length;
+  };
+
+  const getPriceForType = (typeRooms: Room[]) => {
+    if (typeRooms.length === 0) return "₹0";
+    const prices = typeRooms.map(r => Number(r.pricePerNight) || 0);
+    const minPrice = Math.min(...prices);
+    return `₹${minPrice.toLocaleString()}`;
+  };
+
+  const toggleType = (type: string) => {
+    setExpandedTypes(prev => ({ ...prev, [type]: !prev[type] }));
   };
 
   if (roomsLoading || bookingsLoading || propertiesLoading) {
@@ -144,10 +214,9 @@ export default function CalendarView() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <div className="h-full flex flex-col bg-slate-50 dark:bg-background overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-card p-3 flex-shrink-0 space-y-3">
-        {/* Top Row */}
+      <div className="border-b bg-white dark:bg-card p-3 flex-shrink-0 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Button 
@@ -158,38 +227,37 @@ export default function CalendarView() {
             >
               {showRoomSidebar ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <CalendarIcon className="h-5 w-5" />
+            <CalendarIcon className="h-5 w-5 text-primary" />
             <h1 className="text-lg font-bold">Room Calendar</h1>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button size="sm" variant="outline" onClick={() => setStartDate(today)} data-testid="button-today">
               Today
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
+            <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Bottom Row */}
         <div className="flex items-center gap-3">
-          <div className="flex-1 max-w-sm">
+          <div className="flex-1 max-w-md">
             <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search reservations, guests..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
+                className="pl-9 bg-slate-50 dark:bg-background border-slate-200"
                 data-testid="input-search-calendar"
               />
             </div>
           </div>
           <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-44 bg-white dark:bg-card">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -207,26 +275,68 @@ export default function CalendarView() {
 
       {/* Calendar Content */}
       <div className="flex-1 overflow-hidden flex">
-        {/* Left Sidebar - Rooms */}
-        <div className={cn("border-r overflow-y-auto bg-background transition-all duration-300 flex-shrink-0", showRoomSidebar ? "w-48" : "w-0")}>
-          <div className="sticky top-0 bg-card border-b p-3 font-semibold text-sm z-20">
-            {Object.keys(roomsByType).length} Room Type{Object.keys(roomsByType).length !== 1 ? 's' : ''}
+        {/* Left Sidebar */}
+        <div className={cn(
+          "border-r bg-white dark:bg-card transition-all duration-300 flex-shrink-0 flex flex-col",
+          showRoomSidebar ? "w-[180px]" : "w-0 overflow-hidden"
+        )}>
+          {/* Toolbar */}
+          <div className="flex items-center gap-1 p-2 border-b bg-slate-50 dark:bg-muted/30">
+            <Button size="icon" variant="ghost" className="h-8 w-8">
+              <List className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8">
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8">
+              <Search className="h-4 w-4" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8">
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
-          <div className="p-2 space-y-1">
+
+          {/* All Accommodations Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-card border-b font-semibold text-sm">
+            <span>All Accommodations</span>
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          </div>
+
+          {/* Room Types & Rooms */}
+          <div 
+            ref={sidebarRef}
+            className="flex-1 overflow-y-auto overflow-x-hidden"
+          >
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
-              <div key={type} className="space-y-1">
-                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/30 rounded sticky top-10 z-10">
-                  {type} ({typeRooms.length})
+              <div key={type}>
+                {/* Room Type Header */}
+                <div
+                  className="flex items-center justify-between px-3 border-b bg-slate-50 dark:bg-muted/20 cursor-pointer hover:bg-slate-100 dark:hover:bg-muted/30 transition-colors"
+                  style={{ height: TYPE_ROW_HEIGHT }}
+                  onClick={() => toggleType(type)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm truncate">{type}</span>
+                    <ChevronDown className={cn(
+                      "h-3 w-3 text-muted-foreground transition-transform",
+                      !expandedTypes[type] && "-rotate-90"
+                    )} />
+                  </div>
                 </div>
-                {typeRooms.map(room => (
+
+                {/* Room Rows */}
+                {expandedTypes[type] && typeRooms.map(room => (
                   <div
                     key={room.id}
-                    className="px-2 py-2 text-sm bg-card border rounded hover:bg-muted/50 cursor-pointer transition"
-                    onClick={() => navigate(`/bookings?roomId=${room.id}`)}
-                    data-testid={`room-label-${room.id}`}
+                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 cursor-pointer transition-colors"
+                    style={{ height: ROW_HEIGHT }}
+                    onClick={() => navigate(`/rooms/${room.id}`)}
+                    data-testid={`room-row-${room.id}`}
                   >
-                    <div className="font-medium text-xs">{room.roomNumber}</div>
-                    <div className="text-xs text-muted-foreground">₹{room.pricePerNight}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{room.roomNumber}</span>
+                      <Link2 className="h-3 w-3 text-muted-foreground" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -235,57 +345,89 @@ export default function CalendarView() {
         </div>
 
         {/* Calendar Grid */}
-        <div className="flex-1 overflow-x-auto overflow-y-auto">
+        <div 
+          ref={calendarRef}
+          className="flex-1 overflow-auto"
+        >
           <div className="min-w-max">
-            {/* Date Headers */}
-            <div className="sticky top-0 z-20 bg-card border-b">
-              <div className="flex">
-                {dates.map((date, idx) => {
-                  const dayName = format(date, "EEE");
-                  const dayNum = format(date, "dd");
-                  const occupancy = getOccupancyPercent(date);
-                  const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
-                  
-                  return (
-                    <div
-                      key={format(date, "yyyy-MM-dd")}
-                      className={cn(
-                        "border-r p-2 text-center text-xs flex-shrink-0",
-                        isToday && "bg-blue-50 dark:bg-blue-950"
-                      )}
-                      style={{ width: CELL_WIDTH }}
-                    >
-                      <div className={cn("font-semibold", isToday && "text-blue-600 dark:text-blue-300")}>
-                        {dayName}
-                      </div>
-                      <div className={cn("text-lg font-bold", isToday && "text-blue-600 dark:text-blue-300")}>
-                        {dayNum}
-                      </div>
-                      <Badge variant="secondary" className="text-xs mt-1">
-                        {occupancy}%
-                      </Badge>
+            {/* Date Headers Row */}
+            <div className="sticky top-0 z-20 bg-white dark:bg-card border-b flex">
+              {dates.map((date, idx) => {
+                const dayName = format(date, "EEE");
+                const dayNum = format(date, "d");
+                const occupancy = getOccupancyPercent(date);
+                const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                
+                return (
+                  <div
+                    key={format(date, "yyyy-MM-dd")}
+                    className={cn(
+                      "border-r text-center flex-shrink-0 py-2",
+                      isToday && "bg-blue-50 dark:bg-blue-950/30"
+                    )}
+                    style={{ width: CELL_WIDTH }}
+                  >
+                    <div className={cn(
+                      "text-xs font-medium text-muted-foreground",
+                      isToday && "text-blue-600 dark:text-blue-400"
+                    )}>
+                      {dayName}
                     </div>
-                  );
-                })}
-              </div>
+                    <div className={cn(
+                      "text-xl font-bold",
+                      isToday && "text-blue-600 dark:text-blue-400"
+                    )}>
+                      {dayNum}
+                    </div>
+                    <div className={cn(
+                      "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-1",
+                      occupancy >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                      occupancy >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
+                      "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                    )}>
+                      {occupancy}%
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Rooms Grid */}
+            {/* Room Type Rows with Price Headers + Room Rows */}
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
               <div key={type}>
-                {typeRooms.map(room => {
+                {/* Room Type Price Row */}
+                <div className="flex border-b bg-slate-50 dark:bg-muted/10">
+                  {dates.map((date, idx) => {
+                    const available = getAvailableRoomsForType(typeRooms, date);
+                    const price = getPriceForType(typeRooms);
+                    
+                    return (
+                      <div
+                        key={`type-${type}-${format(date, "yyyy-MM-dd")}`}
+                        className="border-r text-center flex flex-col items-center justify-center flex-shrink-0"
+                        style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
+                      >
+                        <div className="text-xs text-muted-foreground">{available}</div>
+                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{price}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Individual Room Rows */}
+                {expandedTypes[type] && typeRooms.map(room => {
                   const roomBookings = getBookingsForRoom(room.id);
                   
                   return (
-                    <div key={room.id} className="relative border-b">
+                    <div key={room.id} className="relative border-b bg-white dark:bg-card">
                       {/* Background cells */}
-                      <div className="flex h-16">
-                        {dates.map((date, idx) => {
+                      <div className="flex" style={{ height: ROW_HEIGHT }}>
+                        {dates.map((date) => {
                           const dateStr = format(date, "yyyy-MM-dd");
                           return (
                             <div
                               key={`${room.id}-${dateStr}`}
-                              className="border-r bg-background flex-shrink-0"
+                              className="border-r flex-shrink-0"
                               style={{ width: CELL_WIDTH }}
                               data-testid={`calendar-cell-${room.id}-${dateStr}`}
                             />
@@ -294,60 +436,71 @@ export default function CalendarView() {
                       </div>
 
                       {/* Booking bars overlay */}
-                      <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute inset-0 pointer-events-none py-1.5">
                         {roomBookings.map((booking) => {
-                          // Calculate booking width across all dates
                           const checkInDate = startOfDay(new Date(booking.checkInDate));
                           const checkOutDate = startOfDay(new Date(booking.checkOutDate));
                           const rangeStart = startOfDay(startDate);
                           
-                          const checkInIndex = Math.max(0, Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)));
-                          const checkOutIndex = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                          const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                          const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
                           
-                          if (checkOutIndex <= 0 || checkInIndex >= dates.length) return null;
+                          if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
                           
-                          const visibleCheckInIndex = Math.max(0, checkInIndex);
-                          const visibleCheckOutIndex = Math.min(dates.length, checkOutIndex);
+                          const visibleStartIdx = Math.max(0, checkInDaysDiff);
+                          const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff);
                           
-                          const isCheckInDay = checkInIndex < dates.length && checkInIndex >= 0;
-                          const isCheckOutDay = checkOutIndex <= dates.length && checkOutIndex > 0;
+                          // Calculate position with half-day offsets
+                          let leftPx = visibleStartIdx * CELL_WIDTH;
+                          let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
                           
-                          let leftOffset = visibleCheckInIndex * (CELL_WIDTH + 1); // +1 for border
-                          let totalWidth = (visibleCheckOutIndex - visibleCheckInIndex) * (CELL_WIDTH + 1);
-                          
-                          // Adjust for partial days
-                          if (isCheckInDay && checkInIndex >= 0 && checkInIndex < dates.length) {
-                            leftOffset += CELL_WIDTH / 2;
-                            totalWidth -= CELL_WIDTH / 2;
+                          // Start at half of check-in day if check-in is visible
+                          if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) {
+                            leftPx += CELL_WIDTH / 2;
+                            widthPx -= CELL_WIDTH / 2;
                           }
                           
-                          if (isCheckOutDay && checkOutIndex > 0 && checkOutIndex <= dates.length) {
-                            totalWidth -= CELL_WIDTH / 2;
+                          // End at half of checkout day if checkout is visible
+                          if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) {
+                            widthPx -= CELL_WIDTH / 2;
                           }
 
+                          if (widthPx <= 0) return null;
+
                           const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
-                          const statusColor = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                          const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                          const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
 
                           return (
                             <div
                               key={`booking-${booking.id}`}
-                              className="absolute top-2 h-12 pointer-events-auto"
+                              className="absolute pointer-events-auto cursor-pointer group"
                               style={{
-                                left: `${leftOffset}px`,
-                                width: `${Math.max(0, totalWidth)}px`,
+                                left: `${leftPx}px`,
+                                width: `${widthPx}px`,
+                                top: '4px',
+                                bottom: '4px',
                               }}
+                              onClick={() => navigate(`/bookings/${booking.id}`)}
+                              data-testid={`booking-bar-${booking.id}`}
                             >
                               <div
                                 className={cn(
-                                  "w-full h-full rounded text-xs flex items-center justify-between px-1.5 font-semibold text-white cursor-pointer hover:opacity-90 transition overflow-hidden",
-                                  statusColor
+                                  "w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]",
+                                  statusStyle.text
                                 )}
-                                onClick={() => navigate(`/bookings/${booking.id}`)}
-                                title={guestName}
-                                data-testid={`booking-bar-${booking.id}`}
+                                style={{
+                                  background: statusStyle.gradient,
+                                }}
+                                title={`${guestName} - ${booking.status}`}
                               >
                                 <span className="truncate">{guestName}</span>
-                                <Circle className="h-2 w-2 flex-shrink-0 ml-1 fill-current" />
+                                <span 
+                                  className={cn(
+                                    "w-2 h-2 rounded-full flex-shrink-0 ml-1",
+                                    isPaid ? "bg-green-600" : "bg-red-500"
+                                  )}
+                                />
                               </div>
                             </div>
                           );
@@ -363,26 +516,34 @@ export default function CalendarView() {
       </div>
 
       {/* Legend */}
-      <div className="border-t bg-card p-3 flex gap-4 flex-wrap text-xs flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-emerald-400" />
+      <div className="border-t bg-white dark:bg-card p-2 flex gap-4 flex-wrap text-xs flex-shrink-0">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.confirmed.gradient }} />
           <span>Confirmed</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-blue-400" />
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.pending.gradient }} />
           <span>Pending</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-emerald-500" />
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS["checked-in"].gradient }} />
           <span>Checked-in</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-gray-400" />
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.blocked.gradient }} />
           <span>Blocked</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded bg-red-400" />
-          <span>Cancelled</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS["out-of-service"].gradient }} />
+          <span>Out of Service</span>
+        </div>
+        <div className="flex items-center gap-1.5 ml-4">
+          <span className="w-2 h-2 rounded-full bg-green-600" />
+          <span>Paid</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-500" />
+          <span>Unpaid</span>
         </div>
       </div>
     </div>
