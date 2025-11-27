@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useCheckInMutation, useCheckOutMutation } from "@/hooks/useCheckInMutation";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -115,33 +116,8 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
-  const checkInMutation = useMutation({
-    mutationFn: async (bookingId: number) => {
-      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-in" });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Guest Checked In", description: "Guest has been successfully checked in." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to check in guest", variant: "destructive" });
-    },
-  });
-
-  const checkOutMutation = useMutation({
-    mutationFn: async (bookingId: number) => {
-      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-out" });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Guest Checked Out", description: "Guest has been successfully checked out." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to check out guest", variant: "destructive" });
-    },
-  });
+  const checkInMutation = useCheckInMutation();
+  const checkOutMutation = useCheckOutMutation();
 
   const updateOrderMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: number; status: string }) => {

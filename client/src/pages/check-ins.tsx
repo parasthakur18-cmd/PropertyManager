@@ -1,31 +1,29 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { useCheckInMutation } from "@/hooks/useCheckInMutation";
 import { 
   LogIn, 
   Search, 
   Phone, 
   MapPin, 
   Users, 
-  Calendar,
   CheckCircle2,
   Clock,
   ArrowLeft
 } from "lucide-react";
-import { format, isToday, parseISO, isBefore, startOfDay } from "date-fns";
+import { isToday, isBefore, startOfDay } from "date-fns";
 import type { Booking, Guest, Property, Room } from "@shared/schema";
 import { Link } from "wouter";
 
 export default function CheckIns() {
-  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [propertyFilter, setPropertyFilter] = useState<string>("all");
+  const checkInMutation = useCheckInMutation();
 
   const { data: bookings, isLoading: bookingsLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
@@ -42,20 +40,6 @@ export default function CheckIns() {
 
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
-  });
-
-  const checkInMutation = useMutation({
-    mutationFn: async (bookingId: number) => {
-      return apiRequest("PATCH", `/api/bookings/${bookingId}`, { status: "checked-in" });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({ title: "Guest Checked In", description: "Guest has been successfully checked in." });
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to check in guest", variant: "destructive" });
-    },
   });
 
   const getGuestInfo = (booking: Booking) => {
@@ -122,7 +106,7 @@ export default function CheckIns() {
             {filteredCheckIns.length} guest{filteredCheckIns.length !== 1 ? "s" : ""} arriving today
           </p>
         </div>
-        <Badge variant="secondary" className="bg-blue-500 text-white h-8 px-3 text-base">
+        <Badge variant="secondary" className="bg-blue-500 text-white h-8 px-3 text-base" data-testid="badge-checkin-count">
           {filteredCheckIns.length}
         </Badge>
       </div>
@@ -143,9 +127,9 @@ export default function CheckIns() {
             <SelectValue placeholder="All Properties" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Properties</SelectItem>
+            <SelectItem value="all" data-testid="select-property-all">All Properties</SelectItem>
             {properties?.map(property => (
-              <SelectItem key={property.id} value={property.id.toString()}>
+              <SelectItem key={property.id} value={property.id.toString()} data-testid={`select-property-${property.id}`}>
                 {property.name}
               </SelectItem>
             ))}
@@ -190,6 +174,7 @@ export default function CheckIns() {
                         <Badge 
                           variant="secondary" 
                           className={booking.status === "confirmed" ? "bg-green-500 text-white" : "bg-amber-500 text-white"}
+                          data-testid={`badge-status-${booking.id}`}
                         >
                           {booking.status}
                         </Badge>
