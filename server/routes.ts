@@ -1394,61 +1394,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const booking = await storage.createBooking(data);
       
-      // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
-      // To re-enable, uncomment the block below
-      /*
+      // Create notification for admins about new booking
       try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
         const guest = await storage.getGuest(booking.guestId);
         
-        if (!guest) {
-          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send confirmation: guest ${booking.guestId} not found`);
-        } else if (!guest.phone) {
-          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send confirmation: guest ${booking.guestId} (${guest.fullName}) has no phone number`);
-        } else {
-          const guestName = guest.fullName || "Guest";
-          let propertyName = "Your Property";
-          if (booking.roomId) {
-            const room = await storage.getRoom(booking.roomId);
-            if (room) {
-              const property = await storage.getProperty(room.propertyId);
-              propertyName = property?.name || propertyName;
-            }
-          } else if (booking.roomIds && booking.roomIds.length > 0) {
-            const room = await storage.getRoom(booking.roomIds[0]);
-            if (room) {
-              const property = await storage.getProperty(room.propertyId);
-              propertyName = property?.name || propertyName;
-            }
-          }
-          
-          let roomNumbers = "TBD";
-          if (booking.roomId) {
-            const room = await storage.getRoom(booking.roomId);
-            roomNumbers = room?.roomNumber || roomNumbers;
-          } else if (booking.roomIds && booking.roomIds.length > 0) {
-            const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
-            roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
-          }
-          
-          const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
-          const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-          
-          await sendBookingConfirmation(
-            guest.phone,
-            guestName,
-            propertyName,
-            checkInDate,
-            checkOutDate,
-            roomNumbers
-          );
-          
-          console.log(`[WhatsApp] Booking #${booking.id} - Confirmation sent to ${guest.fullName} (${guest.phone})`);
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_booking",
+            title: "New Booking Created",
+            message: `Booking #${booking.id} created for ${guest?.fullName || 'Guest'}. Check-in: ${format(new Date(booking.checkInDate), "MMM dd, yyyy")}`,
+            soundType: "info",
+            relatedId: booking.id,
+            relatedType: "booking",
+          });
         }
-      } catch (whatsappError: any) {
-        console.error(`[WhatsApp] Booking #${booking.id} - Notification failed (non-critical):`, whatsappError.message);
+        console.log(`[NOTIFICATIONS] New booking notification created for ${adminUsers.length} admins`);
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create booking notification:`, notifError.message);
       }
-      */
       
+      // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
       res.status(201).json(booking);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -1650,13 +1618,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const booking = await storage.updateBookingStatus(bookingId, status);
       
+      // Create in-app notification for status changes
+      if (status === "checked-in" || status === "checked-out") {
+        try {
+          const allUsers = await storage.getAllUsers();
+          const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+          const guest = await storage.getGuest(booking.guestId);
+          
+          for (const admin of adminUsers) {
+            await db.insert(notifications).values({
+              userId: admin.id,
+              type: status === "checked-in" ? "guest_checked_in" : "guest_checked_out",
+              title: status === "checked-in" ? "Guest Checked In" : "Guest Checked Out",
+              message: `${guest?.fullName || 'Guest'} ${status === "checked-in" ? "checked in" : "checked out"} from Booking #${booking.id}`,
+              soundType: status === "checked-in" ? "info" : "warning",
+              relatedId: booking.id,
+              relatedType: "booking",
+            });
+          }
+          console.log(`[NOTIFICATIONS] Check-${status.split('-')[1]} notification created for ${adminUsers.length} admins`);
+        } catch (notifError: any) {
+          console.error(`[NOTIFICATIONS] Failed to create status notification:`, notifError.message);
+        }
+      }
+      
       // Send WhatsApp notification when guest checks in
       if (status === "checked-in") {
         try {
           const guest = await storage.getGuest(booking.guestId);
-          
           if (guest && guest.phone) {
-            // Get property info
             let propertyName = "Your Property";
             let roomNumbers = "TBD";
             
@@ -1680,20 +1670,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
             const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
             
-            await sendCheckInNotification(
-              guest.phone,
-              guestName,
-              propertyName,
-              roomNumbers,
-              checkInDate,
-              checkOutDate
-            );
-            
+            await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
             console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName}`);
-          } else if (!guest) {
-            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send check-in notification: guest ${booking.guestId} not found`);
-          } else if (!guest.phone) {
-            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send check-in notification: guest has no phone number`);
           }
         } catch (whatsappError: any) {
           console.error(`[WhatsApp] Booking #${booking.id} - Check-in notification failed (non-critical):`, whatsappError.message);
@@ -1911,6 +1889,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       const bill = await storage.createOrUpdateBill(billData);
+
+      // Create notification for bill/checkout
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+        const guest = await storage.getGuest(booking.guestId);
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "bill_generated",
+            title: "Bill Generated - Checkout Complete",
+            message: `Bill #${bill.id} for ${guest?.fullName || 'Guest'}. Total: ₹${totalAmount.toFixed(2)}, Balance: ₹${(paymentStatus === "paid" ? 0 : parseFloat(bill.balanceAmount || "0")).toFixed(2)}`,
+            soundType: paymentStatus === "pending" ? "warning" : "info",
+            relatedId: bill.id,
+            relatedType: "bill",
+          });
+        }
+        console.log(`[NOTIFICATIONS] Checkout/bill notification created for ${adminUsers.length} admins`);
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create checkout notification:`, notifError.message);
+      }
 
       // Only update booking status after successful bill creation
       await storage.updateBookingStatus(bookingId, "checked-out");
@@ -2993,6 +2993,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const order = await storage.createOrder(orderData);
+      
+      // Create notification for new order
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen');
+        const guest = orderData.guestId ? await storage.getGuest(orderData.guestId) : null;
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_order",
+            title: "New Order Placed",
+            message: `New ${orderData.orderType || 'food'} order #${order.id} for ${guest?.fullName || 'Guest'}. Amount: ₹${orderData.totalAmount || 0}`,
+            soundType: "info",
+            relatedId: order.id,
+            relatedType: "order",
+          });
+        }
+        console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create order notification:`, notifError.message);
+      }
+      
       res.status(201).json(order);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
