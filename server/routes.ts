@@ -1748,16 +1748,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Booking not found" });
       }
       
-      // Check for pending food orders
+      // Check for pending food orders (only block for truly pending/preparing orders, not ready/completed)
       const allOrders = await storage.getAllOrders();
       const bookingOrders = allOrders.filter(o => o.bookingId === bookingId);
       const pendingOrders = bookingOrders.filter(order => 
-        order.status === "pending" || order.status === "preparing" || order.status === "ready"
+        order.status === "pending" || order.status === "preparing"
       );
       
       if (pendingOrders.length > 0) {
         return res.status(400).json({ 
-          message: `Checkout not allowed — ${pendingOrders.length} pending food order(s) exist for this booking.` 
+          message: `Checkout not allowed — ${pendingOrders.length} food order(s) are still pending.` 
         });
       }
 

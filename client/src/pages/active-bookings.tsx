@@ -490,15 +490,15 @@ export default function ActiveBookings() {
       return;
     }
     
-    // Check for pending food orders
+    // Check for pending food orders (only block for truly pending/preparing, not ready/completed)
     const pendingOrders = checkoutDialog.booking.orders.filter(order => 
-      order.status === "pending" || order.status === "preparing" || order.status === "ready"
+      order.status === "pending" || order.status === "preparing"
     );
     
     if (pendingOrders.length > 0) {
       toast({
         title: "Checkout Not Allowed",
-        description: `${pendingOrders.length} food order(s) are still pending. Please complete or cancel them before checkout.`,
+        description: `${pendingOrders.length} food order(s) are still being prepared. Please complete or cancel them before checkout.`,
         variant: "destructive",
       });
       return;
@@ -1163,7 +1163,7 @@ export default function ActiveBookings() {
                 
                 {checkoutDialog.booking && (() => {
                   const pendingOrders = checkoutDialog.booking.orders.filter(order => 
-                    order.status === "pending" || order.status === "preparing" || order.status === "ready"
+                    order.status === "pending" || order.status === "preparing"
                   );
                   
                   if (pendingOrders.length > 0) {
@@ -1171,7 +1171,7 @@ export default function ActiveBookings() {
                       <Alert variant="destructive" data-testid="alert-pending-orders">
                         <AlertCircle className="h-4 w-4" />
                         <AlertDescription>
-                          {pendingOrders.length} food order(s) are still pending. Please complete or cancel them before checkout.
+                          {pendingOrders.length} food order(s) are still being prepared. Please complete or cancel them before checkout.
                         </AlertDescription>
                       </Alert>
                     );
