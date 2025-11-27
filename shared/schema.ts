@@ -771,6 +771,7 @@ export const staffMembers = pgTable("staff_members", {
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
+  role: varchar("role", { length: 100 }), // Staff role/position type
   jobTitle: varchar("job_title", { length: 100 }), // Job title/position (NOT RBAC role)
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }), // Single property assignment (required)
   joiningDate: timestamp("joining_date"), // Employee start date
