@@ -45,8 +45,8 @@ export default function SuperAdmin() {
         }
         const user = await response.json();
         if (user.role !== "super-admin") {
-          // Not a super admin, redirect to login
-          setLocation("/super-admin-login");
+          // Not a super admin, redirect to dashboard
+          setLocation("/dashboard");
           return;
         }
         setIsAuthenticated(true);
