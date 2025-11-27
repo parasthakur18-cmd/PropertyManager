@@ -185,17 +185,26 @@ export default function CalendarView() {
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(r => 
-        r.roomNumber.toLowerCase().includes(q) ||
-        (r.roomType && r.roomType.toLowerCase().includes(q))
-      );
+      filtered = filtered.filter(r => {
+        // Search by room number or type
+        const matchesRoom = r.roomNumber.toLowerCase().includes(q) ||
+          (r.roomType && r.roomType.toLowerCase().includes(q));
+        
+        // Search by guest name in bookings
+        const matchesGuest = bookings.some(b => 
+          b.roomId === r.id && 
+          guests.find(g => g.id === b.guestId)?.fullName?.toLowerCase().includes(q)
+        );
+        
+        return matchesRoom || matchesGuest;
+      });
     }
     return filtered.sort((a, b) => {
       const numA = parseInt(a.roomNumber.replace(/\D/g, '') || '0');
       const numB = parseInt(b.roomNumber.replace(/\D/g, '') || '0');
       return numA - numB;
     });
-  }, [rooms, selectedPropertyId, searchQuery]);
+  }, [rooms, selectedPropertyId, searchQuery, bookings, guests]);
 
   const roomsByType = useMemo(() => {
     const grouped: Record<string, Room[]> = {};
