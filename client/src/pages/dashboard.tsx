@@ -1378,15 +1378,23 @@ export default function Dashboard() {
                       return;
                     }
 
+                    // Update guest with ID proof
                     await apiRequest("PATCH", `/api/guests/${booking.guestId}`, {
                       idProofImage: checkinIdProof
                     });
 
                     queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
 
-                    updateStatusMutation.mutate({ 
-                      id: checkinBookingId, 
-                      status: "checked-in" 
+                    // Update booking status and wait for completion
+                    await apiRequest("PATCH", `/api/bookings/${checkinBookingId}`, {
+                      status: "checked-in"
+                    });
+
+                    queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                    
+                    toast({
+                      title: "Success",
+                      description: "Guest checked in successfully",
                     });
                     
                     setCheckinDialogOpen(false);
@@ -1395,7 +1403,7 @@ export default function Dashboard() {
                   } catch (error: any) {
                     toast({
                       title: "Error",
-                      description: error.message || "Failed to update guest information",
+                      description: error.message || "Failed to check in guest",
                       variant: "destructive",
                     });
                   }
