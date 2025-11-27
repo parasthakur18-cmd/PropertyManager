@@ -121,9 +121,13 @@ export default function Dashboard() {
 
   // Handler for check-in with ID validation protocol
   const handleCheckInWithValidation = (booking: Booking) => {
+    console.log("[CHECK-IN] Validation started", { bookingId: booking.id, guestId: booking.guestId, guestsLoading, guestsCount: guests?.length });
+    
     const guest = guests?.find(g => g.id === booking.guestId);
+    console.log("[CHECK-IN] Guest found:", guest);
     
     if (!guest) {
+      console.warn("[CHECK-IN] Guest not found in list", { bookingGuestId: booking.guestId, availableGuests: guests?.map(g => g.id) });
       toast({
         title: "Guest Not Found",
         description: "Cannot check in without valid guest information",
@@ -133,7 +137,9 @@ export default function Dashboard() {
     }
 
     // Validate guest has ID proof
+    console.log("[CHECK-IN] Checking ID proof:", { hasIdProof: !!guest.idProofImage });
     if (!guest.idProofImage) {
+      console.warn("[CHECK-IN] Guest missing ID proof");
       toast({
         title: "ID Proof Required",
         description: "Guest ID proof must be captured before check-in. Please upload the ID to proceed.",
@@ -143,6 +149,7 @@ export default function Dashboard() {
     }
 
     // Proceed with check-in
+    console.log("[CHECK-IN] All validations passed, proceeding with check-in");
     checkInMutation.mutate(booking.id);
   };
 
