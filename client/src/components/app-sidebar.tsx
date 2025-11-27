@@ -158,14 +158,31 @@ const superAdminMenuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
-  const { setOpen, isMobile } = useSidebar();
+  const { setOpen, isMobile, state } = useSidebar();
 
-  // Ensure sidebar is open on initial load (not on mobile)
+  // Persist sidebar state to localStorage and ensure it opens on mount/reload
   useEffect(() => {
-    if (!isMobile) {
+    if (typeof window !== 'undefined') {
+      // For desktop, always keep sidebar open
+      if (!isMobile) {
+        setOpen(true);
+        localStorage.setItem('sidebar-state', 'open');
+      } else {
+        // For mobile, respect user's preference
+        const savedState = localStorage.getItem('sidebar-state');
+        if (savedState === 'open') {
+          setOpen(true);
+        }
+      }
+    }
+  }, [isMobile, setOpen]);
+
+  // Re-open sidebar if it somehow closes (during hot reload)
+  useEffect(() => {
+    if (!isMobile && state === 'collapsed') {
       setOpen(true);
     }
-  }, []);
+  }, [state, isMobile, setOpen]);
 
   // Get menu items based on role
   const getMenuConfig = () => {
