@@ -555,6 +555,7 @@ export default function Bookings() {
           isGroupBooking: true,
           propertyId: firstRoom?.propertyId, // All rooms should be from same property
           travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
+          numberOfGuests: parseInt(data.numberOfGuests),
         };
       } else {
         // Single room booking (includes dormitory)
@@ -565,8 +566,9 @@ export default function Bookings() {
           roomIds: null,
           isGroupBooking: false,
           travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
+          numberOfGuests: parseInt(data.numberOfGuests),
           // Auto-set bedsBooked for dormitory rooms
-          bedsBooked: selectedRoom?.roomCategory === "dormitory" ? (data.bedsBooked || data.numberOfGuests) : null,
+          bedsBooked: selectedRoom?.roomCategory === "dormitory" ? (data.bedsBooked || parseInt(data.numberOfGuests)) : null,
         };
       }
       
