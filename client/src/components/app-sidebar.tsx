@@ -158,7 +158,7 @@ const superAdminMenuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
-  const { setOpen } = useSidebar();
+  const { setOpen, isMobile } = useSidebar();
 
   // Always keep sidebar open
   useEffect(() => {
