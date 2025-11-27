@@ -1134,38 +1134,88 @@ export default function Dashboard() {
                   </div>
                 </div>
                 
-                <div className="flex gap-2 pt-4">
+                <div className="space-y-2">
                   <Button
                     variant="outline"
-                    className="flex-1"
-                    onClick={() => setCheckoutDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    className="flex-1"
+                    className="w-full"
                     onClick={async () => {
-                      try {
-                        await apiRequest("POST", "/api/bookings/checkout", {
-                          bookingId: checkoutBookingId,
-                          cashReceived: cashPaid,
-                          remainingBalance: Math.max(0, remainingBalance),
-                          totalAmount: billTotal
-                        });
-                        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-                        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-                        setCheckoutDialogOpen(false);
-                        setCashReceived("0");
-                        toast({ title: "Success", description: "Checkout completed" });
-                      } catch (error: any) {
-                        toast({ title: "Error", description: error.message || "Checkout failed", variant: "destructive" });
-                      }
+                      const message = `Hi ${guest?.fullName}, your pre-bill is ready: ₹${billTotal.toFixed(2)}. Please confirm.`;
+                      const encoded = encodeURIComponent(message);
+                      const whatsappUrl = `https://wa.me/${guest?.phone?.replace(/\D/g, '')}?text=${encoded}`;
+                      window.open(whatsappUrl, '_blank');
                     }}
                   >
-                    Complete Checkout
+                    Send Pre-Bill via WhatsApp
                   </Button>
+                  
+                  {remainingBalance > 0 && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/razorpay/payment-link', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              amount: remainingBalance,
+                              guestName: guest?.fullName,
+                              guestPhone: guest?.phone,
+                              guestEmail: guest?.email,
+                              bookingId: checkoutBookingId
+                            })
+                          });
+                          if (!res.ok) throw new Error('Failed to create payment link');
+                          const data = await res.json();
+                          
+                          const message = `Hi ${guest?.fullName}, please complete the remaining payment of ₹${remainingBalance.toFixed(2)}: ${data.paymentLinkUrl}`;
+                          const encoded = encodeURIComponent(message);
+                          const whatsappUrl = `https://wa.me/${guest?.phone?.replace(/\D/g, '')}?text=${encoded}`;
+                          window.open(whatsappUrl, '_blank');
+                          
+                          toast({ title: "Success", description: "Payment link sent via WhatsApp" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      Send Payment Link
+                    </Button>
+                  )}
+                  
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setCheckoutDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await apiRequest("POST", "/api/bookings/checkout", {
+                            bookingId: checkoutBookingId,
+                            cashReceived: cashPaid,
+                            remainingBalance: Math.max(0, remainingBalance),
+                            totalAmount: billTotal
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                          setCheckoutDialogOpen(false);
+                          setCashReceived("0");
+                          toast({ title: "Success", description: "Checkout completed" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message || "Checkout failed", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      Complete Checkout
+                    </Button>
+                  </div>
                 </div>
               </div>
             );
