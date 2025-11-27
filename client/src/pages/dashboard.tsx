@@ -1468,47 +1468,63 @@ export default function Dashboard() {
                   return;
                 }
                 
-                if (checkinBookingId) {
-                  try {
-                    const booking = bookings?.find(b => b.id === checkinBookingId);
-                    if (!booking) {
-                      toast({
-                        title: "Error",
-                        description: "Booking not found",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
+                if (!checkinBookingId) {
+                  toast({
+                    title: "Error",
+                    description: "No booking selected",
+                    variant: "destructive",
+                  });
+                  return;
+                }
 
-                    // Update guest with ID proof
-                    await apiRequest("PATCH", `/api/guests/${booking.guestId}`, {
-                      idProofImage: checkinIdProof
-                    });
-
-                    queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
-
-                    // Update booking status and wait for completion
-                    await apiRequest("PATCH", `/api/bookings/${checkinBookingId}/status`, {
-                      status: "checked-in"
-                    });
-
-                    queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-                    
-                    toast({
-                      title: "Success",
-                      description: "Guest checked in successfully",
-                    });
-                    
-                    setCheckinDialogOpen(false);
-                    setCheckinBookingId(null);
-                    setCheckinIdProof(null);
-                  } catch (error: any) {
+                try {
+                  const booking = bookings?.find(b => b.id === checkinBookingId);
+                  if (!booking) {
                     toast({
                       title: "Error",
-                      description: error.message || "Failed to check in guest",
+                      description: "Booking not found",
                       variant: "destructive",
                     });
+                    return;
                   }
+
+                  console.log("[CHECK-IN] Starting check-in for booking:", checkinBookingId);
+
+                  // Update guest with ID proof
+                  console.log("[CHECK-IN] Updating guest with ID proof...");
+                  await apiRequest("PATCH", `/api/guests/${booking.guestId}`, {
+                    idProofImage: checkinIdProof
+                  });
+                  console.log("[CHECK-IN] Guest updated with ID proof");
+
+                  queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
+
+                  // Update booking status
+                  console.log("[CHECK-IN] Updating booking status to checked-in...");
+                  await apiRequest("PATCH", `/api/bookings/${checkinBookingId}/status`, {
+                    status: "checked-in"
+                  });
+                  console.log("[CHECK-IN] Booking status updated successfully");
+
+                  queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                  queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+                  
+                  toast({
+                    title: "Success",
+                    description: "Guest checked in successfully",
+                  });
+                  
+                  setCheckinDialogOpen(false);
+                  setCheckinBookingId(null);
+                  setCheckinIdProof(null);
+                } catch (error: any) {
+                  console.error("[CHECK-IN] Error during check-in:", error);
+                  toast({
+                    title: "Error",
+                    description: error.message || "Failed to check in guest",
+                    variant: "destructive",
+                  });
                 }
               }}
               disabled={!checkinIdProof}
