@@ -400,14 +400,64 @@ export default function CalendarView() {
                 {expandedTypes[type] && typeRooms.map(room => (
                   <div
                     key={room.id}
-                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 cursor-pointer transition-colors"
+                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative"
                     style={{ height: ROW_HEIGHT }}
-                    onClick={() => navigate(`/rooms/${room.id}`)}
                     data-testid={`room-row-${room.id}`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div 
+                      className="flex items-center gap-2 cursor-pointer flex-1"
+                      onClick={() => navigate(`/rooms/${room.id}`)}
+                    >
                       <span className="font-medium text-sm">{room.roomNumber}</span>
                       <Link2 className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                    
+                    {/* Quick Action Buttons - Visible on Hover */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "available" });
+                        }}
+                        disabled={updateRoomStatusMutation.isPending}
+                        title="Mark as Available"
+                        data-testid={`button-available-${room.id}`}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                      </Button>
+                      
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "blocked" });
+                        }}
+                        disabled={updateRoomStatusMutation.isPending}
+                        title="Block Room"
+                        data-testid={`button-block-${room.id}`}
+                      >
+                        <Lock className="h-3.5 w-3.5 text-yellow-600" />
+                      </Button>
+                      
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "out-of-service" });
+                        }}
+                        disabled={updateRoomStatusMutation.isPending}
+                        title="Out of Service"
+                        data-testid={`button-out-of-service-${room.id}`}
+                      >
+                        <Wrench className="h-3.5 w-3.5 text-red-600" />
+                      </Button>
                     </div>
                   </div>
                 ))}
