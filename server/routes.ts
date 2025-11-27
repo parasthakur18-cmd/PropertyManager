@@ -562,19 +562,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
+      console.log("[ROOMS ENDPOINT] User:", { 
+        id: currentUser.id, 
+        role: currentUser.role, 
+        assignedPropertyIds: currentUser.assignedPropertyIds 
+      });
+      
       // If user is a manager, filter by assigned properties
       if (currentUser.role === "manager") {
         if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
           // Manager with assigned properties sees rooms from all assigned properties
           const allRooms = await storage.getAllRooms();
           const filteredRooms = allRooms.filter(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          console.log("[ROOMS ENDPOINT] Manager filtering:", {
+            allRoomsCount: allRooms.length,
+            filteredCount: filteredRooms.length,
+            assignedPropertyIds: currentUser.assignedPropertyIds,
+            exampleRoom: allRooms[0],
+          });
           res.json(filteredRooms);
         } else {
           // Manager without assigned property sees no rooms (return empty array)
+          console.log("[ROOMS ENDPOINT] Manager has no assigned properties");
           res.json([]);
         }
       } else {
         // Admin, staff, and kitchen see all rooms
+        console.log("[ROOMS ENDPOINT] Non-manager role, returning all rooms");
         const rooms = await storage.getAllRooms();
         res.json(rooms);
       }
