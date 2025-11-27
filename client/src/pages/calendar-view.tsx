@@ -217,37 +217,87 @@ export default function CalendarView() {
           <div className="min-w-max">
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
               <div key={type}>
-                {typeRooms.map(room => (
-                  <div key={room.id} className="flex border-b">
-                    {dates.map(date => {
-                      const booking = getBookingForDate(room.id, date);
-                      const dateStr = format(date, "yyyy-MM-dd");
-                      const isCheckInDate = booking && format(new Date(booking.checkInDate), "yyyy-MM-dd") === dateStr;
-                      const isCheckOutDate = booking && format(new Date(booking.checkOutDate), "yyyy-MM-dd") === dateStr;
-                      
-                      return (
-                        <div
-                          key={`${room.id}-${dateStr}`}
-                          className="w-24 border-r p-1 h-16 relative bg-background"
-                          data-testid={`calendar-cell-${room.id}-${dateStr}`}
-                        >
-                          {booking && (
+                {typeRooms.map(room => {
+                  // Get unique bookings for this room that are visible in the date range
+                  const bookingSet = new Map<number, Booking>();
+                  dates.forEach(date => {
+                    const booking = getBookingForDate(room.id, date);
+                    if (booking) {
+                      bookingSet.set(booking.id, booking);
+                    }
+                  });
+                  const visibleBookings = Array.from(bookingSet.values());
+
+                  return (
+                    <div key={room.id} className="relative border-b">
+                      {/* Background cells */}
+                      <div className="flex h-16">
+                        {dates.map(date => {
+                          const dateStr = format(date, "yyyy-MM-dd");
+                          return (
                             <div
-                              className={cn(
-                                "absolute inset-0.5 rounded text-xs flex items-center justify-center font-semibold text-white cursor-pointer hover:opacity-90 transition overflow-hidden",
-                                STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending
-                              )}
-                              onClick={() => navigate(`/bookings/${booking.id}`)}
-                              title={guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}
+                              key={`${room.id}-${dateStr}`}
+                              className="w-24 border-r p-1 bg-background"
+                              data-testid={`calendar-cell-${room.id}-${dateStr}`}
+                            />
+                          );
+                        })}
+                      </div>
+
+                      {/* Booking bars overlay */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {visibleBookings.map(booking => {
+                          const checkInDate = startOfDay(new Date(booking.checkInDate));
+                          const checkOutDate = startOfDay(new Date(booking.checkOutDate));
+                          const rangeStart = startOfDay(startDate);
+                          
+                          // Find the starting column
+                          let startCol = -1;
+                          let endCol = -1;
+                          
+                          dates.forEach((date, idx) => {
+                            const dateStr = format(date, "yyyy-MM-dd");
+                            const currentDate = startOfDay(date);
+                            
+                            if (format(currentDate, "yyyy-MM-dd") === format(checkInDate, "yyyy-MM-dd") && startCol === -1) {
+                              startCol = idx;
+                            }
+                            if (currentDate >= checkOutDate || (currentDate < checkOutDate && currentDate >= checkInDate)) {
+                              endCol = idx;
+                            }
+                          });
+
+                          if (startCol === -1) return null;
+                          
+                          const bookingSpan = Math.max(1, endCol - startCol + 1);
+                          const bookingWidth = bookingSpan * 96 + (bookingSpan - 1) * 1; // 96px width + 1px borders
+
+                          return (
+                            <div
+                              key={`booking-${booking.id}`}
+                              className="absolute top-1 h-14 pointer-events-auto"
+                              style={{
+                                left: `${startCol * 97}px`, // 96px + 1px border
+                                width: `${bookingWidth}px`,
+                              }}
                             >
-                              <div className="truncate px-1">{guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}</div>
+                              <div
+                                className={cn(
+                                  "w-full h-full rounded text-xs flex items-center justify-center font-semibold text-white cursor-pointer hover:opacity-90 transition overflow-hidden",
+                                  STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending
+                                )}
+                                onClick={() => navigate(`/bookings/${booking.id}`)}
+                                title={guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}
+                              >
+                                <div className="truncate px-1">{guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}</div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
