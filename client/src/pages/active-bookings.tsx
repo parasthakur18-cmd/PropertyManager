@@ -86,7 +86,7 @@ export default function ActiveBookings() {
     open: false,
     booking: null,
   });
-  const [paymentMethod, setPaymentMethod] = useState<string>("card");
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [paymentStatus, setPaymentStatus] = useState<string>("paid");
   const [dueDate, setDueDate] = useState<string>("");
   const [pendingReason, setPendingReason] = useState<string>("");
@@ -167,7 +167,7 @@ export default function ActiveBookings() {
       setPreBillStatus("pending");
       setSkipPreBill(false);
       setPaymentLinkSent(false);
-      setPaymentMethod("card");
+      setPaymentMethod("cash");
       setPaymentStatus("paid");
       setAutoCompletingCheckout(false);
       setCashAmount("");
@@ -810,128 +810,161 @@ export default function ActiveBookings() {
       </div>
 
       <Dialog open={checkoutDialog.open} onOpenChange={(open) => setCheckoutDialog({ open, booking: null })}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-checkout">
+        <DialogContent className="max-w-md" data-testid="dialog-checkout">
           <DialogHeader>
-            <DialogTitle>Checkout Guest</DialogTitle>
+            <DialogTitle>Split Payment Checkout</DialogTitle>
           </DialogHeader>
 
-          {checkoutDialog.booking && (
-            <div className="space-y-4">
-              <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <span className="font-medium">{checkoutDialog.booking.guest.fullName}</span>
-                    {checkoutDialog.booking.isGroupBooking && (
-                      <Badge variant="secondary" className="ml-2 bg-blue-500 text-white text-xs">
-                        Group Booking
-                      </Badge>
-                    )}
-                    {checkoutDialog.booking.guest.idProofImage && (
-                      <div className="mt-1">
-                        <a
-                          href={checkoutDialog.booking.guest.idProofImage}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline text-xs flex items-center gap-1"
-                          data-testid="link-view-id-checkout"
-                        >
-                          <FileText className="h-3 w-3" />
-                          View Guest ID Proof
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    {checkoutDialog.booking.isGroupBooking && checkoutDialog.booking.rooms ? (
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">Rooms: </span>
-                        <span className="font-medium">
-                          {checkoutDialog.booking.rooms.map(r => r.roomNumber).join(", ")}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        Room {checkoutDialog.booking.room?.roomNumber || "TBA"}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Check-in Date</span>
-                  <span>{format(new Date(checkoutDialog.booking.checkInDate), "MMM dd, yyyy")}</span>
-                </div>
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Nights Stayed</span>
-                  <span>{checkoutDialog.booking.nightsStayed} nights</span>
-                </div>
-              </div>
+          {checkoutDialog.booking && (() => {
+            const booking = checkoutDialog.booking;
+            const roomCharges = parseFloat(booking.charges.roomCharges) || 0;
+            const foodCharges = parseFloat(booking.charges.foodCharges) || 0;
+            const extraCharges = parseFloat(booking.charges.extraCharges) || 0;
+            const billTotal = roomCharges + foodCharges + extraCharges;
+            const cashPaid = parseFloat(cashAmount) || 0;
+            const remainingBalance = billTotal - cashPaid;
 
-              {/* Detailed Bill Breakdown */}
-              <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
-                <h3 className="font-semibold text-sm">Bill Breakdown</h3>
-                
+            return (
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Room Charges ({checkoutDialog.booking.nightsStayed} nights)</span>
-                    <span className="font-medium">₹{checkoutDialog.booking.charges.roomCharges}</span>
+                  <label className="text-sm font-medium">Cash Received</label>
+                  <input
+                    type="number"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="0"
+                    id="cash-amount"
+                  />
+                </div>
+                
+                <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bill Total:</span>
+                    <span className="font-mono font-semibold">₹{billTotal.toFixed(2)}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cash Paid:</span>
+                    <span className="font-mono font-semibold">₹{cashPaid.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t pt-2 flex justify-between">
+                    <span className="font-semibold">Remaining Balance:</span>
+                    <span className={`font-mono font-bold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      ₹{Math.max(0, remainingBalance).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/whatsapp/send-prebill', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            bookingId: booking.id,
+                            phoneNumber: booking.guest.phone,
+                            guestName: booking.guest.fullName,
+                            billTotal
+                          })
+                        });
+                        if (!res.ok) {
+                          const error = await res.json();
+                          throw new Error(error.message || 'Failed to send pre-bill');
+                        }
+                        toast({ title: "Success", description: "Pre-bill sent via WhatsApp" });
+                      } catch (error: any) {
+                        toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Send Pre-Bill via WhatsApp
+                  </Button>
                   
-                  {checkoutDialog.booking.orders && checkoutDialog.booking.orders.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm font-medium pt-2 border-t">
-                        <span>Food Orders</span>
-                        <span>₹{checkoutDialog.booking.charges.foodCharges}</span>
-                      </div>
-                      <div className="ml-4 space-y-3 text-xs">
-                        {checkoutDialog.booking.orders.map((order) => (
-                          <div key={order.id} className="space-y-1 pb-2 border-b last:border-0">
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium">Order #{order.id}</span>
-                              <Badge variant="secondary" className="text-xs">{order.status}</Badge>
-                            </div>
-                            {Array.isArray(order.items) && order.items.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between text-muted-foreground">
-                                <span>{item.quantity}x {item.name}</span>
-                                <span className="font-mono">₹{(parseFloat(item.price) * item.quantity).toFixed(2)}</span>
-                              </div>
-                            ))}
-                            <div className="flex justify-between font-medium pt-1">
-                              <span>Order Total</span>
-                              <span className="font-mono">₹{order.totalAmount}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                  {remainingBalance > 0 && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/whatsapp/send-payment-link', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              amount: remainingBalance,
+                              guestName: booking.guest.fullName,
+                              guestPhone: booking.guest.phone,
+                              guestEmail: booking.guest.email,
+                              bookingId: booking.id
+                            })
+                          });
+                          if (!res.ok) {
+                            const error = await res.json();
+                            throw new Error(error.message || 'Failed to send payment link');
+                          }
+                          toast({ title: "Success", description: "Payment link sent via WhatsApp" });
+                        } catch (error: any) {
+                          toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
+                        }
+                      }}
+                    >
+                      Send Payment Link
+                    </Button>
                   )}
                   
-                  {checkoutDialog.booking.extraServices && checkoutDialog.booking.extraServices.length > 0 && (
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="flex justify-between text-sm font-medium">
-                        <span>Extra Services</span>
-                        <span>₹{checkoutDialog.booking.charges.extraCharges}</span>
-                      </div>
-                      <div className="ml-4 space-y-1">
-                        {checkoutDialog.booking.extraServices.map((extra) => (
-                          <div key={extra.id} className="flex justify-between text-xs text-muted-foreground">
-                            <span>• {extra.serviceName}</span>
-                            <span className="font-mono">₹{extra.amount}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setCheckoutDialog({ open: false, booking: null })}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await apiRequest("/api/bookings/checkout", "POST", {
+                            bookingId: booking.id,
+                            paymentMethod: paymentMethod,
+                            cashReceived: cashPaid,
+                            remainingBalance: Math.max(0, remainingBalance),
+                            totalAmount: billTotal
+                          });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                          setCheckoutDialog({ open: false, booking: null });
+                          setCashAmount("0");
+                          toast({ title: "Success", description: "Checkout completed" });
+                        } catch (error: any) {
+                          const errorMsg = error.message || "Checkout failed";
+                          if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {
+                            toast({ 
+                              title: "⚠️ Cannot Checkout", 
+                              description: errorMsg.includes("food order") 
+                                ? "Complete all pending food orders before checkout. Go to Orders column and mark orders as completed."
+                                : errorMsg,
+                              variant: "destructive",
+                              className: "border-2 border-destructive"
+                            });
+                          } else {
+                            toast({ title: "Error", description: errorMsg, variant: "destructive" });
+                          }
+                        }
+                      }}
+                    >
+                      Complete Checkout
+                    </Button>
+                  </div>
                 </div>
               </div>
-
-              <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                {manualCharges.some(c => c.amount && parseFloat(c.amount) > 0) && (
-                  <>
-                    {manualCharges.filter(c => c.amount && parseFloat(c.amount) > 0).map((charge, idx) => (
-                      <div key={idx} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          {charge.name || "Additional Charge"}
-                        </span>
+            );
+          })()}
                         <span className="font-medium">+₹{parseFloat(charge.amount).toFixed(2)}</span>
                       </div>
                     ))}
