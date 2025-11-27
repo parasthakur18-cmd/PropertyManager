@@ -18,7 +18,6 @@ import {
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckoutBillSummary } from "@/components/CheckoutBillSummary";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -100,6 +99,7 @@ export default function Dashboard() {
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
+  const [cashReceived, setCashReceived] = useState<string>("0");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   
   const { toast } = useToast();
@@ -130,6 +130,14 @@ export default function Dashboard() {
 
   const { data: enquiries, isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
+  });
+
+  const { data: bills } = useQuery<any[]>({
+    queryKey: ["/api/bills"],
+  });
+
+  const { data: extraServices } = useQuery<any[]>({
+    queryKey: ["/api/extra-services"],
   });
 
   const updateStatusMutation = useMutation({
@@ -1054,18 +1062,114 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Checkout Dialog */}
-      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      {/* Checkout Dialog - Split Payment System */}
+      <Dialog open={checkoutDialogOpen} onOpenChange={(open) => {
+        setCheckoutDialogOpen(open);
+        if (!open) {
+          setCheckoutBookingId(null);
+          setCashReceived("0");
+        }
+      }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Checkout - Bill Summary</DialogTitle>
+            <DialogTitle>Split Payment Checkout</DialogTitle>
           </DialogHeader>
-          {checkoutBookingId && <CheckoutBillSummary 
-            bookingId={checkoutBookingId} 
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
-            onClose={() => setCheckoutDialogOpen(false)}
-          />}
+          {checkoutBookingId && (() => {
+            const booking = bookings?.find(b => b.id === checkoutBookingId);
+            const guest = guests?.find(g => g.id === booking?.guestId);
+            const bookingOrders = orders?.filter(o => o.bookingId === checkoutBookingId) || [];
+            const bookingExtras = extraServices?.filter(e => e.bookingId === checkoutBookingId) || [];
+            const bookingRooms = booking?.isGroupBooking 
+              ? rooms?.filter(r => booking?.roomIds?.includes(r.id)) || []
+              : rooms?.filter(r => r.id === booking?.roomId) || [];
+            
+            const checkInDate = booking ? new Date(booking.checkInDate) : new Date();
+            const checkOutDate = booking ? new Date(booking.checkOutDate) : new Date();
+            const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            const roomCharges = booking?.isGroupBooking
+              ? bookingRooms.reduce((total, room) => {
+                  const pricePerNight = booking?.customPrice ? parseFloat(booking.customPrice) / bookingRooms.length : parseFloat(room.pricePerNight);
+                  return total + (pricePerNight * nights);
+                }, 0)
+              : (() => {
+                  const room = bookingRooms[0];
+                  const pricePerNight = booking?.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+                  return pricePerNight * nights;
+                })();
+            
+            const foodCharges = bookingOrders.reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
+            const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+            const billTotal = roomCharges + foodCharges + extraCharges;
+            const cashPaid = parseFloat(cashReceived) || 0;
+            const remainingBalance = billTotal - cashPaid;
+            
+            return (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Cash Received</label>
+                  <input
+                    type="number"
+                    value={cashReceived}
+                    onChange={(e) => setCashReceived(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="0"
+                  />
+                </div>
+                
+                <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Bill Total:</span>
+                    <span className="font-mono font-semibold">₹{billTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cash Paid:</span>
+                    <span className="font-mono font-semibold">₹{cashPaid.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t pt-2 flex justify-between">
+                    <span className="font-semibold">Remaining Balance:</span>
+                    <span className={`font-mono font-bold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                      ₹{Math.max(0, remainingBalance).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="flex gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setCheckoutDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={async () => {
+                      try {
+                        await apiRequest("POST", "/api/bookings/checkout", {
+                          bookingId: checkoutBookingId,
+                          cashReceived: cashPaid,
+                          remainingBalance: Math.max(0, remainingBalance),
+                          totalAmount: billTotal
+                        });
+                        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                        setCheckoutDialogOpen(false);
+                        setCashReceived("0");
+                        toast({ title: "Success", description: "Checkout completed" });
+                      } catch (error: any) {
+                        toast({ title: "Error", description: error.message || "Checkout failed", variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Complete Checkout
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
