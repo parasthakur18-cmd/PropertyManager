@@ -1953,6 +1953,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create RazorPay payment link for split payments
+  app.post("/api/razorpay/payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
+      
+      if (!amount || !guestName || !guestPhone || !guestEmail || !bookingId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        amount,
+        guestName,
+        guestEmail,
+        guestPhone
+      );
+
+      res.json({
+        success: true,
+        paymentLinkUrl: paymentLink.shortUrl || paymentLink.paymentLink,
+        linkId: paymentLink.linkId
+      });
+    } catch (error: any) {
+      console.error("Payment link error:", error);
+      res.status(500).json({ message: error.message || "Failed to create payment link" });
+    }
+  });
+
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
