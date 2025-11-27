@@ -92,6 +92,11 @@ export default function CalendarView() {
   const [showRoomSidebar, setShowRoomSidebar] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+  const [showCreateBooking, setShowCreateBooking] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [checkInDate, setCheckInDate] = useState(format(today, "yyyy-MM-dd"));
+  const [checkOutDate, setCheckOutDate] = useState(format(addDays(today, 1), "yyyy-MM-dd"));
+  const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   const calendarRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   
