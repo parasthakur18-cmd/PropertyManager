@@ -593,6 +593,81 @@ export default function CalendarView() {
           <span>Unpaid</span>
         </div>
       </div>
+
+      {/* Create Booking Dialog */}
+      <Dialog open={showCreateBooking} onOpenChange={setShowCreateBooking}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-create-booking">
+          <DialogHeader>
+            <DialogTitle>Create New Booking</DialogTitle>
+            <DialogDescription>
+              Fill in the booking details to create a new reservation
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="guest-name">Guest Name</Label>
+              <Input
+                id="guest-name"
+                placeholder="Enter guest name"
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                data-testid="input-guest-name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="check-in">Check-in Date</Label>
+              <Input
+                id="check-in"
+                type="date"
+                value={checkInDate}
+                onChange={(e) => setCheckInDate(e.target.value)}
+                data-testid="input-check-in-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="check-out">Check-out Date</Label>
+              <Input
+                id="check-out"
+                type="date"
+                value={checkOutDate}
+                onChange={(e) => setCheckOutDate(e.target.value)}
+                data-testid="input-check-out-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="room">Select Room</Label>
+              <Select value={selectedRoomId} onValueChange={setSelectedRoomId}>
+                <SelectTrigger id="room" data-testid="select-room">
+                  <SelectValue placeholder="Choose a room" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredRooms.map(room => (
+                    <SelectItem key={room.id} value={String(room.id)}>
+                      {room.roomNumber} - {room.roomType} (₹{room.pricePerNight})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowCreateBooking(false)}
+              data-testid="button-cancel-booking"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => createBookingMutation.mutate()}
+              disabled={createBookingMutation.isPending}
+              data-testid="button-save-booking"
+            >
+              {createBookingMutation.isPending ? "Creating..." : "Create Booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
