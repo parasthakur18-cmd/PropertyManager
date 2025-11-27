@@ -32,7 +32,7 @@ import {
   CheckCircle2,
   MoreVertical
 } from "lucide-react";
-import { format, addDays, startOfDay, eachDayOfInterval } from "date-fns";
+import { format, addDays, startOfDay, eachDayOfInterval, addMonths } from "date-fns";
 import {
   Select,
   SelectContent,
@@ -305,6 +305,9 @@ export default function CalendarView() {
             <h1 className="text-lg font-bold">Room Calendar</h1>
           </div>
           <div className="flex gap-1">
+            <Button size="sm" variant="ghost" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
+              {format(addMonths(startDate, -1), "MMM")}
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -313,6 +316,9 @@ export default function CalendarView() {
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
               <ChevronRight className="h-4 w-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
+              {format(addMonths(startDate, 1), "MMM")}
             </Button>
           </div>
         </div>
