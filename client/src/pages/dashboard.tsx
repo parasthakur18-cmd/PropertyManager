@@ -876,8 +876,8 @@ export default function Dashboard() {
 
       {/* Main Content Area - Scrollable */}
       <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 lg:pb-4">
-        {/* Desktop: 3-Column Full Section Layout */}
-        <div className="hidden lg:grid lg:grid-cols-3 gap-4">
+        {/* Desktop: 4-Column Full Section Layout */}
+        <div className="hidden lg:grid lg:grid-cols-4 gap-4">
           {/* Check-In Column */}
           <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
@@ -939,7 +939,8 @@ export default function Dashboard() {
                             variant="default" 
                             size="sm" 
                             className="flex-1 h-11 bg-blue-500 hover:bg-blue-600"
-                            onClick={() => handleCheckIn(booking.id)}
+                            onClick={() => handleCheckInWithValidation(booking)}
+                            disabled={updateStatusMutation.isPending}
                             data-testid={`btn-checkin-action-${booking.id}`}
                           >
                             <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -1064,6 +1065,54 @@ export default function Dashboard() {
                             <CheckCircle2 className="h-4 w-4 mr-2" />
                             Complete Checkout
                           </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Orders Column */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Utensils className="h-5 w-5 text-purple-600" />
+                Orders
+              </h2>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-purple-500 text-white">{activeOrders.length}</Badge>
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setLocation("/orders?new=true")} data-testid="btn-new-order">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+              {activeOrders.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Utensils className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No active orders</p>
+                </Card>
+              ) : (
+                activeOrders.map(order => {
+                  const { room } = getOrderInfo(order);
+                  return (
+                    <Card key={order.id} className="overflow-hidden cursor-pointer hover-elevate" onClick={() => setLocation(`/orders/${order.id}`)} data-testid={`card-order-desktop-${order.id}`}>
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="h-10 w-10 rounded-full bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                            <Utensils className="h-5 w-5 text-purple-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-base">Order #{order.id}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {order.orderType === "room" ? `Room ${room?.roomNumber}` : order.customerName || "Walk-in"}
+                            </p>
+                            <Badge className={`${orderStatusColors[order.status] || "bg-gray-500 text-white"} mt-2`}>
+                              {order.status}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     </Card>
