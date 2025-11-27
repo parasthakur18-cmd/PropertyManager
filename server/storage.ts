@@ -1749,9 +1749,8 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  // Dashboard stats
+  // Dashboard stats - Premium KPI metrics
   async getDashboardStats(propertyId?: number): Promise<any> {
-    // If propertyId is provided, filter by that property (for managers)
     const propertyFilter = propertyId ? eq(properties.id, propertyId) : undefined;
     const roomPropertyFilter = propertyId ? eq(rooms.propertyId, propertyId) : undefined;
 
@@ -1765,7 +1764,6 @@ export class DatabaseStorage implements IStorage {
       .from(rooms)
       .where(roomPropertyFilter ? roomPropertyFilter : sql`true`);
 
-    // For active bookings, we need to join with rooms to filter by property
     let activeBookingsQuery = db
       .select({ count: sql<number>`count(*)::int` })
       .from(bookings)
@@ -1804,7 +1802,6 @@ export class DatabaseStorage implements IStorage {
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
 
-    // For monthly revenue, filter by property through bookings->rooms join
     let monthlyRevenueQuery = db
       .select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
       .from(bills)
@@ -1821,6 +1818,21 @@ export class DatabaseStorage implements IStorage {
     }
 
     const [monthlyRevenueResult] = await monthlyRevenueQuery;
+    const monthlyRevenue = parseFloat(monthlyRevenueResult.total);
+
+    // Calculate ADR (Average Daily Rate) and RevPAR
+    let adR = 0;
+    let revPaR = 0;
+    
+    if (activeBookingsCount.count > 0) {
+      // ADR = Monthly Revenue / Occupied Room Nights (approximation: active bookings as proxy)
+      adR = Math.round(monthlyRevenue / Math.max(activeBookingsCount.count, 1));
+    }
+    
+    if (roomsCount.count > 0) {
+      // RevPAR = Monthly Revenue / Total Available Rooms
+      revPaR = Math.round(monthlyRevenue / roomsCount.count);
+    }
 
     return {
       totalProperties: propertiesCount.count,
@@ -1829,7 +1841,10 @@ export class DatabaseStorage implements IStorage {
       totalGuests: guestsCount.count,
       activeUsers: activeUsersCount.count,
       occupancyRate,
-      monthlyRevenue: parseFloat(monthlyRevenueResult.total),
+      monthlyRevenue: Math.round(monthlyRevenue),
+      adr: adR,
+      revpar: revPaR,
+      occupiedRooms: occupiedRoomsCount.count,
     };
   }
 
