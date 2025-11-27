@@ -412,8 +412,8 @@ export default function CalendarView() {
                       <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                     </div>
                     
-                    {/* Quick Action Buttons - Visible on Hover */}
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
+                    {/* Quick Action Buttons - Always visible on mobile, hover on desktop */}
+                    <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                       <Button
                         size="icon"
                         variant="ghost"
