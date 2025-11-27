@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +62,7 @@ interface CheckoutReminder {
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("today-checkins");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
   const [seenPaymentIds, setSeenPaymentIds] = useState<Set<number>>(new Set());
@@ -347,52 +348,265 @@ export default function Dashboard() {
     },
   ];
 
-  return (
-    <div className="p-6 md:p-8">
-      {/* Payment Notifications */}
-      {recentPayments.length > 0 && (
-        <div className="mb-6 space-y-2 max-h-96 overflow-y-auto">
-          {recentPayments.map((payment) => {
-            const isNew = !seenPaymentIds.has(payment.billId);
-            if (isNew) {
-              setSeenPaymentIds(prev => new Set([...prev, payment.billId]));
-            }
-            return (
-              <div
-                key={payment.billId}
-                className={`p-4 rounded-lg border-l-4 flex items-center gap-3 ${
-                  isNew
-                    ? "bg-green-50 dark:bg-green-950 border-l-green-500 animate-pulse"
-                    : "bg-green-50/50 dark:bg-green-950/50 border-l-green-400"
-                }`}
-                data-testid={`notification-payment-${payment.billId}`}
-              >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 text-white flex-shrink-0">
-                  <Check className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-green-900 dark:text-green-100">
-                    Payment Received
-                  </p>
-                  <p className="text-xs text-green-700 dark:text-green-200 truncate">
-                    {payment.guestName} paid ₹{parseFloat(payment.totalAmount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+  // Calculate daily target (assuming ₹50K daily target)
+  const dailyTarget = 50000;
 
-      <div className="mb-6">
-        <h1 className="text-xl md:text-3xl font-bold font-serif mb-2">Dashboard</h1>
-        <p className="text-xs md:text-sm text-muted-foreground">
-          Welcome to Hostezee - the world's first zero-infrastructure property management system. Deploy instantly, manage everything.
-        </p>
+  return (
+    <div className="h-screen flex flex-col bg-background">
+      {/* Header with Property Selector */}
+      <div className="border-b bg-card p-4 md:p-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold font-serif">Dashboard</h1>
+            <p className="text-xs md:text-sm text-muted-foreground">Real-time operational overview</p>
+          </div>
+          
+          {/* Property Selector */}
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedPropertyId || ""}
+              onChange={(e) => setSelectedPropertyId(e.target.value ? parseInt(e.target.value) : null)}
+              className="px-3 py-2 rounded-md border bg-background text-sm flex items-center gap-2"
+              data-testid="select-property"
+            >
+              <option value="">All Properties</option>
+              {properties?.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
-      {/* Quick Action Tabs - Optimized for Mobile (2x3 Grid) */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-8">
+      {/* KPI Ribbon */}
+      <div className="border-b bg-card p-4 md:p-6 overflow-x-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 min-w-max md:min-w-0">
+          {/* Occupancy % */}
+          <div className="flex flex-col gap-1 min-w-max">
+            <div className="flex items-center gap-1">
+              <Activity className="h-4 w-4 text-blue-500" />
+              <span className="text-xs font-medium text-muted-foreground">Occupancy</span>
+            </div>
+            <div className="text-2xl md:text-3xl font-bold font-mono" data-testid="kpi-occupancy">
+              {stats?.occupancyRate || 0}%
+            </div>
+            <p className="text-xs text-muted-foreground">{stats?.occupiedRooms || 0} / {stats?.totalRooms || 0} rooms</p>
+          </div>
+
+          {/* ADR */}
+          <div className="flex flex-col gap-1 min-w-max">
+            <div className="flex items-center gap-1">
+              <IndianRupee className="h-4 w-4 text-green-500" />
+              <span className="text-xs font-medium text-muted-foreground">ADR</span>
+            </div>
+            <div className="text-2xl md:text-3xl font-bold font-mono text-green-600 dark:text-green-400" data-testid="kpi-adr">
+              ₹{(stats?.adr || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">per room night</p>
+          </div>
+
+          {/* RevPAR */}
+          <div className="flex flex-col gap-1 min-w-max">
+            <div className="flex items-center gap-1">
+              <TrendingUp className="h-4 w-4 text-chart-5" />
+              <span className="text-xs font-medium text-muted-foreground">RevPAR</span>
+            </div>
+            <div className="text-2xl md:text-3xl font-bold font-mono text-chart-5" data-testid="kpi-revpar">
+              ₹{(stats?.revpar || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">revenue metric</p>
+          </div>
+
+          {/* Today's Revenue vs Target */}
+          <div className="flex flex-col gap-1 min-w-max">
+            <div className="flex items-center gap-1">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span className="text-xs font-medium text-muted-foreground">Today</span>
+            </div>
+            <div className="text-2xl md:text-3xl font-bold font-mono" data-testid="kpi-revenue-today">
+              ₹{(stats?.monthlyRevenue || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">vs ₹{(dailyTarget).toLocaleString()} target</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content - Multi-panel Layout */}
+      <div className="flex-1 overflow-hidden flex flex-col md:flex-row gap-4 p-4 md:p-6">
+        {/* Left Sidebar - Quick Actions */}
+        <div className="w-full md:w-64 flex flex-col gap-4 overflow-y-auto">
+          <Card className="flex-shrink-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <button
+                onClick={() => setLocation("/bookings?new=true")}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent text-sm hover-elevate"
+                data-testid="action-new-booking"
+              >
+                <Plus className="h-4 w-4" />
+                New Booking
+              </button>
+              <button
+                onClick={() => setLocation("/new-enquiry")}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent text-sm hover-elevate"
+                data-testid="action-new-enquiry"
+              >
+                <MessageSquarePlus className="h-4 w-4" />
+                New Enquiry
+              </button>
+            </CardContent>
+          </Card>
+
+          {/* Key Metrics Cards */}
+          <Card className="flex-shrink-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Key Metrics</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Active Bookings</span>
+                <span className="font-bold" data-testid="metric-active-bookings">{stats?.activeBookings || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Guests</span>
+                <span className="font-bold" data-testid="metric-total-guests">{stats?.totalGuests || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Monthly Revenue</span>
+                <span className="font-bold font-mono">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Center - Timeline View */}
+        <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-w-0">
+          {/* Payment Notifications */}
+          {recentPayments.length > 0 && (
+            <div className="space-y-2">
+              {recentPayments.map((payment) => {
+                const isNew = !seenPaymentIds.has(payment.billId);
+                if (isNew) {
+                  setSeenPaymentIds(prev => new Set([...prev, payment.billId]));
+                }
+                return (
+                  <div
+                    key={payment.billId}
+                    className={`p-3 rounded-lg border-l-4 flex items-center gap-3 text-sm ${
+                      isNew
+                        ? "bg-green-50 dark:bg-green-950 border-l-green-500 animate-pulse"
+                        : "bg-green-50/50 dark:bg-green-950/50 border-l-green-400"
+                    }`}
+                    data-testid={`notification-payment-${payment.billId}`}
+                  >
+                    <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-green-900 dark:text-green-100">
+                        {payment.guestName} paid ₹{parseFloat(payment.totalAmount).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Today's Timeline */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Today's Schedule</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {todayCheckIns.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Check-ins ({todayCheckIns.length})</p>
+                  {todayCheckIns.slice(0, 3).map(b => {
+                    const guest = guests?.find(g => g.id === b.guestId);
+                    return (
+                      <div key={b.id} className="text-xs p-2 rounded bg-green-50 dark:bg-green-950">
+                        {guest?.fullName || "Guest"} - Room TBA
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {todayCheckOuts.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-medium text-muted-foreground">Check-outs ({todayCheckOuts.length})</p>
+                  {todayCheckOuts.slice(0, 3).map(b => {
+                    const guest = guests?.find(g => g.id === b.guestId);
+                    return (
+                      <div key={b.id} className="text-xs p-2 rounded bg-amber-50 dark:bg-amber-950">
+                        {guest?.fullName || "Guest"} - Checkout due
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Panel - Alerts & Tasks */}
+        <div className="w-full md:w-64 flex flex-col gap-4 overflow-y-auto">
+          <Card className="flex-shrink-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-destructive" />
+                Alerts & Tasks
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {checkoutReminders.length > 0 && (
+                <div className="p-2 rounded bg-destructive/10 border border-destructive/20">
+                  <p className="font-medium text-destructive">
+                    {checkoutReminders.length} overdue checkout(s)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {checkoutReminders[0]?.guestName} in Room {checkoutReminders[0]?.roomNumber}
+                  </p>
+                </div>
+              )}
+              {activeOrders.length > 0 && (
+                <div className="p-2 rounded bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                  <p className="font-medium text-blue-900 dark:text-blue-100">
+                    {activeOrders.length} active order(s)
+                  </p>
+                </div>
+              )}
+              {yetToConfirmedEnquiries.length > 0 && (
+                <div className="p-2 rounded bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
+                  <p className="font-medium text-amber-900 dark:text-amber-100">
+                    {yetToConfirmedEnquiries.length} pending enquiry(ies)
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Properties Overview */}
+          <Card className="flex-shrink-0">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Properties</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-bold">{stats?.totalProperties || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Rooms</span>
+                <span className="font-bold">{stats?.totalRooms || 0}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Bottom Tab Navigation (Hidden on wider screens) */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full hidden">
         <TabsList className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 h-auto p-2 mb-6">
           <TabsTrigger value="today-checkins" className="flex flex-col h-auto py-3 px-2" data-testid="tab-today-checkins">
             <LogIn className="h-5 w-5 mb-1" />
