@@ -167,7 +167,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <SidebarProvider style={style}>
+          <SidebarProvider style={style} defaultOpen={true}>
             <ErrorBoundary>
               <AuthWrapper>
                 <Toaster />

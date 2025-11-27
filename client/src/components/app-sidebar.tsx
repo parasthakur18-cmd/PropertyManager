@@ -158,13 +158,6 @@ const superAdminMenuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
-  const { setOpen, isMobile } = useSidebar();
-
-  // Force sidebar open on desktop, immediately on mount and after any changes
-  useEffect(() => {
-    // Always open on desktop, always close on mobile
-    setOpen(!isMobile);
-  }, [isMobile, setOpen]);
 
   // Get menu items based on role
   const getMenuConfig = () => {
