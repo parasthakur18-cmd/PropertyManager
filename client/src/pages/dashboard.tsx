@@ -169,7 +169,7 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       checkoutFlow();
       fetchRecentPayments();
-    }, 30000); // Check every 30 seconds
+    }, 900000); // Check every 15 minutes
     
     return () => clearInterval(interval);
   }, [shownReminderIds, toast]);
