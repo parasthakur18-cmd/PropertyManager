@@ -246,11 +246,13 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen w-full">
       {!isSuperAdminPage && <AppSidebar />}
       <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="flex items-center p-4 border-b bg-background">
-          <div className="flex-1">
-            {!isSuperAdminPage && <SidebarTrigger data-testid="button-sidebar-toggle" />}
+        <header className="flex items-center justify-between p-4 border-b bg-background">
+          <div className="flex items-center gap-2">
+            {!isSuperAdminPage && (
+              <SidebarTrigger data-testid="button-sidebar-toggle" className="h-9 w-9 p-0" />
+            )}
           </div>
-          <div className="flex items-center gap-3 ml-auto">
+          <div className="flex items-center gap-3">
             <NotificationCenter />
             <ThemeToggle />
           </div>
