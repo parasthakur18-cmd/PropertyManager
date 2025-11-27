@@ -52,12 +52,22 @@ const orderStatusColors = {
   cancelled: "bg-destructive text-destructive-foreground",
 };
 
+interface CheckoutReminder {
+  bookingId: number;
+  guestName: string;
+  roomNumber: string;
+  checkOutTime: string;
+  hoursOverdue: number;
+}
+
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("today-checkins");
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
   const [seenPaymentIds, setSeenPaymentIds] = useState<Set<number>>(new Set());
   const [autoCheckoutAlert, setAutoCheckoutAlert] = useState<{ count: number; timestamp: number } | null>(null);
+  const [checkoutReminders, setCheckoutReminders] = useState<CheckoutReminder[]>([]);
+  const [shownReminderIds, setShownReminderIds] = useState<Set<number>>(new Set());
   const { toast } = useToast();
   
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -88,25 +98,57 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
-  // Auto-checkout overdue bookings and fetch recent payments
+  // Check for checkout reminders (12 PM+) and force auto-checkout (4 PM+)
   useEffect(() => {
-    const processAutoCheckouts = async () => {
-      try {
-        const response = await fetch("/api/bookings/auto-checkout", { method: "POST" });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.processedCount > 0) {
-            console.log(`[Dashboard] Auto-checked out ${data.processedCount} overdue bookings`);
-            setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
-            toast({
-              title: "Auto-Checkout Complete",
-              description: `${data.processedCount} overdue booking(s) checked out automatically. Guest notifications sent via WhatsApp.`,
-              duration: 8000,
+    const checkoutFlow = async () => {
+      const now = new Date();
+      const currentHour = now.getHours();
+
+      // From 12 PM onwards: Show reminders
+      if (currentHour >= 12) {
+        try {
+          const response = await fetch("/api/bookings/checkout-reminders");
+          if (response.ok) {
+            const reminders: CheckoutReminder[] = await response.json();
+            setCheckoutReminders(reminders);
+            
+            // Show reminder popups for unseen reminders
+            reminders.forEach(reminder => {
+              if (!shownReminderIds.has(reminder.bookingId)) {
+                toast({
+                  title: "Checkout Reminder",
+                  description: `Guest ${reminder.guestName} in Room ${reminder.roomNumber} was due for checkout at ${reminder.checkOutTime} (${reminder.hoursOverdue}h ago). Please checkout manually.`,
+                  duration: 10000,
+                });
+                setShownReminderIds(prev => new Set([...prev, reminder.bookingId]));
+              }
             });
           }
+        } catch (error) {
+          console.error("Failed to fetch checkout reminders:", error);
         }
-      } catch (error) {
-        console.error("Failed to process auto-checkouts:", error);
+      }
+
+      // At 4 PM (16:00) onwards: Force auto-checkout
+      if (currentHour >= 16) {
+        try {
+          const response = await fetch("/api/bookings/force-auto-checkout", { method: "POST" });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.processedCount > 0) {
+              console.log(`[Dashboard] Force auto-checked out ${data.processedCount} bookings at 4 PM`);
+              setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
+              toast({
+                title: "Forced Auto-Checkout Executed",
+                description: `${data.processedCount} booking(s) auto-checked out at 4 PM. Guest notifications sent via WhatsApp.`,
+                duration: 8000,
+              });
+              setShownReminderIds(new Set());
+            }
+          }
+        } catch (error) {
+          console.error("Failed to process force auto-checkout:", error);
+        }
       }
     };
 
@@ -122,11 +164,15 @@ export default function Dashboard() {
       }
     };
 
-    processAutoCheckouts();
+    checkoutFlow();
     fetchRecentPayments();
-    const interval = setInterval(fetchRecentPayments, 5000);
+    const interval = setInterval(() => {
+      checkoutFlow();
+      fetchRecentPayments();
+    }, 30000); // Check every 30 seconds
+    
     return () => clearInterval(interval);
-  }, []);
+  }, [shownReminderIds, toast]);
 
   const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
 

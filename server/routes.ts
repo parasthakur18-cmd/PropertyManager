@@ -1945,13 +1945,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auto-checkout bookings that have passed checkout date
-  app.post("/api/bookings/auto-checkout", isAuthenticated, async (req, res) => {
+  // Get checkout reminders (12 PM onwards, not yet auto-checked out)
+  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
       const now = new Date();
+      const currentHour = now.getHours();
+      const allBookings = await storage.getAllBookings();
+      
+      // Show reminders from 12 PM (noon) onwards for checked-in bookings past checkout time
+      const reminders = allBookings.filter(b => 
+        b.status === "checked-in" && 
+        new Date(b.checkOutDate) < now &&
+        currentHour >= 12
+      );
+
+      const reminderData = await Promise.all(reminders.map(async (b) => {
+        const room = b.roomId ? await storage.getRoom(b.roomId) : null;
+        const guest = await storage.getGuest(b.guestId);
+        return {
+          bookingId: b.id,
+          guestName: guest?.fullName || "Guest",
+          roomNumber: room?.roomNumber || "Unknown",
+          checkOutTime: format(new Date(b.checkOutDate), "hh:mm a"),
+          hoursOverdue: Math.floor((now.getTime() - new Date(b.checkOutDate).getTime()) / (1000 * 60 * 60))
+        };
+      }));
+
+      res.json(reminderData);
+    } catch (error: any) {
+      console.error("Checkout reminders error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout
+  app.post("/api/bookings/force-auto-checkout", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Only allow force checkout from 4 PM (16:00) onwards
+      if (currentHour < 16) {
+        return res.status(400).json({ message: "Force auto-checkout only available after 4 PM" });
+      }
+
       const allBookings = await storage.getAllBookings();
       const overdue = allBookings.filter(b => 
-        (b.status === "checked-in") && 
+        b.status === "checked-in" && 
         new Date(b.checkOutDate) < now
       );
 
@@ -2071,10 +2111,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      console.log(`[AUTO-CHECKOUT] Processed ${successCount}/${checkedOutCount} overdue bookings`);
-      res.json({ success: true, processedCount: successCount, totalOverdue: checkedOutCount });
+      console.log(`[FORCE-AUTO-CHECKOUT] Processed ${successCount}/${checkedOutCount} overdue bookings at 4 PM`);
+      res.json({ success: true, processedCount: successCount, totalOverdue: checkedOutCount, forcedAt: "4 PM" });
     } catch (error: any) {
-      console.error("Auto-checkout error:", error);
+      console.error("Force auto-checkout error:", error);
       res.status(500).json({ message: error.message });
     }
   });
