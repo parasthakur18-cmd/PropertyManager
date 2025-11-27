@@ -42,6 +42,8 @@ export default function NewEnquirySimple() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number>();
   const [checkInPopoverOpen, setCheckInPopoverOpen] = useState(false);
   const [checkOutPopoverOpen, setCheckOutPopoverOpen] = useState(false);
+  const [checkInDate, setCheckInDate] = useState<Date>();
+  const [checkOutDate, setCheckOutDate] = useState<Date>();
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -52,7 +54,28 @@ export default function NewEnquirySimple() {
     enabled: !!selectedPropertyId,
   });
 
-  const filteredRooms = rooms?.filter(r => r.propertyId === selectedPropertyId) || [];
+  // Check room availability for selected dates
+  const { data: availableRoomIds = [] } = useQuery<number[]>({
+    queryKey: ["/api/rooms/check-availability", selectedPropertyId, checkInDate, checkOutDate],
+    queryFn: async () => {
+      if (!selectedPropertyId || !checkInDate || !checkOutDate) return [];
+      const response = await apiRequest(
+        `/api/rooms/check-availability?propertyId=${selectedPropertyId}&checkInDate=${checkInDate.toISOString()}&checkOutDate=${checkOutDate.toISOString()}`,
+        "GET"
+      );
+      return response.availableRoomIds || [];
+    },
+    enabled: !!selectedPropertyId && !!checkInDate && !!checkOutDate,
+  });
+
+  const filteredRooms = rooms?.filter(r => {
+    const isCorrectProperty = r.propertyId === selectedPropertyId;
+    // If dates are selected, only show available rooms
+    if (checkInDate && checkOutDate) {
+      return isCorrectProperty && availableRoomIds.includes(r.id);
+    }
+    return isCorrectProperty;
+  }) || [];
 
   const form = useForm<EnquiryFormData>({
     resolver: zodResolver(enquiryFormSchema),
@@ -192,6 +215,7 @@ export default function NewEnquirySimple() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
+                              setCheckInDate(date);
                               setCheckInPopoverOpen(false);
                             }}
                             disabled={(date) =>
@@ -238,6 +262,7 @@ export default function NewEnquirySimple() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
+                              setCheckOutDate(date);
                               setCheckOutPopoverOpen(false);
                             }}
                             disabled={(date) =>
@@ -252,6 +277,15 @@ export default function NewEnquirySimple() {
                   )}
                 />
               </div>
+
+              {/* Availability Note */}
+              {checkInDate && checkOutDate && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 rounded-md">
+                  <p className="text-sm text-blue-900 dark:text-blue-200">
+                    Showing {filteredRooms.length} available room{filteredRooms.length !== 1 ? 's' : ''} for {format(checkInDate, "MMM d")} to {format(checkOutDate, "MMM d")}
+                  </p>
+                </div>
+              )}
 
               {/* Room Selection */}
               {selectedPropertyId && (
