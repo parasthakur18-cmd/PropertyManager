@@ -64,6 +64,10 @@ export default function CalendarView() {
     queryKey: ["/api/bookings"],
   });
 
+  const { data: guests = [] } = useQuery<any[]>({
+    queryKey: ["/api/guests"],
+  });
+
   const filteredRooms = useMemo(() => {
     let filtered = rooms;
     if (selectedPropertyId !== "all") {
@@ -167,7 +171,7 @@ export default function CalendarView() {
                     data-testid={`room-label-${room.id}`}
                   >
                     <div className="font-medium">{room.roomNumber}</div>
-                    <div className="text-xs text-muted-foreground">₹{room.basePrice}</div>
+                    <div className="text-xs text-muted-foreground">₹{room.pricePerNight}</div>
                   </div>
                 ))}
               </div>
@@ -234,9 +238,9 @@ export default function CalendarView() {
                                 STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending
                               )}
                               onClick={() => navigate(`/bookings/${booking.id}`)}
-                              title={booking.guestName}
+                              title={guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}
                             >
-                              <div className="truncate px-1">{booking.guestName}</div>
+                              <div className="truncate px-1">{guests.find(g => g.id === booking.guestId)?.fullName || "Guest"}</div>
                             </div>
                           )}
                         </div>

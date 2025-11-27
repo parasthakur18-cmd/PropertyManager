@@ -34,6 +34,7 @@ import UsersManagement from "@/pages/users";
 import ActiveBookings from "@/pages/active-bookings";
 import CheckIns from "@/pages/check-ins";
 import RoomCalendar from "@/pages/room-calendar";
+import CalendarView from "@/pages/calendar-view";
 import FoodOrdersReport from "@/pages/food-orders-report";
 import MenuManagement from "@/pages/menu-management";
 import EnhancedMenu from "@/pages/enhanced-menu";
@@ -131,6 +132,7 @@ function Router() {
           <Route path="/check-ins" component={CheckIns} />
           <Route path="/active-bookings" component={ActiveBookings} />
           <Route path="/room-calendar" component={RoomCalendar} />
+          <Route path="/calendar" component={CalendarView} />
           <Route path="/guests" component={Guests} />
           <Route path="/restaurant" component={Kitchen} />
           <Route path="/kitchen" component={Kitchen} />

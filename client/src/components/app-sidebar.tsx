@@ -62,6 +62,7 @@ const adminMainItems = [
 const adminBookingItems = [
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
+  { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Booking Analytics", url: "/booking-analytics", icon: BarChart3 },
 ];
@@ -105,6 +106,7 @@ const managerMainItems = [
 const managerBookingItems = [
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
+  { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
 ];
 
@@ -137,6 +139,7 @@ const staffMenuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
+  { title: "Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
