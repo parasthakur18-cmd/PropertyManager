@@ -1492,7 +1492,7 @@ export default function Dashboard() {
 
                   // Update guest with ID proof
                   console.log("[CHECK-IN] Updating guest with ID proof...");
-                  await apiRequest("PATCH", `/api/guests/${booking.guestId}`, {
+                  await apiRequest(`/api/guests/${booking.guestId}`, "PATCH", {
                     idProofImage: checkinIdProof
                   });
                   console.log("[CHECK-IN] Guest updated with ID proof");
@@ -1501,7 +1501,7 @@ export default function Dashboard() {
 
                   // Update booking status
                   console.log("[CHECK-IN] Updating booking status to checked-in...");
-                  await apiRequest("PATCH", `/api/bookings/${checkinBookingId}/status`, {
+                  await apiRequest(`/api/bookings/${checkinBookingId}/status`, "PATCH", {
                     status: "checked-in"
                   });
                   console.log("[CHECK-IN] Booking status updated successfully");
