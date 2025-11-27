@@ -119,6 +119,33 @@ export default function Dashboard() {
   const checkInMutation = useCheckInMutation();
   const checkOutMutation = useCheckOutMutation();
 
+  // Handler for check-in with ID validation protocol
+  const handleCheckInWithValidation = (booking: Booking) => {
+    const guest = guests?.find(g => g.id === booking.guestId);
+    
+    if (!guest) {
+      toast({
+        title: "Guest Not Found",
+        description: "Cannot check in without valid guest information",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate guest has ID proof
+    if (!guest.idProofImage) {
+      toast({
+        title: "ID Proof Required",
+        description: "Guest ID proof must be captured before check-in. Please upload the ID to proceed.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Proceed with check-in
+    checkInMutation.mutate(booking.id);
+  };
+
   const updateOrderMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: number; status: string }) => {
       return apiRequest("PATCH", `/api/orders/${orderId}`, { status });
@@ -502,7 +529,7 @@ export default function Dashboard() {
                           variant="default" 
                           size="sm" 
                           className="flex-1 h-11 bg-green-500 hover:bg-green-600"
-                          onClick={() => checkInMutation.mutate(booking.id)}
+                          onClick={() => handleCheckInWithValidation(booking)}
                           disabled={checkInMutation.isPending}
                           data-testid={`btn-checkin-${booking.id}`}
                         >
