@@ -62,8 +62,7 @@ const adminMainItems = [
 const adminBookingItems = [
   { title: "Bookings", url: "/bookings", icon: Calendar },
   { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
-  { title: "Calendar", url: "/calendar", icon: CalendarDays },
-  { title: "Room Calendar", url: "/room-calendar", icon: CalendarDays },
+  { title: "Room Calendar", url: "/calendar", icon: CalendarDays },
   { title: "Booking Analytics", url: "/booking-analytics", icon: BarChart3 },
 ];
 
