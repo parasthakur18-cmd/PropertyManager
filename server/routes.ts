@@ -385,10 +385,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // If user is a manager, filter stats by their assigned property
-      const propertyId = (currentUser.role === "manager" && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) 
-        ? currentUser.assignedPropertyIds[0] // Use first assigned property for stats
-        : undefined;
+      // Priority: Use query parameter if provided (user selection), otherwise use manager's assigned property
+      let propertyId: number | undefined = undefined;
+      
+      if (req.query.propertyId) {
+        propertyId = parseInt(req.query.propertyId);
+      } else if (currentUser.role === "manager" && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        // If user is a manager and no property selected, use first assigned property
+        propertyId = currentUser.assignedPropertyIds[0];
+      }
       
       const stats = await storage.getDashboardStats(propertyId);
       res.json(stats);

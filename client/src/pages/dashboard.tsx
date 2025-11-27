@@ -88,7 +88,7 @@ export default function Dashboard() {
   const { toast } = useToast();
   
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/dashboard/stats"],
+    queryKey: ["/api/dashboard/stats", selectedPropertyId],
   });
 
   const { data: bookings, isLoading: bookingsLoading } = useQuery<Booking[]>({
