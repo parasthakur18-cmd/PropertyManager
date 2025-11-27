@@ -142,7 +142,7 @@ export default function Dashboard() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      return apiRequest("PATCH", `/api/bookings/${id}/status`, { status });
+      return apiRequest(`/api/bookings/${id}/status`, "PATCH", { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
@@ -189,7 +189,7 @@ export default function Dashboard() {
 
   const updateOrderMutation = useMutation({
     mutationFn: async ({ orderId, status }: { orderId: number; status: string }) => {
-      return apiRequest("PATCH", `/api/orders/${orderId}`, { status });
+      return apiRequest(`/api/orders/${orderId}`, "PATCH", { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
@@ -1308,7 +1308,7 @@ export default function Dashboard() {
                       className="flex-1"
                       onClick={async () => {
                         try {
-                          await apiRequest("POST", "/api/bookings/checkout", {
+                          await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: checkoutBookingId,
                             cashReceived: cashPaid,
                             remainingBalance: Math.max(0, remainingBalance),
