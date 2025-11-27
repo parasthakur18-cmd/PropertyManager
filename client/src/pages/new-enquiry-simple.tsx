@@ -42,8 +42,6 @@ export default function NewEnquirySimple() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number>();
   const [checkInPopoverOpen, setCheckInPopoverOpen] = useState(false);
   const [checkOutPopoverOpen, setCheckOutPopoverOpen] = useState(false);
-  const [checkInDate, setCheckInDate] = useState<Date>();
-  const [checkOutDate, setCheckOutDate] = useState<Date>();
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -54,28 +52,8 @@ export default function NewEnquirySimple() {
     enabled: !!selectedPropertyId,
   });
 
-  // Check room availability for selected dates
-  const { data: availableRoomIds = [] } = useQuery<number[]>({
-    queryKey: ["/api/rooms/check-availability", selectedPropertyId, checkInDate, checkOutDate],
-    queryFn: async () => {
-      if (!selectedPropertyId || !checkInDate || !checkOutDate) return [];
-      const response = await apiRequest(
-        `/api/rooms/check-availability?propertyId=${selectedPropertyId}&checkInDate=${checkInDate.toISOString()}&checkOutDate=${checkOutDate.toISOString()}`,
-        "GET"
-      );
-      return response.availableRoomIds || [];
-    },
-    enabled: !!selectedPropertyId && !!checkInDate && !!checkOutDate,
-  });
-
-  const filteredRooms = rooms?.filter(r => {
-    const isCorrectProperty = r.propertyId === selectedPropertyId;
-    // If dates are selected, only show available rooms
-    if (checkInDate && checkOutDate) {
-      return isCorrectProperty && availableRoomIds.includes(r.id);
-    }
-    return isCorrectProperty;
-  }) || [];
+  // Filter rooms by selected property only - availability is checked when creating the booking
+  const filteredRooms = rooms?.filter(r => r.propertyId === selectedPropertyId) || [];
 
   const form = useForm<EnquiryFormData>({
     resolver: zodResolver(enquiryFormSchema),
