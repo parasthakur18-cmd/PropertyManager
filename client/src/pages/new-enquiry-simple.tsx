@@ -49,22 +49,15 @@ export default function NewEnquirySimple() {
 
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
-    enabled: !!selectedPropertyId,
+    staleTime: 0, // Force fresh data
   });
 
-  // Filter rooms by selected property only - availability is checked when creating the booking
-  const filteredRooms = rooms?.filter(r => r.propertyId === selectedPropertyId) || [];
+  // Filter rooms by selected property - all rooms for the property
+  const filteredRooms = selectedPropertyId 
+    ? (rooms?.filter(r => r.propertyId === selectedPropertyId) || [])
+    : [];
   
-  // Debug logging
-  if (selectedPropertyId) {
-    console.log("[ENQUIRY FORM] Debugging room filtering:", {
-      selectedPropertyId,
-      totalRooms: rooms?.length || 0,
-      filteredRoomsCount: filteredRooms.length,
-      allRooms: rooms?.map(r => ({ id: r.id, number: r.roomNumber, propertyId: r.propertyId })),
-      filteredRoomsDetail: filteredRooms.map(r => ({ id: r.id, number: r.roomNumber, propertyId: r.propertyId })),
-    });
-  }
+  console.log("[ENQUIRY FORM] Room filtering - propertyId:", selectedPropertyId, "totalRooms:", rooms?.length, "filtered:", filteredRooms.length, "details:", filteredRooms.map(r => ({ id: r.id, num: r.roomNumber, propId: r.propertyId })));
 
   const form = useForm<EnquiryFormData>({
     resolver: zodResolver(enquiryFormSchema),
