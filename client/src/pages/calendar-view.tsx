@@ -377,7 +377,7 @@ export default function CalendarView() {
           {/* Room Types & Rooms */}
           <div 
             ref={sidebarRef}
-            className="flex-1 overflow-y-auto overflow-x-hidden"
+            className="flex-1 overflow-y-auto overflow-x-visible"
           >
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
               <div key={type}>
@@ -400,20 +400,20 @@ export default function CalendarView() {
                 {expandedTypes[type] && typeRooms.map(room => (
                   <div
                     key={room.id}
-                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative"
+                    className="flex items-center justify-between px-3 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative pr-2"
                     style={{ height: ROW_HEIGHT }}
                     data-testid={`room-row-${room.id}`}
                   >
                     <div 
-                      className="flex items-center gap-2 cursor-pointer flex-1"
+                      className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
                       onClick={() => navigate(`/rooms/${room.id}`)}
                     >
-                      <span className="font-medium text-sm">{room.roomNumber}</span>
-                      <Link2 className="h-3 w-3 text-muted-foreground" />
+                      <span className="font-medium text-sm truncate">{room.roomNumber}</span>
+                      <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                     </div>
                     
                     {/* Quick Action Buttons - Visible on Hover */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
                       <Button
                         size="icon"
                         variant="ghost"
