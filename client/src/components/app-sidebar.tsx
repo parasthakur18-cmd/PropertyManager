@@ -158,6 +158,12 @@ const superAdminMenuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
+  const { setOpen } = useSidebar();
+
+  // Always keep sidebar open
+  useEffect(() => {
+    setOpen(true);
+  }, [setOpen]);
 
   // Get menu items based on role
   const getMenuConfig = () => {
