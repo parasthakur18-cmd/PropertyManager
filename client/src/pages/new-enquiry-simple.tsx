@@ -54,6 +54,17 @@ export default function NewEnquirySimple() {
 
   // Filter rooms by selected property only - availability is checked when creating the booking
   const filteredRooms = rooms?.filter(r => r.propertyId === selectedPropertyId) || [];
+  
+  // Debug logging
+  if (selectedPropertyId) {
+    console.log("[ENQUIRY FORM] Debugging room filtering:", {
+      selectedPropertyId,
+      totalRooms: rooms?.length || 0,
+      filteredRoomsCount: filteredRooms.length,
+      allRooms: rooms?.map(r => ({ id: r.id, number: r.roomNumber, propertyId: r.propertyId })),
+      filteredRoomsDetail: filteredRooms.map(r => ({ id: r.id, number: r.roomNumber, propertyId: r.propertyId })),
+    });
+  }
 
   const form = useForm<EnquiryFormData>({
     resolver: zodResolver(enquiryFormSchema),
@@ -193,7 +204,6 @@ export default function NewEnquirySimple() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
-                              setCheckInDate(date);
                               setCheckInPopoverOpen(false);
                             }}
                             disabled={(date) =>
@@ -240,7 +250,6 @@ export default function NewEnquirySimple() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
-                              setCheckOutDate(date);
                               setCheckOutPopoverOpen(false);
                             }}
                             disabled={(date) =>
@@ -255,15 +264,6 @@ export default function NewEnquirySimple() {
                   )}
                 />
               </div>
-
-              {/* Availability Note */}
-              {checkInDate && checkOutDate && (
-                <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 rounded-md">
-                  <p className="text-sm text-blue-900 dark:text-blue-200">
-                    Showing {filteredRooms.length} available room{filteredRooms.length !== 1 ? 's' : ''} for {format(checkInDate, "MMM d")} to {format(checkOutDate, "MMM d")}
-                  </p>
-                </div>
-              )}
 
               {/* Room Selection */}
               {selectedPropertyId && (
