@@ -1139,10 +1139,25 @@ export default function Dashboard() {
                     variant="outline"
                     className="w-full"
                     onClick={async () => {
-                      const message = `Hi ${guest?.fullName}, your pre-bill is ready: ₹${billTotal.toFixed(2)}. Please confirm.`;
-                      const encoded = encodeURIComponent(message);
-                      const whatsappUrl = `https://wa.me/${guest?.phone?.replace(/\D/g, '')}?text=${encoded}`;
-                      window.open(whatsappUrl, '_blank');
+                      try {
+                        const res = await fetch('/api/whatsapp/send-prebill', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            bookingId: checkoutBookingId,
+                            phoneNumber: guest?.phone,
+                            guestName: guest?.fullName,
+                            billTotal
+                          })
+                        });
+                        if (!res.ok) {
+                          const error = await res.json();
+                          throw new Error(error.message || 'Failed to send pre-bill');
+                        }
+                        toast({ title: "Success", description: "Pre-bill sent via WhatsApp" });
+                      } catch (error: any) {
+                        toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
+                      }
                     }}
                   >
                     Send Pre-Bill via WhatsApp
@@ -1154,7 +1169,7 @@ export default function Dashboard() {
                       className="w-full"
                       onClick={async () => {
                         try {
-                          const res = await fetch('/api/razorpay/payment-link', {
+                          const res = await fetch('/api/whatsapp/send-payment-link', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -1165,14 +1180,10 @@ export default function Dashboard() {
                               bookingId: checkoutBookingId
                             })
                           });
-                          if (!res.ok) throw new Error('Failed to create payment link');
-                          const data = await res.json();
-                          
-                          const message = `Hi ${guest?.fullName}, please complete the remaining payment of ₹${remainingBalance.toFixed(2)}: ${data.paymentLinkUrl}`;
-                          const encoded = encodeURIComponent(message);
-                          const whatsappUrl = `https://wa.me/${guest?.phone?.replace(/\D/g, '')}?text=${encoded}`;
-                          window.open(whatsappUrl, '_blank');
-                          
+                          if (!res.ok) {
+                            const error = await res.json();
+                            throw new Error(error.message || 'Failed to send payment link');
+                          }
                           toast({ title: "Success", description: "Payment link sent via WhatsApp" });
                         } catch (error: any) {
                           toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });

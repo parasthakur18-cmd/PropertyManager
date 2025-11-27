@@ -1953,6 +1953,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send pre-bill via Authkey WhatsApp
+  app.post("/api/whatsapp/send-prebill", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, phoneNumber, guestName, billTotal } = req.body;
+      
+      if (!phoneNumber || !guestName || !billTotal) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const result = await sendPreBillNotification(
+        phoneNumber,
+        guestName,
+        "₹0.00",  // Room charges placeholder
+        "₹0.00",  // Food charges placeholder
+        `₹${billTotal.toFixed(2)}`  // Total amount
+      );
+
+      if (result.success) {
+        res.json({ success: true, message: "Pre-bill sent successfully" });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send pre-bill" });
+      }
+    } catch (error: any) {
+      console.error("Send pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to send pre-bill" });
+    }
+  });
+
+  // Send payment link via Authkey WhatsApp
+  app.post("/api/whatsapp/send-payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
+      
+      if (!amount || !guestName || !guestPhone || !guestEmail || !bookingId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        amount,
+        guestName,
+        guestEmail,
+        guestPhone
+      );
+
+      const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+      const message = `Hi ${guestName}, please complete your remaining payment of ₹${amount.toFixed(2)} here: ${paymentLinkUrl}`;
+
+      const result = await sendCustomWhatsAppMessage(
+        guestPhone,
+        process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+        [guestName, `₹${amount.toFixed(2)}`, paymentLinkUrl]
+      );
+
+      if (result.success) {
+        res.json({ success: true, message: "Payment link sent successfully", paymentLinkUrl });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send payment link" });
+      }
+    } catch (error: any) {
+      console.error("Send payment link error:", error);
+      res.status(500).json({ message: error.message || "Failed to send payment link" });
+    }
+  });
+
   // Create RazorPay payment link for split payments
   app.post("/api/razorpay/payment-link", isAuthenticated, async (req, res) => {
     try {
