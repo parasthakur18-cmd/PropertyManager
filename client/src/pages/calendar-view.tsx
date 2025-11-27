@@ -412,52 +412,46 @@ export default function CalendarView() {
                       <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                     </div>
                     
-                    {/* Quick Action Buttons - Always visible on mobile, hover on desktop */}
-                    <div className="flex items-center gap-0.5 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
+                    {/* Quick Action Buttons */}
+                    <div className="flex items-center gap-0.5 flex-shrink-0">
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "available" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
+                        className="p-1 hover:bg-green-100 dark:hover:bg-green-950 rounded transition-colors"
                         title="Mark as Available"
                         data-testid={`button-available-${room.id}`}
                       >
-                        <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                      </Button>
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      </button>
                       
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "blocked" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
+                        className="p-1 hover:bg-yellow-100 dark:hover:bg-yellow-950 rounded transition-colors"
                         title="Block Room"
                         data-testid={`button-block-${room.id}`}
                       >
-                        <Lock className="h-3.5 w-3.5 text-yellow-600" />
-                      </Button>
+                        <Lock className="h-4 w-4 text-yellow-600" />
+                      </button>
                       
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           updateRoomStatusMutation.mutate({ roomId: room.id, status: "out-of-service" });
                         }}
                         disabled={updateRoomStatusMutation.isPending}
+                        className="p-1 hover:bg-red-100 dark:hover:bg-red-950 rounded transition-colors"
                         title="Out of Service"
                         data-testid={`button-out-of-service-${room.id}`}
                       >
-                        <Wrench className="h-3.5 w-3.5 text-red-600" />
-                      </Button>
+                        <Wrench className="h-4 w-4 text-red-600" />
+                      </button>
                     </div>
                   </div>
                 ))}
