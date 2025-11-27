@@ -3,24 +3,23 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Camera } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useCheckInMutation, useCheckOutMutation } from "@/hooks/useCheckInMutation";
+import { IdVerificationUpload } from "@/components/IdVerificationUpload";
+import { CheckoutBillSummary } from "@/components/CheckoutBillSummary";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -96,7 +95,14 @@ export default function Dashboard() {
   const [autoCheckoutAlert, setAutoCheckoutAlert] = useState<{ count: number; timestamp: number } | null>(null);
   const [checkoutReminders, setCheckoutReminders] = useState<CheckoutReminder[]>([]);
   const [shownReminderIds, setShownReminderIds] = useState<Set<number>>(new Set());
-  const [idProofAlertBooking, setIdProofAlertBooking] = useState<{ booking: Booking; guest: Guest } | null>(null);
+  
+  const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
+  const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
+  const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  
   const { toast } = useToast();
   
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
@@ -127,18 +133,26 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
-  const checkInMutation = useCheckInMutation();
-  const checkOutMutation = useCheckOutMutation();
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      return apiRequest("PATCH", `/api/bookings/${id}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Success", description: "Booking status updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update booking status", variant: "destructive" });
+    },
+  });
 
-  // Handler for check-in with ID validation protocol
+  // Handler for check-in - opens dialog if ID proof missing
   const handleCheckInWithValidation = (booking: Booking) => {
-    console.log("[CHECK-IN] Validation started", { bookingId: booking.id, guestId: booking.guestId, guestsLoading, guestsCount: guests?.length });
-    
     const guest = guests?.find(g => g.id === booking.guestId);
-    console.log("[CHECK-IN] Guest found:", guest);
     
     if (!guest) {
-      console.warn("[CHECK-IN] Guest not found in list", { bookingGuestId: booking.guestId, availableGuests: guests?.map(g => g.id) });
       toast({
         title: "Guest Not Found",
         description: "Cannot check in without valid guest information",
@@ -147,17 +161,23 @@ export default function Dashboard() {
       return;
     }
 
-    // Validate guest has ID proof - show prominent dialog if missing
-    console.log("[CHECK-IN] Checking ID proof:", { hasIdProof: !!guest.idProofImage });
-    if (!guest.idProofImage) {
-      console.warn("[CHECK-IN] Guest missing ID proof - showing dialog");
-      setIdProofAlertBooking({ booking, guest });
+    // If guest has ID proof, check-in directly
+    if (guest.idProofImage) {
+      updateStatusMutation.mutate({ id: booking.id, status: "checked-in" });
       return;
     }
 
-    // Proceed with check-in
-    console.log("[CHECK-IN] All validations passed, proceeding with check-in");
-    checkInMutation.mutate(booking.id);
+    // No ID proof - open the check-in dialog to capture ID
+    setCheckinBookingId(booking.id);
+    setCheckinIdProof(null);
+    setCheckinDialogOpen(true);
+  };
+
+  // Handler for checkout - opens checkout dialog
+  const handleCheckout = (bookingId: number) => {
+    setCheckoutBookingId(bookingId);
+    setPaymentMethod("cash");
+    setCheckoutDialogOpen(true);
   };
 
   const updateOrderMutation = useMutation({
@@ -463,8 +483,7 @@ export default function Dashboard() {
                           variant="default" 
                           size="sm" 
                           className="flex-1 h-11 bg-amber-500 hover:bg-amber-600"
-                          onClick={() => checkOutMutation.mutate(booking.id)}
-                          disabled={checkOutMutation.isPending}
+                          onClick={() => handleCheckout(booking.id)}
                           data-testid={`btn-checkout-${booking.id}`}
                         >
                           <LogOut className="h-4 w-4 mr-2" />
@@ -544,7 +563,7 @@ export default function Dashboard() {
                           size="sm" 
                           className="flex-1 h-11 bg-green-500 hover:bg-green-600"
                           onClick={() => handleCheckInWithValidation(booking)}
-                          disabled={checkInMutation.isPending}
+                          disabled={updateStatusMutation.isPending}
                           data-testid={`btn-checkin-${booking.id}`}
                         >
                           <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -633,8 +652,7 @@ export default function Dashboard() {
                           variant="default" 
                           size="sm" 
                           className="flex-1 h-11 bg-amber-500 hover:bg-amber-600"
-                          onClick={() => checkOutMutation.mutate(booking.id)}
-                          disabled={checkOutMutation.isPending}
+                          onClick={() => handleCheckout(booking.id)}
                           data-testid={`btn-checkout-action-${booking.id}`}
                         >
                           <CheckCircle2 className="h-4 w-4 mr-2" />
@@ -902,8 +920,8 @@ export default function Dashboard() {
                       <Button 
                         size="sm" 
                         className="h-7 bg-green-500 hover:bg-green-600"
-                        onClick={() => checkInMutation.mutate(booking.id)}
-                        disabled={checkInMutation.isPending}
+                        onClick={() => handleCheckInWithValidation(booking)}
+                        disabled={updateStatusMutation.isPending}
                       >
                         <CheckCircle2 className="h-3 w-3" />
                       </Button>
@@ -943,8 +961,7 @@ export default function Dashboard() {
                       <Button 
                         size="sm" 
                         className="h-7 bg-amber-500 hover:bg-amber-600"
-                        onClick={() => checkOutMutation.mutate(booking.id)}
-                        disabled={checkOutMutation.isPending}
+                        onClick={() => handleCheckout(booking.id)}
                       >
                         <Check className="h-3 w-3" />
                       </Button>
@@ -1038,38 +1055,118 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ID Proof Required Alert Dialog */}
-      <AlertDialog open={!!idProofAlertBooking} onOpenChange={(open) => !open && setIdProofAlertBooking(null)}>
-        <AlertDialogContent className="max-w-sm mx-4">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="h-5 w-5" />
-              ID Proof Required
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-base">
-              <strong>{idProofAlertBooking?.guest.fullName}</strong> cannot check in without ID verification.
-              <br /><br />
-              Please capture the guest's ID proof before proceeding with check-in.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
-            <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="w-full sm:w-auto bg-primary"
-              onClick={() => {
-                if (idProofAlertBooking) {
-                  setLocation(`/guests?edit=${idProofAlertBooking.guest.id}&uploadId=true`);
-                }
-                setIdProofAlertBooking(null);
+      {/* Checkout Dialog */}
+      <Dialog open={checkoutDialogOpen} onOpenChange={setCheckoutDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Checkout - Bill Summary</DialogTitle>
+          </DialogHeader>
+          {checkoutBookingId && <CheckoutBillSummary 
+            bookingId={checkoutBookingId} 
+            paymentMethod={paymentMethod}
+            setPaymentMethod={setPaymentMethod}
+            onClose={() => setCheckoutDialogOpen(false)}
+          />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Check-in ID Verification Dialog */}
+      <Dialog open={checkinDialogOpen} onOpenChange={(open) => {
+        setCheckinDialogOpen(open);
+        if (!open) {
+          setCheckinBookingId(null);
+          setCheckinIdProof(null);
+        }
+      }}>
+        <DialogContent data-testid="dialog-checkin-verification">
+          <DialogHeader>
+            <DialogTitle>Check-In Guest</DialogTitle>
+            <DialogDescription>
+              Please upload or capture the guest's ID proof to complete check-in
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <IdVerificationUpload
+              onUploadComplete={(objectKey) => {
+                setCheckinIdProof(objectKey);
               }}
-              data-testid="btn-upload-id"
+            />
+            
+            {checkinIdProof && (
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <Upload className="h-4 w-4" />
+                ID proof uploaded successfully
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCheckinDialogOpen(false);
+                setCheckinBookingId(null);
+                setCheckinIdProof(null);
+              }}
+              data-testid="button-cancel-checkin"
             >
-              <Camera className="h-4 w-4 mr-2" />
-              Upload ID Proof
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!checkinIdProof) {
+                  toast({
+                    title: "ID Required",
+                    description: "Please upload guest ID proof before checking in",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                if (checkinBookingId) {
+                  try {
+                    const booking = bookings?.find(b => b.id === checkinBookingId);
+                    if (!booking) {
+                      toast({
+                        title: "Error",
+                        description: "Booking not found",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
+                    await apiRequest("PATCH", `/api/guests/${booking.guestId}`, {
+                      idProofImage: checkinIdProof
+                    });
+
+                    queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
+
+                    updateStatusMutation.mutate({ 
+                      id: checkinBookingId, 
+                      status: "checked-in" 
+                    });
+                    
+                    setCheckinDialogOpen(false);
+                    setCheckinBookingId(null);
+                    setCheckinIdProof(null);
+                  } catch (error: any) {
+                    toast({
+                      title: "Error",
+                      description: error.message || "Failed to update guest information",
+                      variant: "destructive",
+                    });
+                  }
+                }
+              }}
+              disabled={!checkinIdProof}
+              data-testid="button-confirm-checkin"
+            >
+              Complete Check-In
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
