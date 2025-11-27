@@ -117,7 +117,7 @@ export default function Rooms() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: number; data: InsertRoom }) => {
-      return await apiRequest(`/api/rooms/${id}`, "PUT", data);
+      return await apiRequest(`/api/rooms/${id}`, "PATCH", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
