@@ -26,7 +26,11 @@ import {
   ChevronDown,
   ChevronUp,
   Link2,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Wrench,
+  CheckCircle2,
+  MoreVertical
 } from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval } from "date-fns";
 import {
@@ -97,6 +101,7 @@ export default function CalendarView() {
   const [checkInDate, setCheckInDate] = useState(format(today, "yyyy-MM-dd"));
   const [checkOutDate, setCheckOutDate] = useState(format(addDays(today, 1), "yyyy-MM-dd"));
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
+  const [activeRoomMenu, setActiveRoomMenu] = useState<number | null>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   
@@ -142,6 +147,17 @@ export default function CalendarView() {
       setCheckInDate(format(today, "yyyy-MM-dd"));
       setCheckOutDate(format(addDays(today, 1), "yyyy-MM-dd"));
       setSelectedRoomId("");
+    },
+  });
+
+  const updateRoomStatusMutation = useMutation({
+    mutationFn: async ({ roomId, status }: { roomId: number; status: string }) => {
+      return apiRequest("PATCH", `/api/rooms/${roomId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      setActiveRoomMenu(null);
     },
   });
 
