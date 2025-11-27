@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -55,6 +57,8 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
   const [seenPaymentIds, setSeenPaymentIds] = useState<Set<number>>(new Set());
+  const [autoCheckoutAlert, setAutoCheckoutAlert] = useState<{ count: number; timestamp: number } | null>(null);
+  const { toast } = useToast();
   
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
@@ -93,6 +97,12 @@ export default function Dashboard() {
           const data = await response.json();
           if (data.processedCount > 0) {
             console.log(`[Dashboard] Auto-checked out ${data.processedCount} overdue bookings`);
+            setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
+            toast({
+              title: "Auto-Checkout Complete",
+              description: `${data.processedCount} overdue booking(s) checked out automatically. Guest notifications sent via WhatsApp.`,
+              duration: 8000,
+            });
           }
         }
       } catch (error) {
