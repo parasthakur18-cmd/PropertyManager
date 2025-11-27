@@ -1945,6 +1945,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Auto-checkout bookings that have passed checkout date
+  app.post("/api/bookings/auto-checkout", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const allBookings = await storage.getAllBookings();
+      const overdue = allBookings.filter(b => 
+        (b.status === "checked-in") && 
+        new Date(b.checkOutDate) < now
+      );
+
+      const checkedOutCount = overdue.length;
+      let successCount = 0;
+      
+      for (const booking of overdue) {
+        try {
+          const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+          const checkInDate = new Date(booking.checkInDate);
+          const checkOutDate = new Date(booking.checkOutDate);
+          const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+          const nights = Math.max(1, calculatedNights);
+          
+          let roomCharges = 0;
+          if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+            for (const roomId of booking.roomIds) {
+              const groupRoom = await storage.getRoom(roomId);
+              if (groupRoom) {
+                const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(groupRoom.pricePerNight);
+                roomCharges += pricePerNight * nights;
+              }
+            }
+          } else {
+            const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+            roomCharges = pricePerNight * nights;
+          }
+
+          const allOrders = await storage.getAllOrders();
+          const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
+          const foodCharges = bookingOrders.filter(o => o.status !== "rejected").reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
+          
+          const allExtras = await storage.getAllExtraServices();
+          const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
+          const extraCharges = bookingExtras.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0);
+
+          const subtotal = roomCharges + foodCharges + extraCharges;
+          const gstAmount = (roomCharges * 5) / 100;
+          const serviceChargeAmount = (roomCharges * 10) / 100;
+          const totalAmount = subtotal + gstAmount + serviceChargeAmount;
+          const advancePaid = parseFloat(booking.advanceAmount || "0");
+          const balanceAmount = totalAmount - advancePaid;
+
+          const billData = {
+            bookingId: booking.id,
+            guestId: booking.guestId,
+            roomCharges: roomCharges.toFixed(2),
+            foodCharges: foodCharges.toFixed(2),
+            extraCharges: extraCharges.toFixed(2),
+            subtotal: subtotal.toFixed(2),
+            gstRate: "5",
+            gstAmount: gstAmount.toFixed(2),
+            serviceChargeRate: "10",
+            serviceChargeAmount: serviceChargeAmount.toFixed(2),
+            includeGst: true,
+            includeServiceCharge: true,
+            discountType: null,
+            discountValue: null,
+            discountAmount: "0",
+            totalAmount: totalAmount.toFixed(2),
+            advancePaid: advancePaid.toFixed(2),
+            balanceAmount: balanceAmount.toFixed(2),
+            paymentStatus: "pending",
+            paymentMethod: null,
+            paidAt: null,
+            dueDate: null,
+            pendingReason: "auto_checkout",
+          };
+
+          await storage.createOrUpdateBill(billData);
+          await storage.updateBookingStatus(booking.id, "checked-out");
+
+          try {
+            const guest = await storage.getGuest(booking.guestId);
+            if (guest && guest.phone) {
+              let propertyName = "Your Property";
+              let roomNumbers = "TBD";
+              
+              if (booking.roomId) {
+                const room2 = await storage.getRoom(booking.roomId);
+                if (room2) {
+                  const property = await storage.getProperty(room2.propertyId);
+                  propertyName = property?.name || propertyName;
+                  roomNumbers = room2.roomNumber;
+                }
+              } else if (booking.roomIds && booking.roomIds.length > 0) {
+                const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+                if (rooms.length > 0 && rooms[0]) {
+                  const property = await storage.getProperty(rooms[0].propertyId);
+                  propertyName = property?.name || propertyName;
+                  roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+                }
+              }
+              
+              const guestName = guest.fullName || "Guest";
+              const totalAmountFormatted = `₹${totalAmount.toFixed(2)}`;
+              const checkoutDate = format(new Date(), "dd MMM yyyy");
+              
+              await sendCheckoutNotification(
+                guest.phone,
+                guestName,
+                propertyName,
+                totalAmountFormatted,
+                checkoutDate,
+                roomNumbers
+              );
+              
+              console.log(`[AUTO-CHECKOUT] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+            }
+          } catch (whatsappError: any) {
+            console.warn(`[AUTO-CHECKOUT] Booking #${booking.id} - WhatsApp failed (non-critical):`, whatsappError.message);
+          }
+
+          successCount++;
+        } catch (bookingError: any) {
+          console.error(`[AUTO-CHECKOUT] Error processing booking #${booking.id}:`, bookingError.message);
+        }
+      }
+
+      console.log(`[AUTO-CHECKOUT] Processed ${successCount}/${checkedOutCount} overdue bookings`);
+      res.json({ success: true, processedCount: successCount, totalOverdue: checkedOutCount });
+    } catch (error: any) {
+      console.error("Auto-checkout error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Send pre-bill via WhatsApp for customer verification
   app.post("/api/send-prebill", isAuthenticated, async (req, res) => {
     try {

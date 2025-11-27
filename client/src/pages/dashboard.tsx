@@ -84,8 +84,22 @@ export default function Dashboard() {
     queryKey: ["/api/enquiries"],
   });
 
-  // Fetch recent payments every 5 seconds
+  // Auto-checkout overdue bookings and fetch recent payments
   useEffect(() => {
+    const processAutoCheckouts = async () => {
+      try {
+        const response = await fetch("/api/bookings/auto-checkout", { method: "POST" });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.processedCount > 0) {
+            console.log(`[Dashboard] Auto-checked out ${data.processedCount} overdue bookings`);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to process auto-checkouts:", error);
+      }
+    };
+
     const fetchRecentPayments = async () => {
       try {
         const response = await fetch("/api/recent-payments");
@@ -98,6 +112,7 @@ export default function Dashboard() {
       }
     };
 
+    processAutoCheckouts();
     fetchRecentPayments();
     const interval = setInterval(fetchRecentPayments, 5000);
     return () => clearInterval(interval);
