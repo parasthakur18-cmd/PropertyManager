@@ -967,13 +967,9 @@ export default function ActiveBookings() {
           })()}
         </DialogContent>
       </Dialog>
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="discount-type">Discount Type</Label>
+    </div>
+  );
+}
                 <Select value={discountType} onValueChange={(value) => {
                   setDiscountType(value);
                   if (value === "none") setDiscountValue("");
