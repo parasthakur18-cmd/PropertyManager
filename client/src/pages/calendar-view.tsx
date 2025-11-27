@@ -131,7 +131,7 @@ export default function CalendarView() {
       const room = rooms.find(r => r.id === roomId);
       if (!room) throw new Error("Room not found");
       
-      return apiRequest("POST", "/api/bookings", {
+      return apiRequest("/api/bookings", "POST", {
         guestName: guestName.trim(),
         checkInDate: checkInDate,
         checkOutDate: checkOutDate,
@@ -152,7 +152,7 @@ export default function CalendarView() {
 
   const updateRoomStatusMutation = useMutation({
     mutationFn: async ({ roomId, status }: { roomId: number; status: string }) => {
-      return apiRequest("PATCH", `/api/rooms/${roomId}/status`, { status });
+      return apiRequest(`/api/rooms/${roomId}/status`, "PATCH", { status });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
