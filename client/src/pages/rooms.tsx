@@ -61,6 +61,7 @@ export default function Rooms() {
 
   const editForm = useForm<InsertRoom>({
     resolver: zodResolver(insertRoomSchema),
+    mode: "onChange",
     defaultValues: {
       propertyId: 0,
       roomNumber: "",
@@ -70,6 +71,7 @@ export default function Rooms() {
       pricePerNight: "0",
       maxOccupancy: 2,
       amenities: [],
+      totalBeds: undefined,
     },
   });
 
@@ -197,7 +199,9 @@ export default function Rooms() {
     if (editingRoom) {
       const formattedData = {
         ...data,
-        pricePerNight: parseFloat(data.pricePerNight as any).toString(),
+        pricePerNight: String(parseFloat(data.pricePerNight as any)),
+        roomCategory: data.roomCategory,
+        totalBeds: data.roomCategory === "dormitory" ? data.totalBeds : undefined,
       };
       updateMutation.mutate({ id: editingRoom.id, data: formattedData });
     }
@@ -205,17 +209,19 @@ export default function Rooms() {
 
   const handleEditClick = (room: Room) => {
     setEditingRoom(room);
-    editForm.reset({
-      propertyId: room.propertyId,
-      roomNumber: room.roomNumber,
-      roomType: room.roomType || "",
-      roomCategory: room.roomCategory || "standard",
-      status: room.status,
-      pricePerNight: room.pricePerNight,
-      maxOccupancy: room.maxOccupancy,
-      totalBeds: room.totalBeds || undefined,
-      amenities: room.amenities || [],
-    });
+    setTimeout(() => {
+      editForm.reset({
+        propertyId: room.propertyId,
+        roomNumber: room.roomNumber,
+        roomType: room.roomType || "",
+        roomCategory: (room.roomCategory as any) || "standard",
+        status: room.status,
+        pricePerNight: String(room.pricePerNight),
+        maxOccupancy: room.maxOccupancy,
+        totalBeds: room.totalBeds || undefined,
+        amenities: room.amenities || [],
+      }, { keepValues: false });
+    }, 0);
     setIsEditDialogOpen(true);
   };
 
