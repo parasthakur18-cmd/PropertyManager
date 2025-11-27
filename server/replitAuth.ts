@@ -156,9 +156,37 @@ export async function setupAuth(app: Express) {
       ? `replitauth:localhost`
       : `replitauth:${req.hostname}`;
     passport.authenticate(strategyName, {
-      successReturnToOrRedirect: "/",
+      successRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
+  });
+
+  // Auto-redirect after authentication based on role
+  app.get("/", async (req, res, next) => {
+    // If user just authenticated via Replit Auth, redirect to appropriate dashboard
+    if (req.isAuthenticated && req.user) {
+      const user = req.user as any;
+      const userId = user.claims?.sub;
+      
+      if (userId) {
+        try {
+          const dbUser = await storage.getUser(userId);
+          if (dbUser?.role === 'super-admin') {
+            return res.redirect("/super-admin");
+          }
+        } catch (err) {
+          console.error("Error checking user role:", err);
+        }
+      }
+    }
+    
+    // If user authenticated via email/password (session-based), also redirect to super-admin
+    const emailAuthUserId = (req.session as any)?.userId;
+    if (emailAuthUserId) {
+      return res.redirect("/super-admin");
+    }
+    
+    next();
   });
 
   app.get("/api/logout", (req, res) => {
