@@ -104,27 +104,24 @@ export default function ActiveBookings() {
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
-  const [preBillStatus, setPreBillStatus] = useState<string>("pending"); // pending, approved, rejected
-  const [skipPreBill, setSkipPreBill] = useState(false); // Allow staff to skip pre-bill and checkout directly
+  const [preBillStatus, setPreBillStatus] = useState<string>("pending");
+  const [skipPreBill, setSkipPreBill] = useState(false);
   const [paymentLinkSent, setPaymentLinkSent] = useState(false);
   const [upiPaymentLink, setUpiPaymentLink] = useState<string | null>(null);
   const [showUpiLink, setShowUpiLink] = useState(false);
   const [autoCompletingCheckout, setAutoCompletingCheckout] = useState(false);
 
-  // Fetch pre-bill status when checkout dialog opens
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id),
   });
 
-  // Poll bill status when payment link is sent - to detect when payment is completed
   const { data: currentBill } = useQuery<{ paymentStatus: string; id: number } | null>({
     queryKey: ["/api/bills/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id && paymentLinkSent && !autoCompletingCheckout),
-    refetchInterval: 5000, // Poll every 5 seconds when waiting for payment
+    refetchInterval: 5000,
   });
 
-  // Update pre-bill status when it changes
   useEffect(() => {
     if (currentPreBill) {
       setPreBillStatus(currentPreBill.status);
@@ -134,7 +131,6 @@ export default function ActiveBookings() {
     }
   }, [currentPreBill]);
 
-  // Auto-complete checkout when payment is confirmed via webhook
   useEffect(() => {
     if (currentBill && currentBill.paymentStatus === "paid" && paymentLinkSent && !autoCompletingCheckout && checkoutDialog.booking) {
       setAutoCompletingCheckout(true);
@@ -143,7 +139,6 @@ export default function ActiveBookings() {
         description: "Payment received! Completing checkout automatically...",
       });
       
-      // Auto-trigger checkout after a short delay
       setTimeout(() => {
         checkoutMutation.mutate({
           bookingId: checkoutDialog.booking!.id,
@@ -160,7 +155,6 @@ export default function ActiveBookings() {
     }
   }, [currentBill, paymentLinkSent, autoCompletingCheckout, checkoutDialog.booking]);
 
-  // Reset checkout states when dialog closes
   useEffect(() => {
     if (!checkoutDialog.open) {
       setPreBillSent(false);
@@ -176,22 +170,19 @@ export default function ActiveBookings() {
 
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchInterval: 30000,
   });
 
-  // Query for all unmerged café orders
   const { data: cafeOrders, isLoading: isLoadingCafeOrders, refetch: refetchCafeOrders } = useQuery<any[]>({
     queryKey: ["/api/orders/unmerged-cafe"],
     enabled: mergeDialogOpen,
     refetchOnWindowFocus: false,
   });
 
-  // Filter bookings based on search query
   const filteredBookings = activeBookings?.filter((booking) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     
-    // For group bookings, search across all rooms
     const roomNumberMatch = booking.isGroupBooking && booking.rooms
       ? booking.rooms.some(room => room.roomNumber.toLowerCase().includes(query))
       : booking.room?.roomNumber.toLowerCase().includes(query);
@@ -217,7 +208,6 @@ export default function ActiveBookings() {
         title: "Pre-Bill Sent Successfully ✓",
         description: `Bill sent to ${guest?.fullName || 'Guest'} via WhatsApp on ${phone}. Waiting for customer approval...`,
       });
-      // Refetch pre-bill status
       queryClient.invalidateQueries({ queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id] });
     },
     onError: (error: Error) => {
@@ -271,7 +261,6 @@ export default function ActiveBookings() {
     },
   });
 
-  // Generate UPI payment link when UPI is selected
   const generateUpiLink = async () => {
     if (paymentMethod === "upi" && checkoutDialog.booking) {
       const breakdown = calculateTotalWithCharges(
@@ -342,11 +331,9 @@ export default function ActiveBookings() {
       cashAmount?: number;
       onlineAmount?: number;
     }) => {
-      // If UPI is selected, generate payment link instead of immediate checkout
       if (paymentStatus === "paid" && paymentMethod === "upi") {
         const link = await generateUpiLink();
         if (!link) throw new Error("Failed to generate UPI link");
-        // Return special response to indicate UPI link generation
         return { upiLink: link };
       }
       
@@ -382,8 +369,8 @@ export default function ActiveBookings() {
       setDiscountType("none");
       setDiscountValue("");
       setDiscountAppliesTo("total");
-      setIncludeGst(false); // Reset to false (0% default)
-      setIncludeServiceCharge(false); // Reset to false (0% default)
+      setIncludeGst(false);
+      setIncludeServiceCharge(false);
       setManualCharges([{ name: "", amount: "" }]);
       setPreBillSent(false);
     },
@@ -401,12 +388,10 @@ export default function ActiveBookings() {
       return await apiRequest("/api/orders/merge-to-booking", "PATCH", { orderIds, bookingId });
     },
     onSuccess: async () => {
-      // Force refetch to get fresh data
       await queryClient.refetchQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders/unmerged-cafe"] });
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       
-      // Update the checkout dialog with fresh booking data
       const updatedBookings = queryClient.getQueryData<ActiveBooking[]>(["/api/bookings/active"]);
       if (updatedBookings && checkoutDialog.booking) {
         const refreshedBooking = updatedBookings.find(b => b.id === checkoutDialog.booking!.id);
@@ -480,7 +465,6 @@ export default function ActiveBookings() {
   const handleCheckout = () => {
     if (!checkoutDialog.booking) return;
     
-    // Allow checkout if: pre-bill sent, OR skip pre-bill, OR payment link sent
     if (!preBillSent && !skipPreBill && !paymentLinkSent) {
       toast({
         title: "Pre-Bill or Payment Link Required",
@@ -490,7 +474,6 @@ export default function ActiveBookings() {
       return;
     }
     
-    // Check for pending food orders (only block for truly pending/preparing, not ready/completed)
     const pendingOrders = checkoutDialog.booking.orders.filter(order => 
       order.status === "pending" || order.status === "preparing"
     );
@@ -504,14 +487,12 @@ export default function ActiveBookings() {
       return;
     }
     
-    // Calculate cash and online amounts for split payment tracking
     const breakdown = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge, manualCharges);
     const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
     const finalTotal = breakdown.grandTotal - discountAmt;
     const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
     const balanceDue = finalTotal - advancePaid;
     
-    // Parse cash amount from input or state
     const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
     const parsedCash = cashInput?.value ? parseFloat(cashInput.value) : (cashAmount ? parseFloat(cashAmount) : 0);
     const finalCashAmount = Math.max(0, parsedCash);
@@ -536,7 +517,6 @@ export default function ActiveBookings() {
     });
   };
 
-  // Calculate discount amount in real-time
   const calculateDiscount = (totalAmount: number, type: string, value: string) => {
     if (type === "none" || !value) return 0;
     const discountVal = parseFloat(value);
@@ -549,9 +529,7 @@ export default function ActiveBookings() {
     }
   };
 
-  // Calculate total amount with optional GST/Service Charge and manual charges
   const calculateTotalWithCharges = (booking: ActiveBooking, includeGst: boolean, includeServiceCharge: boolean, charges: Array<{ name: string; amount: string }>) => {
-    // GST and Service Charge apply ONLY to ROOM charges, NOT to food or manual charges
     const roomCharges = parseFloat(booking.charges.roomCharges);
     const foodCharges = parseFloat(booking.charges.foodCharges);
     const manualAmount = charges.reduce((sum, charge) => {
@@ -559,11 +537,9 @@ export default function ActiveBookings() {
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
-    // Calculate GST and Service Charge amounts (on ROOM charges only)
     const gstAmount = includeGst ? roomCharges * 0.05 : 0;
     const serviceChargeAmount = includeServiceCharge ? roomCharges * 0.10 : 0;
     
-    // Calculate subtotal and total
     const subtotal = roomCharges + foodCharges + manualAmount;
     const grandTotal = subtotal + gstAmount + serviceChargeAmount;
     
@@ -578,214 +554,141 @@ export default function ActiveBookings() {
     };
   };
   
-  // Add new charge entry
   const addManualCharge = () => {
     setManualCharges([...manualCharges, { name: "", amount: "" }]);
   };
   
-  // Remove charge entry
   const removeManualCharge = (index: number) => {
-    if (manualCharges.length === 1) return; // Keep at least one entry
+    if (manualCharges.length === 1) return;
     setManualCharges(manualCharges.filter((_, i) => i !== index));
   };
   
-  // Update charge entry
-  const updateManualCharge = (index: number, field: "name" | "amount", value: string) => {
+  const updateManualCharge = (index: number, field: string, value: string) => {
     const updated = [...manualCharges];
-    updated[index][field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setManualCharges(updated);
   };
 
-  if (isLoading) {
-    return (
-      <div className="p-6 md:p-8 flex items-center justify-center min-h-[50vh]">
-        <div className="text-muted-foreground">Loading active bookings...</div>
-      </div>
-    );
-  }
-
-  if (!activeBookings || activeBookings.length === 0) {
-    return (
-      <div className="p-6 md:p-8 flex flex-col items-center justify-center min-h-[50vh]">
-        <Hotel className="h-16 w-16 text-muted-foreground mb-4" />
-        <h2 className="text-2xl font-semibold mb-2">No Active Bookings</h2>
-        <p className="text-muted-foreground text-center">
-          There are no guests currently checked in. Active bookings will appear here.
-        </p>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex items-center justify-center p-8">Loading active bookings...</div>;
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="mb-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold" data-testid="heading-active-bookings">
-              Active Bookings
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {activeBookings?.length || 0} {activeBookings?.length === 1 ? "guest" : "guests"} currently checked in
-            </p>
-          </div>
-        </div>
-        <div className="mt-4">
-          <Input
-            placeholder="Search by guest name, room number, or booking ID..."
+    <div className="space-y-6 p-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <Hotel className="h-8 w-8" />
+          Active Bookings
+        </h1>
+        <div className="relative w-64">
+          <Search className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search by guest name, room, or phone..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="max-w-md"
+            className="w-full pl-8 pr-3 py-2 rounded-md border border-input bg-background text-sm"
             data-testid="input-search-active-bookings"
           />
         </div>
       </div>
 
-      <div className="pb-4">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {filteredBookings && filteredBookings.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground">
+            No active bookings at the moment
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
           {filteredBookings?.map((booking) => (
-            <Card key={booking.id} className="flex flex-col" data-testid={`card-active-booking-${booking.id}`}>
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg truncate" data-testid={`text-guest-name-${booking.id}`}>
-                      {booking.guest.fullName}
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-1 mt-1">
-                      <Phone className="h-3 w-3" />
-                      <span className="truncate">{booking.guest.phone}</span>
-                    </CardDescription>
-                  </div>
-                  <div className="flex flex-col gap-1 items-end">
-                    {booking.isGroupBooking ? (
-                      <>
-                        <Badge variant="secondary" className="bg-blue-500 text-white text-xs">
-                          Group Booking
-                        </Badge>
-                        <Badge variant="default" data-testid={`badge-room-${booking.id}`} className="text-xs">
-                          {booking.rooms && booking.rooms.length > 0
-                            ? booking.rooms.map(r => r.roomNumber).join(", ")
-                            : "Multiple Rooms"}
-                        </Badge>
-                      </>
-                    ) : (
-                      <Badge variant="default" data-testid={`badge-room-${booking.id}`}>
-                        Room {booking.room?.roomNumber || "TBA"}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4 flex-1 flex flex-col">
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Hotel className="h-4 w-4" />
-                    <span>{booking.property.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    <span>
-                      {booking.nightsStayed} {booking.nightsStayed === 1 ? "night" : "nights"} stayed
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <User className="h-4 w-4" />
-                    <span>
-                      {booking.numberOfGuests} {booking.numberOfGuests === 1 ? "guest" : "guests"}
-                    </span>
-                  </div>
-                  {booking.guest.idProofImage && (
+            <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <User className="h-4 w-4" />
+                      <CardTitle>{booking.guest.fullName}</CardTitle>
+                      {booking.isGroupBooking && (
+                        <Badge variant="secondary" className="bg-blue-500 text-white text-xs">
+                          Group
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {booking.guest.phone}
+                      </span>
+                      {booking.guest.email && <span>{booking.guest.email}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right space-y-1">
+                    {booking.guest.idProofImage && (
                       <a
                         href={booking.guest.idProofImage}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline text-xs flex items-center gap-1"
-                        data-testid={`link-view-id-${booking.id}`}
+                        className="text-primary hover:underline text-xs flex items-center justify-end gap-1"
+                        data-testid="link-view-id-proof"
                       >
-                        <Eye className="h-3 w-3" />
+                        <FileText className="h-3 w-3" />
                         View ID Proof
                       </a>
+                    )}
+                    <Badge variant="outline" className="block text-right">
+                      {booking.status}
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Room</span>
+                    <div className="font-semibold">
+                      {booking.isGroupBooking && booking.rooms
+                        ? booking.rooms.map(r => r.roomNumber).join(", ")
+                        : booking.room?.roomNumber || "TBA"}
                     </div>
-                  )}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Check-in</span>
+                    <div className="font-semibold">{format(new Date(booking.checkInDate), "MMM dd")}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Nights</span>
+                    <div className="font-semibold">{booking.nightsStayed}</div>
+                  </div>
                 </div>
 
-                <div className="border-t pt-3 space-y-2">
-                  <div className="flex justify-between text-sm">
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t text-sm">
+                  <div>
                     <span className="text-muted-foreground">Room Charges</span>
-                    <span className="font-medium">₹{booking.charges.roomCharges}</span>
+                    <div className="font-semibold">₹{booking.charges.roomCharges}</div>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Food Charges</span>
-                    <span className="font-medium">₹{booking.charges.foodCharges}</span>
+                  <div>
+                    <span className="text-muted-foreground">Food Orders</span>
+                    <div className="font-semibold">₹{booking.charges.foodCharges}</div>
                   </div>
-                  {parseFloat(booking.charges.extraCharges) > 0 && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Extra Services</span>
-                        <span className="font-medium">₹{booking.charges.extraCharges}</span>
-                      </div>
-                      {booking.extraServices && booking.extraServices.length > 0 && (
-                        <div className="ml-4 space-y-1">
-                          {booking.extraServices.map((extra) => (
-                            <div key={extra.id} className="flex justify-between text-xs text-muted-foreground">
-                              <span>• {extra.serviceName}</span>
-                              <span className="font-mono">₹{extra.amount}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                  <div className="flex justify-between text-sm pt-2 border-t">
-                    <span className="text-muted-foreground">Total Amount</span>
-                    <span className="font-bold text-lg" data-testid={`text-total-${booking.id}`}>
-                      ₹{booking.charges.totalAmount}
-                    </span>
+                  <div>
+                    <span className="text-muted-foreground">Extra Services</span>
+                    <div className="font-semibold">₹{booking.charges.extraCharges}</div>
                   </div>
-                  {parseFloat(booking.charges.advancePaid) > 0 && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Advance Paid</span>
-                        <span className="text-green-600">-₹{booking.charges.advancePaid}</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-semibold">
-                        <span>Balance Due</span>
-                        <span className="text-destructive">₹{booking.charges.balanceAmount}</span>
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <span className="text-muted-foreground">Total Bill</span>
+                    <div className="font-bold text-lg">₹{parseFloat(booking.charges.subtotal).toFixed(2)}</div>
+                  </div>
                 </div>
 
-                {booking.orders.length > 0 && (
-                  <div className="border-t pt-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <UtensilsCrossed className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">
-                        Recent Orders ({booking.orders.length})
-                      </span>
-                    </div>
-                    <div className="space-y-2 max-h-32 overflow-auto">
-                      {booking.orders.slice(0, 3).map((order) => (
-                        <div
-                          key={`booking-${booking.id}-order-${order.id}`}
-                          className="text-xs bg-muted/50 rounded p-2"
-                          data-testid={`order-${order.id}`}
-                        >
-                          <div className="flex justify-between items-start gap-2">
-                            <div className="flex-1 min-w-0">
-                              <Badge variant="secondary" className="text-xs mb-1">
-                                {order.status}
-                              </Badge>
-                              <div className="text-muted-foreground truncate">
-                                {Array.isArray(order.items)
-                                  ? order.items.map((item: any) => item.name).join(", ")
-                                  : "Order items"}
-                              </div>
-                            </div>
-                            <span className="font-medium whitespace-nowrap">₹{order.totalAmount}</span>
-                          </div>
+                {booking.orders && booking.orders.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="text-sm font-semibold mb-2">Food Orders</div>
+                    <div className="space-y-1">
+                      {booking.orders.map((order) => (
+                        <div key={order.id} className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Order #{order.id}</span>
+                          <Badge variant="secondary" className="text-xs">{order.status}</Badge>
+                          <span className="font-medium whitespace-nowrap">₹{order.totalAmount}</span>
                         </div>
                       ))}
                     </div>
@@ -807,7 +710,7 @@ export default function ActiveBookings() {
             </Card>
           ))}
         </div>
-      </div>
+      )}
 
       <Dialog open={checkoutDialog.open} onOpenChange={(open) => setCheckoutDialog({ open, booking: null })}>
         <DialogContent className="max-w-md" data-testid="dialog-checkout">
@@ -965,532 +868,6 @@ export default function ActiveBookings() {
               </div>
             );
           })()}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-                <Select value={discountType} onValueChange={(value) => {
-                  setDiscountType(value);
-                  if (value === "none") setDiscountValue("");
-                }}>
-                  <SelectTrigger id="discount-type" data-testid="select-discount-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Discount</SelectItem>
-                    <SelectItem value="percentage">Percentage (%)</SelectItem>
-                    <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {discountType !== "none" && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="discount-applies-to">Apply Discount To</Label>
-                    <Select value={discountAppliesTo} onValueChange={setDiscountAppliesTo}>
-                      <SelectTrigger id="discount-applies-to" data-testid="select-discount-applies-to">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="total">Total Bill</SelectItem>
-                        <SelectItem value="room">Room Charges Only</SelectItem>
-                        <SelectItem value="food">Food Charges Only</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="discount-value">
-                      Discount {discountType === "percentage" ? "Percentage" : "Amount"}
-                    </Label>
-                    <Input
-                      id="discount-value"
-                      type="number"
-                      step={discountType === "percentage" ? "0.01" : "1"}
-                      min="0"
-                      max={discountType === "percentage" ? "100" : undefined}
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(e.target.value)}
-                      placeholder={discountType === "percentage" ? "Enter percentage (e.g., 10)" : "Enter amount (e.g., 500)"}
-                      data-testid="input-discount-value"
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-semibold text-sm">Additional Charges</h3>
-                  <div className="flex gap-2">
-                    <Sheet open={mergeDialogOpen} onOpenChange={(open) => {
-                      setMergeDialogOpen(open);
-                      if (open) {
-                        refetchCafeOrders();
-                      }
-                    }}>
-                      <SheetTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          data-testid="button-merge-cafe-bill"
-                        >
-                          <Coffee className="h-4 w-4 mr-1" />
-                          Merge Café Bill
-                        </Button>
-                      </SheetTrigger>
-                      <SheetContent className="overflow-y-auto">
-                        <SheetHeader>
-                          <SheetTitle>Merge Café Orders</SheetTitle>
-                          <SheetDescription>
-                            Browse all unmerged café orders and add them to this bill
-                          </SheetDescription>
-                        </SheetHeader>
-                        <div className="mt-6 space-y-4">
-                          {isLoadingCafeOrders && (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              Loading café orders...
-                            </p>
-                          )}
-
-                          {cafeOrders && cafeOrders.length > 0 && (
-                            <div className="space-y-3">
-                              <p className="text-sm font-medium">{cafeOrders.length} unmerged café order(s)</p>
-                              {cafeOrders.map((order: any) => (
-                                <Card
-                                  key={order.id}
-                                  className="p-4"
-                                  data-testid={`card-cafe-order-${order.id}`}
-                                >
-                                  <div className="space-y-3">
-                                    <div className="flex justify-between items-start gap-3">
-                                      <div className="flex-1">
-                                        <p className="font-medium">{order.customerName || "Walk-in Customer"}</p>
-                                        {order.customerPhone && (
-                                          <p className="text-sm text-muted-foreground">{order.customerPhone}</p>
-                                        )}
-                                        <div className="flex gap-2 mt-1">
-                                          <Badge variant={order.status === "delivered" ? "default" : order.status === "pending" ? "secondary" : "outline"}>
-                                            {order.status}
-                                          </Badge>
-                                          <Badge variant="secondary">₹{order.totalAmount}</Badge>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {Array.isArray(order.items) && (
-                                      <div className="text-sm text-muted-foreground">
-                                        {order.items.map((item: any) => `${item.quantity}x ${item.name}`).join(", ")}
-                                      </div>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      className="w-full"
-                                      onClick={() => handleMergeSingleOrder(order.id)}
-                                      disabled={mergeCafeOrdersMutation.isPending}
-                                      data-testid={`button-merge-order-${order.id}`}
-                                    >
-                                      {mergeCafeOrdersMutation.isPending ? "Merging..." : "Merge to Bill"}
-                                    </Button>
-                                  </div>
-                                </Card>
-                              ))}
-                            </div>
-                          )}
-
-                          {cafeOrders && cafeOrders.length === 0 && !isLoadingCafeOrders && (
-                            <p className="text-sm text-muted-foreground text-center py-4">
-                              No unmerged café orders found
-                            </p>
-                          )}
-                        </div>
-                      </SheetContent>
-                    </Sheet>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={addManualCharge}
-                      data-testid="button-add-charge"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Charge
-                    </Button>
-                  </div>
-                </div>
-                
-                {checkoutDialog.booking && (() => {
-                  const pendingOrders = checkoutDialog.booking.orders.filter(order => 
-                    order.status === "pending" || order.status === "preparing"
-                  );
-                  
-                  if (pendingOrders.length > 0) {
-                    return (
-                      <Alert variant="destructive" data-testid="alert-pending-orders">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription>
-                          {pendingOrders.length} food order(s) are still being prepared. Please complete or cancel them before checkout.
-                        </AlertDescription>
-                      </Alert>
-                    );
-                  }
-                  return null;
-                })()}
-                
-                <div className="space-y-3">
-                  {manualCharges.map((charge, index) => (
-                    <div key={index} className="flex gap-2">
-                      <div className="flex-1 space-y-2">
-                        <Input
-                          type="text"
-                          value={charge.name}
-                          onChange={(e) => updateManualCharge(index, "name", e.target.value)}
-                          placeholder="e.g., Damages, Late checkout"
-                          data-testid={`input-charge-name-${index}`}
-                        />
-                      </div>
-                      <div className="w-32 space-y-2">
-                        <Input
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={charge.amount}
-                          onChange={(e) => updateManualCharge(index, "amount", e.target.value)}
-                          placeholder="Amount"
-                          data-testid={`input-charge-amount-${index}`}
-                        />
-                      </div>
-                      {manualCharges.length > 1 && (
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="outline"
-                          onClick={() => removeManualCharge(index)}
-                          data-testid={`button-remove-charge-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="include-gst" 
-                    checked={includeGst}
-                    onCheckedChange={(checked) => setIncludeGst(checked as boolean)}
-                    data-testid="checkbox-include-gst"
-                  />
-                  <Label htmlFor="include-gst" className="cursor-pointer font-normal">
-                    Include GST (5%)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="include-service-charge" 
-                    checked={includeServiceCharge}
-                    onCheckedChange={(checked) => setIncludeServiceCharge(checked as boolean)}
-                    data-testid="checkbox-include-service-charge"
-                  />
-                  <Label htmlFor="include-service-charge" className="cursor-pointer font-normal">
-                    Include Service Charge (10%)
-                  </Label>
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-4 border-t">
-                <div className="space-y-2">
-                  <Label htmlFor="payment-status">Payment Status *</Label>
-                  <Select value={paymentStatus} onValueChange={setPaymentStatus}>
-                    <SelectTrigger id="payment-status" data-testid="select-payment-status">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="paid">Paid (Payment Collected)</SelectItem>
-                      <SelectItem value="pending">Pending (To be collected later)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {paymentStatus === "paid" 
-                      ? "Payment has been collected from the guest" 
-                      : "Payment will be collected later (useful for travel agents with credit terms)"}
-                  </p>
-                </div>
-
-                {paymentStatus === "paid" && checkoutDialog.booking && (() => {
-                  const breakdown = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge, manualCharges);
-                  const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
-                  const totalBill = breakdown.grandTotal - discountAmt;
-                  const cashPaid = cashAmount ? parseFloat(cashAmount) : 0;
-                  const remaining = Math.max(0, totalBill - cashPaid);
-                  
-                  return (
-                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
-                      <div className="space-y-2">
-                        <Label htmlFor="cash-amount">Cash Received</Label>
-                        <Input
-                          id="cash-amount"
-                          type="number"
-                          placeholder="0"
-                          value={cashAmount}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            console.log(`[Cash Input] User typed: "${val}"`);
-                            setCashAmount(val);
-                          }}
-                          data-testid="input-cash-amount"
-                          min="0"
-                          step="0.01"
-                        />
-                      </div>
-                      
-                      <div className="space-y-2 pt-2 border-t">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Bill Total:</span>
-                          <span className="font-medium">₹{totalBill.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Cash Paid:</span>
-                          <span className="font-medium">₹{cashPaid.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-semibold pt-1 border-t">
-                          <span>Remaining Balance:</span>
-                          <span className={remaining > 0 ? "text-orange-600" : "text-green-600"}>
-                            ₹{remaining.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {remaining > 0 && (
-                        <div className="flex gap-2 pt-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => {
-                              if (!checkoutDialog.booking) return;
-                              const booking = checkoutDialog.booking;
-                              
-                              // BULLETPROOF: Read ONLY from DOM, never from state
-                              const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
-                              const rawCashValue = cashInput?.value?.trim() || "0";
-                              const finalCashPaid = Math.max(0, Number(rawCashValue));
-                              
-                              console.log(`[PAYMENT LINK] Input element found: ${!!cashInput}`);
-                              console.log(`[PAYMENT LINK] Raw value from input: "${rawCashValue}"`);
-                              console.log(`[PAYMENT LINK] Parsed as number: ${finalCashPaid}`);
-                              console.log(`[PAYMENT LINK] Sending advancePaid: ${finalCashPaid}`);
-                              
-                              const billDetails = {
-                                bookingId: booking.id,
-                                guestName: booking.guest.fullName,
-                                guestPhone: booking.guest.phone,
-                                roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
-                                roomCharges: breakdown.roomCharges,
-                                foodCharges: breakdown.foodCharges,
-                                gstAmount: breakdown.gstAmount,
-                                serviceChargeAmount: breakdown.serviceChargeAmount,
-                                subtotal: breakdown.subtotal,
-                                discountAmount: discountAmt,
-                                totalAmount: totalBill,
-                                balanceAmount: remaining,
-                                balanceDue: remaining,
-                                advancePaid: finalCashPaid,
-                              };
-                              
-                              console.log(`[PAYMENT LINK] Full billDetails:`, billDetails);
-                              paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
-                              
-                              // Keep the cash amount for checkout - just update the state from DOM
-                              setCashAmount(rawCashValue);
-                            }}
-                            disabled={paymentLinkMutation.isPending}
-                            data-testid="button-send-payment-link-balance"
-                          >
-                            {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {paymentStatus === "pending" && (
-                  <>
-                    <div className="space-y-2">
-                      <Label htmlFor="due-date">Due Date (Optional)</Label>
-                      <input
-                        id="due-date"
-                        type="date"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        data-testid="input-due-date"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="pending-reason">Reason for Pending Payment (Optional)</Label>
-                      <input
-                        id="pending-reason"
-                        type="text"
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                        placeholder="e.g., Travel agent - monthly billing"
-                        value={pendingReason}
-                        onChange={(e) => setPendingReason(e.target.value)}
-                        data-testid="input-pending-reason"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="gap-2 flex flex-col sm:flex-row">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCheckoutDialog({ open: false, booking: null });
-                setPreBillSent(false);
-                setSkipPreBill(false);
-              }}
-              disabled={checkoutMutation.isPending || sendPreBillMutation.isPending}
-              data-testid="button-cancel-checkout"
-            >
-              Cancel
-            </Button>
-
-            {/* Send Pre-Bill Button - Show only in pending state, before sent */}
-            {preBillStatus === "pending" && !preBillSent && !skipPreBill && (
-              <Button
-                onClick={handleSendPreBill}
-                disabled={sendPreBillMutation.isPending}
-                variant="outline"
-                data-testid="button-send-prebill"
-                className="flex-1"
-              >
-                {sendPreBillMutation.isPending ? "Sending..." : "Send Pre-Bill via WhatsApp"}
-              </Button>
-            )}
-            
-            {/* Send Payment Link Button - Always visible unless already sent */}
-            {!paymentLinkSent && !skipPreBill && preBillStatus !== "approved" && (
-              <Button
-                onClick={() => {
-                  if (!checkoutDialog.booking) return;
-                  if (paymentMethod !== "card" && paymentMethod !== "upi") {
-                    toast({
-                      title: "Invalid Payment Method",
-                      description: "Please change payment method to 'Card' or 'UPI' to send payment link",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  const booking = checkoutDialog.booking;
-                  const breakdown = calculateTotalWithCharges(booking, includeGst, includeServiceCharge, manualCharges);
-                  const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
-                  const finalTotal = breakdown.grandTotal - discountAmt;
-                  
-                  // Read cash amount from the input field (split payment support)
-                  const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
-                  const cashFromInput = cashInput?.value?.trim() ? Number(cashInput.value) : 0;
-                  const storedAdvance = parseFloat(booking.charges.advancePaid) || 0;
-                  const advancePaid = Math.max(cashFromInput, storedAdvance);
-                  
-                  console.log(`[Payment Link Footer] Cash input value: ${cashFromInput}, Stored advance: ${storedAdvance}, Using: ${advancePaid}`);
-                  
-                  const balanceDue = finalTotal - advancePaid;
-                  const billDetails = {
-                    bookingId: booking.id,
-                    guestName: booking.guest.fullName,
-                    guestPhone: booking.guest.phone,
-                    roomNumber: booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber,
-                    roomCharges: breakdown.roomCharges,
-                    foodCharges: breakdown.foodCharges,
-                    gstAmount: breakdown.gstAmount,
-                    serviceChargeAmount: breakdown.serviceChargeAmount,
-                    subtotal: breakdown.subtotal,
-                    discountAmount: discountAmt,
-                    totalAmount: breakdown.grandTotal,
-                    balanceDue: balanceDue,
-                    advancePaid: advancePaid,
-                  };
-                  console.log(`[Payment Link Footer] Sending billDetails:`, billDetails);
-                  paymentLinkMutation.mutate({ bookingId: booking.id, billDetails });
-                }}
-                disabled={paymentLinkMutation.isPending || (paymentMethod !== "card" && paymentMethod !== "upi")}
-                variant={paymentMethod !== "card" && paymentMethod !== "upi" ? "secondary" : "outline"}
-                data-testid="button-send-payment-link"
-                className="flex-1"
-                title={paymentMethod !== "card" && paymentMethod !== "upi" ? "Payment links only work with Card or UPI. Please change payment method above." : "Send payment link via RazorPay"}
-              >
-                {paymentLinkMutation.isPending ? "Sending..." : "Send Payment Link"}
-              </Button>
-            )}
-            
-            {/* Skip & Checkout Button - Only in pending state, before sent */}
-            {preBillStatus === "pending" && !preBillSent && !skipPreBill && (
-              <Button
-                onClick={() => setSkipPreBill(true)}
-                variant="outline"
-                data-testid="button-skip-prebill"
-                className="flex-1"
-              >
-                Skip & Checkout
-              </Button>
-            )}
-
-            {/* Pre-Bill Sent Status - Show when sent but not approved */}
-            {(preBillStatus === "sent" || preBillSent) && preBillStatus !== "approved" && (
-              <>
-                <div className="flex items-center gap-2 text-blue-600 text-sm font-medium flex-1 justify-center px-3 py-2 border border-blue-200 rounded-md bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-400">
-                  <div className="h-2 w-2 bg-blue-600 rounded-full animate-pulse"></div>
-                  <span>Pre-Bill Sent ✓ Waiting for Approval...</span>
-                </div>
-                <Button
-                  onClick={() => approveBillMutation.mutate(currentPreBill?.id || 0)}
-                  disabled={approveBillMutation.isPending}
-                  variant="default"
-                  data-testid="button-mark-approved"
-                  className="flex-1"
-                >
-                  {approveBillMutation.isPending ? "Marking..." : "Mark as Approved & Proceed"}
-                </Button>
-              </>
-            )}
-
-            {/* Pre-Bill Approved Status */}
-            {preBillStatus === "approved" && (
-              <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center">
-                <Check className="h-4 w-4" />
-                <span>Pre-Bill Approved ✓</span>
-              </div>
-            )}
-
-            {/* Payment Link Sent Status */}
-            {paymentLinkSent && (
-              <div className="flex items-center gap-2 text-green-600 text-sm font-medium flex-1 justify-center px-3 py-2 border border-green-200 rounded-md bg-green-50 dark:bg-green-900/20 dark:border-green-800 dark:text-green-400">
-                <Check className="h-4 w-4" />
-                <span>Payment Link Sent ✓ Awaiting Payment</span>
-              </div>
-            )}
-
-            {/* Complete Checkout Button - Show when ready */}
-            {(skipPreBill || preBillStatus === "approved" || paymentLinkSent) && (
-              <Button
-                onClick={handleCheckout}
-                disabled={checkoutMutation.isPending}
-                data-testid="button-confirm-checkout"
-                className="flex-1"
-              >
-                {checkoutMutation.isPending ? "Processing..." : "Complete Checkout"}
-              </Button>
-            )}
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
