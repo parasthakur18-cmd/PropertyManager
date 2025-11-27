@@ -3,10 +3,20 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Camera } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -86,6 +96,7 @@ export default function Dashboard() {
   const [autoCheckoutAlert, setAutoCheckoutAlert] = useState<{ count: number; timestamp: number } | null>(null);
   const [checkoutReminders, setCheckoutReminders] = useState<CheckoutReminder[]>([]);
   const [shownReminderIds, setShownReminderIds] = useState<Set<number>>(new Set());
+  const [idProofAlertBooking, setIdProofAlertBooking] = useState<{ booking: Booking; guest: Guest } | null>(null);
   const { toast } = useToast();
   
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
@@ -136,15 +147,11 @@ export default function Dashboard() {
       return;
     }
 
-    // Validate guest has ID proof
+    // Validate guest has ID proof - show prominent dialog if missing
     console.log("[CHECK-IN] Checking ID proof:", { hasIdProof: !!guest.idProofImage });
     if (!guest.idProofImage) {
-      console.warn("[CHECK-IN] Guest missing ID proof");
-      toast({
-        title: "ID Proof Required",
-        description: "Guest ID proof must be captured before check-in. Please upload the ID to proceed.",
-        variant: "destructive",
-      });
+      console.warn("[CHECK-IN] Guest missing ID proof - showing dialog");
+      setIdProofAlertBooking({ booking, guest });
       return;
     }
 
@@ -1030,6 +1037,39 @@ export default function Dashboard() {
           })}
         </div>
       </div>
+
+      {/* ID Proof Required Alert Dialog */}
+      <AlertDialog open={!!idProofAlertBooking} onOpenChange={(open) => !open && setIdProofAlertBooking(null)}>
+        <AlertDialogContent className="max-w-sm mx-4">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              ID Proof Required
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              <strong>{idProofAlertBooking?.guest.fullName}</strong> cannot check in without ID verification.
+              <br /><br />
+              Please capture the guest's ID proof before proceeding with check-in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="w-full sm:w-auto bg-primary"
+              onClick={() => {
+                if (idProofAlertBooking) {
+                  setLocation(`/guests?edit=${idProofAlertBooking.guest.id}&uploadId=true`);
+                }
+                setIdProofAlertBooking(null);
+              }}
+              data-testid="btn-upload-id"
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Upload ID Proof
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
