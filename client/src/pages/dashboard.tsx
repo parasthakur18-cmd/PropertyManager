@@ -1310,6 +1310,7 @@ export default function Dashboard() {
                         try {
                           await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: checkoutBookingId,
+                            paymentMethod: paymentMethod,
                             cashReceived: cashPaid,
                             remainingBalance: Math.max(0, remainingBalance),
                             totalAmount: billTotal
