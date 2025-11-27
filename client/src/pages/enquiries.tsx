@@ -106,9 +106,9 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
       guestEmail: enquiry.guestEmail || "",
       roomId: enquiry.roomId || undefined,
       numberOfGuests: enquiry.numberOfGuests,
-      mealPlan: enquiry.mealPlan || "EP",
-      priceQuoted: enquiry.priceQuoted ?? undefined,
-      advanceAmount: enquiry.advanceAmount ?? undefined,
+      mealPlan: (enquiry.mealPlan as "EP" | "CP" | "MAP" | "AP") || "EP",
+      priceQuoted: enquiry.priceQuoted ? Number(enquiry.priceQuoted) : undefined,
+      advanceAmount: enquiry.advanceAmount ? Number(enquiry.advanceAmount) : undefined,
       specialRequests: enquiry.specialRequests || "",
     },
   });
@@ -142,7 +142,7 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
     },
   });
 
-  const onSubmit = (data: EditEnquiryFormData) => {
+  const onSubmit = (data: EditEnquiryFormData & Record<string, any>) => {
     const updateData = {
       ...data,
       bedsBooked: selectedRoom?.roomCategory === "dormitory" ? data.numberOfGuests : null,
