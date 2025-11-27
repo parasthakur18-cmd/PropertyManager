@@ -494,7 +494,21 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Cannot delete room with active bookings. Please complete or cancel bookings first.");
     }
 
-    // If no active associations found, safe to delete (historical data is preserved in bills)
+    // Set foreign key references to NULL for historical data
+    // This allows deletion while preserving billing history
+    await db.update(bookings)
+      .set({ roomId: null })
+      .where(eq(bookings.roomId, id));
+
+    await db.update(orders)
+      .set({ roomId: null })
+      .where(eq(orders.roomId, id));
+
+    await db.update(enquiries)
+      .set({ roomId: null })
+      .where(eq(enquiries.roomId, id));
+
+    // Now safe to delete the room
     await db.delete(rooms).where(eq(rooms.id, id));
   }
 
