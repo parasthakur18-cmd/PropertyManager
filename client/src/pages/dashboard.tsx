@@ -798,10 +798,9 @@ export default function Dashboard() {
 
       case "upcoming":
         const totalUpcomingAmount = upcomingBookings.reduce((sum, booking) => {
-          // Calculate based on room charge per night or total booking amount
-          const roomCharge = parseFloat((booking.roomCharge || 0).toString()) || 0;
-          const nights = Math.ceil((new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24));
-          return sum + (roomCharge * nights);
+          // Use totalAmount field if available, otherwise calculate from booking data
+          const amount = booking.totalAmount ? parseFloat(booking.totalAmount.toString()) : 0;
+          return sum + amount;
         }, 0);
 
         return (
