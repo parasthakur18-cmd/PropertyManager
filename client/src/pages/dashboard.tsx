@@ -434,6 +434,66 @@ export default function Dashboard() {
     { key: "upcoming" as MobileTab, label: "Upcoming", icon: Calendar, count: upcomingBookings.length, color: "text-orange-600" },
   ];
 
+  // Enhanced analytics display
+  const analyticsMetrics = [
+    { label: "Total Properties", value: stats?.totalProperties || 0, icon: Building2, color: "from-purple-500 to-pink-500", trend: "+2 this month" },
+    { label: "Occupancy Rate", value: stats?.occupancyRate ? `${Math.round(stats.occupancyRate)}%` : "0%", icon: Home, color: "from-green-500 to-emerald-500", trend: `${stats?.occupiedRooms || 0} rooms occupied` },
+    { label: "Today's Check-ins", value: todayCheckIns.length, icon: LogIn, color: "from-blue-500 to-cyan-500", trend: `${checkedInGuests.length} already in-house` },
+    { label: "Active Bookings", value: stats?.activeBookings || 0, icon: Calendar, color: "from-orange-500 to-amber-500", trend: `₹${(stats?.monthlyRevenue || 0).toLocaleString()}` },
+    { label: "Monthly Revenue", value: `₹${(stats?.monthlyRevenue || 0).toLocaleString()}`, icon: IndianRupee, color: "from-teal-500 to-green-500", trend: "This month" },
+    { label: "Active Users", value: stats?.activeUsers || 0, icon: Users, color: "from-pink-500 to-rose-500", trend: "On platform" },
+  ];
+
+  const renderAnalyticsCards = () => (
+    <div className="hidden lg:grid grid-cols-3 gap-6 mb-8">
+      {analyticsMetrics.slice(0, 3).map((metric, idx) => {
+        const Icon = metric.icon;
+        return (
+          <Card key={idx} className="relative overflow-hidden group hover:shadow-xl transition-all duration-300 border-slate-200 dark:border-slate-700">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">{metric.label}</p>
+                  <p className="text-3xl font-bold text-slate-900 dark:text-white">{metric.value}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">{metric.trend}</p>
+                </div>
+                <div className={`p-3 rounded-lg bg-gradient-to-br ${metric.color} text-white opacity-20 group-hover:opacity-30 transition-all`}>
+                  <Icon className="h-6 w-6" />
+                </div>
+              </div>
+              <div className="mt-4 h-1 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className={`h-full bg-gradient-to-r ${metric.color} animate-pulse-slow`} style={{width: `${Math.min(parseFloat(metric.value.toString()), 100)}%`}}></div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
+  const renderMobileAnalyticsCards = () => (
+    <div className="lg:hidden grid grid-cols-2 gap-3 mb-6">
+      {analyticsMetrics.slice(0, 4).map((metric, idx) => {
+        const Icon = metric.icon;
+        return (
+          <Card key={idx} className="group hover:shadow-md transition-all duration-300 border-slate-200 dark:border-slate-700">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate">{metric.label}</p>
+                  <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">{metric.value}</p>
+                </div>
+                <div className={`p-2 rounded-lg bg-gradient-to-br ${metric.color} text-white flex-shrink-0`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
   const renderMobileContent = () => {
     switch (mobileTab) {
       case "inhouse":

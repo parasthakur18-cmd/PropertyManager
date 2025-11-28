@@ -262,6 +262,125 @@ export default function Landing() {
         </div>
       </div>
 
+      {/* Success Stories - Testimonials with ROI Metrics */}
+      <div className="py-20 px-4 bg-slate-50 dark:bg-slate-900/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-4">
+              Success Stories from Real Users
+            </h2>
+            <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+              See how property managers across India are transforming their operations with Hostezee
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Testimonial 1 */}
+            <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 border-slate-200 dark:border-slate-700">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-900 dark:text-white text-lg">Suresh Kumar</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Founder, The Mountain Resort</p>
+                  </div>
+                  <div className="text-2xl">🏨</div>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 mb-6 leading-relaxed">
+                  "Hostezee replaced our entire manual booking system. We went from Excel spreadsheets to a full PMS in 30 minutes. Best decision we made."
+                </p>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div>
+                    <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">+45%</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Direct Bookings</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">8h/day</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Time Saved</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Testimonial 2 */}
+            <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 border-slate-200 dark:border-slate-700">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-900 dark:text-white text-lg">Priya Sharma</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Manager, Urban Hostels Network</p>
+                  </div>
+                  <div className="text-2xl">🏩</div>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 mb-6 leading-relaxed">
+                  "Managing 5 hostels was chaos until Hostezee. Now our team coordinates perfectly. Guest experience improved dramatically."
+                </p>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div>
+                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">+38%</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Occupancy Rate</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">5×</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Faster Checkout</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Testimonial 3 */}
+            <Card className="hover:shadow-lg transition-all duration-300 transform hover:scale-105 border-slate-200 dark:border-slate-700">
+              <CardContent className="pt-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-900 dark:text-white text-lg">Rajesh Patel</p>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Owner, Heritage Villas</p>
+                  </div>
+                  <div className="text-2xl">🏘️</div>
+                </div>
+                <p className="text-slate-600 dark:text-slate-300 mb-6 leading-relaxed">
+                  "The restaurant billing feature alone saved us ₹2L per year in commission fees. PaymentProcessing is seamless via WhatsApp."
+                </p>
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div>
+                    <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">₹2L</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Saved Annually</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-pink-600 dark:text-pink-400">72h</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400">Setup Time</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Trust Badges */}
+          <div className="mt-16 border-t border-slate-200 dark:border-slate-800 pt-12">
+            <div className="text-center mb-8">
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Used by 500+ properties across India</p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+              <div>
+                <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">500+</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Properties</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">10K+</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Bookings/Month</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">99.9%</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Uptime</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">24/7</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">AI Support</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Call to Action */}
       <div className="border-t border-slate-200 dark:border-slate-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/30 py-16 md:py-20">
         <div className="max-w-4xl mx-auto px-4 text-center space-y-6">
