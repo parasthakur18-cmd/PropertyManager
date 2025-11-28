@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, User, Shield, HelpCircle } from "lucide-react";
+import { LogOut, User, Shield, HelpCircle, Lock, ChevronRight } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Settings() {
@@ -88,6 +88,28 @@ export default function Settings() {
             </Button>
           </CardContent>
         </Card>
+
+        {(user?.role === "admin" || user?.role === "super-admin") && (
+          <Card>
+            <CardHeader>
+              <CardTitle>System Management</CardTitle>
+              <CardDescription>View audit logs and system activities</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/audit-logs">
+                <Button
+                  variant="outline"
+                  data-testid="button-audit-logs"
+                  className="w-full sm:w-auto"
+                >
+                  <Lock className="h-4 w-4 mr-2" />
+                  View Audit Logs
+                  <ChevronRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
