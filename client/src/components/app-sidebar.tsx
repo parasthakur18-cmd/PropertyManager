@@ -32,6 +32,7 @@ import {
   Shield,
   Clock,
   HelpCircle,
+  Lock,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -84,6 +85,7 @@ const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Users", url: "/users", icon: UserCog },
+  { title: "Audit Logs", url: "/audit-logs", icon: Lock },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 

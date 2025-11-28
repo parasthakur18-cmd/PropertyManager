@@ -6585,6 +6585,30 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // ===== AUDIT LOG ROUTES =====
+
+  // Get audit logs - Admin only
+  app.get("/api/audit-logs", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { auditLog } = require("@shared/schema");
+      const logs = await db
+        .select()
+        .from(auditLog)
+        .orderBy(desc(auditLog.createdAt))
+        .limit(500);
+      
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[AUDIT-LOGS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -68,6 +68,7 @@ import Register from "@/pages/register";
 import ReportIssue from "@/pages/report-issue";
 import OtaIntegrations from "@/pages/ota-integrations";
 import Notifications from "@/pages/notifications";
+import AuditLogs from "@/pages/audit-logs";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { PendingNotifications } from "@/components/pending-notifications";
@@ -154,6 +155,7 @@ function Router() {
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/ota-integrations" component={OtaIntegrations} />
           <Route path="/notifications" component={Notifications} />
+          <Route path="/audit-logs" component={AuditLogs} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/settings" component={Settings} />
         </>
