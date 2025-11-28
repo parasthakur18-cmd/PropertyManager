@@ -1,5 +1,5 @@
 CREATE TABLE "attendance_records" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "attendance_records_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"staff_id" integer NOT NULL,
 	"property_id" integer,
 	"attendance_date" date NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE "attendance_records" (
 );
 --> statement-breakpoint
 CREATE TABLE "audit_log" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "audit_log_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"entity_type" varchar(100) NOT NULL,
 	"entity_id" varchar(255) NOT NULL,
 	"action" varchar(50) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE "audit_log" (
 );
 --> statement-breakpoint
 CREATE TABLE "bank_transactions" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "bank_transactions_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"upload_id" varchar(100) NOT NULL,
 	"transaction_date" timestamp NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE "bank_transactions" (
 );
 --> statement-breakpoint
 CREATE TABLE "bills" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "bills_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"booking_id" integer NOT NULL,
 	"guest_id" integer NOT NULL,
 	"room_charges" numeric(10, 2) NOT NULL,
@@ -73,7 +73,7 @@ CREATE TABLE "bills" (
 );
 --> statement-breakpoint
 CREATE TABLE "bookings" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "bookings_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"room_id" integer,
 	"room_ids" integer[],
@@ -97,7 +97,7 @@ CREATE TABLE "bookings" (
 );
 --> statement-breakpoint
 CREATE TABLE "change_approvals" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "change_approvals_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" varchar NOT NULL,
 	"change_type" varchar(50) NOT NULL,
 	"booking_id" integer,
@@ -114,7 +114,7 @@ CREATE TABLE "change_approvals" (
 );
 --> statement-breakpoint
 CREATE TABLE "communications" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "communications_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"enquiry_id" integer,
 	"booking_id" integer,
 	"recipient_phone" varchar(50) NOT NULL,
@@ -130,7 +130,7 @@ CREATE TABLE "communications" (
 );
 --> statement-breakpoint
 CREATE TABLE "contact_enquiries" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "contact_enquiries_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"email" varchar(255) NOT NULL,
 	"phone" varchar(20),
@@ -142,7 +142,7 @@ CREATE TABLE "contact_enquiries" (
 );
 --> statement-breakpoint
 CREATE TABLE "enquiries" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "enquiries_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"guest_name" varchar(255) NOT NULL,
 	"guest_phone" varchar(50) NOT NULL,
@@ -171,7 +171,7 @@ CREATE TABLE "enquiries" (
 );
 --> statement-breakpoint
 CREATE TABLE "error_crashes" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "error_crashes_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" varchar,
 	"error_message" text NOT NULL,
 	"error_stack" text,
@@ -184,7 +184,7 @@ CREATE TABLE "error_crashes" (
 );
 --> statement-breakpoint
 CREATE TABLE "expense_categories" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "expense_categories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer,
 	"name" varchar(100) NOT NULL,
 	"description" text,
@@ -195,7 +195,7 @@ CREATE TABLE "expense_categories" (
 );
 --> statement-breakpoint
 CREATE TABLE "extra_services" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "extra_services_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"booking_id" integer NOT NULL,
 	"service_type" varchar(50) NOT NULL,
 	"service_name" varchar(255) NOT NULL,
@@ -209,7 +209,7 @@ CREATE TABLE "extra_services" (
 );
 --> statement-breakpoint
 CREATE TABLE "guests" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "guests_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"full_name" varchar(255) NOT NULL,
 	"email" varchar(255),
 	"phone" varchar(50) NOT NULL,
@@ -224,7 +224,7 @@ CREATE TABLE "guests" (
 );
 --> statement-breakpoint
 CREATE TABLE "issue_reports" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "issue_reports_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"reported_by_user_id" varchar NOT NULL,
 	"property_id" integer,
 	"title" varchar(255) NOT NULL,
@@ -238,7 +238,7 @@ CREATE TABLE "issue_reports" (
 );
 --> statement-breakpoint
 CREATE TABLE "lease_payments" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "lease_payments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"lease_id" integer NOT NULL,
 	"amount" numeric(12, 2) NOT NULL,
 	"payment_date" timestamp NOT NULL,
@@ -250,7 +250,7 @@ CREATE TABLE "lease_payments" (
 );
 --> statement-breakpoint
 CREATE TABLE "menu_categories" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "menu_categories_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer,
 	"name" varchar(255) NOT NULL,
 	"image_url" text,
@@ -263,7 +263,7 @@ CREATE TABLE "menu_categories" (
 );
 --> statement-breakpoint
 CREATE TABLE "menu_item_add_ons" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "menu_item_add_ons_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"menu_item_id" integer NOT NULL,
 	"add_on_name" varchar(255) NOT NULL,
 	"add_on_price" numeric(10, 2) NOT NULL,
@@ -273,7 +273,7 @@ CREATE TABLE "menu_item_add_ons" (
 );
 --> statement-breakpoint
 CREATE TABLE "menu_item_variants" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "menu_item_variants_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"menu_item_id" integer NOT NULL,
 	"variant_name" varchar(255) NOT NULL,
 	"actual_price" numeric(10, 2) NOT NULL,
@@ -284,7 +284,7 @@ CREATE TABLE "menu_item_variants" (
 );
 --> statement-breakpoint
 CREATE TABLE "menu_items" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "menu_items_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer,
 	"category_id" integer,
 	"name" varchar(255) NOT NULL,
@@ -305,7 +305,7 @@ CREATE TABLE "menu_items" (
 );
 --> statement-breakpoint
 CREATE TABLE "message_templates" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "message_templates_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(100) NOT NULL,
 	"subject" varchar(255),
 	"content" text NOT NULL,
@@ -316,7 +316,7 @@ CREATE TABLE "message_templates" (
 );
 --> statement-breakpoint
 CREATE TABLE "notifications" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "notifications_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" varchar NOT NULL,
 	"type" varchar(50) NOT NULL,
 	"title" varchar(255) NOT NULL,
@@ -329,7 +329,7 @@ CREATE TABLE "notifications" (
 );
 --> statement-breakpoint
 CREATE TABLE "orders" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "orders_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer,
 	"room_id" integer,
 	"booking_id" integer,
@@ -347,7 +347,7 @@ CREATE TABLE "orders" (
 );
 --> statement-breakpoint
 CREATE TABLE "ota_integrations" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "ota_integrations_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"ota_name" varchar(50) NOT NULL,
 	"property_id_external" varchar(100) NOT NULL,
@@ -363,7 +363,7 @@ CREATE TABLE "ota_integrations" (
 );
 --> statement-breakpoint
 CREATE TABLE "password_reset_otps" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "password_reset_otps_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"email" varchar(255),
 	"phone" varchar(20),
 	"channel" varchar(10) NOT NULL,
@@ -374,7 +374,7 @@ CREATE TABLE "password_reset_otps" (
 );
 --> statement-breakpoint
 CREATE TABLE "pre_bills" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "pre_bills_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"booking_id" integer NOT NULL,
 	"total_amount" numeric(10, 2) NOT NULL,
 	"balance_due" numeric(10, 2) NOT NULL,
@@ -388,7 +388,7 @@ CREATE TABLE "pre_bills" (
 );
 --> statement-breakpoint
 CREATE TABLE "properties" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "properties_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"owner_user_id" varchar,
 	"name" varchar(255) NOT NULL,
 	"location" varchar(255),
@@ -402,7 +402,7 @@ CREATE TABLE "properties" (
 );
 --> statement-breakpoint
 CREATE TABLE "property_expenses" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "property_expenses_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"category_id" integer,
 	"category" varchar(50),
@@ -419,7 +419,7 @@ CREATE TABLE "property_expenses" (
 );
 --> statement-breakpoint
 CREATE TABLE "property_leases" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "property_leases_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"total_amount" numeric(12, 2) NOT NULL,
 	"start_date" timestamp NOT NULL,
@@ -434,7 +434,7 @@ CREATE TABLE "property_leases" (
 );
 --> statement-breakpoint
 CREATE TABLE "rooms" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "rooms_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"room_number" varchar(50) NOT NULL,
 	"room_type" varchar(100),
@@ -450,7 +450,7 @@ CREATE TABLE "rooms" (
 );
 --> statement-breakpoint
 CREATE TABLE "salary_advances" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "salary_advances_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" varchar,
 	"staff_member_id" integer,
 	"salary_id" integer,
@@ -469,7 +469,7 @@ CREATE TABLE "salary_advances" (
 );
 --> statement-breakpoint
 CREATE TABLE "salary_payments" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "salary_payments_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"salary_id" integer NOT NULL,
 	"amount" numeric(12, 2) NOT NULL,
 	"payment_date" timestamp NOT NULL,
@@ -487,7 +487,7 @@ CREATE TABLE "sessions" (
 );
 --> statement-breakpoint
 CREATE TABLE "staff_members" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "staff_members_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"phone" varchar(20),
 	"email" varchar(255),
@@ -505,7 +505,7 @@ CREATE TABLE "staff_members" (
 );
 --> statement-breakpoint
 CREATE TABLE "staff_salaries" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "staff_salaries_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" varchar,
 	"staff_member_id" integer,
 	"property_id" integer,
@@ -525,7 +525,7 @@ CREATE TABLE "staff_salaries" (
 );
 --> statement-breakpoint
 CREATE TABLE "travel_agents" (
-	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "travel_agents_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"id" serial PRIMARY KEY NOT NULL,
 	"property_id" integer NOT NULL,
 	"name" varchar(255) NOT NULL,
 	"contact_person" varchar(255),

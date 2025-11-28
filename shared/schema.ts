@@ -12,6 +12,7 @@ import {
   boolean,
   check,
   date,
+  serial,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -57,7 +58,7 @@ export type UpdateUserRole = z.infer<typeof updateUserRoleSchema>;
 
 // Properties table
 export const properties = pgTable("properties", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: 'cascade' }), // User who owns this property
   name: varchar("name", { length: 255 }).notNull(),
   location: varchar("location", { length: 255 }),
@@ -81,7 +82,7 @@ export type Property = typeof properties.$inferSelect;
 
 // Rooms table
 export const rooms = pgTable("rooms", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   roomNumber: varchar("room_number", { length: 50 }).notNull(),
   roomType: varchar("room_type", { length: 100 }),
@@ -107,7 +108,7 @@ export type Room = typeof rooms.$inferSelect;
 
 // Guests table
 export const guests = pgTable("guests", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   fullName: varchar("full_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 50 }).notNull(),
@@ -133,7 +134,7 @@ export type Guest = typeof guests.$inferSelect;
 
 // Travel Agents table
 export const travelAgents = pgTable("travel_agents", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
   contactPerson: varchar("contact_person", { length: 255 }),
@@ -158,7 +159,7 @@ export type TravelAgent = typeof travelAgents.$inferSelect;
 
 // Bookings table
 export const bookings = pgTable("bookings", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id),
   roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }), // Single room for standard bookings
   roomIds: integer("room_ids").array(), // Multiple rooms for group bookings
@@ -195,7 +196,7 @@ export type Booking = typeof bookings.$inferSelect;
 
 // Menu Categories table (for organizing menu items with images and time slots)
 export const menuCategories = pgTable("menu_categories", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Nullable - null means "all properties"
   name: varchar("name", { length: 255 }).notNull(),
   imageUrl: text("image_url"), // Category image
@@ -218,7 +219,7 @@ export type MenuCategory = typeof menuCategories.$inferSelect;
 
 // Menu Items table (enhanced with veg/non-veg, discounted pricing, etc.)
 export const menuItems = pgTable("menu_items", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Nullable - null means "all properties"
   categoryId: integer("category_id").references(() => menuCategories.id, { onDelete: 'set null' }), // Link to category
   name: varchar("name", { length: 255 }).notNull(),
@@ -249,7 +250,7 @@ export type MenuItem = typeof menuItems.$inferSelect;
 
 // Menu Item Variants table (for items with multiple price options like Small/Medium/Large)
 export const menuItemVariants = pgTable("menu_item_variants", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
   variantName: varchar("variant_name", { length: 255 }).notNull(), // e.g., "Aloo Paratha Combo", "Small", "Medium"
   actualPrice: decimal("actual_price", { precision: 10, scale: 2 }).notNull(), // Original price for this variant
@@ -270,7 +271,7 @@ export type MenuItemVariant = typeof menuItemVariants.$inferSelect;
 
 // Menu Item Add-Ons table (for optional extras like "Add Cheese", "Extra Coffee")
 export const menuItemAddOns = pgTable("menu_item_add_ons", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
   addOnName: varchar("add_on_name", { length: 255 }).notNull(), // e.g., "Masala Tea", "Extra Cheese"
   addOnPrice: decimal("add_on_price", { precision: 10, scale: 2 }).notNull(), // Price for this add-on
@@ -290,7 +291,7 @@ export type MenuItemAddOn = typeof menuItemAddOns.$inferSelect;
 
 // Orders table
 export const orders = pgTable("orders", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id), // Nullable for restaurant/walk-in orders
   roomId: integer("room_id").references(() => rooms.id, { onDelete: 'set null' }),
   bookingId: integer("booking_id").references(() => bookings.id),
@@ -323,7 +324,7 @@ export type Order = typeof orders.$inferSelect;
 
 // Extra Services table
 export const extraServices = pgTable("extra_services", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
   serviceType: varchar("service_type", { length: 50 }).notNull(), // taxi, guide, adventure, partner_commission
   serviceName: varchar("service_name", { length: 255 }).notNull(),
@@ -348,7 +349,7 @@ export type ExtraService = typeof extraServices.$inferSelect;
 
 // Bills/Invoices table
 export const bills = pgTable("bills", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id),
   guestId: integer("guest_id").notNull().references(() => guests.id),
   roomCharges: decimal("room_charges", { precision: 10, scale: 2 }).notNull(),
@@ -389,7 +390,7 @@ export type Bill = typeof bills.$inferSelect;
 
 // Enquiries table
 export const enquiries = pgTable("enquiries", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id),
   guestName: varchar("guest_name", { length: 255 }).notNull(),
   guestPhone: varchar("guest_phone", { length: 50 }).notNull(),
@@ -435,7 +436,7 @@ export type Enquiry = typeof enquiries.$inferSelect;
 
 // Message Templates table
 export const messageTemplates = pgTable("message_templates", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
   subject: varchar("subject", { length: 255 }),
   content: text("content").notNull(),
@@ -456,7 +457,7 @@ export type MessageTemplate = typeof messageTemplates.$inferSelect;
 
 // Communications table (logs all messages sent)
 export const communications = pgTable("communications", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   enquiryId: integer("enquiry_id").references(() => enquiries.id, { onDelete: 'cascade' }),
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'cascade' }),
   recipientPhone: varchar("recipient_phone", { length: 50 }).notNull(),
@@ -481,7 +482,7 @@ export type Communication = typeof communications.$inferSelect;
 
 // Property Leases table
 export const propertyLeases = pgTable("property_leases", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   totalAmount: decimal("total_amount", { precision: 12, scale: 2 }).notNull(),
   startDate: timestamp("start_date").notNull(),
@@ -509,7 +510,7 @@ export type PropertyLease = typeof propertyLeases.$inferSelect;
 
 // Lease Payments table
 export const leasePayments = pgTable("lease_payments", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   paymentDate: timestamp("payment_date").notNull(),
@@ -532,7 +533,7 @@ export type LeasePayment = typeof leasePayments.$inferSelect;
 
 // Expense Categories table
 export const expenseCategories = pgTable("expense_categories", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
@@ -553,7 +554,7 @@ export type ExpenseCategory = typeof expenseCategories.$inferSelect;
 
 // Property Expenses table
 export const propertyExpenses = pgTable("property_expenses", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   categoryId: integer("category_id").references(() => expenseCategories.id),
   category: varchar("category", { length: 50 }), // Legacy field, kept for backward compatibility
@@ -582,7 +583,7 @@ export type PropertyExpense = typeof propertyExpenses.$inferSelect;
 
 // Bank Transactions table (for imported transactions from bank statements)
 export const bankTransactions = pgTable("bank_transactions", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   uploadId: varchar("upload_id", { length: 100 }).notNull(), // Groups transactions from same upload
   transactionDate: timestamp("transaction_date").notNull(),
@@ -740,7 +741,7 @@ export const ordersRelations = relations(orders, ({ one }) => ({
 
 // Audit Log table - immutable append-only audit trail
 export const auditLog = pgTable("audit_log", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   entityType: varchar("entity_type", { length: 100 }).notNull(), // booking, user, lease, payment, etc.
   entityId: varchar("entity_id", { length: 255 }).notNull(), // ID of the affected entity
   action: varchar("action", { length: 50 }).notNull(), // create, update, delete, checkout, etc.
@@ -767,7 +768,7 @@ export type AuditLog = typeof auditLog.$inferSelect;
 // Staff Members table - non-app staff for salary tracking
 // Note: staff_members are assigned to a single property (unlike users who can have multiple)
 export const staffMembers = pgTable("staff_members", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
   email: varchar("email", { length: 255 }),
@@ -803,7 +804,7 @@ export type StaffMember = typeof staffMembers.$inferSelect;
 // Staff Salaries table - monthly salary records (supports both app users and non-app staff)
 // Constraint: Exactly one of userId or staffMemberId must be set
 export const staffSalaries = pgTable("staff_salaries", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }), // For app users
   staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }), // For non-app staff
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }), // Property context
@@ -846,7 +847,7 @@ export type StaffSalary = typeof staffSalaries.$inferSelect;
 // Salary Advances table - advance payments linked to salary records (supports both app users and non-app staff)
 // Constraint: Exactly one of userId or staffMemberId must be set
 export const salaryAdvances = pgTable("salary_advances", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }), // For app users
   staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }), // For non-app staff
   salaryId: integer("salary_id").references(() => staffSalaries.id, { onDelete: 'set null' }), // Linked salary period
@@ -885,7 +886,7 @@ export type SalaryAdvance = typeof salaryAdvances.$inferSelect;
 
 // Salary Payments table - actual disbursement records
 export const salaryPayments = pgTable("salary_payments", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   salaryId: integer("salary_id").notNull().references(() => staffSalaries.id, { onDelete: 'cascade' }),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   paymentDate: timestamp("payment_date").notNull(),
@@ -1015,7 +1016,7 @@ export interface AnalyticsResponse {
 
 // Issue/Bug Reports table
 export const issueReports = pgTable("issue_reports", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   reportedByUserId: varchar("reported_by_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'set null' }), // Optional - may be reported from any context
   title: varchar("title", { length: 255 }).notNull(),
@@ -1039,7 +1040,7 @@ export type IssueReport = typeof issueReports.$inferSelect;
 
 // Attendance Tracking table - daily attendance records for automatic salary deduction
 export const attendanceRecords = pgTable("attendance_records", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   attendanceDate: date("attendance_date").notNull(),
@@ -1066,7 +1067,7 @@ export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
 
 // Password Reset OTP table - for secure password reset via email or SMS
 export const passwordResetOtps = pgTable("password_reset_otps", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 20 }), // Phone number for SMS OTP
   channel: varchar("channel", { length: 10 }).notNull(), // "email" or "sms"
@@ -1089,7 +1090,7 @@ export type InsertPasswordResetOtp = z.infer<typeof insertPasswordResetOtpSchema
 
 // Contact Enquiries table - for landing page contact form submissions
 export const contactEnquiries = pgTable("contact_enquiries", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
   phone: varchar("phone", { length: 20 }),
@@ -1112,7 +1113,7 @@ export type ContactEnquiry = typeof contactEnquiries.$inferSelect;
 
 // Error Crashes table - for automatic error reporting
 export const errorCrashes = pgTable("error_crashes", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
   errorMessage: text("error_message").notNull(),
   errorStack: text("error_stack"),
@@ -1135,7 +1136,7 @@ export type ErrorCrash = typeof errorCrashes.$inferSelect;
 
 // Pre-bills table - for tracking pre-bill approvals
 export const preBills = pgTable("pre_bills", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   balanceDue: decimal("balance_due", { precision: 10, scale: 2 }).notNull(),
@@ -1162,7 +1163,7 @@ export type PreBill = typeof preBills.$inferSelect;
 
 // OTA Integrations table - Generic for all portals (Booking.com, MMT, Airbnb, OYO, etc.)
 export const otaIntegrations = pgTable("ota_integrations", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   otaName: varchar("ota_name", { length: 50 }).notNull(), // booking.com, mmt, airbnb, oyo, others
   propertyId_external: varchar("property_id_external", { length: 100 }).notNull(), // Hotel ID / Property ID on the OTA
@@ -1191,7 +1192,7 @@ export type OtaIntegration = typeof otaIntegrations.$inferSelect;
 
 // Notifications table - for notification center
 export const notifications = pgTable("notifications", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   type: varchar("type", { length: 50 }).notNull(), // checkout_reminder, auto_checkout, approval_pending, payment_received
   title: varchar("title", { length: 255 }).notNull(),
@@ -1207,7 +1208,7 @@ export type Notification = typeof notifications.$inferSelect;
 
 // Change Approvals table - for approving sensitive changes
 export const changeApprovals = pgTable("change_approvals", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'set null' }),
   changeType: varchar("change_type", { length: 50 }).notNull(), // price_change, discount, manual_charge
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'set null' }),
