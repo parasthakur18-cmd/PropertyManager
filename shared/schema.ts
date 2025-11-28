@@ -12,6 +12,7 @@ import {
   boolean,
   check,
   date,
+  serial,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -1015,7 +1016,7 @@ export interface AnalyticsResponse {
 
 // Issue/Bug Reports table
 export const issueReports = pgTable("issue_reports", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   reportedByUserId: varchar("reported_by_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'set null' }), // Optional - may be reported from any context
   title: varchar("title", { length: 255 }).notNull(),
@@ -1066,7 +1067,7 @@ export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
 
 // Password Reset OTP table - for secure password reset via email or SMS
 export const passwordResetOtps = pgTable("password_reset_otps", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  id: serial("id").primaryKey(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 20 }), // Phone number for SMS OTP
   channel: varchar("channel", { length: 10 }).notNull(), // "email" or "sms"
