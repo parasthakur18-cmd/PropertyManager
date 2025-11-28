@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserPlus, Phone, Mail, MapPin, Camera, Upload, X } from "lucide-react";
+import { Plus, UserPlus, Phone, Mail, MapPin, Camera, Upload, X, Download, Eye, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -19,6 +19,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 export default function Guests() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [idProofPreview, setIdProofPreview] = useState<string | null>(null);
+  const [selectedGuestForId, setSelectedGuestForId] = useState<Guest | null>(null);
+  const [isIdViewerOpen, setIsIdViewerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -86,6 +88,29 @@ export default function Guests() {
 
   const onSubmit = (data: InsertGuest) => {
     createMutation.mutate(data);
+  };
+
+  const downloadIdProof = (guest: Guest) => {
+    if (!guest.idProofImage) {
+      toast({
+        title: "No ID Proof",
+        description: "This guest has no ID proof image on file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = guest.idProofImage;
+    link.download = `${guest.fullName}_${guest.idProofType || "ID"}_${guest.id}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Downloaded",
+      description: `ID proof for ${guest.fullName} downloaded`,
+    });
   };
 
   if (isLoading) {
@@ -302,6 +327,66 @@ export default function Guests() {
         </Dialog>
       </div>
 
+      {/* ID Proof Viewer Modal */}
+      <Dialog open={isIdViewerOpen} onOpenChange={setIsIdViewerOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>ID Proof - {selectedGuestForId?.fullName}</DialogTitle>
+          </DialogHeader>
+          {selectedGuestForId && (
+            <div className="space-y-4">
+              {selectedGuestForId.idProofType && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">ID Type</p>
+                    <p className="text-lg font-semibold">{selectedGuestForId.idProofType}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">ID Number</p>
+                    <p className="text-lg font-semibold">{selectedGuestForId.idProofNumber || "N/A"}</p>
+                  </div>
+                </div>
+              )}
+              {selectedGuestForId.idProofImage ? (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-muted-foreground mb-2">ID Proof Image</p>
+                  <img 
+                    src={selectedGuestForId.idProofImage} 
+                    alt="ID Proof" 
+                    className="w-full rounded-md border border-border max-h-96 object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="p-8 text-center border border-dashed border-border rounded-md">
+                  <FileText className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No ID proof image on file</p>
+                </div>
+              )}
+              <DialogFooter>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setIsIdViewerOpen(false)}
+                  data-testid="button-close-id-viewer"
+                >
+                  Close
+                </Button>
+                {selectedGuestForId.idProofImage && (
+                  <Button 
+                    onClick={() => {
+                      downloadIdProof(selectedGuestForId);
+                    }}
+                    data-testid="button-download-id-proof"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                )}
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {!guests || guests.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
@@ -325,7 +410,7 @@ export default function Guests() {
               .slice(0, 2);
 
             return (
-              <Card key={guest.id} className="hover-elevate" data-testid={`card-guest-${guest.id}`}>
+              <Card key={guest.id} className="hover-elevate flex flex-col" data-testid={`card-guest-${guest.id}`}>
                 <CardHeader>
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12">
@@ -343,7 +428,7 @@ export default function Guests() {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   <div className="space-y-2 text-sm">
                     {guest.email && (
                       <div className="flex items-center gap-2 text-muted-foreground">
@@ -369,6 +454,23 @@ export default function Guests() {
                     )}
                   </div>
                 </CardContent>
+                {(guest.idProofImage || guest.idProofType) && (
+                  <div className="border-t border-border p-3">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => {
+                        setSelectedGuestForId(guest);
+                        setIsIdViewerOpen(true);
+                      }}
+                      data-testid={`button-view-id-${guest.id}`}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      View ID
+                    </Button>
+                  </div>
+                )}
               </Card>
             );
           })}
