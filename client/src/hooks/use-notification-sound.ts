@@ -5,7 +5,7 @@ type AlarmTone = 'bell' | 'urgent' | 'chime' | 'classic';
 export function useNotificationSound() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const [isEnabled, setIsEnabled] = useState(true);
-  const [alarmTone, setAlarmTone] = useState<AlarmTone>('urgent');
+  const [alarmTone, setAlarmTone] = useState<AlarmTone>('bell');
   const [repeatCount, setRepeatCount] = useState(3); // How many times to repeat
   const [volume, setVolume] = useState(0.6); // Volume level (0-1)
 
