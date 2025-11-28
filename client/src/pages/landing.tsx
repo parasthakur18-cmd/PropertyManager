@@ -361,11 +361,11 @@ export default function Landing() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
               <div>
-                <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">500+</p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">100+</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Premium Properties</p>
               </div>
               <div>
-                <p className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">₹50Cr+</p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">₹300Cr+</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Revenue Managed</p>
               </div>
               <div>
