@@ -73,6 +73,10 @@ const adminRoomItems = [
   { title: "Add-ons", url: "/addons", icon: Plus },
 ];
 
+const adminGuestItems = [
+  { title: "Guests", url: "/guests", icon: Users },
+];
+
 const adminRestaurantItems = [
   { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
@@ -114,6 +118,10 @@ const managerRoomItems = [
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
+];
+
+const managerGuestItems = [
+  { title: "Guests", url: "/guests", icon: Users },
 ];
 
 const managerRestaurantItems = [
@@ -174,6 +182,7 @@ export function AppSidebar() {
         mainItems: adminMainItems,
         bookingItems: adminBookingItems,
         roomItems: adminRoomItems,
+        guestItems: adminGuestItems,
         restaurantItems: adminRestaurantItems,
         adminItems: adminAdminItems,
         financeItems: adminFinanceItems,
@@ -183,6 +192,7 @@ export function AppSidebar() {
         mainItems: managerMainItems,
         bookingItems: managerBookingItems,
         roomItems: managerRoomItems,
+        guestItems: managerGuestItems,
         restaurantItems: managerRestaurantItems,
         adminItems: managerAdminItems,
         financeItems: managerFinanceItems,
@@ -192,6 +202,7 @@ export function AppSidebar() {
         mainItems: [],
         bookingItems: [],
         roomItems: [],
+        guestItems: [],
         restaurantItems: kitchenMenuItems,
         adminItems: [],
         financeItems: [],
@@ -202,6 +213,7 @@ export function AppSidebar() {
         mainItems: staffMenuItems,
         bookingItems: [],
         roomItems: [],
+        guestItems: [],
         restaurantItems: [],
         adminItems: [],
         financeItems: [],
@@ -343,6 +355,43 @@ export function AppSidebar() {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {menuConfig.roomItems.map((item) => {
+                      const isActive = location === item.url;
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild data-active={isActive}>
+                            <Link 
+                              href={item.url} 
+                              data-testid={`link-${item.title.toLowerCase()}`}
+                              onClick={handleNavClick}
+                            >
+                              <item.icon className="h-4 w-4" />
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        )}
+
+        {/* Guests Section */}
+        {user?.role !== "kitchen" && user?.role !== "super-admin" && menuConfig.guestItems.length > 0 && (
+          <Collapsible defaultOpen className="group/collapsible">
+            <SidebarGroup>
+              <SidebarGroupLabel asChild>
+                <CollapsibleTrigger className="flex w-full items-center justify-between">
+                  Guests
+                  <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                </CollapsibleTrigger>
+              </SidebarGroupLabel>
+              <CollapsibleContent>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {menuConfig.guestItems.map((item) => {
                       const isActive = location === item.url;
                       return (
                         <SidebarMenuItem key={item.title}>
