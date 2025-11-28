@@ -354,27 +354,27 @@ export default function Landing() {
             </Card>
           </div>
 
-          {/* Trust Badges */}
+          {/* Trust Badges - Indian Market Numbers */}
           <div className="mt-16 border-t border-slate-200 dark:border-slate-800 pt-12">
             <div className="text-center mb-8">
-              <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Used by 500+ properties across India</p>
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">By The Numbers</p>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
               <div>
                 <p className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">500+</p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Properties</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Premium Properties</p>
               </div>
               <div>
-                <p className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">10K+</p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Bookings/Month</p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">₹50Cr+</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Revenue Managed</p>
               </div>
               <div>
-                <p className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">99.9%</p>
+                <p className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-green-600 bg-clip-text text-transparent">5000+</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Rooms/Beds</p>
+              </div>
+              <div>
+                <p className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">99.9%</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Uptime</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">24/7</p>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">AI Support</p>
               </div>
             </div>
           </div>
