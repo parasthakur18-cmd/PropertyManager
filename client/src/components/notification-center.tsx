@@ -102,6 +102,18 @@ export function NotificationCenter() {
     }
   };
 
+  const clearAllNotifications = async () => {
+    try {
+      for (const notification of notifications) {
+        await fetch(`/api/notifications/${notification.id}`, { method: "DELETE" });
+      }
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (error) {
+      console.error("Failed to clear all notifications:", error);
+    }
+  };
+
   return (
     <div className="relative">
       <Button
@@ -123,9 +135,22 @@ export function NotificationCenter() {
         <Card className="absolute right-0 top-12 w-96 max-h-96 overflow-y-auto z-50 shadow-lg">
           <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-background">
             <h3 className="font-semibold">Notifications</h3>
-            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {notifications.length > 0 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={clearAllNotifications}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  data-testid="button-clear-all-notifications"
+                >
+                  Clear All
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
 
           {notifications.length === 0 ? (
