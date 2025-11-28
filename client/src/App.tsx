@@ -17,7 +17,7 @@ import Dashboard from "@/pages/dashboard";
 import Properties from "@/pages/properties";
 import Rooms from "@/pages/rooms";
 import Bookings from "@/pages/bookings";
-import Guests from "@/pages/guests";
+import Guests from "@/pages/guests/page";
 import Kitchen from "@/pages/restaurant";
 import Billing from "@/pages/billing";
 import Analytics from "@/pages/analytics";
