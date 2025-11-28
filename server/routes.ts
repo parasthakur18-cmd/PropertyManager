@@ -28,6 +28,7 @@ import {
   notifications,
   changeApprovals,
   insertChangeApprovalSchema,
+  auditLog,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
@@ -6595,7 +6596,6 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { auditLog } = require("@shared/schema");
       const logs = await db
         .select()
         .from(auditLog)
