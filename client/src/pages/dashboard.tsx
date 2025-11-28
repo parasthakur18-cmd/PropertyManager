@@ -82,7 +82,7 @@ interface CheckoutReminder {
   hoursOverdue: number;
 }
 
-type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders";
+type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
 
 export default function Dashboard() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
@@ -367,6 +367,15 @@ export default function Dashboard() {
     filteredBookings.filter(b => b.status === "checked-in"), [filteredBookings]
   );
 
+  const upcomingBookings = useMemo(() => {
+    const now = startOfDay(new Date());
+    const next30Days = addDays(now, 30);
+    return filteredBookings.filter(b => {
+      const checkInDate = startOfDay(new Date(b.checkInDate));
+      return checkInDate > now && checkInDate <= next30Days && (b.status === "confirmed" || b.status === "pending");
+    }).sort((a, b) => new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime());
+  }, [filteredBookings]);
+
   const activeOrders = useMemo(() => 
     filteredOrders.filter(o => 
       o.status === "pending" || o.status === "preparing" || o.status === "ready"
@@ -422,6 +431,7 @@ export default function Dashboard() {
     { key: "checkins" as MobileTab, label: "Check-ins", icon: LogIn, count: todayCheckIns.length, color: "text-blue-600" },
     { key: "checkouts" as MobileTab, label: "Check-outs", icon: LogOut, count: todayCheckOuts.length, color: "text-amber-600" },
     { key: "orders" as MobileTab, label: "Orders", icon: Utensils, count: activeOrders.length, color: "text-purple-600" },
+    { key: "upcoming" as MobileTab, label: "Upcoming", icon: Calendar, count: upcomingBookings.length, color: "text-orange-600" },
   ];
 
   const renderMobileContent = () => {
@@ -675,6 +685,62 @@ export default function Dashboard() {
           </div>
         );
 
+      case "upcoming":
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold">Upcoming Bookings</h2>
+              <Badge variant="secondary" className="bg-orange-500 text-white">{upcomingBookings.length}</Badge>
+            </div>
+            {upcomingBookings.length === 0 ? (
+              <Card className="p-8 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <p className="text-muted-foreground">No upcoming bookings in next 30 days</p>
+              </Card>
+            ) : (
+              upcomingBookings.map(booking => {
+                const { guest, property, roomDisplay } = getGuestInfo(booking);
+                const daysUntilCheckIn = Math.ceil((new Date(booking.checkInDate).getTime() - startOfDay(new Date()).getTime()) / (1000 * 60 * 60 * 24));
+                return (
+                  <Card key={booking.id} className="overflow-hidden" data-testid={`card-upcoming-${booking.id}`}>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="h-10 w-10 rounded-full bg-orange-500/10 flex items-center justify-center flex-shrink-0">
+                              <Calendar className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-base truncate">{guest?.fullName || "Guest"}</p>
+                              <p className="text-xs text-muted-foreground">{property?.name || "Property"}</p>
+                            </div>
+                          </div>
+                          <div className="mt-2 space-y-1">
+                            <div className="flex items-center gap-2 text-sm">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span>{format(new Date(booking.checkInDate), "MMM dd, yyyy")} ({daysUntilCheckIn} days)</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Hotel className="h-4 w-4 text-muted-foreground" />
+                              <span>Room: {roomDisplay}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Users className="h-4 w-4 text-muted-foreground" />
+                              <span>{booking.numberOfGuests} guest(s)</span>
+                            </div>
+                          </div>
+                        </div>
+                        <Badge className={booking.status === "confirmed" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"}>
+                          {booking.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        );
       case "orders":
         return (
           <div className="space-y-3">
