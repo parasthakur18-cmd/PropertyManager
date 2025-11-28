@@ -1013,6 +1013,10 @@ export default function Dashboard() {
 
       {/* Main Content Area - Scrollable */}
       <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 lg:pb-4">
+        {/* Analytics Cards */}
+        {renderAnalyticsCards()}
+        {renderMobileAnalyticsCards()}
+        
         {/* Desktop: 4-Column Full Section Layout */}
         <div className="hidden lg:grid lg:grid-cols-4 gap-4">
           {/* Check-In Column */}
