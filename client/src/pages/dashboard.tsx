@@ -444,6 +444,55 @@ export default function Dashboard() {
     { label: "Active Users", value: stats?.activeUsers || 0, icon: Users, color: "from-pink-500 to-rose-500", trend: "On platform" },
   ];
 
+  const renderPropertyOverview = () => {
+    const occupancyStatus = (stats?.occupancyRate || 0) >= 80 ? "Excellent" : (stats?.occupancyRate || 0) >= 60 ? "Good" : "Fair";
+    const occupancyColor = (stats?.occupancyRate || 0) >= 80 ? "text-green-600" : (stats?.occupancyRate || 0) >= 60 ? "text-blue-600" : "text-orange-600";
+    
+    return (
+      <div className="hidden lg:block mb-8">
+        <div className="relative bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 rounded-2xl border border-cyan-200 dark:border-cyan-800 p-8 overflow-hidden">
+          {/* Decorative circle background */}
+          <div className="absolute top-4 right-4 h-24 w-24 rounded-full bg-gradient-to-br from-cyan-400 to-blue-400 opacity-20"></div>
+          
+          <div className="relative z-10">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">Dashboard</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-8">Property Overview</h2>
+            
+            <div className="grid grid-cols-2 gap-8">
+              {/* Total Bookings */}
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Total Bookings</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white">{stats?.activeBookings || 0}</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">↑ 12% this month</p>
+              </div>
+              
+              {/* Revenue */}
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Revenue</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">↑ 8% growth</p>
+              </div>
+              
+              {/* Active Guests */}
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Guests</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white">{stats?.totalGuests || 0}</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">Active guests</p>
+              </div>
+              
+              {/* Occupancy */}
+              <div className="space-y-2">
+                <p className="text-sm text-slate-600 dark:text-slate-400">Occupancy</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white">{Math.round(stats?.occupancyRate || 0)}%</p>
+                <p className={`text-sm font-medium ${occupancyColor}`}>{occupancyStatus}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderAnalyticsCards = () => (
     <div className="hidden lg:grid grid-cols-3 gap-6 mb-8">
       {analyticsMetrics.slice(0, 3).map((metric, idx) => {
@@ -1013,6 +1062,9 @@ export default function Dashboard() {
 
       {/* Main Content Area - Scrollable */}
       <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 lg:pb-4">
+        {/* Property Overview Section */}
+        {renderPropertyOverview()}
+        
         {/* Analytics Cards */}
         {renderAnalyticsCards()}
         {renderMobileAnalyticsCards()}
