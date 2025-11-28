@@ -18,6 +18,7 @@ import {
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -85,6 +86,7 @@ interface CheckoutReminder {
 type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("inhouse");
   const [, setLocation] = useLocation();
@@ -795,8 +797,33 @@ export default function Dashboard() {
         );
 
       case "upcoming":
+        const totalUpcomingAmount = upcomingBookings.reduce((sum, booking) => {
+          // Calculate based on room charge per night or total booking amount
+          const roomCharge = parseFloat((booking.roomCharge || 0).toString()) || 0;
+          const nights = Math.ceil((new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24));
+          return sum + (roomCharge * nights);
+        }, 0);
+
         return (
           <div className="space-y-3">
+            {/* Total Upcoming Business - Admin Only */}
+            {user?.role === "admin" && upcomingBookings.length > 0 && (
+              <Card className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 border-orange-200 dark:border-orange-800">
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-orange-600 dark:text-orange-400 font-semibold uppercase">Upcoming Business (30 days)</p>
+                      <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">₹{totalUpcomingAmount.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-slate-600 dark:text-slate-400">{upcomingBookings.length} bookings</p>
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Average: ₹{(totalUpcomingAmount / upcomingBookings.length).toLocaleString('en-IN', {maximumFractionDigits: 0})}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex items-center justify-between px-1">
               <h2 className="text-lg font-semibold">Upcoming Bookings</h2>
               <Badge variant="secondary" className="bg-orange-500 text-white">{upcomingBookings.length}</Badge>
