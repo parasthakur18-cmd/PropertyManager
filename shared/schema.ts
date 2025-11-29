@@ -1234,3 +1234,28 @@ export const insertChangeApprovalSchema = createInsertSchema(changeApprovals).om
   updatedAt: true,
 });
 export type InsertChangeApproval = z.infer<typeof insertChangeApprovalSchema>;
+
+// Expense Budgets table - for budget planning and alerts
+export const expenseBudgets = pgTable("expense_budgets", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  categoryId: integer("category_id").notNull().references(() => expenseCategories.id, { onDelete: 'cascade' }),
+  budgetAmount: decimal("budget_amount", { precision: 12, scale: 2 }).notNull(),
+  period: varchar("period", { length: 20 }).notNull().default("monthly"), // monthly, quarterly, yearly
+  month: integer("month"), // 1-12 for monthly budgets
+  year: integer("year"), // Year of the budget
+  alertThresholdYellow: integer("alert_threshold_yellow").notNull().default(70), // Alert at 70%
+  alertThresholdRed: integer("alert_threshold_red").notNull().default(90), // Alert at 90%
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active, inactive
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertExpenseBudgetSchema = createInsertSchema(expenseBudgets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertExpenseBudget = z.infer<typeof insertExpenseBudgetSchema>;
+export type ExpenseBudget = typeof expenseBudgets.$inferSelect;
