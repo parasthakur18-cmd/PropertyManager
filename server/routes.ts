@@ -1342,15 +1342,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
-      
-      // Convert date strings to Date objects
-      const bodyWithDates = {
-        ...req.body,
-        checkInDate: new Date(req.body.checkInDate),
-        checkOutDate: new Date(req.body.checkOutDate),
-      };
-      
-      const data = insertBookingSchema.parse(bodyWithDates);
+      // Parse booking data directly - dates should be date strings (YYYY-MM-DD)
+      const data = insertBookingSchema.parse(req.body);
       
       console.log('🔍 [DEBUG] Booking creation - parsed data:', {
         roomId: data.roomId,
@@ -1432,7 +1425,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      // Parse and validate the booking data - this will convert ISO strings to Date objects
+      // Parse and validate the booking data - dates should be date strings (YYYY-MM-DD)
       const validatedData = insertBookingSchema.partial().parse(req.body);
       
       // Fetch existing booking to determine property context
