@@ -95,7 +95,10 @@ export default function QuickOrder() {
   };
 
   const calculateTotal = () => {
-    return cart.reduce((sum, item) => sum + parseFloat(item.price as string) * item.quantity, 0);
+    return cart.reduce((sum, item) => {
+      const price = item.discountedPrice ? parseFloat(String(item.discountedPrice)) : parseFloat(String(item.actualPrice || 0));
+      return sum + price * item.quantity;
+    }, 0);
   };
 
   // Helper to get item quantity in cart
@@ -182,7 +185,7 @@ export default function QuickOrder() {
       items: cart.map((item) => ({
         id: item.id,
         name: item.name,
-        price: item.price,
+        price: item.discountedPrice ? parseFloat(String(item.discountedPrice)) : parseFloat(String(item.actualPrice || 0)),
         quantity: item.quantity,
       })),
       totalAmount: calculateTotal().toFixed(2),
