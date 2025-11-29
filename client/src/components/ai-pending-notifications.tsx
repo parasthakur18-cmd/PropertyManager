@@ -36,26 +36,26 @@ export function AIPendingNotifications() {
     refetchInterval: 300000, // AI decides every 5 minutes
   });
 
-  const getNotificationKey = () => {
+  const getNotificationHourKey = () => {
     const now = new Date();
-    // Track by date and create a session-based key to avoid showing same notification multiple times
-    return `ai-notif-shown-${now.toDateString()}`;
+    // Track dismissal per hour - allows repeated reminders every hour if task not completed
+    return `ai-notif-dismissed-${now.toDateString()}-${now.getHours()}`;
   };
 
-  const wasNotificationShownToday = () => {
-    return localStorage.getItem(getNotificationKey()) === "true";
+  const wasDismissedThisHour = () => {
+    return localStorage.getItem(getNotificationHourKey()) === "true";
   };
 
-  const markNotificationShownToday = () => {
-    localStorage.setItem(getNotificationKey(), "true");
+  const markDismissedThisHour = () => {
+    localStorage.setItem(getNotificationHourKey(), "true");
   };
 
   useEffect(() => {
     if (pendingItems && aiSummary && !aiLoading) {
-      // AI decides: show if shouldNotify is true AND not already shown today
-      if (aiSummary.shouldNotify && !wasNotificationShownToday()) {
+      // AI decides: show if shouldNotify is true AND not dismissed this hour
+      // This allows reminders EVERY HOUR until tasks are completed
+      if (aiSummary.shouldNotify && !wasDismissedThisHour()) {
         setShowNotification(true);
-        markNotificationShownToday();
         const timer = setTimeout(() => setShowNotification(false), AUTO_HIDE_DURATION);
         setAutoHideTimer(timer);
       }
@@ -72,6 +72,7 @@ export function AIPendingNotifications() {
 
   const handleDismiss = () => {
     setShowNotification(false);
+    markDismissedThisHour(); // Only dismiss for this hour - will remind next hour if not completed
     if (autoHideTimer) clearTimeout(autoHideTimer);
   };
 
@@ -82,7 +83,7 @@ export function AIPendingNotifications() {
           <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <AlertTitle className="text-orange-900 dark:text-orange-100">Pending Tasks ({total})</AlertTitle>
-            <div className="text-xs text-orange-700 dark:text-orange-300">Auto-hiding in 1 hour</div>
+            <div className="text-xs text-orange-700 dark:text-orange-300">⏰ Reminding every hour until completed</div>
           </div>
         </div>
 
