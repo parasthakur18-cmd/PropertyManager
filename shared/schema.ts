@@ -139,7 +139,10 @@ export const travelAgents = pgTable("travel_agents", {
   contactPerson: varchar("contact_person", { length: 255 }),
   phone: varchar("phone", { length: 50 }).notNull(),
   email: varchar("email", { length: 255 }),
-  commissionPercentage: decimal("commission_percentage", { precision: 5, scale: 2 }).default("0"),
+  commission: decimal("commission", { precision: 10, scale: 2 }).default("0"),
+  address: text("address"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -158,21 +161,22 @@ export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   roomId: integer("room_id").references(() => rooms.id, { onDelete: 'cascade' }),
-  roomIds: integer("room_ids").array(), // For group bookings with multiple rooms
+  roomIds: integer("room_ids").array(),
   guestId: integer("guest_id").notNull().references(() => guests.id, { onDelete: 'cascade' }),
-  checkInDate: date("check_in_date").notNull(),
-  checkOutDate: date("check_out_date").notNull(),
+  checkInDate: timestamp("check_in_date").notNull(),
+  checkOutDate: timestamp("check_out_date").notNull(),
   numberOfGuests: integer("number_of_guests").notNull(),
-  numberOfNights: integer("number_of_nights").notNull(),
-  roomCharges: decimal("room_charges", { precision: 10, scale: 2 }).notNull(),
-  extraCharges: decimal("extra_charges", { precision: 10, scale: 2 }).default("0"),
-  discount: decimal("discount", { precision: 10, scale: 2 }).default("0"),
+  customPrice: decimal("custom_price", { precision: 10, scale: 2 }),
+  advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("confirmed"), // confirmed, checked-in, checked-out, cancelled
+  status: varchar("status", { length: 20 }).notNull().default("confirmed"),
   source: varchar("source", { length: 50 }).default("direct"),
-  mealPlan: varchar("meal_plan", { length: 50 }).default("none"), // none, breakfast, half-board, full-board
+  mealPlan: varchar("meal_plan", { length: 50 }).default("none"),
   specialRequests: text("special_requests"),
+  isGroupBooking: boolean("is_group_booking").default(false),
+  bedsBooked: integer("beds_booked"),
   travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
+  createdBy: varchar("created_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -181,7 +185,7 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-  numberOfNights: true, // Remove - calculated from check-in/check-out dates
+  createdBy: true,
 });
 
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
