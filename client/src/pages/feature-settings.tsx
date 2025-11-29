@@ -7,6 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
+import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2 
 } from "lucide-react";
@@ -67,6 +69,7 @@ export default function FeatureSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const [selectedProperty, setSelectedProperty] = useState<string>("");
 
   // Redirect if not admin or super-admin
   if (user?.role !== "admin" && user?.role !== "super-admin") {
@@ -74,7 +77,13 @@ export default function FeatureSettings() {
     return null;
   }
 
-  const propertyId = user?.assignedPropertyIds?.[0];
+  // Get all properties for selection
+  const { data: properties = [] } = useQuery({
+    queryKey: ["/api/properties"],
+  });
+
+  // Use selected property or first assigned property
+  const propertyId = selectedProperty || user?.assignedPropertyIds?.[0];
 
   const { data: settings, isLoading } = useQuery<FeatureSettings>({
     queryKey: ["/api/feature-settings", propertyId],
@@ -106,6 +115,41 @@ export default function FeatureSettings() {
       [key]: value,
     } as any);
   };
+
+  if (!propertyId && !selectedProperty) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-8">
+        <div className="space-y-4">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Settings2 className="h-8 w-8" />
+            Feature Settings
+          </h1>
+          <p className="text-muted-foreground">
+            Select a property to configure its features
+          </p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Select Property</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedProperty} onValueChange={setSelectedProperty}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a property..." />
+              </SelectTrigger>
+              <SelectContent>
+                {properties.map((prop: any) => (
+                  <SelectItem key={prop.id} value={prop.id.toString()}>
+                    {prop.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading || !settings) {
     return (
