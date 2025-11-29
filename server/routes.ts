@@ -6321,6 +6321,108 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // POST /api/pending-items/ai-summary - Get AI-powered summary of pending tasks
+  app.get("/api/pending-items/ai-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
+        ? user.assignedPropertyIds
+        : allProperties.map((p: any) => p.id);
+
+      if (propertyIds.length === 0) {
+        return res.json({
+          cleaningRooms: { count: 0, message: "" },
+          pendingEnquiries: { count: 0, message: "" },
+          pendingBills: { count: 0, message: "" },
+          overallInsight: "",
+        });
+      }
+
+      // Get pending counts
+      const rooms = await storage.getAllRooms();
+      const cleaningCount = rooms.filter((r: any) =>
+        propertyIds.includes(r.propertyId) && (r.status === "cleaning" || r.status === "maintenance")
+      ).length;
+
+      const allEnquiries = await storage.getAllEnquiries();
+      const enquiriesCount = allEnquiries.filter((e: any) =>
+        propertyIds.includes(e.propertyId) && e.status === "new"
+      ).length;
+
+      const allBills = await storage.getAllBills();
+      const billsCount = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+
+      // Generate AI summary using OpenAI
+      const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      
+      if (!openaiKey) {
+        return res.json({
+          cleaningRooms: { count: cleaningCount, message: `${cleaningCount} rooms need attention for cleaning or maintenance.` },
+          pendingEnquiries: { count: enquiriesCount, message: `${enquiriesCount} new customer inquiries awaiting response.` },
+          pendingBills: { count: billsCount, message: `${billsCount} unpaid invoices pending collection.` },
+          overallInsight: "Ensure all tasks are handled promptly to maintain service quality.",
+        });
+      }
+
+      const summary = `Generate brief, actionable notifications for a hotel property management system. Be concise, professional, and specific to hospitality operations. Format as JSON with these exact fields: cleaningRoomsAdvice, enquiriesAdvice, billsAdvice, overallTip.
+
+Current status:
+- ${cleaningCount} rooms pending cleaning or maintenance
+- ${enquiriesCount} new customer enquiries
+- ${billsCount} unpaid bills
+
+Generate practical, urgency-appropriate messages for each. Keep each message under 30 words.`;
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: summary }],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("OpenAI API failed");
+      }
+
+      const data = await response.json();
+      const aiText = data.choices?.[0]?.message?.content || "";
+
+      try {
+        const parsed = JSON.parse(aiText);
+        return res.json({
+          cleaningRooms: { count: cleaningCount, message: parsed.cleaningRoomsAdvice || "Prepare rooms for incoming guests." },
+          pendingEnquiries: { count: enquiriesCount, message: parsed.enquiriesAdvice || "Follow up on customer inquiries promptly." },
+          pendingBills: { count: billsCount, message: parsed.billsAdvice || "Collect outstanding payments." },
+          overallInsight: parsed.overallTip || "Stay on top of all pending tasks.",
+        });
+      } catch (e) {
+        return res.json({
+          cleaningRooms: { count: cleaningCount, message: "Rooms need attention." },
+          pendingEnquiries: { count: enquiriesCount, message: "Customer inquiries awaiting response." },
+          pendingBills: { count: billsCount, message: "Outstanding payments to collect." },
+          overallInsight: "Handle all pending items promptly.",
+        });
+      }
+    } catch (error: any) {
+      console.error("[AI-SUMMARY] Error:", error);
+      res.status(500).json({ message: "Failed to generate AI summary" });
+    }
+  });
+
   // GET /api/pending-items - Get count of all pending items for automation notifications
   app.get("/api/pending-items", isAuthenticated, async (req, res) => {
     try {
