@@ -35,6 +35,7 @@ import {
   Lock,
   Settings2,
   Globe,
+  Bell,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -60,6 +61,7 @@ import { ChevronDown } from "lucide-react";
 const adminMainItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Properties", url: "/properties", icon: Building2 },
+  { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 
 const adminBookingItems = [
@@ -110,6 +112,7 @@ const adminFinanceItems = [
 // Manager menu items grouped by category
 const managerMainItems = [
   { title: "Dashboard", url: "/", icon: Home },
+  { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 
 const managerBookingItems = [
