@@ -34,6 +34,7 @@ import {
   HelpCircle,
   Lock,
   Settings2,
+  Globe,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -89,6 +90,7 @@ const adminRestaurantItems = [
 const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
+  { title: "OTA Integrations", url: "/ota-integrations", icon: Globe },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
