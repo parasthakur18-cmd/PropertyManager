@@ -262,7 +262,7 @@ export default function Expenses() {
       name: category.name,
       description: category.description || "",
       keywords: category.keywords?.join(', ') || "",
-      propertyId: category.propertyId,
+      propertyId: category.propertyId || null,
       isDefault: category.isDefault,
     });
     setIsCategoryDialogOpen(true);

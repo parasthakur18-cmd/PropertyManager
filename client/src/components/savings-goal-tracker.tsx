@@ -163,7 +163,7 @@ export function SavingsGoalTracker({ expenses }: { expenses: any[] }) {
                   <DialogTitle>Create Savings Goal</DialogTitle>
                 </DialogHeader>
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(handleAddGoal)} className="space-y-4">
+                  <form onSubmit={form.handleSubmit((data: any) => handleAddGoal(data))} className="space-y-4">
                     <FormField
                       control={form.control}
                       name="category"

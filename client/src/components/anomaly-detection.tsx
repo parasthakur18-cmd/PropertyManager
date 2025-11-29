@@ -262,7 +262,7 @@ export function AnomalyDetection({ expenses }: { expenses: any[] }) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-2 text-sm">
-            <li>✓ Detects expenses >2 standard deviations from average (statistical anomalies)</li>
+            <li>✓ Detects expenses greater than 2 standard deviations from average (statistical anomalies)</li>
             <li>✓ Identifies unusual patterns in expense categories</li>
             <li>✓ Flags trend changes (15%+ increase/decrease)</li>
             <li>✓ Highlights top cost drivers for focus areas</li>
