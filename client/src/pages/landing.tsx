@@ -219,6 +219,114 @@ export default function Landing() {
         </div>
       </div>
 
+      {/* AI Notifications Showcase Section */}
+      <div className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            {/* Left - Content */}
+            <div className="space-y-6">
+              <div className="inline-block">
+                <span className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-1 rounded-full text-sm font-semibold">AI-POWERED INTELLIGENCE</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white">
+                Never Miss a Beat with AI Notifications
+              </h2>
+              <p className="text-xl text-slate-600 dark:text-slate-300">
+                Our intelligent notification system learns your property's patterns and sends smart, timely alerts right when you need them—not before, not after.
+              </p>
+
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">✓</div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Smart 3-Hour Reminders</h4>
+                    <p className="text-slate-600 dark:text-slate-400">Get reminders every 3 hours for pending tasks like cleaning, payments, and orders—perfectly timed</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold">✓</div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Auto-Dismiss After 3 Hours</h4>
+                    <p className="text-slate-600 dark:text-slate-400">Notifications automatically dismiss after 3 hours if task is still pending—no more notification fatigue</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold">✓</div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Works Offline</h4>
+                    <p className="text-slate-600 dark:text-slate-400">Notifications work even when the app is completely closed using browser push notifications</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-white font-bold">✓</div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white mb-1">Task-Specific Intelligence</h4>
+                    <p className="text-slate-600 dark:text-slate-400">Alerts for cleaning pending, payments due, food orders, staff attendance—all in one place</p>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={() => {
+                  setLocation("/features");
+                }}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white mt-4"
+                data-testid="button-explore-ai"
+              >
+                Explore All AI Features
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Right - Visual Showcase */}
+            <div className="space-y-4">
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl p-8 border border-purple-200 dark:border-purple-800">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-lg border-l-4 border-purple-500">
+                    <AlertCircle className="h-5 w-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">Room 203 Cleaning Pending</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Notify again in 3 hours</p>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-lg border-l-4 border-blue-500">
+                    <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">Payment Received: ₹5,000</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Via WhatsApp Payment Link</p>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-lg border-l-4 border-green-500">
+                    <AlertCircle className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">Food Order #45 Ready</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Table 4 • Notify room 210</p>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-lg border-l-4 border-orange-500 opacity-50">
+                    <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900 dark:text-white text-sm">Attendance: Staff ABC</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Auto-dismissed after 3 hours</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Why Hostezee Section */}
       <div className="py-20 px-4">
         <div className="max-w-7xl mx-auto">
