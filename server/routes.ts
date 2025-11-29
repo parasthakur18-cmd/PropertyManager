@@ -29,10 +29,12 @@ import {
   changeApprovals,
   insertChangeApprovalSchema,
   auditLog,
+  employeePerformanceMetrics,
+  taskNotificationLogs,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc, sql, eq, and, isNull, not, or, gt, lt, param } from "drizzle-orm";
+import { desc, sql, eq, and, isNull, not, or, gt, lt, param, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
@@ -6719,6 +6721,86 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       res.json(approval[0]);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== PERFORMANCE ROUTES =====
+
+  // Get user performance metrics (admin/manager)
+  app.get("/api/performance/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          totalTasksAssigned: sql`COALESCE(SUM(${employeePerformanceMetrics.totalTasksAssigned}), 0)`.as("totalTasksAssigned"),
+          tasksCompletedOnTime: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedOnTime}), 0)`.as("tasksCompletedOnTime"),
+          tasksCompletedLate: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedLate}), 0)`.as("tasksCompletedLate"),
+          averageCompletionTimeMinutes: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.averageCompletionTimeMinutes}) AS NUMERIC), 2)`.as("averageCompletionTimeMinutes"),
+          performanceScore: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.performanceScore}) AS NUMERIC), 2)`.as("performanceScore"),
+        })
+        .from(users)
+        .leftJoin(employeePerformanceMetrics, eq(users.id, employeePerformanceMetrics.staffId))
+        .where(inArray(users.role, ["admin", "manager"]))
+        .groupBy(users.id);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching user performance:", error);
+      res.status(500).json({ error: "Failed to fetch performance data" });
+    }
+  });
+
+  // Get staff performance metrics
+  app.get("/api/performance/staff", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          totalTasksAssigned: sql`COALESCE(SUM(${employeePerformanceMetrics.totalTasksAssigned}), 0)`.as("totalTasksAssigned"),
+          tasksCompletedOnTime: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedOnTime}), 0)`.as("tasksCompletedOnTime"),
+          tasksCompletedLate: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedLate}), 0)`.as("tasksCompletedLate"),
+          averageCompletionTimeMinutes: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.averageCompletionTimeMinutes}) AS NUMERIC), 2)`.as("averageCompletionTimeMinutes"),
+          performanceScore: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.performanceScore}) AS NUMERIC), 2)`.as("performanceScore"),
+        })
+        .from(users)
+        .leftJoin(employeePerformanceMetrics, eq(users.id, employeePerformanceMetrics.staffId))
+        .where(inArray(users.role, ["staff", "kitchen"]))
+        .groupBy(users.id);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching staff performance:", error);
+      res.status(500).json({ error: "Failed to fetch performance data" });
+    }
+  });
+
+  // Get task notification logs
+  app.get("/api/performance/task-logs", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: taskNotificationLogs.id,
+          userId: taskNotificationLogs.userId,
+          userName: sql`${users.firstName} || ' ' || ${users.lastName}`.as("userName"),
+          taskType: taskNotificationLogs.taskType,
+          taskCount: taskNotificationLogs.taskCount,
+          reminderCount: taskNotificationLogs.reminderCount,
+          completionTime: taskNotificationLogs.completionTime,
+          lastRemindedAt: taskNotificationLogs.lastRemindedAt,
+          allTasksCompletedAt: taskNotificationLogs.allTasksCompletedAt,
+        })
+        .from(taskNotificationLogs)
+        .leftJoin(users, eq(taskNotificationLogs.userId, users.id))
+        .orderBy(desc(taskNotificationLogs.lastRemindedAt))
+        .limit(50);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching task logs:", error);
+      res.status(500).json({ error: "Failed to fetch task logs" });
     }
   });
 

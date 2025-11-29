@@ -157,6 +157,7 @@ function Router() {
           <Route path="/analytics" component={Analytics} />
           <Route path="/salaries" component={Salaries} />
           <Route path="/attendance" component={Attendance} />
+          <Route path="/performance" component={Performance} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/ota-integrations" component={OtaIntegrations} />
           <Route path="/notifications" component={Notifications} />
