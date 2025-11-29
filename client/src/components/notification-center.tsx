@@ -141,7 +141,7 @@ export function NotificationCenter() {
           />
           
           {/* Notification Card - Mobile: drawer, Desktop: dropdown */}
-          <Card className="fixed md:absolute right-0 md:right-auto bottom-0 md:bottom-auto md:top-12 w-full md:w-96 h-2/3 md:h-auto md:max-h-96 overflow-y-auto z-50 shadow-lg rounded-t-lg md:rounded-lg">
+          <Card className="fixed md:absolute bottom-0 md:bottom-auto right-0 md:right-2 md:top-12 w-full md:w-96 h-2/3 md:h-auto md:max-h-96 overflow-y-auto z-50 shadow-lg rounded-t-lg md:rounded-lg">
             <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-background">
               <h3 className="font-semibold">Notifications</h3>
               <div className="flex items-center gap-2">
