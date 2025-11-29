@@ -885,3 +885,29 @@ export const insertFeatureSettingsSchema = createInsertSchema(featureSettings).o
 
 export type InsertFeatureSettings = z.infer<typeof insertFeatureSettingsSchema>;
 export type FeatureSettings = typeof featureSettings.$inferSelect;
+
+// OTA Integrations table
+export const otaIntegrations = pgTable("ota_integrations", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  otaName: varchar("ota_name", { length: 100 }).notNull(), // booking.com, airbnb, etc
+  propertyId_external: varchar("property_id_external", { length: 255 }).notNull(), // Hotel ID on OTA platform
+  apiKey: text("api_key"), // Encrypted API key
+  apiSecret: text("api_secret"), // Encrypted API secret
+  enabled: boolean("enabled").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncErrorMessage: text("sync_error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOtaIntegrationSchema = createInsertSchema(otaIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncAt: true,
+  syncErrorMessage: true,
+});
+
+export type InsertOtaIntegration = z.infer<typeof insertOtaIntegrationSchema>;
+export type OtaIntegration = typeof otaIntegrations.$inferSelect;

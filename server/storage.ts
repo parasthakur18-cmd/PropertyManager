@@ -315,6 +315,12 @@ export interface IStorage {
   markErrorAsResolved(id: number): Promise<ErrorCrash>;
 
   // OTA Integrations operations (multi-portal support)
+  getOtaIntegrationsByProperty(propertyId: number): Promise<any[]>;
+  getOtaIntegration(id: number): Promise<any | undefined>;
+  createOtaIntegration(integration: any): Promise<any>;
+  updateOtaIntegration(id: number, integration: any): Promise<any>;
+  deleteOtaIntegration(id: number): Promise<void>;
+  updateOtaIntegrationSyncStatus(id: number, lastSyncAt: Date, syncErrorMessage?: string): Promise<any>;
 
   // Attendance operations
   getAllAttendance(): Promise<AttendanceRecord[]>;
