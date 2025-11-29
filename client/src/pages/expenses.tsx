@@ -14,13 +14,17 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap } from "lucide-react";
+import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap, TrendingUp, AlertTriangle, Award } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpenseTrends } from "@/components/expense-trends";
 import { ExpenseInsights } from "@/components/expense-insights";
 import { BudgetPlanning } from "@/components/budget-planning";
 import { CostEfficiency } from "@/components/cost-efficiency";
+import { SmartForecasting } from "@/components/smart-forecasting";
+import { ComparisonReports } from "@/components/comparison-reports";
+import { SavingsGoalTracker } from "@/components/savings-goal-tracker";
+import { AnomalyDetection } from "@/components/anomaly-detection";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const expenseFormSchema = insertPropertyExpenseSchema.extend({
@@ -44,7 +48,7 @@ export default function Expenses() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "trends" | "insights" | "budget" | "efficiency">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "trends" | "insights" | "budget" | "efficiency" | "forecast" | "comparison" | "savings" | "anomalies">("overview");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -620,25 +624,43 @@ export default function Expenses() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="trends" className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              <span className="hidden sm:inline">Trends</span>
-            </TabsTrigger>
-            <TabsTrigger value="insights" className="flex items-center gap-2">
-              <Lightbulb className="w-4 h-4" />
-              <span className="hidden sm:inline">Insights</span>
-            </TabsTrigger>
-            <TabsTrigger value="efficiency" className="flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              <span className="hidden sm:inline">Efficiency</span>
-            </TabsTrigger>
-            <TabsTrigger value="budget" className="flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              <span className="hidden sm:inline">Budget</span>
-            </TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto">
+            <TabsList className="grid w-full grid-cols-9 min-w-full">
+              <TabsTrigger value="overview" className="text-xs">Overview</TabsTrigger>
+              <TabsTrigger value="trends" className="flex items-center gap-1 text-xs">
+                <BarChart3 className="w-3 h-3" />
+                <span className="hidden sm:inline">Trends</span>
+              </TabsTrigger>
+              <TabsTrigger value="insights" className="flex items-center gap-1 text-xs">
+                <Lightbulb className="w-3 h-3" />
+                <span className="hidden sm:inline">Insights</span>
+              </TabsTrigger>
+              <TabsTrigger value="efficiency" className="flex items-center gap-1 text-xs">
+                <Zap className="w-3 h-3" />
+                <span className="hidden sm:inline">Efficiency</span>
+              </TabsTrigger>
+              <TabsTrigger value="forecast" className="flex items-center gap-1 text-xs">
+                <TrendingUp className="w-3 h-3" />
+                <span className="hidden sm:inline">Forecast</span>
+              </TabsTrigger>
+              <TabsTrigger value="comparison" className="text-xs">
+                <span className="hidden sm:inline">Compare</span>
+                <span className="sm:hidden">Cmp</span>
+              </TabsTrigger>
+              <TabsTrigger value="savings" className="flex items-center gap-1 text-xs">
+                <Award className="w-3 h-3" />
+                <span className="hidden sm:inline">Savings</span>
+              </TabsTrigger>
+              <TabsTrigger value="anomalies" className="flex items-center gap-1 text-xs">
+                <AlertTriangle className="w-3 h-3" />
+                <span className="hidden sm:inline">Anomalies</span>
+              </TabsTrigger>
+              <TabsTrigger value="budget" className="flex items-center gap-1 text-xs">
+                <Target className="w-3 h-3" />
+                <span className="hidden sm:inline">Budget</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value="overview" className="space-y-6">
             {totalExpenses > 0 && (
@@ -740,6 +762,22 @@ export default function Expenses() {
 
           <TabsContent value="efficiency" className="space-y-6">
             <CostEfficiency expenses={expenses} bookings={bookings} rooms={rooms} />
+          </TabsContent>
+
+          <TabsContent value="forecast" className="space-y-6">
+            <SmartForecasting expenses={expenses} />
+          </TabsContent>
+
+          <TabsContent value="comparison" className="space-y-6">
+            <ComparisonReports expenses={expenses} />
+          </TabsContent>
+
+          <TabsContent value="savings" className="space-y-6">
+            <SavingsGoalTracker expenses={expenses} />
+          </TabsContent>
+
+          <TabsContent value="anomalies" className="space-y-6">
+            <AnomalyDetection expenses={expenses} />
           </TabsContent>
 
           <TabsContent value="budget" className="space-y-6">
