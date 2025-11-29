@@ -26,6 +26,7 @@ import {
   salaryPayments,
   attendanceRecords,
   featureSettings,
+  otaIntegrations,
   type User,
   type UpsertUser,
   type Property,
@@ -2478,6 +2479,40 @@ export class DatabaseStorage implements IStorage {
       updates.approvedBy = approvedBy;
     }
     const [updated] = await db.update(preBills).set(updates).where(eq(preBills.id, id)).returning();
+    return updated;
+  }
+
+  // OTA Integrations operations
+  async getOtaIntegrationsByProperty(propertyId: number): Promise<any[]> {
+    const result = await db.select().from(otaIntegrations).where(eq(otaIntegrations.propertyId, propertyId)).orderBy(desc(otaIntegrations.createdAt));
+    return result;
+  }
+
+  async getOtaIntegration(id: number): Promise<any | undefined> {
+    const [result] = await db.select().from(otaIntegrations).where(eq(otaIntegrations.id, id));
+    return result;
+  }
+
+  async createOtaIntegration(integration: any): Promise<any> {
+    const [created] = await db.insert(otaIntegrations).values(integration).returning();
+    return created;
+  }
+
+  async updateOtaIntegration(id: number, integration: any): Promise<any> {
+    const [updated] = await db.update(otaIntegrations).set({ ...integration, updatedAt: new Date() }).where(eq(otaIntegrations.id, id)).returning();
+    return updated;
+  }
+
+  async deleteOtaIntegration(id: number): Promise<void> {
+    await db.delete(otaIntegrations).where(eq(otaIntegrations.id, id));
+  }
+
+  async updateOtaIntegrationSyncStatus(id: number, lastSyncAt: Date, syncErrorMessage?: string): Promise<any> {
+    const updates: any = { lastSyncAt, updatedAt: new Date() };
+    if (syncErrorMessage !== undefined) {
+      updates.syncErrorMessage = syncErrorMessage;
+    }
+    const [updated] = await db.update(otaIntegrations).set(updates).where(eq(otaIntegrations.id, id)).returning();
     return updated;
   }
 }
