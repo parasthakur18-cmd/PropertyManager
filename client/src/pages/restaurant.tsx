@@ -100,17 +100,9 @@ export default function Kitchen() {
     },
   });
   
-  const calculateOrderTotal = (items: any[]) => {
-    return items.reduce((sum, item) => {
-      const price = parseFloat(item.price || 0);
-      const qty = parseFloat(item.quantity || 0);
-      return sum + (isNaN(price) ? 0 : price) * (isNaN(qty) ? 0 : qty);
-    }, 0);
-  };
-
   const updateOrderMutation = useMutation({
     mutationFn: async ({ id, items }: { id: number; items: any[] }) => {
-      const totalAmount = calculateOrderTotal(items);
+      const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
       return await apiRequest(`/api/orders/${id}`, "PATCH", { items, totalAmount: totalAmount.toFixed(2) });
     },
     onSuccess: () => {
@@ -290,9 +282,7 @@ export default function Kitchen() {
             <div className="pt-3 border-t">
               <div className="flex justify-between font-semibold">
                 <span>Total</span>
-                <span className="font-mono" data-testid={`text-order-total-${order.id}`}>
-                  ₹{isNaN(parseFloat(order.totalAmount || "0")) ? calculateOrderTotal(order.items || []).toFixed(2) : order.totalAmount}
-                </span>
+                <span className="font-mono" data-testid={`text-order-total-${order.id}`}>₹{order.totalAmount}</span>
               </div>
             </div>
 

@@ -196,10 +196,8 @@ export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  imageUrl: text("image_url"),
-  startTime: varchar("start_time", { length: 50 }),
-  endTime: varchar("end_time", { length: 50 }),
-  displayOrder: integer("display_order"),
+  description: text("description"),
+  image: text("image"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -221,16 +219,11 @@ export const menuItems = pgTable("menu_items", {
   categoryId: integer("category_id").notNull().references(() => menuCategories.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  actualPrice: decimal("actual_price", { precision: 10, scale: 2 }).notNull(),
-  discountedPrice: decimal("discounted_price", { precision: 10, scale: 2 }),
-  imageUrl: text("image_url"),
-  preparationTime: integer("preparation_time"),
-  category: varchar("category", { length: 255 }),
-  foodType: varchar("food_type", { length: 50 }),
-  hasVariants: boolean("has_variants").default(false),
-  hasAddOns: boolean("has_add_ons").default(false),
-  displayOrder: integer("display_order"),
-  isAvailable: boolean("is_available").notNull().default(true),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  preparationTime: integer("preparation_time"), // in minutes
+  image: text("image"),
+  isVegetarian: boolean("is_vegetarian").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -285,26 +278,30 @@ export type MenuItemAddOn = typeof menuItemAddOns.$inferSelect;
 // Orders table
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull(),
+  propertyId: integer("property_id"),
   roomId: integer("room_id").references(() => rooms.id),
   bookingId: integer("booking_id").references(() => bookings.id),
-  guestId: integer("guest_id").references(() => guests.id),
-  items: jsonb("items").notNull(),
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("pending"),
-  specialInstructions: text("special_instructions"),
-  orderSource: varchar("order_source", { length: 50 }),
-  orderType: varchar("order_type", { length: 50 }),
+  orderType: varchar("order_type", { length: 50 }).notNull().default("room-service"), // room-service, restaurant, delivery
   customerName: varchar("customer_name", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 50 }),
+  items: jsonb("items").notNull(), // Array of {menuItemId, quantity, variantId?, addOnIds?, specialInstructions}
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, preparing, ready, completed, cancelled
+  specialInstructions: text("special_instructions"),
+  deliveredAt: timestamp("delivered_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  assignedStaffId: varchar("assigned_staff_id"),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  completedAt: true,
+  deliveredAt: true,
+  assignedStaffId: true,
 });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;

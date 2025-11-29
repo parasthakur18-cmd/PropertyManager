@@ -1108,7 +1108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all checked-in bookings
       const allBookings = await storage.getAllBookings();
-      let activeBookings = allBookings.filter(b => b.status === "pending" || b.status === "confirmed" || b.status === "checked-in");
+      let activeBookings = allBookings.filter(b => b.status === "checked-in");
       
       // Get all related data
       const allGuests = await storage.getAllGuests();
@@ -1150,20 +1150,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      let allOrders: any[] = [];
-      let allExtras: any[] = [];
-      
-      try {
-        allOrders = await db.select().from(orders);
-      } catch (e) {
-        console.warn("Warning: Failed to fetch orders:", (e as any).message);
-      }
-      
-      try {
-        allExtras = await db.select().from(extraServices);
-      } catch (e) {
-        console.warn("Warning: Failed to fetch extra services:", (e as any).message);
-      }
+      const allOrders = await db.select().from(orders);
+      const allExtras = await db.select().from(extraServices);
 
       // Build enriched data
       const enrichedBookings = activeBookings.map(booking => {
@@ -1188,10 +1176,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Calculate nights stayed (use checkout date, not current date)
         const checkInDate = new Date(booking.checkInDate);
-        checkInDate.setHours(0, 0, 0, 0);
         const checkOutDate = new Date(booking.checkOutDate);
-        checkOutDate.setHours(0, 0, 0, 0);
-        const nightsStayed = Math.max(1, (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+        const nightsStayed = Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
 
         // Calculate room charges - handle both single and group bookings
         let roomCharges = 0;
@@ -1220,26 +1206,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(order => order.status !== "rejected")
           .reduce((sum, order) => {
             const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
-            return sum + (isNaN(amount) ? 0 : amount);
+            return sum + amount;
           }, 0);
 
         const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
         const extraCharges = bookingExtras.reduce((sum, extra) => {
           const amount = extra.amount ? parseFloat(String(extra.amount)) : 0;
-          return sum + (isNaN(amount) ? 0 : amount);
+          return sum + amount;
         }, 0);
 
-        const safeRoomCharges = isNaN(roomCharges) ? 0 : roomCharges;
-        const safeFoodCharges = isNaN(foodCharges) ? 0 : foodCharges;
-        const safeExtraCharges = isNaN(extraCharges) ? 0 : extraCharges;
-        
-        const subtotal = safeRoomCharges + safeFoodCharges + safeExtraCharges;
+        const subtotal = roomCharges + foodCharges + extraCharges;
         // Don't automatically apply GST/Service charges in the card display
         // They are optional and applied only at checkout based on user selection
         const totalAmount = subtotal;
         const advancePaid = booking.advanceAmount ? parseFloat(String(booking.advanceAmount)) : 0;
-        const safeAdvancePaid = isNaN(advancePaid) ? 0 : advancePaid;
-        const balanceAmount = totalAmount - safeAdvancePaid;
+        const balanceAmount = totalAmount - advancePaid;
 
         return {
           ...booking,
@@ -1251,14 +1232,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orders: bookingOrders,
           extraServices: bookingExtras,
           charges: {
-            roomCharges: safeRoomCharges.toFixed(2),
-            foodCharges: safeFoodCharges.toFixed(2),
-            extraCharges: safeExtraCharges.toFixed(2),
+            roomCharges: roomCharges.toFixed(2),
+            foodCharges: foodCharges.toFixed(2),
+            extraCharges: extraCharges.toFixed(2),
             subtotal: subtotal.toFixed(2),
             gstAmount: "0.00",
             serviceChargeAmount: "0.00",
             totalAmount: totalAmount.toFixed(2),
-            advancePaid: safeAdvancePaid.toFixed(2),
+            advancePaid: advancePaid.toFixed(2),
             balanceAmount: balanceAmount.toFixed(2),
           },
         };
