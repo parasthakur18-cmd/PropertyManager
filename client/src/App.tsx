@@ -44,6 +44,7 @@ import Salaries from "@/pages/salaries";
 import Attendance from "@/pages/attendance";
 import TravelAgents from "@/pages/travel-agents";
 import PendingPayments from "@/pages/pending-payments";
+import Performance from "@/pages/performance";
 import SuperAdmin from "@/pages/super-admin";
 import SuperAdminLogin from "@/pages/super-admin-login";
 import Features from "@/pages/features";
