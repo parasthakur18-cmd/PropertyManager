@@ -856,12 +856,12 @@ export class DatabaseStorage implements IStorage {
 
   // Order operations
   async getAllOrders(): Promise<any[]> {
-    const ordersWithDetails = await db
+    const ordersWithRoomStatus = await db
       .select({
         order: orders,
         roomStatus: rooms.status,
         roomNumber: rooms.roomNumber,
-        guestFullName: guests.fullName,
+        // Check if there's an active checked-in booking for this room
         hasCheckedInBooking: sql<boolean>`EXISTS (
           SELECT 1 FROM ${bookings} 
           WHERE ${bookings.roomId} = ${rooms.id} 
@@ -870,15 +870,12 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orders)
       .leftJoin(rooms, eq(orders.roomId, rooms.id))
-      .leftJoin(bookings, eq(orders.bookingId, bookings.id))
-      .leftJoin(guests, eq(bookings.guestId, guests.id))
       .orderBy(desc(orders.createdAt));
     
-    return ordersWithDetails.map(row => ({
+    return ordersWithRoomStatus.map(row => ({
       ...row.order,
       roomStatus: row.roomStatus,
       roomNumber: row.roomNumber,
-      customerName: row.guestFullName || row.order.customerName,
       hasCheckedInBooking: row.hasCheckedInBooking,
     }));
   }
