@@ -626,103 +626,103 @@ export default function Expenses() {
                 {property.name}
               </Button>
             ))}
-          </div>
-        </div>
+            </div>
+            </div>
 
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold font-mono" data-testid="text-total-expenses">
-                ₹{totalExpenses.toLocaleString()}
-              </div>
-            </CardContent>
-          </Card>
-
-          {expensesByCategory.slice(0, 3).map((cat) => {
-            return (
-              <Card key={cat.id}>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+              <Card>
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">{cat.name}</CardTitle>
-                  </div>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold font-mono" data-testid={`text-category-${cat.id}`}>
-                    ₹{cat.total.toLocaleString()}
+                  <div className="text-2xl font-bold font-mono" data-testid="text-total-expenses">
+                    ₹{totalExpenses.toLocaleString()}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">{cat.count} expenses</p>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
 
-        {expenses.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No expenses recorded</h3>
-              <p className="text-muted-foreground text-center mb-4">
-                Start tracking your property expenses
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Expenses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {expenses.slice(0, 20).map((expense) => {
-                  return (
-                    <div
-                      key={expense.id}
-                      className="p-3 border rounded-lg hover-elevate"
-                      data-testid={`expense-item-${expense.id}`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-muted rounded-md shrink-0">
-                          <Receipt className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium">{getCategoryName(expense.categoryId)}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {getPropertyName(expense.propertyId)}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {expense.description || "No description"}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(new Date(expense.expenseDate), "MMM d, yyyy")}
-                          </p>
-                        </div>
+              {expensesByCategory.slice(0, 3).map((cat) => {
+                return (
+                  <Card key={cat.id}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">{cat.name}</CardTitle>
                       </div>
-                      <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t">
-                        <span className="font-mono font-semibold text-base" data-testid={`text-expense-amount-${expense.id}`}>
-                          ₹{parseFloat(expense.amount).toLocaleString()}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteExpenseMutation.mutate(expense.id)}
-                          data-testid={`button-delete-${expense.id}`}
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold font-mono" data-testid={`text-category-${cat.id}`}>
+                        ₹{cat.total.toLocaleString()}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{cat.count} expenses</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {expenses.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">No expenses recorded</h3>
+                  <p className="text-muted-foreground text-center mb-4">
+                    Start tracking your property expenses
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Expenses</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {expenses.slice(0, 20).map((expense) => {
+                      return (
+                        <div
+                          key={expense.id}
+                          className="p-3 border rounded-lg hover-elevate"
+                          data-testid={`expense-item-${expense.id}`}
                         >
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                          <div className="flex items-start gap-3">
+                            <div className="p-2 bg-muted rounded-md shrink-0">
+                              <Receipt className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{getCategoryName(expense.categoryId)}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {getPropertyName(expense.propertyId)}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {expense.description || "No description"}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {format(new Date(expense.expenseDate), "MMM d, yyyy")}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t">
+                            <span className="font-mono font-semibold text-base" data-testid={`text-expense-amount-${expense.id}`}>
+                              ₹{parseFloat(expense.amount).toLocaleString()}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteExpenseMutation.mutate(expense.id)}
+                              data-testid={`button-delete-${expense.id}`}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="trends" className="space-y-6">
