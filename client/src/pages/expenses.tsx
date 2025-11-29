@@ -589,29 +589,33 @@ export default function Expenses() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={selectedProperty === null ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedProperty(null)}
-            data-testid="button-filter-all"
-          >
-            All Properties
-          </Button>
-          {properties.map((property) => (
+        <div className="overflow-x-auto -mx-6 px-6">
+          <div className="flex gap-2 min-w-min pb-2">
             <Button
-              key={property.id}
-              variant={selectedProperty === property.id ? "default" : "outline"}
+              variant={selectedProperty === null ? "default" : "outline"}
               size="sm"
-              onClick={() => setSelectedProperty(property.id)}
-              data-testid={`button-filter-property-${property.id}`}
+              onClick={() => setSelectedProperty(null)}
+              data-testid="button-filter-all"
+              className="whitespace-nowrap"
             >
-              {property.name}
+              All Properties
             </Button>
-          ))}
+            {properties.map((property) => (
+              <Button
+                key={property.id}
+                variant={selectedProperty === property.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedProperty(property.id)}
+                data-testid={`button-filter-property-${property.id}`}
+                className="whitespace-nowrap"
+              >
+                {property.name}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
@@ -663,30 +667,30 @@ export default function Expenses() {
                   return (
                     <div
                       key={expense.id}
-                      className="flex items-center justify-between p-3 border rounded-lg hover-elevate"
+                      className="p-3 border rounded-lg hover-elevate"
                       data-testid={`expense-item-${expense.id}`}
                     >
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="p-2 bg-muted rounded-md">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 bg-muted rounded-md shrink-0">
                           <Receipt className="h-4 w-4" />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium">{getCategoryName(expense.categoryId)}</span>
                             <Badge variant="outline" className="text-xs">
                               {getPropertyName(expense.propertyId)}
                             </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-muted-foreground mt-1">
                             {expense.description || "No description"}
                           </p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground mt-1">
                             {format(new Date(expense.expenseDate), "MMM d, yyyy")}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="font-mono font-semibold" data-testid={`text-expense-amount-${expense.id}`}>
+                      <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t">
+                        <span className="font-mono font-semibold text-base" data-testid={`text-expense-amount-${expense.id}`}>
                           ₹{parseFloat(expense.amount).toLocaleString()}
                         </span>
                         <Button
