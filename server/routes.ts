@@ -6609,6 +6609,111 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // ===== AI INSIGHTS ROUTES =====
+
+  // Generate AI-powered expense insights using OpenAI
+  app.post("/api/ai/insights", isAuthenticated, async (req: any, res) => {
+    try {
+      const { categoryBreakdown, totalExpenses, transactionCount } = req.body;
+
+      if (!categoryBreakdown || totalExpenses === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Format data for AI analysis
+      const categoryText = categoryBreakdown
+        .map((cat: any) => `- ${cat.name}: ₹${cat.total.toLocaleString()} (${cat.percentage.toFixed(1)}% of total)`)
+        .join('\n');
+
+      const prompt = `You are a hotel and property management financial advisor for Indian hospitality businesses. Analyze these expense data and provide 3-4 specific, actionable business insights to improve profitability.
+
+Expense Categories:
+${categoryText}
+
+Total Monthly Expenses: ₹${totalExpenses.toLocaleString()}
+Number of Transactions: ${transactionCount}
+
+Focus on:
+1. Cost optimization opportunities (supplier negotiations, efficiency improvements)
+2. Potential risks or concerning spending patterns
+3. Operational efficiency improvements
+4. Best practices for property management
+
+Return ONLY a valid JSON array (no markdown, no code blocks, no explanations):
+[
+  {
+    "type": "opportunity",
+    "title": "Brief title",
+    "description": "2-3 sentence explanation with specific context",
+    "impact": "Expected benefit or savings"
+  }
+]
+
+Types should be: "opportunity" (cost saving), "warning" (concerning trend), "suggestion" (actionable tip), or "achievement" (positive note).`;
+
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        console.warn("[AI INSIGHTS] OpenAI API key not configured, using fallback");
+        return res.json({ insights: [] });
+      }
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[AI INSIGHTS] OpenAI API error:", error);
+        return res.json({ insights: [] });
+      }
+
+      const data = await response.json();
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.warn("[AI INSIGHTS] Unexpected API response structure");
+        return res.json({ insights: [] });
+      }
+
+      const content = data.choices[0].message.content;
+      
+      try {
+        // Extract JSON from response (in case it's wrapped in markdown)
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : content;
+        const insights = JSON.parse(jsonStr);
+        
+        // Validate insights structure
+        const validInsights = Array.isArray(insights) ? insights.filter((i: any) =>
+          i.type && i.title && i.description && i.impact &&
+          ["opportunity", "warning", "suggestion", "achievement"].includes(i.type)
+        ) : [];
+
+        res.json({ insights: validInsights });
+      } catch (parseError) {
+        console.error("[AI INSIGHTS] Failed to parse AI response:", parseError);
+        res.json({ insights: [] });
+      }
+    } catch (error: any) {
+      console.error("[AI INSIGHTS] Error:", error);
+      res.status(500).json({ message: error.message, insights: [] });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
