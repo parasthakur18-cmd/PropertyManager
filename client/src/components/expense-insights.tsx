@@ -34,61 +34,87 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
         };
       }).filter(cat => cat.count > 0).sort((a, b) => b.total - a.total);
 
-      // Generate insights based on expense analysis
-      const generatedInsights: Insight[] = [];
+      // Call AI backend endpoint
+      const response = await fetch("/api/ai/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoryBreakdown,
+          totalExpenses,
+          transactionCount: expenses.length,
+        }),
+      });
 
-      // Find highest expense category
-      if (categoryBreakdown.length > 0) {
-        const highest = categoryBreakdown[0];
-        if (highest.percentage > 30) {
-          generatedInsights.push({
-            type: "opportunity",
-            title: `${highest.name} Optimization Opportunity`,
-            description: `${highest.name} represents ${highest.percentage.toFixed(1)}% of total expenses. Negotiate with suppliers or implement efficiency measures to reduce costs.`,
-            impact: `Potential savings: ₹${(highest.total * 0.15).toLocaleString()} (15% reduction)`,
-          });
-        }
+      if (!response.ok) {
+        throw new Error("Failed to generate AI insights");
       }
 
-      // Budget control insight
-      if (totalExpenses > 100000) {
-        generatedInsights.push({
-          type: "suggestion",
-          title: "Daily Expense Monitoring",
-          description: "Your monthly expenses are significant. Track daily spending patterns to catch unusual spikes early and maintain budget control.",
-          impact: "Better forecasting and proactive cost management",
-        });
+      const data = await response.json();
+      
+      // Parse AI response
+      if (data.insights && Array.isArray(data.insights)) {
+        setInsights(data.insights);
+      } else {
+        setInsights(generateFallbackInsights(categoryBreakdown, totalExpenses));
       }
-
-      // Category diversity
-      if (categoryBreakdown.length > 3) {
-        generatedInsights.push({
-          type: "achievement",
-          title: "Well-Organized Expense Tracking",
-          description: `Great! You're using ${categoryBreakdown.length} different expense categories. This detailed tracking helps identify cost-saving opportunities.`,
-          impact: "Data-driven decision making capability",
-        });
-      }
-
-      // Top 2 categories insight
-      if (categoryBreakdown.length >= 2) {
-        const top2 = categoryBreakdown.slice(0, 2);
-        const top2Percent = top2.reduce((sum, cat) => sum + cat.percentage, 0);
-        generatedInsights.push({
-          type: "warning",
-          title: `Top 2 Categories: ${top2Percent.toFixed(0)}% of Budget`,
-          description: `${top2.map(c => c.name).join(' + ')} account for ${top2Percent.toFixed(1)}% of your expenses. Focus optimization efforts here for maximum impact.`,
-          impact: `Focusing on these 2 categories could yield biggest savings`,
-        });
-      }
-
-      setInsights(generatedInsights);
     } catch (error) {
       console.error("Error generating insights:", error);
-      setInsights([]);
+      // Fallback to basic insights if AI fails
+      const categoryBreakdown = categories.map((cat) => {
+        const categoryExpenses = expenses.filter((e) => e.categoryId === cat.id);
+        const total = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
+        return {
+          name: cat.name,
+          total,
+          percentage: expenses.length > 0 ? (total / expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)) * 100 : 0,
+        };
+      }).filter(cat => cat.total > 0);
+      
+      setInsights(generateFallbackInsights(categoryBreakdown, expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)));
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const generateFallbackInsights = (categories: any[], total: number): Insight[] => {
+    const insights: Insight[] = [];
+    
+    if (categories.length === 0) return insights;
+
+    // Find highest expense category
+    const highest = categories.reduce((max, cat) => 
+      (cat.percentage > max.percentage) ? cat : max, 
+      categories[0]
+    );
+
+    if (highest.percentage > 30) {
+      insights.push({
+        type: "opportunity",
+        title: `${highest.name} Optimization Opportunity`,
+        description: `${highest.name} represents ${highest.percentage.toFixed(1)}% of total expenses. Consider negotiating with suppliers or implementing efficiency measures.`,
+        impact: `Potential savings: ₹${(highest.total * 0.15).toLocaleString()} (15% reduction)`,
+      });
+    }
+
+    if (total > 100000) {
+      insights.push({
+        type: "suggestion",
+        title: "Daily Expense Monitoring",
+        description: "Your monthly expenses are significant. Track daily spending patterns to catch unusual spikes early and maintain budget control.",
+        impact: "Better forecasting and proactive cost management",
+      });
+    }
+
+    if (categories.length > 3) {
+      insights.push({
+        type: "achievement",
+        title: "Well-Organized Expense Tracking",
+        description: `Great! You're using ${categories.length} different expense categories. This detailed tracking helps identify cost-saving opportunities.`,
+        impact: "Data-driven decision making capability",
+      });
+    }
+
+    return insights;
   };
 
   const getInsightIcon = (type: string) => {
@@ -123,18 +149,18 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Lightbulb className="w-5 h-5" />
-            AI Business Insights
+            AI-Powered Business Insights
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-4">
-            Smart recommendations to optimize costs and improve profitability
+            GPT-4o-powered analysis to identify cost-saving opportunities and improve profitability
           </p>
 
           {isGenerating ? (
             <div className="flex items-center justify-center py-12 gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Analyzing expenses...</span>
+              <span>Analyzing your expenses with AI...</span>
             </div>
           ) : insights.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -177,6 +203,7 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
             <li>✓ Monitor energy usage and implement conservation</li>
             <li>✓ Track seasonal expense patterns for budgeting</li>
             <li>✓ Consolidate multiple vendors for bulk discounts</li>
+            <li>✓ Automate expense categorization for faster analysis</li>
           </ul>
         </CardContent>
       </Card>
