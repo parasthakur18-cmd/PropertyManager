@@ -6609,6 +6609,46 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
+  // ===== EXPENSE BUDGETS ROUTES =====
+
+  // Create or update expense budget
+  app.post("/api/expense-budgets", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, categoryId, budgetAmount, period } = req.body;
+      
+      if (!propertyId || !categoryId || !budgetAmount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const budget = await db.insert(expenseBudgets).values({
+        propertyId: parseInt(propertyId),
+        categoryId: parseInt(categoryId),
+        budgetAmount: budgetAmount.toString(),
+        period: period || "monthly",
+        status: "active",
+      }).returning();
+
+      res.json(budget[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get expense budgets for property
+  app.get("/api/expense-budgets/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const budgets = await db.select()
+        .from(expenseBudgets)
+        .where(eq(expenseBudgets.propertyId, propertyId));
+
+      res.json(budgets);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ===== AI INSIGHTS ROUTES =====
 
   // Generate AI-powered expense insights using OpenAI
