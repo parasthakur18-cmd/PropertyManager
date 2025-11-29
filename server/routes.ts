@@ -2997,13 +2997,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const order = await storage.createOrder(orderData);
       
-      // Create notification for new order
+      // Create notification for new order + send WhatsApp alerts
       try {
         const allUsers = await storage.getAllUsers();
         const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen');
         const guest = orderData.guestId ? await storage.getGuest(orderData.guestId) : null;
         
         for (const admin of adminUsers) {
+          // In-app notification
           await db.insert(notifications).values({
             userId: admin.id,
             type: "new_order",
@@ -3013,6 +3014,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
             relatedId: order.id,
             relatedType: "order",
           });
+          
+          // WhatsApp alert (even when app is closed)
+          if (admin.phone) {
+            try {
+              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+              const roomNum = roomInfo ? `Room ${roomInfo.roomNumber}` : 'Café/Common';
+              const items = orderData.items ? orderData.items.map((item: any) => `${item.name} (${item.quantity}x)`).join(', ') : 'Items';
+              
+              await sendCustomWhatsAppMessage({
+                countryCode: '91',
+                mobile: admin.phone,
+                message: `🔔 *New Food Order Alert*\n\nOrder #${order.id}\n${roomNum}\nGuest: ${guest?.fullName || 'Walk-in'}\nItems: ${items}\nAmount: ₹${orderData.totalAmount || 0}\n\nCheck the app for details.`
+              });
+              console.log(`[WhatsApp] New order alert sent to ${admin.email}`);
+            } catch (waError: any) {
+              console.warn(`[WhatsApp] Failed to send order alert to ${admin.phone}:`, waError.message);
+            }
+          }
         }
         console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
       } catch (notifError: any) {
