@@ -1,4 +1,4 @@
-import { Building2, Calendar, Users, BarChart3, ArrowRight, Sparkles, UtensilsCrossed, Smartphone, Lock, AlertCircle, TrendingUp, FileText, DollarSign, CheckCircle, Zap, Shield, Globe } from "lucide-react";
+import { Building2, Calendar, Users, BarChart3, ArrowRight, Sparkles, UtensilsCrossed, Smartphone, Lock, AlertCircle, TrendingUp, FileText, DollarSign, CheckCircle, Zap, Shield, Globe, Monitor, Maximize2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -485,6 +485,174 @@ export default function Landing() {
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Uptime</p>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* App Screenshots / Gallery Section */}
+      <div className="py-20 px-4 bg-white dark:bg-slate-950">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-4">
+              See Hostezee in Action
+            </h2>
+            <p className="text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+              Intuitive interface designed for property managers. Everything you need at your fingertips.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Dashboard Overview */}
+            <div className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-2xl p-8 border border-purple-200 dark:border-purple-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 text-white mb-4">
+                <Monitor className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">Dashboard Overview</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Real-time stats showing active bookings, pending payments, occupancy rates, and key metrics at a glance</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Active booking counter</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Payment summary</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Quick action buttons</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Booking Calendar */}
+            <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/20 dark:to-teal-900/20 rounded-2xl p-8 border border-cyan-200 dark:border-cyan-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-cyan-500 to-teal-500 text-white mb-4">
+                <Calendar className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">Visual Room Calendar</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Airbnb-style room availability with color-coded status and date-range booking</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Room status view</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Date range selection</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Instant booking</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Restaurant Orders */}
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-2xl p-8 border border-orange-200 dark:border-orange-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white mb-4">
+                <UtensilsCrossed className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">Restaurant Operations</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Complete kitchen management with QR ordering, menu variants, and real-time order tracking</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Real-time order queue</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>QR menu ordering</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Merged billing</span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI Notifications */}
+            <div className="bg-gradient-to-br from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20 rounded-2xl p-8 border border-pink-200 dark:border-pink-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 text-white mb-4">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">AI Smart Notifications</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Intelligent alerts for pending tasks, payments, orders with 3-hour reminders and auto-dismiss</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Task-based alerts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Smart reminders</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Works offline</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Analytics & Reports */}
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl p-8 border border-green-200 dark:border-green-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 text-white mb-4">
+                <BarChart3 className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">Analytics & Reports</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Detailed revenue analytics, P&L statements, occupancy trends, and expense tracking</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Revenue charts</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>P&L reports</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Excel export</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Billing & Payments */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-8 border border-blue-200 dark:border-blue-800 hover:shadow-lg transition-all">
+              <div className="inline-flex p-3 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 text-white mb-4">
+                <DollarSign className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-3">Billing & Payments</h3>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">Split payments, RazorPay integration, WhatsApp payment links, and professional invoices</p>
+              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Split payment system</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>WhatsApp payments</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  <span>Invoice generation</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 text-center">
+            <Button
+              size="lg"
+              onClick={() => {
+                setLocation("/login");
+              }}
+              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white"
+              data-testid="button-demo"
+            >
+              Explore Demo
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
           </div>
         </div>
       </div>

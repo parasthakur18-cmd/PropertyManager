@@ -1,23 +1,54 @@
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Building2, ArrowLeft, CheckCircle, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { Building2, ArrowLeft, CheckCircle, X, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 
 export default function Pricing() {
   const [, setLocation] = useLocation();
 
+  const hostezeFeatures = [
+    { name: "Unlimited Properties", hostezee: true, competition: false, enterprise: false },
+    { name: "Unlimited Bookings & Guests", hostezee: true, competition: false, enterprise: true },
+    { name: "Real-Time Analytics & AI Insights", hostezee: true, competition: false, enterprise: true },
+    { name: "Revenue Reports & P&L Tracking", hostezee: true, competition: false, enterprise: true },
+    { name: "Staff Management & Payroll", hostezee: true, competition: false, enterprise: true },
+    { name: "Restaurant & Café Operations", hostezee: true, competition: false, enterprise: false },
+    { name: "AI-Powered Notifications (3-hr smart reminders)", hostezee: true, competition: false, enterprise: false },
+    { name: "Airbnb-Style Visual Calendar", hostezee: true, competition: true, enterprise: true },
+    { name: "Multi-User Access & Roles", hostezee: true, competition: true, enterprise: true },
+    { name: "WhatsApp Notifications", hostezee: true, competition: false, enterprise: true },
+    { name: "Guest Self Check-in via QR", hostezee: true, competition: false, enterprise: true },
+    { name: "Split Payment System", hostezee: true, competition: false, enterprise: false },
+    { name: "RazorPay Integration", hostezee: true, competition: false, enterprise: true },
+    { name: "Attendance & Salary Auto-Calc", hostezee: true, competition: false, enterprise: true },
+    { name: "Employee Performance Dashboard", hostezee: true, competition: false, enterprise: false },
+    { name: "Feature Settings Control Panel", hostezee: true, competition: false, enterprise: false },
+    { name: "Enquiry Management Workflow", hostezee: true, competition: false, enterprise: true },
+    { name: "Expense & Lease Tracking", hostezee: true, competition: false, enterprise: true },
+    { name: "Email Support", hostezee: true, competition: true, enterprise: true },
+    { name: "Priority 24/7 Support", hostezee: true, competition: false, enterprise: true },
+    { name: "Data Backup & Security", hostezee: true, competition: true, enterprise: true },
+    { name: "Zero Infrastructure Cost", hostezee: true, competition: false, enterprise: false },
+  ];
+
   const features = [
     "Unlimited Properties",
     "Unlimited Bookings & Guests",
+    "AI-Powered Smart Notifications",
     "Real-Time Analytics",
-    "Revenue Reports",
-    "Staff Management",
+    "Revenue Reports & P&L",
+    "Staff Management & Auto-Payroll",
     "Restaurant Operations",
+    "WhatsApp Payments & Notifications",
+    "Employee Performance Tracking",
     "Room Availability Calendar",
+    "Split Payment System",
+    "Feature Settings Control",
+    "Enquiry Management",
+    "Expense & Lease Tracking",
+    "Guest Self Check-in via QR",
     "Multi-User Access",
-    "WhatsApp Notifications",
-    "Guest Self Check-in",
-    "Priority Email Support",
-    "Data Backup & Security"
+    "24/7 Priority Support",
+    "Enterprise Security (ISO 27001)"
   ];
 
   return (
@@ -47,7 +78,7 @@ export default function Pricing() {
           </div>
 
           {/* Pricing Card */}
-          <div className="max-w-2xl mx-auto mb-12">
+          <div className="max-w-3xl mx-auto mb-16">
             <div className="bg-white dark:bg-slate-900/50 border-2 border-teal-500 dark:border-teal-600 rounded-2xl p-8 md:p-12 text-center">
               <div className="inline-block px-4 py-2 rounded-full bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 border border-teal-200 dark:border-teal-800 mb-6">
                 <span className="text-sm font-semibold text-teal-700 dark:text-teal-400">Forever Free Plan</span>
@@ -74,15 +105,51 @@ export default function Pricing() {
                 <p className="mb-4">Everything you need is included:</p>
               </div>
 
-              <div className="space-y-3 text-left">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-left">
                 {features.map((feature, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <CheckCircle className="h-5 w-5 text-teal-600 dark:text-teal-400 flex-shrink-0" />
-                    <span className="text-slate-700 dark:text-slate-300">{feature}</span>
+                    <span className="text-slate-700 dark:text-slate-300 text-sm">{feature}</span>
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* Comparison Table */}
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-8 text-center">Hostezee vs Competition</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="text-left p-4 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">Feature</th>
+                    <th className="text-center p-4 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/30 dark:to-cyan-900/30 font-bold text-slate-900 dark:text-white border border-teal-200 dark:border-teal-700">Hostezee</th>
+                    <th className="text-center p-4 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">MarginEdge</th>
+                    <th className="text-center p-4 bg-slate-100 dark:bg-slate-800 font-bold text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">InnQuest</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hostezeFeatures.map((feature, index) => (
+                    <tr key={index} className={index % 2 === 0 ? "bg-white dark:bg-slate-900/30" : "bg-slate-50 dark:bg-slate-900/50"}>
+                      <td className="p-4 border border-slate-200 dark:border-slate-700 font-medium text-slate-900 dark:text-white">{feature.name}</td>
+                      <td className="p-4 border border-slate-200 dark:border-slate-700 text-center">
+                        {feature.hostezee ? <CheckCircle className="h-6 w-6 text-teal-600 dark:text-teal-400 mx-auto" /> : <X className="h-6 w-6 text-slate-400 mx-auto" />}
+                      </td>
+                      <td className="p-4 border border-slate-200 dark:border-slate-700 text-center">
+                        {feature.competition ? <CheckCircle className="h-6 w-6 text-slate-400 mx-auto" /> : <X className="h-6 w-6 text-slate-400 mx-auto" />}
+                      </td>
+                      <td className="p-4 border border-slate-200 dark:border-slate-700 text-center">
+                        {feature.enterprise ? <CheckCircle className="h-6 w-6 text-slate-400 mx-auto" /> : <X className="h-6 w-6 text-slate-400 mx-auto" />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-6 text-center">
+              ✓ = Feature Available | ✗ = Not Available or Limited
+            </p>
           </div>
 
           {/* FAQ Section */}
