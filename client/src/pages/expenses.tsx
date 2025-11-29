@@ -14,9 +14,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Receipt, Settings, Trash2, Pencil } from "lucide-react";
+import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ExpenseTrends } from "@/components/expense-trends";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const expenseFormSchema = insertPropertyExpenseSchema.extend({
   amount: z.string().min(1, "Amount is required"),
@@ -39,6 +41,7 @@ export default function Expenses() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "trends">("overview");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -294,11 +297,12 @@ export default function Expenses() {
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold" data-testid="text-page-title">Property Expenses</h1>
-            <p className="text-muted-foreground mt-1">Track and manage property operating expenses</p>
-          </div>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h1 className="text-3xl font-semibold" data-testid="text-page-title">Property Expenses</h1>
+              <p className="text-muted-foreground mt-1">Track and manage property operating expenses</p>
+            </div>
           <div className="flex gap-2">
             <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
               <DialogTrigger asChild>
@@ -589,7 +593,18 @@ export default function Expenses() {
           </div>
         </div>
 
-        <div className="overflow-x-auto -mx-6 px-6">
+        {/* Tabs for Overview and Trends */}
+        <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="overview">Expense Overview</TabsTrigger>
+            <TabsTrigger value="trends" className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Trend Analysis
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6">
+            <div className="overflow-x-auto -mx-6 px-6">
           <div className="flex gap-2 min-w-min pb-2">
             <Button
               variant={selectedProperty === null ? "default" : "outline"}
@@ -709,6 +724,12 @@ export default function Expenses() {
             </CardContent>
           </Card>
         )}
+          </TabsContent>
+
+          <TabsContent value="trends" className="space-y-6">
+            <ExpenseTrends expenses={expenses} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
