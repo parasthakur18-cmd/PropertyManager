@@ -858,3 +858,30 @@ export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit
   paidAt: true,
 });
 export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
+
+// Feature Settings table - for super admin to enable/disable features
+export const featureSettings = pgTable("feature_settings", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  foodOrderNotifications: boolean("food_order_notifications").notNull().default(true), // Browser + WhatsApp alerts
+  whatsappNotifications: boolean("whatsapp_notifications").notNull().default(true), // WhatsApp messaging
+  emailNotifications: boolean("email_notifications").notNull().default(false), // Email alerts
+  autoCheckout: boolean("auto_checkout").notNull().default(true), // Auto-checkout feature
+  autoSalaryCalculation: boolean("auto_salary_calculation").notNull().default(true), // Auto salary calc
+  attendanceTracking: boolean("attendance_tracking").notNull().default(true), // Staff attendance
+  performanceAnalytics: boolean("performance_analytics").notNull().default(true), // Performance metrics
+  expenseForecasting: boolean("expense_forecasting").notNull().default(true), // Forecast analytics
+  budgetAlerts: boolean("budget_alerts").notNull().default(true), // Budget threshold alerts
+  paymentReminders: boolean("payment_reminders").notNull().default(true), // Payment pending reminders
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFeatureSettingsSchema = createInsertSchema(featureSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertFeatureSettings = z.infer<typeof insertFeatureSettingsSchema>;
+export type FeatureSettings = typeof featureSettings.$inferSelect;

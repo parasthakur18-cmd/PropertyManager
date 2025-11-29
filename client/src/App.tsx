@@ -72,6 +72,7 @@ import Notifications from "@/pages/notifications";
 import AuditLogs from "@/pages/audit-logs";
 import Architecture from "@/pages/architecture";
 import AdvancedFeatures from "@/pages/advanced-features";
+import FeatureSettings from "@/pages/feature-settings";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { PendingNotifications } from "@/components/pending-notifications";
@@ -164,6 +165,7 @@ function Router() {
           <Route path="/audit-logs" component={AuditLogs} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/settings" component={Settings} />
+          <Route path="/feature-settings" component={FeatureSettings} />
         </>
       )}
       <Route component={NotFound} />
