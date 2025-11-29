@@ -135,12 +135,10 @@ export default function Bookings() {
       status: "pending",
       numberOfGuests: 1,
       customPrice: null,
-      advanceAmount: "0",
       specialRequests: "",
       source: "Walk-in",
       travelAgentId: null,
       mealPlan: "EP",
-      bedsBooked: null,
     },
   });
 
@@ -154,12 +152,10 @@ export default function Bookings() {
       status: "pending",
       numberOfGuests: 1,
       customPrice: null,
-      advanceAmount: "0",
       specialRequests: "",
       source: "Walk-in",
       travelAgentId: undefined as number | undefined,
       mealPlan: "EP",
-      bedsBooked: undefined as number | undefined,
     },
   });
 
@@ -542,76 +538,51 @@ export default function Bookings() {
       const guestResponse = await apiRequest("/api/guests", "POST", guestData);
       const newGuest = await guestResponse.json();
       
-      // Then create booking with the new guest
-      let bookingData;
-      if (bookingType === "group") {
-        // Group booking - use roomIds array
-        const firstRoom = rooms?.find(r => r.id === selectedRoomIds[0]);
-        bookingData = {
-          ...data,
-          guestId: newGuest.id,
-          roomId: null, // No single room for group booking
-          roomIds: selectedRoomIds,
-          isGroupBooking: true,
-          propertyId: firstRoom?.propertyId, // All rooms should be from same property
-          travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
-          numberOfGuests: parseInt(data.numberOfGuests),
-        };
-      } else {
-        // Single room booking (includes dormitory)
-        const selectedRoom = rooms?.find(r => r.id === data.roomId);
-        bookingData = {
-          ...data,
-          guestId: newGuest.id,
-          roomIds: null,
-          isGroupBooking: false,
-          travelAgentId: data.travelAgentId || null, // Ensure travelAgentId is included
-          numberOfGuests: parseInt(data.numberOfGuests),
-          // Auto-set bedsBooked for dormitory rooms
-          bedsBooked: selectedRoom?.roomCategory === "dormitory" ? (data.bedsBooked || parseInt(data.numberOfGuests)) : null,
-        };
-      }
-      
       // Calculate totalAmount before sending
       const checkInDate = new Date(data.checkInDate);
       const checkOutDate = new Date(data.checkOutDate);
       const numberOfNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
       
-      // Calculate price per night
-      let pricePerNight = 0;
+      // Calculate roomCharges (price per night)
+      let roomCharges = 0;
       if (bookingType === "single" || bookingType === "dormitory") {
         const selectedRoom = rooms?.find(r => r.id === data.roomId);
         if (selectedRoom) {
-          const basePrice = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
-          pricePerNight = basePrice;
-          
-          // For dormitory, multiply by beds booked
-          if (selectedRoom.roomCategory === "dormitory") {
-            const bedsCount = bookingData.bedsBooked || data.numberOfGuests || 1;
-            console.log(`[Price Calc] Dormitory: basePrice=${basePrice}, bedsCount=${bedsCount}, total=${basePrice * bedsCount}`);
-            pricePerNight = basePrice * bedsCount;
-          }
-          
-          console.log(`[Price Calc] Room ${selectedRoom.roomNumber}: category=${selectedRoom.roomCategory}, pricePerNight=${pricePerNight}`);
+          roomCharges = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
         }
       } else {
         // Group booking - sum all room prices
         const selectedRooms = rooms?.filter(r => selectedRoomIds.includes(r.id)) || [];
-        pricePerNight = selectedRooms.reduce((sum, r) => {
+        roomCharges = selectedRooms.reduce((sum, r) => {
           const roomPrice = data.customPrice ? parseFloat(data.customPrice) / selectedRooms.length : parseFloat(r.pricePerNight.toString());
           return sum + roomPrice;
         }, 0);
       }
       
-      const totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+      const totalAmount = (roomCharges * numberOfNights).toFixed(2);
       
-      // Add totalAmount to bookingData
-      bookingData.totalAmount = totalAmount;
+      // Build booking data - only include fields that exist in schema
+      let bookingData: any = {
+        propertyId: bookingType === "group" ? rooms?.find(r => r.id === selectedRoomIds[0])?.propertyId : data.propertyId,
+        guestId: newGuest.id,
+        roomId: bookingType === "group" ? null : data.roomId,
+        roomIds: bookingType === "group" ? selectedRoomIds : null,
+        checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString().split('T')[0] : data.checkInDate,
+        checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString().split('T')[0] : data.checkOutDate,
+        numberOfGuests: parseInt(data.numberOfGuests),
+        numberOfNights: numberOfNights,
+        roomCharges: roomCharges.toString(),
+        extraCharges: "0",
+        discount: "0",
+        totalAmount: totalAmount,
+        status: data.status || "pending",
+        source: data.source || "Walk-in",
+        mealPlan: data.mealPlan || "EP",
+        specialRequests: data.specialRequests || "",
+        travelAgentId: data.travelAgentId || null,
+      };
       
       console.log("Final bookingData being sent:", bookingData);
-      console.log("travelAgentId value:", bookingData.travelAgentId);
-      console.log("Calculated totalAmount:", totalAmount);
-      
       createMutation.mutate(bookingData as InsertBooking);
     } catch (error: any) {
       toast({
@@ -626,7 +597,7 @@ export default function Bookings() {
     setEditingBooking(booking);
     
     // Initialize booking type and room selection based on booking characteristics
-    if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+    if (booking.roomIds && booking.roomIds.length > 0) {
       setEditBookingType("group");
       setEditSelectedRoomIds(booking.roomIds);
     } else {
@@ -648,13 +619,11 @@ export default function Bookings() {
       checkOutDate: new Date(booking.checkOutDate),
       status: booking.status,
       numberOfGuests: booking.numberOfGuests,
-      customPrice: booking.customPrice as any,
-      advanceAmount: booking.advanceAmount || "0",
+      customPrice: null,
       specialRequests: booking.specialRequests || "",
       source: booking.source || "Walk-in",
       travelAgentId: booking.travelAgentId || undefined,
       mealPlan: booking.mealPlan || "EP",
-      bedsBooked: booking.bedsBooked || undefined,
     });
     setIsEditDialogOpen(true);
   };
@@ -677,55 +646,45 @@ export default function Bookings() {
     const checkOutDate = new Date(data.checkOutDate);
     const numberOfNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     
-    let pricePerNight = 0;
-    let isGroupBooking = false;
+    let roomCharges = 0;
     let roomIds: number[] | null = null;
     let roomId: number | null = null;
     
     if (editBookingType === "group") {
-      // Group booking - sum all room prices
-      isGroupBooking = true;
       roomIds = editSelectedRoomIds;
       const selectedRooms = rooms?.filter(r => editSelectedRoomIds.includes(r.id)) || [];
-      pricePerNight = selectedRooms.reduce((sum, r) => {
+      roomCharges = selectedRooms.reduce((sum, r) => {
         const roomPrice = data.customPrice ? parseFloat(data.customPrice) / selectedRooms.length : parseFloat(r.pricePerNight.toString());
         return sum + roomPrice;
       }, 0);
     } else {
-      // Single room booking
-      const selectedRoom = rooms?.find(r => r.id === data.roomId);
       roomId = data.roomId;
+      const selectedRoom = rooms?.find(r => r.id === data.roomId);
       if (selectedRoom) {
-        pricePerNight = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
-        // For dormitory, multiply by beds booked
-        if (selectedRoom.roomType === "Dormitory") {
-          const bedsCount = data.bedsBooked || data.numberOfGuests;
-          pricePerNight = pricePerNight * bedsCount;
-        }
+        roomCharges = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
       }
     }
     
-    const totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+    const totalAmount = (roomCharges * numberOfNights).toFixed(2);
     
-    // Auto-set bedsBooked for dormitory rooms in edit mode
-    const selectedRoom = rooms?.find(r => r.id === data.roomId);
-    const bedsBooked = selectedRoom?.roomType === "Dormitory" 
-      ? (data.bedsBooked || data.numberOfGuests) 
-      : null;
-    
-    // Convert Date objects to ISO strings for API transmission
-    const payload = {
-      ...data,
-      checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString() : data.checkInDate,
-      checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString() : data.checkOutDate,
-      totalAmount: totalAmount,
-      isGroupBooking: isGroupBooking,
-      roomIds: roomIds,
+    // Build update payload - only include schema fields
+    const payload: Partial<InsertBooking> = {
       roomId: roomId,
-      bedsBooked: bedsBooked,
+      roomIds: roomIds,
+      checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString().split('T')[0] : data.checkInDate,
+      checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString().split('T')[0] : data.checkOutDate,
+      numberOfGuests: parseInt(data.numberOfGuests),
+      numberOfNights: numberOfNights,
+      roomCharges: roomCharges.toString(),
+      totalAmount: totalAmount,
+      status: data.status,
+      source: data.source,
+      mealPlan: data.mealPlan,
+      specialRequests: data.specialRequests,
+      travelAgentId: data.travelAgentId || null,
     };
     
-    updateBookingMutation.mutate({ id: editingBooking.id, data: payload as Partial<InsertBooking> });
+    updateBookingMutation.mutate({ id: editingBooking.id, data: payload });
   };
 
   if (isLoading) {
@@ -1465,11 +1424,12 @@ export default function Bookings() {
                     const guest = guests?.find((g) => g.id === booking.guestId);
                     const room = rooms?.find((r) => r.id === booking.roomId);
                     
-                    const groupRooms = booking.isGroupBooking && booking.roomIds
+                    const isGroupBooking = booking.roomIds && booking.roomIds.length > 0;
+                    const groupRooms = isGroupBooking && booking.roomIds
                       ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
                       : [];
                     
-                    const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
+                    const roomDisplay = isGroupBooking && groupRooms.length > 0
                       ? groupRooms.map(r => `${r.roomNumber}`).join(", ")
                       : room ? room.roomNumber : "TBA";
 
@@ -1525,14 +1485,7 @@ export default function Bookings() {
                           </Badge>
                         </TableCell>
                         <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
-                          {booking.totalAmount && booking.totalAmount !== "0" ? (
-                            <div className="leading-tight">
-                              <div>₹{booking.totalAmount}</div>
-                              {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 && (
-                                <div className="text-xs text-green-600">Adv: ₹{booking.advanceAmount}</div>
-                              )}
-                            </div>
-                          ) : "₹-"}
+                          {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
