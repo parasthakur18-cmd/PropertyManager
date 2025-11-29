@@ -6892,7 +6892,11 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   
   app.get("/api/feature-settings", isAuthenticated, async (req: any, res) => {
     try {
-      const propertyId = req.query.propertyId || req.user?.assignedPropertyIds?.[0];
+      let propertyId = req.query.propertyId;
+      
+      if (!propertyId) {
+        propertyId = req.user?.assignedPropertyIds?.[0];
+      }
       
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID required" });
@@ -6901,6 +6905,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       const settings = await storage.getFeatureSettingsByProperty(parseInt(propertyId));
       res.json(settings);
     } catch (error: any) {
+      console.error("[FEATURE-SETTINGS] GET error:", error);
       res.status(500).json({ message: error.message });
     }
   });

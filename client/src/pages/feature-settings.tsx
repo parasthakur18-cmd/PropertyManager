@@ -85,14 +85,19 @@ export default function FeatureSettings() {
   // Use selected property or first assigned property
   const propertyId = selectedProperty || user?.assignedPropertyIds?.[0];
 
-  const { data: settings, isLoading } = useQuery<FeatureSettings>({
+  const { data: settings, isLoading, error } = useQuery<FeatureSettings>({
     queryKey: ["/api/feature-settings", propertyId],
     enabled: !!propertyId,
+    queryFn: async () => {
+      const response = await fetch(`/api/feature-settings?propertyId=${propertyId}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<FeatureSettings>) => {
-      return await apiRequest("/api/feature-settings", "PATCH", updates);
+      return await apiRequest("/api/feature-settings", "PATCH", { ...updates, propertyId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feature-settings", propertyId] });
