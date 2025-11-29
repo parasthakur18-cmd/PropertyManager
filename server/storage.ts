@@ -77,20 +77,12 @@ import {
   type InsertSalaryPayment,
   issueReports,
   type IssueReport,
-  passwordResetOtps,
-  type InsertPasswordResetOtp,
   contactEnquiries,
   type ContactEnquiry,
   type InsertContactEnquiry,
-  errorCrashes,
-  type ErrorCrash,
-  type InsertErrorCrash,
   preBills,
   type PreBill,
   type InsertPreBill,
-  otaIntegrations,
-  type OtaIntegration,
-  type InsertOtaIntegration,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -317,10 +309,7 @@ export interface IStorage {
   updateContactEnquiryStatus(id: number, status: string): Promise<ContactEnquiry>;
 
   // Error Crash operations
-  getAllErrorCrashes(): Promise<ErrorCrash[]>;
-  createErrorCrash(crash: InsertErrorCrash): Promise<ErrorCrash>;
   markErrorAsResolved(id: number): Promise<ErrorCrash>;
-  deleteErrorCrash(id: number): Promise<void>;
 
   // OTA Integrations operations (multi-portal support)
   getAllOtaIntegrations(propertyId: number): Promise<any[]>;
@@ -2433,35 +2422,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Error Crash operations
-  async getAllErrorCrashes(): Promise<ErrorCrash[]> {
     return await db.select().from(errorCrashes).orderBy(desc(errorCrashes.createdAt));
   }
 
-  async createErrorCrash(crash: InsertErrorCrash): Promise<ErrorCrash> {
-    const [created] = await db.insert(errorCrashes).values(crash).returning();
-    eventBus.emit('error-crash:created', created);
-    return created;
-  }
-
-  async markErrorAsResolved(id: number): Promise<ErrorCrash> {
-    const [updated] = await db
-      .update(errorCrashes)
-      .set({ isResolved: true })
-      .where(eq(errorCrashes.id, id))
-      .returning();
-    eventBus.emit('error-crash:resolved', updated);
-    return updated;
-  }
-
-  async deleteErrorCrash(id: number): Promise<void> {
-    await db.delete(errorCrashes).where(eq(errorCrashes.id, id));
-  }
-
-  // Pre-Bill operations
-  async getPreBill(id: number): Promise<PreBill | undefined> {
-    const [preBill] = await db.select().from(preBills).where(eq(preBills.id, id));
-    return preBill;
-  }
 
   async getPreBillByBooking(bookingId: number): Promise<PreBill | undefined> {
     const [preBill] = await db.select().from(preBills).where(eq(preBills.bookingId, bookingId)).orderBy(desc(preBills.createdAt)).limit(1);
