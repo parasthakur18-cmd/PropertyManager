@@ -1150,8 +1150,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      const allOrders = await db.select().from(orders);
-      const allExtras = await db.select().from(extraServices);
+      let allOrders: any[] = [];
+      let allExtras: any[] = [];
+      
+      try {
+        allOrders = await db.select().from(orders);
+      } catch (e) {
+        console.warn("Warning: Failed to fetch orders:", (e as any).message);
+      }
+      
+      try {
+        allExtras = await db.select().from(extraServices);
+      } catch (e) {
+        console.warn("Warning: Failed to fetch extra services:", (e as any).message);
+      }
 
       // Build enriched data
       const enrichedBookings = activeBookings.map(booking => {
