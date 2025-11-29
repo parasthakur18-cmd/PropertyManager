@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Lightbulb, Loader2, TrendingDown, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface Insight {
@@ -16,23 +15,39 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
   const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
+    if (!expenses || expenses.length === 0) {
+      setInsights([]);
+      return;
+    }
     generateInsights();
   }, [expenses, categories]);
 
   const generateInsights = async () => {
     try {
       setIsGenerating(true);
-      const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-      const categoryBreakdown = categories.map((cat) => {
-        const categoryExpenses = expenses.filter((e) => e.categoryId === cat.id);
-        const total = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-        return {
-          name: cat.name,
-          total,
-          percentage: totalExpenses > 0 ? (total / totalExpenses) * 100 : 0,
-          count: categoryExpenses.length,
-        };
-      }).filter(cat => cat.count > 0).sort((a, b) => b.total - a.total);
+      const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+      
+      const categoryBreakdown = categories
+        .map((cat) => {
+          const categoryExpenses = expenses.filter((e) => e.categoryId === cat.id);
+          const total = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+          return {
+            id: cat.id,
+            name: cat.name,
+            total,
+            percentage: totalExpenses > 0 ? (total / totalExpenses) * 100 : 0,
+            count: categoryExpenses.length,
+          };
+        })
+        .filter(cat => cat.total > 0)
+        .sort((a, b) => b.total - a.total);
+
+      if (categoryBreakdown.length === 0) {
+        setInsights([]);
+        return;
+      }
+
+      console.log("[ExpenseInsights] Calling API with breakdown:", categoryBreakdown);
 
       // Call AI backend endpoint
       const response = await fetch("/api/ai/insights", {
@@ -43,34 +58,47 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
           totalExpenses,
           transactionCount: expenses.length,
         }),
+        credentials: "include",
       });
 
+      console.log("[ExpenseInsights] API response status:", response.status);
+
       if (!response.ok) {
-        throw new Error("Failed to generate AI insights");
+        console.error("[ExpenseInsights] API error:", response.status);
+        const fallback = generateFallbackInsights(categoryBreakdown, totalExpenses);
+        setInsights(fallback);
+        return;
       }
 
       const data = await response.json();
+      console.log("[ExpenseInsights] API response data:", data);
       
       // Parse AI response
-      if (data.insights && Array.isArray(data.insights)) {
+      if (data.insights && Array.isArray(data.insights) && data.insights.length > 0) {
         setInsights(data.insights);
       } else {
-        setInsights(generateFallbackInsights(categoryBreakdown, totalExpenses));
+        const fallback = generateFallbackInsights(categoryBreakdown, totalExpenses);
+        setInsights(fallback);
       }
     } catch (error) {
-      console.error("Error generating insights:", error);
+      console.error("[ExpenseInsights] Error:", error);
       // Fallback to basic insights if AI fails
-      const categoryBreakdown = categories.map((cat) => {
-        const categoryExpenses = expenses.filter((e) => e.categoryId === cat.id);
-        const total = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0);
-        return {
-          name: cat.name,
-          total,
-          percentage: expenses.length > 0 ? (total / expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)) * 100 : 0,
-        };
-      }).filter(cat => cat.total > 0);
+      const categoryBreakdown = categories
+        .map((cat) => {
+          const categoryExpenses = expenses.filter((e) => e.categoryId === cat.id);
+          const total = categoryExpenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0);
+          return {
+            name: cat.name,
+            total,
+            percentage: expenses.length > 0 
+              ? (total / expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0)) * 100 
+              : 0,
+          };
+        })
+        .filter(cat => cat.total > 0);
       
-      setInsights(generateFallbackInsights(categoryBreakdown, expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)));
+      const fallback = generateFallbackInsights(categoryBreakdown, expenses.reduce((sum, exp) => sum + parseFloat(exp.amount || 0), 0));
+      setInsights(fallback);
     } finally {
       setIsGenerating(false);
     }
@@ -96,11 +124,11 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
       });
     }
 
-    if (total > 100000) {
+    if (total > 50000) {
       insights.push({
         type: "suggestion",
         title: "Daily Expense Monitoring",
-        description: "Your monthly expenses are significant. Track daily spending patterns to catch unusual spikes early and maintain budget control.",
+        description: "Your monthly expenses are substantial. Track daily spending patterns to catch unusual spikes early and maintain budget control.",
         impact: "Better forecasting and proactive cost management",
       });
     }
@@ -111,6 +139,17 @@ export function ExpenseInsights({ expenses, categories }: { expenses: any[]; cat
         title: "Well-Organized Expense Tracking",
         description: `Great! You're using ${categories.length} different expense categories. This detailed tracking helps identify cost-saving opportunities.`,
         impact: "Data-driven decision making capability",
+      });
+    }
+
+    if (categories.length >= 2) {
+      const top2 = categories.slice(0, 2);
+      const top2Percent = top2.reduce((sum, cat) => sum + cat.percentage, 0);
+      insights.push({
+        type: "warning",
+        title: `Top 2 Categories: ${top2Percent.toFixed(0)}% of Budget`,
+        description: `${top2.map(c => c.name).join(' + ')} account for ${top2Percent.toFixed(1)}% of your expenses. Focus optimization efforts here for maximum impact.`,
+        impact: "Focusing on these 2 categories could yield biggest savings",
       });
     }
 
