@@ -3,8 +3,19 @@
 ## Overview
 Hostezee is a comprehensive, multi-property management system for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and eliminates DevOps complexity. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management. Its primary goal is to be the easiest PMS globally to deploy and operate, aiming to capture significant market share.
 
+## Recent Updates (Session 3)
+- ✅ Enhanced AI Notifications: Changed from 1-hour to 3-hour smart reminders with auto-dismiss
+- ✅ WhatsApp Food Order Alerts: Real-time notifications even when app is closed
+- ✅ Employee Performance Dashboard: 3-tab system (User Performance, Staff Performance, Score Points)
+- ✅ Feature Settings Control: 10 toggleable features for admin property customization
+- ✅ Website Enhancement: 
+  - Pricing page with Hostezee vs competitor feature comparison
+  - AI Notifications showcase section on landing page
+  - App screenshots gallery showing 6 key features
+  - Comprehensive features page organized by category
+
 ## User Preferences
-Preferred communication style: Simple, everyday language.
+Preferred communication style: Simple, everyday language. Wants showcase of all features on website with pricing comparison and app screenshots.
 
 ## System Architecture
 
@@ -15,22 +26,64 @@ The UI uses shadcn/ui, Tailwind CSS, and Radix UI primitives, featuring a custom
 The frontend uses React 18, TypeScript (Vite), Wouter for routing, TanStack Query for server state, and React Hook Form with Zod for validation. The backend is Express.js on Node.js with TypeScript, following a RESTful API design. PostgreSQL via Neon serverless is the primary database, accessed with Drizzle ORM. Authentication uses Replit Auth with OpenID Connect (OIDC) via Passport.js and session-based, secure HTTP-only cookies.
 
 ### Feature Specifications
--   **Multi-Property Management**: Manages multiple resort properties.
--   **24/7 AI Chatbot Assistant**: OpenAI GPT-4o-mini via Replit AI for user support on landing page and within the app.
+
+#### Core Management
+-   **Multi-Property Management**: Manages multiple resort properties with unlimited scalability.
 -   **Booking & Guest Management**: Intelligent booking engine, guest tracking, advanced pricing, booking source, meal plan tracking, group bookings, and dormitory bed-level tracking.
 -   **Room Availability**: Airbnb-style visual room calendar with color-coded availability, direct booking, date range search, and smart room status logic.
--   **Restaurant & Order Management**: Manages restaurant operations, order tracking, My Rasoi menu system (categories, items, variants, add-ons), enhanced ordering UX, quick order entry, and room-specific QR codes.
--   **Financial Tracking**: Manages property lease agreements, payments, expenses, P&L reports, pending payments, detailed bill management, professional printing, and Excel export.
--   **Guest Experience**: WhatsApp notification system, guest ID proof upload (Replit Object Storage), and guest self-check-in via QR code.
--   **Dashboard & Analytics**: Active bookings dashboard, quick actions, booking analytics, real-time "Active Users" count, and real-time RazorPay payment notifications.
--   **User Management**: Admin users manage roles, property assignments, and deletions.
--   **Enquiry Management**: Manages the complete lifecycle of individual and group enquiries.
--   **Error Reporting**: Automatic crash reporting with stack trace capture and a Super Admin dashboard for error resolution.
--   **Attendance & Salary Management**: Staff attendance tracking, automatic salary calculation with intelligent deductions based on employment dates, monthly summaries, and salary editing.
--   **Super Admin Portal**: System-wide management dashboard with user management, property monitoring, issue tracking, contact leads, and error reporting.
+-   **User Management**: Admin users manage roles, property assignments, and deletions with role-based access control.
+-   **Enquiry Management**: Manages the complete lifecycle of individual and group enquiries with automated conversion.
+
+#### AI & Intelligent Features (NEW)
+-   **AI-Powered Smart Notifications**: Intelligent notification system with:
+     - Smart 3-hour reminders for pending tasks (cleaning, payments, orders)
+     - Auto-dismiss after 3 hours if task still pending
+     - Works offline via browser push notifications
+     - Task-specific intelligence for cleaning, payments, food orders, staff attendance
+     - Customizable reminder intervals
+-   **Employee Performance Dashboard**: Track staff performance with 3 analytics tabs:
+     - User Performance (individual metrics)
+     - Staff Performance (team-wide statistics)
+     - Score Points (performance scoring system)
+-   **24/7 AI Chatbot Assistant**: OpenAI GPT-4o-mini via Replit AI for user support on landing page and within the app.
+
+#### Restaurant & Operations
+-   **Restaurant & Order Management**: Complete kitchen management with QR ordering, menu system (categories, items, variants, add-ons), enhanced ordering UX, quick order entry, real-time order tracking, and room-specific QR codes.
+-   **WhatsApp Food Order Alerts**: Real-time WhatsApp notifications for new food orders - works even when app is completely closed on mobile.
+
+#### Financial Management
+-   **Financial Tracking**: Property lease agreements, payments, expenses, P&L reports, pending payments, detailed bill management, professional printing, and Excel export.
 -   **RazorPay Payment Link Integration**: Direct payment collection via WhatsApp, automatic payment confirmation via webhook, bill status auto-update to PAID, and customer WhatsApp confirmation.
 -   **Split Payment System**: Simplified payment collection with single cash input, auto-calculated remaining balance, and one-click payment link generation for the remaining amount.
 -   **Dashboard Payment Notifications**: Real-time notifications displaying customer name and amount paid when payments complete via RazorPay webhook, polling every 5 seconds.
+
+#### Staff Management
+-   **Attendance & Salary Management**: Staff attendance tracking, automatic salary calculation with intelligent deductions based on employment dates, monthly summaries, and salary editing.
+-   **Performance Tracking**: Tie performance scores to salary calculations and staff management decisions.
+
+#### Advanced Controls (NEW)
+-   **Feature Settings Control Panel**: 10 toggleable features for admins:
+     - Food order notifications
+     - WhatsApp notifications
+     - Email notifications
+     - Payment reminders
+     - Auto-checkout
+     - Auto-salary calculation
+     - Attendance tracking
+     - Performance analytics
+     - Expense forecasting
+     - Budget alerts
+
+#### Analytics & Reporting
+-   **Dashboard & Analytics**: Active bookings dashboard, quick actions, booking analytics, real-time "Active Users" count, occupancy tracking, and revenue reports.
+-   **Super Admin Portal**: System-wide management dashboard with user management, property monitoring, issue tracking, contact leads, and error reporting.
+
+#### Guest Experience
+-   **Guest Experience**: WhatsApp notification system, guest ID proof upload (Replit Object Storage), guest self-check-in via QR code, and WhatsApp payment links.
+
+#### Security & Compliance
+-   **Error Reporting**: Automatic crash reporting with stack trace capture and a Super Admin dashboard for error resolution.
+-   **Enterprise Security**: ISO 27001 compliance, end-to-end encryption, SOC 2 certification, role-based access control, and secure authentication.
 
 ### System Design Choices
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
