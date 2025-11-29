@@ -856,11 +856,13 @@ export class DatabaseStorage implements IStorage {
 
   // Order operations
   async getAllOrders(): Promise<any[]> {
-    const ordersWithRoomStatus = await db
+    const ordersWithDetails = await db
       .select({
         order: orders,
         roomStatus: rooms.status,
         roomNumber: rooms.roomNumber,
+        guestName: guests.fullName,
+        guestPhone: guests.phone,
         // Check if there's an active checked-in booking for this room
         hasCheckedInBooking: sql<boolean>`EXISTS (
           SELECT 1 FROM ${bookings} 
@@ -870,22 +872,28 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orders)
       .leftJoin(rooms, eq(orders.roomId, rooms.id))
+      .leftJoin(bookings, orders.bookingId ? eq(orders.bookingId, bookings.id) : undefined)
+      .leftJoin(guests, bookings.guestId ? eq(bookings.guestId, guests.id) : undefined)
       .orderBy(desc(orders.createdAt));
     
-    return ordersWithRoomStatus.map(row => ({
+    return ordersWithDetails.map(row => ({
       ...row.order,
       roomStatus: row.roomStatus,
       roomNumber: row.roomNumber,
+      customerName: row.guestName,
+      customerPhone: row.guestPhone,
       hasCheckedInBooking: row.hasCheckedInBooking,
     }));
   }
 
   async getOrdersByProperty(propertyId: number): Promise<any[]> {
-    const ordersWithRoomStatus = await db
+    const ordersWithDetails = await db
       .select({
         order: orders,
         roomStatus: rooms.status,
         roomNumber: rooms.roomNumber,
+        guestName: guests.fullName,
+        guestPhone: guests.phone,
         // Check if there's an active checked-in booking for this room
         hasCheckedInBooking: sql<boolean>`EXISTS (
           SELECT 1 FROM ${bookings} 
@@ -895,13 +903,17 @@ export class DatabaseStorage implements IStorage {
       })
       .from(orders)
       .leftJoin(rooms, eq(orders.roomId, rooms.id))
+      .leftJoin(bookings, orders.bookingId ? eq(orders.bookingId, bookings.id) : undefined)
+      .leftJoin(guests, bookings.guestId ? eq(bookings.guestId, guests.id) : undefined)
       .where(eq(orders.propertyId, propertyId))
       .orderBy(desc(orders.createdAt));
     
-    return ordersWithRoomStatus.map(row => ({
+    return ordersWithDetails.map(row => ({
       ...row.order,
       roomStatus: row.roomStatus,
       roomNumber: row.roomNumber,
+      customerName: row.guestName,
+      customerPhone: row.guestPhone,
       hasCheckedInBooking: row.hasCheckedInBooking,
     }));
   }
