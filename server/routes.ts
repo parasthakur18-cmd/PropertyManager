@@ -6403,47 +6403,54 @@ Respond with JSON containing EXACTLY these fields (no extra fields):
 
 Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple critical issues. Otherwise return false.`;
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: summary }],
-          temperature: 0.5,
-          max_tokens: 300,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("OpenAI API failed");
-      }
-
-      const data = await response.json();
-      const aiText = data.choices?.[0]?.message?.content || "";
-
       try {
-        const parsed = JSON.parse(aiText);
-        return res.json({
-          shouldNotify: parsed.shouldNotifyNow === true,
-          cleaningRooms: { count: cleaningCount, message: parsed.cleaningRoomsAdvice || "Prepare rooms for incoming guests." },
-          pendingEnquiries: { count: enquiriesCount, message: parsed.enquiriesAdvice || "Follow up on customer inquiries promptly." },
-          pendingBills: { count: billsCount, message: parsed.billsAdvice || "Collect outstanding payments." },
-          overallInsight: parsed.overallTip || "Stay on top of all pending tasks.",
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: summary }],
+            temperature: 0.5,
+            max_tokens: 300,
+          }),
         });
-      } catch (e) {
-        // Default: notify if moderate or high pending items
-        const shouldNotify = totalPending >= 3;
-        return res.json({
-          shouldNotify,
-          cleaningRooms: { count: cleaningCount, message: "Rooms need attention." },
-          pendingEnquiries: { count: enquiriesCount, message: "Customer inquiries awaiting response." },
-          pendingBills: { count: billsCount, message: "Outstanding payments to collect." },
-          overallInsight: "Handle all pending items promptly.",
-        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const aiText = data.choices?.[0]?.message?.content || "";
+
+          try {
+            const parsed = JSON.parse(aiText);
+            return res.json({
+              shouldNotify: parsed.shouldNotifyNow === true,
+              cleaningRooms: { count: cleaningCount, message: parsed.cleaningRoomsAdvice || "Prepare rooms for incoming guests." },
+              pendingEnquiries: { count: enquiriesCount, message: parsed.enquiriesAdvice || "Follow up on customer inquiries promptly." },
+              pendingBills: { count: billsCount, message: parsed.billsAdvice || "Collect outstanding payments." },
+              overallInsight: parsed.overallTip || "Stay on top of all pending tasks.",
+            });
+          } catch (parseError) {
+            console.warn("[AI-SUMMARY] Failed to parse AI response, using fallback");
+          }
+        } else {
+          console.warn("[AI-SUMMARY] OpenAI API returned:", response.status, "using fallback");
+        }
+      } catch (fetchError: any) {
+        console.warn("[AI-SUMMARY] OpenAI API fetch error:", fetchError.message, "using fallback");
       }
+      
+      // Fallback: Always notify if moderate or high pending items
+      const shouldNotify = totalPending >= 3;
+      console.log("[AI-SUMMARY] Using fallback - shouldNotify:", shouldNotify, "totalPending:", totalPending);
+      return res.json({
+        shouldNotify,
+        cleaningRooms: { count: cleaningCount, message: cleaningCount > 0 ? `${cleaningCount} rooms need cleaning/maintenance attention.` : "" },
+        pendingEnquiries: { count: enquiriesCount, message: enquiriesCount > 0 ? `${enquiriesCount} customer inquiries require timely response.` : "" },
+        pendingBills: { count: billsCount, message: billsCount > 0 ? `${billsCount} payments pending - collect to improve cash flow.` : "" },
+        overallInsight: "Address pending items promptly to maintain operations.",
+      });
     } catch (error: any) {
       console.error("[AI-SUMMARY] Error:", error);
       res.status(500).json({ message: "Failed to generate AI summary" });
