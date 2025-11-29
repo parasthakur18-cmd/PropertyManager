@@ -1108,7 +1108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all checked-in bookings
       const allBookings = await storage.getAllBookings();
-      let activeBookings = allBookings.filter(b => b.status === "checked-in");
+      let activeBookings = allBookings.filter(b => b.status === "pending" || b.status === "confirmed" || b.status === "checked-in");
       
       // Get all related data
       const allGuests = await storage.getAllGuests();
