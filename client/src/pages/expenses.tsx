@@ -297,12 +297,11 @@ export default function Expenses() {
   return (
     <div className="h-full overflow-auto">
       <div className="p-6 space-y-6">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <h1 className="text-3xl font-semibold" data-testid="text-page-title">Property Expenses</h1>
-              <p className="text-muted-foreground mt-1">Track and manage property operating expenses</p>
-            </div>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h1 className="text-3xl font-semibold" data-testid="text-page-title">Property Expenses</h1>
+            <p className="text-muted-foreground mt-1">Track and manage property operating expenses</p>
+          </div>
           <div className="flex gap-2">
             <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
               <DialogTrigger asChild>
