@@ -285,30 +285,26 @@ export type MenuItemAddOn = typeof menuItemAddOns.$inferSelect;
 // Orders table
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
-  propertyId: integer("property_id"),
+  propertyId: integer("property_id").notNull(),
   roomId: integer("room_id").references(() => rooms.id),
   bookingId: integer("booking_id").references(() => bookings.id),
-  orderType: varchar("order_type", { length: 50 }).notNull().default("room-service"), // room-service, restaurant, delivery
+  guestId: integer("guest_id").references(() => guests.id),
+  items: jsonb("items").notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  specialInstructions: text("special_instructions"),
+  orderSource: varchar("order_source", { length: 50 }),
+  orderType: varchar("order_type", { length: 50 }),
   customerName: varchar("customer_name", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 50 }),
-  items: jsonb("items").notNull(), // Array of {menuItemId, quantity, variantId?, addOnIds?, specialInstructions}
-  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, preparing, ready, completed, cancelled
-  specialInstructions: text("special_instructions"),
-  deliveredAt: timestamp("delivered_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  completedAt: timestamp("completed_at"),
-  assignedStaffId: varchar("assigned_staff_id"),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-  completedAt: true,
-  deliveredAt: true,
-  assignedStaffId: true,
 });
 
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
