@@ -6888,6 +6888,43 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
 
   // ===== AI INSIGHTS ROUTES =====
 
+  // ===== FEATURE SETTINGS ROUTES =====
+  
+  app.get("/api/feature-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.query.propertyId || req.user?.assignedPropertyIds?.[0];
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const settings = await storage.getFeatureSettingsByProperty(parseInt(propertyId));
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/feature-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.body.propertyId || req.user?.assignedPropertyIds?.[0];
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      // Only super-admin can update settings
+      if (req.user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Only super-admin can update feature settings" });
+      }
+
+      const settings = await storage.updateFeatureSettings(parseInt(propertyId), req.body);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Generate AI-powered expense insights using OpenAI
   app.post("/api/ai/insights", isAuthenticated, async (req: any, res) => {
     try {

@@ -25,6 +25,7 @@ import {
   salaryAdvances,
   salaryPayments,
   attendanceRecords,
+  featureSettings,
   type User,
   type UpsertUser,
   type Property,
@@ -83,6 +84,8 @@ import {
   preBills,
   type PreBill,
   type InsertPreBill,
+  type FeatureSettings,
+  type InsertFeatureSettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -2412,6 +2415,41 @@ export class DatabaseStorage implements IStorage {
       .where(eq(contactEnquiries.id, id))
       .returning();
     eventBus.emit('contact-enquiry:updated', updated);
+    return updated;
+  }
+
+  // Feature Settings operations
+  async getFeatureSettingsByProperty(propertyId: number): Promise<FeatureSettings | undefined> {
+    const [settings] = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, propertyId));
+    if (!settings) {
+      // Create default settings if not exists
+      const [created] = await db.insert(featureSettings).values({
+        propertyId,
+        foodOrderNotifications: true,
+        whatsappNotifications: true,
+        emailNotifications: false,
+        autoCheckout: true,
+        autoSalaryCalculation: true,
+        attendanceTracking: true,
+        performanceAnalytics: true,
+        expenseForecasting: true,
+        budgetAlerts: true,
+        paymentReminders: true,
+      }).returning();
+      return created;
+    }
+    return settings;
+  }
+
+  async updateFeatureSettings(propertyId: number, updates: Partial<InsertFeatureSettings>): Promise<FeatureSettings> {
+    // Ensure settings exist
+    await this.getFeatureSettingsByProperty(propertyId);
+    
+    const [updated] = await db
+      .update(featureSettings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(featureSettings.propertyId, propertyId))
+      .returning();
     return updated;
   }
 
