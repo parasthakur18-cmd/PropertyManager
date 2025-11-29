@@ -291,18 +291,19 @@ export default function CalendarView() {
     <div className="h-full flex flex-col bg-slate-50 dark:bg-background overflow-hidden">
       {/* Header */}
       <div className="border-b bg-white dark:bg-card p-3 flex-shrink-0 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
             <Button 
               size="icon" 
               variant="ghost"
               onClick={() => setShowRoomSidebar(!showRoomSidebar)}
               data-testid="button-toggle-room-sidebar"
+              className="hidden md:flex"
             >
               {showRoomSidebar ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
             </Button>
-            <CalendarIcon className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-bold">Room Calendar</h1>
+            <CalendarIcon className="h-5 w-5 text-primary flex-shrink-0" />
+            <h1 className="text-base md:text-lg font-bold truncate">Room Calendar</h1>
           </div>
           <div className="flex gap-1">
             <Button size="sm" variant="ghost" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
@@ -323,21 +324,21 @@ export default function CalendarView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex-1 max-w-md">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap md:flex-nowrap">
+          <div className="flex-1 min-w-0 md:max-w-md">
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground flex-shrink-0" />
               <Input
-                placeholder="Search reservations, guests..."
+                placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-slate-50 dark:bg-background border-slate-200"
+                className="pl-9 bg-slate-50 dark:bg-background border-slate-200 text-sm md:text-base"
                 data-testid="input-search-calendar"
               />
             </div>
           </div>
           <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
-            <SelectTrigger className="w-44 bg-white dark:bg-card">
+            <SelectTrigger className="w-auto md:w-44 bg-white dark:bg-card text-sm md:text-base">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -347,7 +348,7 @@ export default function CalendarView() {
               ))}
             </SelectContent>
           </Select>
-          <Button size="icon" variant="ghost" data-testid="button-view-settings">
+          <Button size="icon" variant="ghost" data-testid="button-view-settings" className="flex-shrink-0">
             <Settings className="h-4 w-4" />
           </Button>
         </div>
@@ -357,8 +358,8 @@ export default function CalendarView() {
       <div className="flex-1 overflow-hidden flex">
         {/* Left Sidebar */}
         <div className={cn(
-          "border-r bg-white dark:bg-card transition-all duration-300 flex-shrink-0 flex flex-col",
-          showRoomSidebar ? "md:w-[220px] w-full" : "w-0 overflow-hidden"
+          "border-r bg-white dark:bg-card transition-all duration-300 flex-shrink-0 flex flex-col overflow-hidden",
+          showRoomSidebar ? "md:w-[220px] sm:w-[180px] w-[150px]" : "md:flex w-0"
         )}>
           {/* Toolbar */}
           <div className="flex items-center gap-1 p-2 border-b bg-slate-50 dark:bg-muted/30">
