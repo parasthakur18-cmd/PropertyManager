@@ -1514,7 +1514,6 @@ export default function Bookings() {
                                 <SelectItem value="pending">Pending</SelectItem>
                                 <SelectItem value="confirmed">Confirmed</SelectItem>
                                 <SelectItem value="checked-in">Checked In</SelectItem>
-                                <SelectItem value="checked-out">Checked Out</SelectItem>
                                 <SelectItem value="cancelled">Cancelled</SelectItem>
                               </SelectContent>
                             </Select>
@@ -1982,7 +1981,6 @@ export default function Bookings() {
                           <SelectItem value="pending">Pending</SelectItem>
                           <SelectItem value="confirmed">Confirmed</SelectItem>
                           <SelectItem value="checked-in">Checked In</SelectItem>
-                          <SelectItem value="checked-out">Checked Out</SelectItem>
                           <SelectItem value="cancelled">Cancelled</SelectItem>
                         </SelectContent>
                       </Select>
