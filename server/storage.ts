@@ -2436,5 +2436,6 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(preBills).set(updates).where(eq(preBills.id, id)).returning();
     return updated;
   }
-
 }
+
+export const storage = new DatabaseStorage();
