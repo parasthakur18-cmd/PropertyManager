@@ -1342,8 +1342,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
-      // Parse booking data directly - dates should be date strings (YYYY-MM-DD)
-      const data = insertBookingSchema.parse(req.body);
+      // Create input schema that coerces ISO date strings to Date objects
+      const bookingInputSchema = insertBookingSchema.extend({
+        checkInDate: z.coerce.date(),
+        checkOutDate: z.coerce.date(),
+      });
+      const data = bookingInputSchema.parse(req.body);
       
       console.log('🔍 [DEBUG] Booking creation - parsed data:', {
         roomId: data.roomId,
@@ -1425,8 +1429,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      // Parse and validate the booking data - dates should be date strings (YYYY-MM-DD)
-      const validatedData = insertBookingSchema.partial().parse(req.body);
+      // Create input schema that coerces ISO date strings to Date objects
+      const bookingUpdateSchema = insertBookingSchema.extend({
+        checkInDate: z.coerce.date().optional(),
+        checkOutDate: z.coerce.date().optional(),
+      }).partial();
+      const validatedData = bookingUpdateSchema.parse(req.body);
       
       // Fetch existing booking to determine property context
       const existingBooking = await storage.getBooking(parseInt(req.params.id));
