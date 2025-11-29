@@ -33,6 +33,7 @@ import {
   Clock,
   HelpCircle,
   Lock,
+  Settings2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -90,6 +91,7 @@ const adminAdminItems = [
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
 ];
 
 const adminFinanceItems = [
