@@ -181,6 +181,7 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+  numberOfNights: true, // Remove - calculated from check-in/check-out dates
 });
 
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
