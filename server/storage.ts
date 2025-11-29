@@ -312,12 +312,6 @@ export interface IStorage {
   markErrorAsResolved(id: number): Promise<ErrorCrash>;
 
   // OTA Integrations operations (multi-portal support)
-  getAllOtaIntegrations(propertyId: number): Promise<any[]>;
-  getOtaIntegration(propertyId: number, otaName: string): Promise<any>;
-  saveOtaIntegration(integration: any): Promise<any>;
-  updateOtaIntegration(id: number, integration: Partial<any>): Promise<any>;
-  deleteOtaIntegration(id: number): Promise<void>;
-  updateOtaSyncStatus(id: number, status: string, errorMessage?: string): Promise<any>;
 
   // Attendance operations
   getAllAttendance(): Promise<AttendanceRecord[]>;
@@ -2421,9 +2415,6 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Error Crash operations
-    return await db.select().from(errorCrashes).orderBy(desc(errorCrashes.createdAt));
-  }
 
 
   async getPreBillByBooking(bookingId: number): Promise<PreBill | undefined> {
@@ -2446,38 +2437,4 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // OTA Integrations operations
-  async getAllOtaIntegrations(propertyId: number): Promise<OtaIntegration[]> {
-    return await db.select().from(otaIntegrations).where(eq(otaIntegrations.propertyId, propertyId)).orderBy(desc(otaIntegrations.createdAt));
-  }
-
-  async getOtaIntegration(propertyId: number, otaName: string): Promise<OtaIntegration | undefined> {
-    const [integration] = await db.select().from(otaIntegrations).where(and(eq(otaIntegrations.propertyId, propertyId), eq(otaIntegrations.otaName, otaName))).limit(1);
-    return integration;
-  }
-
-  async saveOtaIntegration(integration: InsertOtaIntegration): Promise<OtaIntegration> {
-    const [created] = await db.insert(otaIntegrations).values(integration).returning();
-    return created;
-  }
-
-  async updateOtaIntegration(id: number, updates: Partial<InsertOtaIntegration>): Promise<OtaIntegration> {
-    const [updated] = await db.update(otaIntegrations).set({ ...updates, updatedAt: new Date() }).where(eq(otaIntegrations.id, id)).returning();
-    return updated;
-  }
-
-  async deleteOtaIntegration(id: number): Promise<void> {
-    await db.delete(otaIntegrations).where(eq(otaIntegrations.id, id));
-  }
-
-  async updateOtaSyncStatus(id: number, status: string, errorMessage?: string): Promise<OtaIntegration> {
-    const updates: any = { syncStatus: status, lastSyncAt: new Date(), updatedAt: new Date() };
-    if (errorMessage) {
-      updates.syncErrorMessage = errorMessage;
-    }
-    const [updated] = await db.update(otaIntegrations).set(updates).where(eq(otaIntegrations.id, id)).returning();
-    return updated;
-  }
 }
-
-export const storage = new DatabaseStorage();
