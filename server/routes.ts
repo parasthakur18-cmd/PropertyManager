@@ -6913,9 +6913,16 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         return res.status(400).json({ message: "Property ID required" });
       }
 
-      // Only super-admin can update settings
-      if (req.user?.role !== "super-admin") {
-        return res.status(403).json({ message: "Only super-admin can update feature settings" });
+      // Admin and super-admin can update their own property settings
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admin can update feature settings for their property" });
+      }
+
+      // Verify admin has access to this property
+      const assignedProps = req.user?.assignedPropertyIds || [];
+      if (!assignedProps.includes(parseInt(propertyId))) {
+        return res.status(403).json({ message: "You don't have access to this property" });
       }
 
       const settings = await storage.updateFeatureSettings(parseInt(propertyId), req.body);

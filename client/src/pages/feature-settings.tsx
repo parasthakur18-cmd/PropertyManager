@@ -68,8 +68,8 @@ export default function FeatureSettings() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  // Redirect if not super-admin
-  if (user?.role !== "super-admin") {
+  // Redirect if not admin or super-admin
+  if (user?.role !== "admin" && user?.role !== "super-admin") {
     navigate("/");
     return null;
   }
