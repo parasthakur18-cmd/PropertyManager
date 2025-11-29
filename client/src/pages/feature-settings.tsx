@@ -121,7 +121,8 @@ export default function FeatureSettings() {
     } as any);
   };
 
-  if (!propertyId && !selectedProperty) {
+  // Show property selector if no property assigned
+  if (!selectedProperty && !user?.assignedPropertyIds?.[0]) {
     return (
       <div className="p-6 max-w-6xl mx-auto space-y-8">
         <div className="space-y-4">
@@ -139,15 +140,19 @@ export default function FeatureSettings() {
           </CardHeader>
           <CardContent>
             <Select value={selectedProperty} onValueChange={setSelectedProperty}>
-              <SelectTrigger>
+              <SelectTrigger data-testid="select-property">
                 <SelectValue placeholder="Choose a property..." />
               </SelectTrigger>
               <SelectContent>
-                {properties.map((prop: any) => (
-                  <SelectItem key={prop.id} value={prop.id.toString()}>
-                    {prop.name}
-                  </SelectItem>
-                ))}
+                {properties && properties.length > 0 ? (
+                  properties.map((prop: any) => (
+                    <SelectItem key={prop.id} value={prop.id.toString()}>
+                      {prop.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="p-2 text-sm text-muted-foreground">No properties available</div>
+                )}
               </SelectContent>
             </Select>
           </CardContent>
@@ -156,16 +161,49 @@ export default function FeatureSettings() {
     );
   }
 
-  if (isLoading || !settings) {
+  // Show loading while fetching settings
+  if (isLoading) {
     return (
       <div className="p-6 space-y-6">
         <div className="space-y-2">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
         </div>
-        {Array.from({ length: 3 }).map((_, i) => (
+        {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-64" />
         ))}
+      </div>
+    );
+  }
+
+  // Show error if fetch failed
+  if (error) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error Loading Settings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">{error instanceof Error ? error.message : "Failed to load settings"}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Show message if no settings found
+  if (!settings) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>No Settings Found</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">Unable to load feature settings. Please try again.</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -180,6 +218,14 @@ export default function FeatureSettings() {
         <p className="text-muted-foreground">
           Enable or disable optional features for your property management system
         </p>
+        {selectedProperty && properties.length > 0 && (
+          <div className="mt-4">
+            <label className="text-sm font-medium">Current Property:</label>
+            <p className="text-sm text-muted-foreground">
+              {properties.find((p: any) => p.id.toString() === selectedProperty)?.name || "Unknown"}
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6">
