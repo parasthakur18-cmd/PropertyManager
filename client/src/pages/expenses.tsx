@@ -14,12 +14,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target } from "lucide-react";
+import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpenseTrends } from "@/components/expense-trends";
 import { ExpenseInsights } from "@/components/expense-insights";
 import { BudgetPlanning } from "@/components/budget-planning";
+import { CostEfficiency } from "@/components/cost-efficiency";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const expenseFormSchema = insertPropertyExpenseSchema.extend({
@@ -43,7 +44,7 @@ export default function Expenses() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "trends" | "insights" | "budget">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "trends" | "insights" | "budget" | "efficiency">("overview");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -51,6 +52,14 @@ export default function Expenses() {
 
   const { data: categories = [], isLoading: categoriesLoading } = useQuery<ExpenseCategory[]>({
     queryKey: ["/api/expense-categories"],
+  });
+
+  const { data: bookings = [] } = useQuery<any[]>({
+    queryKey: ["/api/bookings"],
+  });
+
+  const { data: rooms = [] } = useQuery<any[]>({
+    queryKey: ["/api/rooms"],
   });
 
   const { data: expenses = [], isLoading } = useQuery<PropertyExpense[]>({
@@ -611,19 +620,23 @@ export default function Expenses() {
         </div>
 
         <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as any)} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="trends" className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
-              Trends
+              <span className="hidden sm:inline">Trends</span>
             </TabsTrigger>
             <TabsTrigger value="insights" className="flex items-center gap-2">
               <Lightbulb className="w-4 h-4" />
-              Insights
+              <span className="hidden sm:inline">Insights</span>
+            </TabsTrigger>
+            <TabsTrigger value="efficiency" className="flex items-center gap-2">
+              <Zap className="w-4 h-4" />
+              <span className="hidden sm:inline">Efficiency</span>
             </TabsTrigger>
             <TabsTrigger value="budget" className="flex items-center gap-2">
               <Target className="w-4 h-4" />
-              Budget
+              <span className="hidden sm:inline">Budget</span>
             </TabsTrigger>
           </TabsList>
 
@@ -723,6 +736,10 @@ export default function Expenses() {
 
           <TabsContent value="insights" className="space-y-6">
             <ExpenseInsights expenses={expenses} categories={categories} />
+          </TabsContent>
+
+          <TabsContent value="efficiency" className="space-y-6">
+            <CostEfficiency expenses={expenses} bookings={bookings} rooms={rooms} />
           </TabsContent>
 
           <TabsContent value="budget" className="space-y-6">
