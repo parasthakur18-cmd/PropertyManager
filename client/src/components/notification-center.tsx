@@ -132,69 +132,79 @@ export function NotificationCenter() {
       </Button>
 
       {isOpen && (
-        <Card className="absolute right-0 top-12 w-96 max-h-96 overflow-y-auto z-50 shadow-lg">
-          <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-background">
-            <h3 className="font-semibold">Notifications</h3>
-            <div className="flex items-center gap-2">
-              {notifications.length > 0 && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={clearAllNotifications}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                  data-testid="button-clear-all-notifications"
-                >
-                  Clear All
+        <>
+          {/* Mobile backdrop */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setIsOpen(false)}
+            data-testid="notification-backdrop"
+          />
+          
+          {/* Notification Card - Mobile: drawer, Desktop: dropdown */}
+          <Card className="fixed md:absolute right-0 md:right-auto bottom-0 md:bottom-auto md:top-12 w-full md:w-96 h-2/3 md:h-auto md:max-h-96 overflow-y-auto z-50 shadow-lg rounded-t-lg md:rounded-lg">
+            <div className="p-4 border-b flex justify-between items-center sticky top-0 bg-background">
+              <h3 className="font-semibold">Notifications</h3>
+              <div className="flex items-center gap-2">
+                {notifications.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={clearAllNotifications}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                    data-testid="button-clear-all-notifications"
+                  >
+                    Clear All
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+                  <X className="w-4 h-4" />
                 </Button>
-              )}
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-                <X className="w-4 h-4" />
-              </Button>
+              </div>
             </div>
-          </div>
 
-          {notifications.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No notifications</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {notifications.map(notification => (
-                <div
-                  key={notification.id}
-                  className={`p-3 hover:bg-accent cursor-pointer transition ${
-                    !notification.isRead ? "bg-muted/50" : ""
-                  }`}
-                  onClick={() => !notification.isRead && markAsRead(notification.id)}
-                  data-testid={`notification-${notification.id}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm">{notification.title}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{notification.message}</div>
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {format(new Date(notification.createdAt), "MMM d, h:mm a")}
+            {notifications.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">
+                <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No notifications</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {notifications.map(notification => (
+                  <div
+                    key={notification.id}
+                    className={`p-3 hover:bg-accent cursor-pointer transition ${
+                      !notification.isRead ? "bg-muted/50" : ""
+                    }`}
+                    onClick={() => !notification.isRead && markAsRead(notification.id)}
+                    data-testid={`notification-${notification.id}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm">{notification.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1">{notification.message}</div>
+                        <div className="text-xs text-muted-foreground mt-2">
+                          {format(new Date(notification.createdAt), "MMM d, h:mm a")}
+                        </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteNotification(notification.id);
+                        }}
+                        data-testid={`button-delete-notification-${notification.id}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteNotification(notification.id);
-                      }}
-                      data-testid={`button-delete-notification-${notification.id}`}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                ))}
+              </div>
+            )}
+          </Card>
+        </>
       )}
     </div>
   );
