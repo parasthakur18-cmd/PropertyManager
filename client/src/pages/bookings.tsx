@@ -540,8 +540,10 @@ export default function Bookings() {
       
       // Calculate totalAmount before sending
       const checkInDate = new Date(data.checkInDate);
+      checkInDate.setHours(0, 0, 0, 0);
       const checkOutDate = new Date(data.checkOutDate);
-      const numberOfNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+      checkOutDate.setHours(0, 0, 0, 0);
+      const numberOfNights = Math.max(1, (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
       
       // Calculate roomCharges (price per night)
       let roomCharges = 0;
@@ -643,8 +645,10 @@ export default function Bookings() {
     
     // Calculate totalAmount for edited booking
     const checkInDate = new Date(data.checkInDate);
+    checkInDate.setHours(0, 0, 0, 0);
     const checkOutDate = new Date(data.checkOutDate);
-    const numberOfNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+    checkOutDate.setHours(0, 0, 0, 0);
+    const numberOfNights = Math.max(1, (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     
     let roomCharges = 0;
     let roomIds: number[] | null = null;
