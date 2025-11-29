@@ -6321,7 +6321,7 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     }
   });
 
-  // POST /api/pending-items/ai-summary - Get AI-powered summary of pending tasks
+  // POST /api/pending-items/ai-summary - Get AI-powered summary of pending tasks with urgency-based notification decision
   app.get("/api/pending-items/ai-summary", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
@@ -6338,6 +6338,7 @@ Be helpful, professional, and concise. If a user asks about something outside yo
 
       if (propertyIds.length === 0) {
         return res.json({
+          shouldNotify: false,
           cleaningRooms: { count: 0, message: "" },
           pendingEnquiries: { count: 0, message: "" },
           pendingBills: { count: 0, message: "" },
@@ -6359,11 +6360,24 @@ Be helpful, professional, and concise. If a user asks about something outside yo
       const allBills = await storage.getAllBills();
       const billsCount = allBills.filter((b: any) => b.paymentStatus === "pending").length;
 
+      // Determine urgency: if no pending items, don't notify
+      const totalPending = cleaningCount + enquiriesCount + billsCount;
+      if (totalPending === 0) {
+        return res.json({
+          shouldNotify: false,
+          cleaningRooms: { count: 0, message: "" },
+          pendingEnquiries: { count: 0, message: "" },
+          pendingBills: { count: 0, message: "" },
+          overallInsight: "",
+        });
+      }
+
       // Generate AI summary using OpenAI
       const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
       
       if (!openaiKey) {
         return res.json({
+          shouldNotify: totalPending > 0,
           cleaningRooms: { count: cleaningCount, message: `${cleaningCount} rooms need attention for cleaning or maintenance.` },
           pendingEnquiries: { count: enquiriesCount, message: `${enquiriesCount} new customer inquiries awaiting response.` },
           pendingBills: { count: billsCount, message: `${billsCount} unpaid invoices pending collection.` },
@@ -6371,14 +6385,23 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         });
       }
 
-      const summary = `Generate brief, actionable notifications for a hotel property management system. Be concise, professional, and specific to hospitality operations. Format as JSON with these exact fields: cleaningRoomsAdvice, enquiriesAdvice, billsAdvice, overallTip.
+      const summary = `As a hotel AI assistant, analyze these pending tasks and decide if urgent notification is needed. Respond ONLY with valid JSON.
 
 Current status:
-- ${cleaningCount} rooms pending cleaning or maintenance
-- ${enquiriesCount} new customer enquiries
+- ${cleaningCount} rooms pending cleaning/maintenance
+- ${enquiriesCount} new customer enquiries  
 - ${billsCount} unpaid bills
 
-Generate practical, urgency-appropriate messages for each. Keep each message under 30 words.`;
+Respond with JSON containing EXACTLY these fields (no extra fields):
+{
+  "shouldNotifyNow": boolean (true if urgent/high priority, false if can wait),
+  "cleaningRoomsAdvice": "under 30 words",
+  "enquiriesAdvice": "under 30 words",
+  "billsAdvice": "under 30 words",
+  "overallTip": "actionable insight under 20 words"
+}
+
+Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple critical issues. Otherwise return false.`;
 
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -6389,7 +6412,7 @@ Generate practical, urgency-appropriate messages for each. Keep each message und
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: summary }],
-          temperature: 0.7,
+          temperature: 0.5,
           max_tokens: 300,
         }),
       });
@@ -6404,13 +6427,17 @@ Generate practical, urgency-appropriate messages for each. Keep each message und
       try {
         const parsed = JSON.parse(aiText);
         return res.json({
+          shouldNotify: parsed.shouldNotifyNow === true,
           cleaningRooms: { count: cleaningCount, message: parsed.cleaningRoomsAdvice || "Prepare rooms for incoming guests." },
           pendingEnquiries: { count: enquiriesCount, message: parsed.enquiriesAdvice || "Follow up on customer inquiries promptly." },
           pendingBills: { count: billsCount, message: parsed.billsAdvice || "Collect outstanding payments." },
           overallInsight: parsed.overallTip || "Stay on top of all pending tasks.",
         });
       } catch (e) {
+        // Default: notify if moderate or high pending items
+        const shouldNotify = totalPending >= 3;
         return res.json({
+          shouldNotify,
           cleaningRooms: { count: cleaningCount, message: "Rooms need attention." },
           pendingEnquiries: { count: enquiriesCount, message: "Customer inquiries awaiting response." },
           pendingBills: { count: billsCount, message: "Outstanding payments to collect." },

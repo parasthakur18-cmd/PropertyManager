@@ -12,14 +12,14 @@ interface PendingItems {
 }
 
 interface AISummary {
+  shouldNotify: boolean;
   cleaningRooms: { count: number; message: string };
   pendingEnquiries: { count: number; message: string };
   pendingBills: { count: number; message: string };
   overallInsight: string;
 }
 
-const SCHEDULED_HOURS = [9, 15, 21];
-const AUTO_HIDE_DURATION = 3600000;
+const AUTO_HIDE_DURATION = 3600000; // 1 hour
 
 export function AIPendingNotifications() {
   const [showNotification, setShowNotification] = useState(false);
@@ -27,38 +27,35 @@ export function AIPendingNotifications() {
 
   const { data: pendingItems } = useQuery<PendingItems>({
     queryKey: ["/api/pending-items"],
-    refetchInterval: 60000,
+    refetchInterval: 60000, // Check every minute
   });
 
   const { data: aiSummary, isLoading: aiLoading } = useQuery<AISummary>({
     queryKey: ["/api/pending-items/ai-summary"],
     enabled: !!pendingItems && (pendingItems.cleaningRooms > 0 || pendingItems.pendingEnquiries > 0 || pendingItems.pendingBills > 0),
-    refetchInterval: 300000, // 5 minutes
+    refetchInterval: 300000, // AI decides every 5 minutes
   });
 
-  const isScheduledTime = () => {
+  const getNotificationKey = () => {
     const now = new Date();
-    return SCHEDULED_HOURS.includes(now.getHours());
+    // Track by date and create a session-based key to avoid showing same notification multiple times
+    return `ai-notif-shown-${now.toDateString()}`;
   };
 
-  const getCurrentHourKey = () => {
-    const now = new Date();
-    return `ai-pending-notif-dismissed-${now.toDateString()}-${now.getHours()}`;
+  const wasNotificationShownToday = () => {
+    return localStorage.getItem(getNotificationKey()) === "true";
   };
 
-  const wasDismissedThisHour = () => {
-    return localStorage.getItem(getCurrentHourKey()) === "true";
-  };
-
-  const markAsDismissedThisHour = () => {
-    localStorage.setItem(getCurrentHourKey(), "true");
+  const markNotificationShownToday = () => {
+    localStorage.setItem(getNotificationKey(), "true");
   };
 
   useEffect(() => {
     if (pendingItems && aiSummary && !aiLoading) {
-      const total = Object.values(pendingItems).reduce((a, b) => a + b, 0);
-      if (total > 0 && isScheduledTime() && !wasDismissedThisHour()) {
+      // AI decides: show if shouldNotify is true AND not already shown today
+      if (aiSummary.shouldNotify && !wasNotificationShownToday()) {
         setShowNotification(true);
+        markNotificationShownToday();
         const timer = setTimeout(() => setShowNotification(false), AUTO_HIDE_DURATION);
         setAutoHideTimer(timer);
       }
@@ -68,14 +65,13 @@ export function AIPendingNotifications() {
     };
   }, [pendingItems, aiSummary, aiLoading]);
 
-  if (!pendingItems || !showNotification) return null;
+  if (!pendingItems || !showNotification || !aiSummary) return null;
 
   const total = Object.values(pendingItems).reduce((a, b) => a + b, 0);
   if (total === 0) return null;
 
   const handleDismiss = () => {
     setShowNotification(false);
-    markAsDismissedThisHour();
     if (autoHideTimer) clearTimeout(autoHideTimer);
   };
 
@@ -95,12 +91,12 @@ export function AIPendingNotifications() {
           {aiLoading && (
             <div className="flex items-center gap-2 p-2 bg-white dark:bg-orange-900/30 rounded text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Getting AI insights...</span>
+              <span>AI analyzing urgency...</span>
             </div>
           )}
 
           {/* Room Cleaning */}
-          {pendingItems.cleaningRooms > 0 && aiSummary && (
+          {pendingItems.cleaningRooms > 0 && (
             <div className="p-3 bg-white dark:bg-orange-900/30 rounded border border-orange-100 dark:border-orange-800">
               <div className="flex items-start gap-2">
                 <Clock className="h-4 w-4 text-orange-600 flex-shrink-0 mt-0.5" />
@@ -113,7 +109,7 @@ export function AIPendingNotifications() {
           )}
 
           {/* New Enquiries */}
-          {pendingItems.pendingEnquiries > 0 && aiSummary && (
+          {pendingItems.pendingEnquiries > 0 && (
             <div className="p-3 bg-white dark:bg-orange-900/30 rounded border border-orange-100 dark:border-orange-800">
               <div className="flex items-start gap-2">
                 <Users className="h-4 w-4 text-orange-600 flex-shrink-0 mt-0.5" />
@@ -126,7 +122,7 @@ export function AIPendingNotifications() {
           )}
 
           {/* Pending Bills */}
-          {pendingItems.pendingBills > 0 && aiSummary && (
+          {pendingItems.pendingBills > 0 && (
             <div className="p-3 bg-white dark:bg-orange-900/30 rounded border border-orange-100 dark:border-orange-800">
               <div className="flex items-start gap-2">
                 <FileText className="h-4 w-4 text-orange-600 flex-shrink-0 mt-0.5" />
@@ -139,7 +135,7 @@ export function AIPendingNotifications() {
           )}
 
           {/* AI Insight */}
-          {aiSummary && (
+          {aiSummary.overallInsight && (
             <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-100 dark:border-blue-900 mt-2">
               <div className="flex items-start gap-2">
                 <Lightbulb className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
