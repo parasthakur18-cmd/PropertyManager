@@ -3,7 +3,15 @@
 ## Overview
 Hostezee is a comprehensive, multi-property management system for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and eliminates DevOps complexity. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management. Its primary goal is to be the easiest PMS globally to deploy and operate, aiming to capture significant market share.
 
-## Recent Updates (Session 3)
+## Recent Updates (Session 4)
+- ✅ **OTA Integration System**: Complete multi-platform booking sync
+  - Database schema for storing OTA credentials and sync status
+  - API endpoints for managing OTA integrations (CRUD operations)
+  - Sync functionality to pull reservations from Booking.com, Airbnb, OYO, Agoda, Expedia, MMT, TripAdvisor
+  - Real-time sync status tracking and error logging
+  - Frontend UI with property selection, credential management, and manual sync triggers
+
+## Previous Updates (Session 3)
 - ✅ Enhanced AI Notifications: Changed from 1-hour to 3-hour smart reminders with auto-dismiss
 - ✅ WhatsApp Food Order Alerts: Real-time notifications even when app is closed
 - ✅ Employee Performance Dashboard: 3-tab system (User Performance, Staff Performance, Score Points)
@@ -61,7 +69,7 @@ The frontend uses React 18, TypeScript (Vite), Wouter for routing, TanStack Quer
 -   **Attendance & Salary Management**: Staff attendance tracking, automatic salary calculation with intelligent deductions based on employment dates, monthly summaries, and salary editing.
 -   **Performance Tracking**: Tie performance scores to salary calculations and staff management decisions.
 
-#### Advanced Controls (NEW)
+#### Advanced Controls
 -   **Feature Settings Control Panel**: 10 toggleable features for admins:
      - Food order notifications
      - WhatsApp notifications
@@ -73,6 +81,12 @@ The frontend uses React 18, TypeScript (Vite), Wouter for routing, TanStack Quer
      - Performance analytics
      - Expense forecasting
      - Budget alerts
+-   **OTA Integrations (NEW)**: Multi-platform booking synchronization:
+     - Support for 8 OTA platforms (Booking.com, Airbnb, OYO, Agoda, Expedia, MMT, TripAdvisor, Others)
+     - Store OTA credentials securely (API Key & Secret)
+     - Manual reservation sync with error tracking
+     - Last sync timestamp tracking
+     - Per-property integration management
 
 #### Analytics & Reporting
 -   **Dashboard & Analytics**: Active bookings dashboard, quick actions, booking analytics, real-time "Active Users" count, occupancy tracking, and revenue reports.

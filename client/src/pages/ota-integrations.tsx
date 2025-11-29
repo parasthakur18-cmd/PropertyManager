@@ -105,10 +105,10 @@ export default function OtaIntegrations() {
     mutationFn: async (integrationId: number) => {
       return await apiRequest(`/api/ota/sync/${integrationId}`, "POST", {});
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       toast({
         title: "Sync Complete",
-        description: data.message,
+        description: data.message || "Sync completed successfully",
       });
       refetchIntegrations();
     },
@@ -245,7 +245,7 @@ export default function OtaIntegrations() {
                 </Dialog>
               </div>
 
-              {integrations.length === 0 ? (
+              {(integrations as any[]).length === 0 ? (
                 <Card className="p-8 text-center">
                   <p className="text-muted-foreground mb-4">No OTA integrations connected yet</p>
                   <Button variant="outline" onClick={() => setIsAddDialogOpen(true)}>
@@ -254,7 +254,7 @@ export default function OtaIntegrations() {
                 </Card>
               ) : (
                 <div className="grid gap-4">
-                  {integrations.map((integration: any) => (
+                  {(integrations as any[]).map((integration: any) => (
                     <Card key={integration.id} data-testid={`ota-card-${integration.id}`}>
                       <CardContent className="pt-6">
                         <div className="flex items-start justify-between">
