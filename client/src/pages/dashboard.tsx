@@ -19,6 +19,7 @@ import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fn
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { AIPendingNotifications } from "@/components/ai-pending-notifications";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -1766,6 +1767,7 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AIPendingNotifications />
     </div>
   );
 }
