@@ -1097,7 +1097,7 @@ export class DatabaseStorage implements IStorage {
 
     // Calculate bill totals
     const subtotal = totalRoomCharges + totalFoodCharges + totalExtraCharges;
-    const gstRate = 18;
+    const gstRate = 5;
     const serviceChargeRate = 10;
     const gstAmount = (subtotal * gstRate) / 100;
     const serviceChargeAmount = (subtotal * serviceChargeRate) / 100;

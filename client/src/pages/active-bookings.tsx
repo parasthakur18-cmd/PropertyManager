@@ -772,7 +772,7 @@ export default function ActiveBookings() {
             const manualChargesTotal = manualCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
             const subtotal = roomCharges + foodCharges + extraCharges + manualChargesTotal;
             
-            const roomGstRate = 12;
+            const roomGstRate = 5;
             const foodGstRate = 5;
             const serviceChargeRate = 10;
             
