@@ -103,6 +103,8 @@ export default function ActiveBookings() {
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
+  const [billPreviewOpen, setBillPreviewOpen] = useState(false);
+  const [billPreviewBooking, setBillPreviewBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending");
   const [skipPreBill, setSkipPreBill] = useState(false);
@@ -695,15 +697,27 @@ export default function ActiveBookings() {
                   </div>
                 )}
 
-                <div className="mt-auto pt-3">
+                <div className="mt-auto pt-3 flex gap-2">
                   <Button
-                    className="w-full"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setBillPreviewBooking(booking);
+                      setBillPreviewOpen(true);
+                    }}
+                    data-testid={`button-view-bill-${booking.id}`}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Bill
+                  </Button>
+                  <Button
+                    className="flex-1"
                     variant="default"
                     onClick={() => setCheckoutDialog({ open: true, booking })}
                     data-testid={`button-checkout-${booking.id}`}
                   >
                     <LogOut className="h-4 w-4 mr-2" />
-                    Checkout Guest
+                    Checkout
                   </Button>
                 </div>
               </CardContent>
@@ -1104,6 +1118,210 @@ export default function ActiveBookings() {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* Bill Preview Sheet */}
+      <Sheet open={billPreviewOpen} onOpenChange={setBillPreviewOpen}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <IndianRupee className="h-5 w-5" />
+              Bill Preview
+            </SheetTitle>
+            <SheetDescription>
+              Detailed breakdown for {billPreviewBooking?.guest.fullName}
+            </SheetDescription>
+          </SheetHeader>
+
+          {billPreviewBooking && (
+            <div className="mt-6 space-y-6">
+              {/* Guest & Room Info */}
+              <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Guest Name:</span>
+                  <span className="font-semibold text-right">{billPreviewBooking.guest.fullName}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Phone:</span>
+                  <span>{billPreviewBooking.guest.phone}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Room:</span>
+                  <span className="font-semibold text-right">
+                    {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms
+                      ? billPreviewBooking.rooms.map(r => r.roomNumber).join(", ")
+                      : billPreviewBooking.room?.roomNumber || "TBA"}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Check-in:</span>
+                  <span>{format(new Date(billPreviewBooking.checkInDate), "dd MMM yyyy")}</span>
+                </div>
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted-foreground">Nights:</span>
+                  <span>{billPreviewBooking.nightsStayed}</span>
+                </div>
+              </div>
+
+              {/* Room Charges */}
+              <div className="space-y-2">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Hotel className="h-4 w-4" />
+                  Room Charges
+                </h3>
+                <div className="bg-card border rounded-lg p-3 space-y-2 text-sm">
+                  {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? (
+                    billPreviewBooking.rooms.map((room, idx) => (
+                      <div key={idx} className="flex justify-between gap-4">
+                        <span>Room {room.roomNumber} ({room.type})</span>
+                        <span className="font-mono whitespace-nowrap">₹{room.pricePerNight}/night</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex justify-between gap-4">
+                      <span>Room {billPreviewBooking.room?.roomNumber} ({billPreviewBooking.room?.type})</span>
+                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.room?.pricePerNight}/night</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 flex justify-between gap-4 font-semibold">
+                    <span>{billPreviewBooking.nightsStayed} night(s) total:</span>
+                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.roomCharges}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Food Orders */}
+              {billPreviewBooking.orders && billPreviewBooking.orders.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <UtensilsCrossed className="h-4 w-4" />
+                    Food Orders
+                  </h3>
+                  <div className="space-y-3">
+                    {billPreviewBooking.orders.map((order) => (
+                      <div key={order.id} className="bg-card border rounded-lg p-3">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium">Order #{order.id}</span>
+                          <Badge variant={order.status === "delivered" ? "default" : "secondary"} className="text-xs">
+                            {order.status}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1 text-sm">
+                          {Array.isArray(order.items) && order.items.length > 0 ? (
+                            order.items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between gap-2 text-muted-foreground">
+                                <span className="flex-1">
+                                  {item.name} 
+                                  {item.variant && <span className="text-xs"> ({item.variant})</span>}
+                                  {item.addOns && item.addOns.length > 0 && (
+                                    <span className="text-xs"> +{item.addOns.map((a: any) => a.name || a).join(", ")}</span>
+                                  )}
+                                  <span className="text-xs"> x{item.quantity || 1}</span>
+                                </span>
+                                <span className="font-mono whitespace-nowrap">₹{item.totalPrice || (item.price * (item.quantity || 1))}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-muted-foreground text-xs italic">Items not detailed</div>
+                          )}
+                        </div>
+                        <div className="border-t mt-2 pt-2 flex justify-between gap-4 font-semibold text-sm">
+                          <span>Order Total:</span>
+                          <span className="font-mono whitespace-nowrap">₹{order.totalAmount}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between gap-4 font-semibold text-sm bg-muted/50 p-2 rounded">
+                    <span>Total Food Charges:</span>
+                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.foodCharges}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Extra Services */}
+              {billPreviewBooking.extraServices && billPreviewBooking.extraServices.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Extra Services
+                  </h3>
+                  <div className="bg-card border rounded-lg p-3 space-y-2 text-sm">
+                    {billPreviewBooking.extraServices.map((service) => (
+                      <div key={service.id} className="flex justify-between gap-4">
+                        <span>
+                          {service.serviceName}
+                          {service.serviceDate && (
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({format(new Date(service.serviceDate), "dd MMM")})
+                            </span>
+                          )}
+                        </span>
+                        <span className="font-mono whitespace-nowrap">₹{service.amount}</span>
+                      </div>
+                    ))}
+                    <div className="border-t pt-2 flex justify-between gap-4 font-semibold">
+                      <span>Total Extra Services:</span>
+                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.extraCharges}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bill Summary */}
+              <div className="border-t pt-4 space-y-2">
+                <h3 className="font-semibold">Bill Summary</h3>
+                <div className="bg-primary/10 p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between gap-4">
+                    <span>Room Charges:</span>
+                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.roomCharges}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span>Food Charges:</span>
+                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.foodCharges}</span>
+                  </div>
+                  {parseFloat(billPreviewBooking.charges.extraCharges) > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span>Extra Services:</span>
+                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.extraCharges}</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 flex justify-between gap-4 font-bold text-lg">
+                    <span>Total Bill:</span>
+                    <span className="font-mono whitespace-nowrap">₹{parseFloat(billPreviewBooking.charges.subtotal).toFixed(2)}</span>
+                  </div>
+                  {parseFloat(billPreviewBooking.charges.advancePaid) > 0 && (
+                    <div className="flex justify-between gap-4 text-muted-foreground">
+                      <span>Advance Paid:</span>
+                      <span className="font-mono whitespace-nowrap">-₹{billPreviewBooking.charges.advancePaid}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setBillPreviewOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    setBillPreviewOpen(false);
+                    setCheckoutDialog({ open: true, booking: billPreviewBooking });
+                  }}
+                  data-testid="button-proceed-checkout"
+                >
+                  Proceed to Checkout
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
