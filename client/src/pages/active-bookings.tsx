@@ -1227,7 +1227,105 @@ export default function ActiveBookings() {
           </SheetHeader>
 
           {billPreviewBooking && (
-            <div id="bill-preview-content" className="mt-6 space-y-6">
+            <>
+              {/* Hidden PDF Export Content */}
+              <div id="bill-pdf-export" style={{ display: "none" }}>
+                <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6" }}>
+                  <h2 style={{ textAlign: "center", marginBottom: "20px", fontSize: "18px", fontWeight: "bold" }}>BILL INVOICE</h2>
+                  <div style={{ marginBottom: "15px", border: "1px solid #ddd", padding: "10px" }}>
+                    <div style={{ marginBottom: "8px" }}><strong>Guest:</strong> {billPreviewBooking.guest.fullName}</div>
+                    <div style={{ marginBottom: "8px" }}><strong>Phone:</strong> {billPreviewBooking.guest.phone}</div>
+                    <div style={{ marginBottom: "8px" }}><strong>Room:</strong> {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? billPreviewBooking.rooms.map(r => r.roomNumber).join(", ") : billPreviewBooking.room?.roomNumber || "TBA"}</div>
+                    <div style={{ marginBottom: "8px" }}><strong>Check-in:</strong> {format(new Date(billPreviewBooking.checkInDate), "dd MMM yyyy")}</div>
+                    <div><strong>Nights:</strong> {billPreviewBooking.nightsStayed}</div>
+                  </div>
+                  <div style={{ marginBottom: "15px" }}>
+                    <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Room Charges</h3>
+                    {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? (
+                      billPreviewBooking.rooms.map((room, idx) => (
+                        <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                          <span>Room {room.roomNumber} ({room.type})</span>
+                          <span>₹{room.pricePerNight}/night</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                        <span>Room {billPreviewBooking.room?.roomNumber} ({billPreviewBooking.room?.type})</span>
+                        <span>₹{billPreviewBooking.room?.pricePerNight}/night</span>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: "5px", marginTop: "5px" }}>
+                      <span>{billPreviewBooking.nightsStayed} night(s) total:</span>
+                      <span>₹{billPreviewBooking.charges.roomCharges}</span>
+                    </div>
+                  </div>
+                  {billPreviewBooking.orders && billPreviewBooking.orders.length > 0 && (
+                    <div style={{ marginBottom: "15px" }}>
+                      <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Food Orders</h3>
+                      {billPreviewBooking.orders.map((order) => (
+                        <div key={order.id} style={{ marginBottom: "10px", border: "1px solid #eee", padding: "8px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                            <span>Order #{order.id}</span>
+                            <span>[{order.status}]</span>
+                          </div>
+                          {Array.isArray(order.items) && order.items.length > 0 && order.items.map((item: any, idx: number) => (
+                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "3px" }}>
+                              <span>{item.name}{item.variant ? ` (${item.variant})` : ""} x{item.quantity || 1}</span>
+                              <span>₹{item.totalPrice || item.price * (item.quantity || 1)}</span>
+                            </div>
+                          ))}
+                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #eee", paddingTop: "5px", marginTop: "5px" }}>
+                            <span>Order Total:</span>
+                            <span>₹{order.totalAmount}</span>
+                          </div>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", backgroundColor: "#f5f5f5", padding: "8px", marginTop: "8px" }}>
+                        <span>Total Food:</span>
+                        <span>₹{billPreviewBooking.charges.foodCharges}</span>
+                      </div>
+                    </div>
+                  )}
+                  {billPreviewBooking.extraServices && billPreviewBooking.extraServices.length > 0 && (
+                    <div style={{ marginBottom: "15px" }}>
+                      <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Extra Services</h3>
+                      {billPreviewBooking.extraServices.map((service) => (
+                        <div key={service.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
+                          <span>{service.serviceName}</span>
+                          <span>₹{service.amount}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: "5px" }}>
+                        <span>Total Extra:</span>
+                        <span>₹{billPreviewBooking.charges.extraCharges}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ backgroundColor: "#f9f9f9", padding: "15px", border: "2px solid #333", marginTop: "15px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <span>Room Charges:</span>
+                      <span>₹{billPreviewBooking.charges.roomCharges}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <span>Food Charges:</span>
+                      <span>₹{billPreviewBooking.charges.foodCharges}</span>
+                    </div>
+                    {parseFloat(billPreviewBooking.charges.extraCharges) > 0 && (
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                        <span>Extra Services:</span>
+                        <span>₹{billPreviewBooking.charges.extraCharges}</span>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "16px", borderTop: "2px solid #333", paddingTop: "10px" }}>
+                      <span>TOTAL:</span>
+                      <span>₹{parseFloat(billPreviewBooking.charges.subtotal).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Screen Display */}
+              <div id="bill-preview-content" className="mt-6 space-y-6">
               {/* Guest & Room Info */}
               <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between gap-4">
@@ -1398,15 +1496,15 @@ export default function ActiveBookings() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const element = document.getElementById("bill-preview-content");
+                    const element = document.getElementById("bill-pdf-export");
                     if (!element) return;
                     
                     const opt = {
                       margin: 10,
                       filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
-                      image: { type: "png", quality: 0.98 },
+                      image: { type: "png" as const, quality: 0.98 },
                       html2canvas: { scale: 2 },
-                      jsPDF: { orientation: "portrait", unit: "mm", format: "a4" }
+                      jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
                     };
                     html2pdf().set(opt).from(element).save();
                   }}
@@ -1434,6 +1532,7 @@ export default function ActiveBookings() {
                 </Button>
               </div>
             </div>
+            </>
           )}
         </SheetContent>
       </Sheet>
