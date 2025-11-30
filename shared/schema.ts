@@ -1,19 +1,20 @@
-import { pgTable, serial, varchar, integer, text, timestamp, decimal, boolean, date, jsonb, customType } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, serial, varchar, integer, text, timestamp, decimal, boolean, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table
+// Users table - matches actual database
 export const users = pgTable("users", {
   id: varchar("id").primaryKey(),
-  email: varchar("email", { length: 255 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull(),
   password: varchar("password", { length: 255 }),
-  name: varchar("name", { length: 255 }).notNull(),
-  role: varchar("role", { length: 50 }).notNull().default("staff"), // admin, super-admin, manager, staff, kitchen
+  firstName: varchar("first_name", { length: 255 }),
+  lastName: varchar("last_name", { length: 255 }),
+  profileImageUrl: varchar("profile_image_url", { length: 500 }),
+  role: varchar("role", { length: 50 }).notNull().default("staff"),
   assignedPropertyIds: varchar("assigned_property_ids", { length: 255 }).array().default([]),
-  phoneNumber: varchar("phone_number", { length: 20 }),
-  isActive: boolean("is_active").notNull().default(true),
-  lastLogin: timestamp("last_login"),
+  phone: varchar("phone", { length: 20 }),
+  status: varchar("status", { length: 20 }),
+  businessName: varchar("business_name", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -32,31 +33,32 @@ export const updateUserRoleSchema = z.object({
   assignedPropertyIds: z.array(z.number()).optional(),
 });
 
-export type UpsertUser = InsertUser & { id?: string };
+export type UpsertUser = {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  profileImageUrl?: string | null;
+  role?: string;
+  assignedPropertyIds?: string[];
+  phone?: string | null;
+  status?: string | null;
+  businessName?: string | null;
+};
 
-// Properties table
+// Properties table - matches actual database
 export const properties = pgTable("properties", {
   id: serial("id").primaryKey(),
-  ownerUserId: varchar("owner_user_id").references(() => users.id),
   name: varchar("name", { length: 255 }).notNull(),
-  address: text("address"),
-  city: varchar("city", { length: 100 }),
-  state: varchar("state", { length: 100 }),
-  country: varchar("country", { length: 100 }),
-  zipCode: varchar("zip_code", { length: 20 }),
-  phoneNumber: varchar("phone_number", { length: 20 }),
-  email: varchar("email", { length: 255 }),
-  totalRooms: integer("total_rooms"),
-  checkInTime: varchar("check_in_time", { length: 10 }).default("14:00"),
-  checkOutTime: varchar("check_out_time", { length: 10 }).default("12:00"),
-  gstNumber: varchar("gst_number", { length: 50 }),
+  location: varchar("location", { length: 255 }),
   description: text("description"),
-  propertyType: varchar("property_type", { length: 50 }), // hotel, resort, hostel, etc
-  amenities: text("amenities").array(),
-  images: text("images").array(),
+  totalRooms: integer("total_rooms"),
+  contactEmail: varchar("contact_email", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 20 }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id),
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({
@@ -68,24 +70,21 @@ export const insertPropertySchema = createInsertSchema(properties).omit({
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type Property = typeof properties.$inferSelect;
 
-// Rooms table
+// Rooms table - matches actual database
 export const rooms = pgTable("rooms", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   roomNumber: varchar("room_number", { length: 50 }).notNull(),
-  roomType: varchar("room_type", { length: 50 }).notNull(), // single, double, suite, dormitory
-  capacity: integer("capacity").notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  basePrice: decimal("base_price", { precision: 10, scale: 2 }),
-  status: varchar("status", { length: 20 }).notNull().default("available"), // available, occupied, maintenance, blocked
-  description: text("description"),
+  roomType: varchar("room_type", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("available"),
+  pricePerNight: decimal("price_per_night", { precision: 10, scale: 2 }).notNull(),
+  maxOccupancy: integer("max_occupancy").notNull(),
   amenities: text("amenities").array(),
-  images: text("images").array(),
-  bedsCount: integer("beds_count").default(1),
-  bedDetails: jsonb("bed_details"), // [{bedType: "single", count: 1}, ...]
-  isActive: boolean("is_active").notNull().default(true),
+  assignedStaffId: varchar("assigned_staff_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  roomCategory: varchar("room_category", { length: 50 }),
+  totalBeds: integer("total_beds").default(1),
 });
 
 export const insertRoomSchema = createInsertSchema(rooms).omit({
@@ -97,23 +96,20 @@ export const insertRoomSchema = createInsertSchema(rooms).omit({
 export type InsertRoom = z.infer<typeof insertRoomSchema>;
 export type Room = typeof rooms.$inferSelect;
 
-// Guests table
+// Guests table - matches actual database
 export const guests = pgTable("guests", {
   id: serial("id").primaryKey(),
   fullName: varchar("full_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 20 }).notNull(),
-  idProofType: varchar("id_proof_type", { length: 50 }), // passport, aadhar, license, etc
+  idProofType: varchar("id_proof_type", { length: 50 }),
   idProofNumber: varchar("id_proof_number", { length: 100 }),
-  idProofImageUrl: varchar("id_proof_image_url", { length: 500 }),
-  country: varchar("country", { length: 100 }).default("India"),
   address: text("address"),
-  guestSource: varchar("guest_source", { length: 50 }).default("direct"), // direct, booking.com, airbnb, etc
-  guestType: varchar("guest_type", { length: 50 }).default("individual"), // individual, corporate, travel-agent
-  isVip: boolean("is_vip").default(false),
-  whatsappOptIn: boolean("whatsapp_opt_in").default(true),
+  preferences: text("preferences"),
+  totalStays: integer("total_stays").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  idProofImage: text("id_proof_image"),
 });
 
 export const insertGuestSchema = createInsertSchema(guests).omit({
@@ -125,14 +121,17 @@ export const insertGuestSchema = createInsertSchema(guests).omit({
 export type InsertGuest = z.infer<typeof insertGuestSchema>;
 export type Guest = typeof guests.$inferSelect;
 
-// Travel Agents table
+// Travel Agents table - matches actual database
 export const travelAgents = pgTable("travel_agents", {
   id: serial("id").primaryKey(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
+  contactPerson: varchar("contact_person", { length: 255 }),
   phone: varchar("phone", { length: 20 }).notNull(),
-  commissionPercentage: decimal("commission_percentage", { precision: 5, scale: 2 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  commission: decimal("commission", { precision: 5, scale: 2 }).notNull(),
   address: text("address"),
+  notes: text("notes"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -147,38 +146,35 @@ export const insertTravelAgentSchema = createInsertSchema(travelAgents).omit({
 export type InsertTravelAgent = z.infer<typeof insertTravelAgentSchema>;
 export type TravelAgent = typeof travelAgents.$inferSelect;
 
-// Bookings table
+// Bookings table - matches actual database
 export const bookings = pgTable("bookings", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   roomId: integer("room_id").notNull().references(() => rooms.id, { onDelete: 'cascade' }),
   guestId: integer("guest_id").notNull().references(() => guests.id, { onDelete: 'cascade' }),
-  checkInDate: date("check_in_date").notNull(),
-  checkOutDate: date("check_out_date").notNull(),
-  numberOfNights: integer("number_of_nights").notNull(),
+  checkInDate: timestamp("check_in_date").notNull(),
+  checkOutDate: timestamp("check_out_date").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("confirmed"),
   numberOfGuests: integer("number_of_guests").notNull(),
-  customPrice: decimal("custom_price", { precision: 10, scale: 2 }),
-  advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }).default("0"),
-  mealPlan: varchar("meal_plan", { length: 50 }).default("none"), // none, breakfast, half-board, full-board
   specialRequests: text("special_requests"),
-  status: varchar("status", { length: 20 }).notNull().default("confirmed"), // inquiry, confirmed, checked-in, checked-out, cancelled
-  bookingSource: varchar("booking_source", { length: 50 }).default("direct"), // direct, booking.com, airbnb, etc
-  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
-  isGroupBooking: boolean("is_group_booking").default(false),
-  bedsBooked: integer("beds_booked"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
+  createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  checkedInAt: timestamp("checked_in_at"),
-  checkedOutAt: timestamp("checked_out_at"),
+  customPrice: decimal("custom_price", { precision: 10, scale: 2 }),
+  advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }).default("0"),
+  source: varchar("source", { length: 50 }).default("direct"),
+  mealPlan: varchar("meal_plan", { length: 50 }).default("none"),
+  roomIds: integer("room_ids").array(),
+  isGroupBooking: boolean("is_group_booking").default(false),
+  bedsBooked: integer("beds_booked"),
+  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-  numberOfNights: true,
-  checkedInAt: true,
-  checkedOutAt: true,
 }).extend({
   checkInDate: z.coerce.date(),
   checkOutDate: z.coerce.date(),
@@ -217,7 +213,7 @@ export const menuItems = pgTable("menu_items", {
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   veg: boolean("veg").default(true),
   isAvailable: boolean("is_available").notNull().default(true),
-  preparationTime: integer("preparation_time"), // in minutes
+  preparationTime: integer("preparation_time"),
   image: varchar("image", { length: 500 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -236,7 +232,7 @@ export type MenuItem = typeof menuItems.$inferSelect;
 export const menuItemVariants = pgTable("menu_item_variants", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
-  name: varchar("name", { length: 255 }).notNull(), // e.g., "Small", "Medium", "Large"
+  name: varchar("name", { length: 255 }).notNull(),
   priceModifier: decimal("price_modifier", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -255,7 +251,7 @@ export type MenuItemVariant = typeof menuItemVariants.$inferSelect;
 export const menuItemAddOns = pgTable("menu_item_add_ons", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
-  name: varchar("name", { length: 255 }).notNull(), // e.g., "Extra Cheese", "Spicy"
+  name: varchar("name", { length: 255 }).notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -276,12 +272,13 @@ export const orders = pgTable("orders", {
   propertyId: integer("property_id"),
   roomId: integer("room_id").references(() => rooms.id),
   bookingId: integer("booking_id").references(() => bookings.id),
-  orderType: varchar("order_type", { length: 50 }).notNull().default("room-service"), // room-service, restaurant, delivery
+  guestId: integer("guest_id").references(() => guests.id),
+  orderType: varchar("order_type", { length: 50 }).notNull().default("room-service"),
   customerName: varchar("customer_name", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 50 }),
-  items: jsonb("items").notNull(), // Array of {menuItemId, quantity, variantId?, addOnIds?, specialInstructions}
+  items: jsonb("items").notNull(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending, preparing, ready, completed, cancelled
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
   specialInstructions: text("special_instructions"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -297,31 +294,30 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
 
-// Extra Services table
+// Extra Services table - matches actual database
 export const extraServices = pgTable("extra_services", {
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  serviceName: varchar("service_name", { length: 100 }).notNull(),
   description: text("description"),
-  quantity: integer("quantity").notNull().default(1),
-  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
-  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  serviceType: varchar("service_type", { length: 50 }),
+  vendorName: varchar("vendor_name", { length: 255 }),
+  vendorContact: varchar("vendor_contact", { length: 100 }),
+  commission: decimal("commission", { precision: 10, scale: 2 }),
+  serviceDate: timestamp("service_date"),
 });
 
 export const insertExtraServiceSchema = createInsertSchema(extraServices).omit({
   id: true,
   createdAt: true,
-  updatedAt: true,
 });
 
 export type InsertExtraService = z.infer<typeof insertExtraServiceSchema>;
 export type ExtraService = typeof extraServices.$inferSelect;
 
-// Bills table - FIXED to match actual database
+// Bills table - matches actual database
 export const bills = pgTable("bills", {
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
@@ -362,23 +358,34 @@ export const insertBillSchema = createInsertSchema(bills).omit({
 export type InsertBill = z.infer<typeof insertBillSchema>;
 export type Bill = typeof bills.$inferSelect;
 
-// Enquiries table
+// Enquiries table - matches actual database
 export const enquiries = pgTable("enquiries", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   guestName: varchar("guest_name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
-  phone: varchar("phone", { length: 50 }).notNull(),
-  checkInDate: date("check_in_date"),
-  checkOutDate: date("check_out_date"),
+  guestPhone: varchar("guest_phone", { length: 50 }).notNull(),
+  guestEmail: varchar("guest_email", { length: 255 }),
+  checkInDate: timestamp("check_in_date"),
+  checkOutDate: timestamp("check_out_date"),
+  roomId: integer("room_id").references(() => rooms.id),
   numberOfGuests: integer("number_of_guests"),
-  numberOfRooms: integer("number_of_rooms"),
-  message: text("message"),
-  status: varchar("status", { length: 20 }).notNull().default("new"), // new, in-progress, converted, rejected
-  source: varchar("source", { length: 50 }).default("direct"),
-  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
+  priceQuoted: decimal("price_quoted", { precision: 10, scale: 2 }),
+  advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 20 }).notNull().default("new"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  stripePaymentLinkUrl: text("stripe_payment_link_url"),
+  twilioMessageSid: varchar("twilio_message_sid", { length: 255 }),
+  specialRequests: text("special_requests"),
+  createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  paymentStatus: varchar("payment_status", { length: 20 }),
+  roomIds: integer("room_ids").array(),
+  isGroupEnquiry: boolean("is_group_enquiry").default(false),
+  mealPlan: varchar("meal_plan", { length: 50 }),
+  bedsBooked: integer("beds_booked"),
+  source: varchar("source", { length: 50 }).default("direct"),
+  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
 });
 
 export const insertEnquirySchema = createInsertSchema(enquiries).omit({
@@ -394,10 +401,10 @@ export type Enquiry = typeof enquiries.$inferSelect;
 export const messageTemplates = pgTable("message_templates", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  type: varchar("type", { length: 50 }).notNull(), // confirmation, reminder, receipt, welcome
+  type: varchar("type", { length: 50 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   content: text("content").notNull(),
-  variables: text("variables").array(), // e.g., ["guestName", "checkInDate"]
+  variables: text("variables").array(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -412,23 +419,23 @@ export const insertMessageTemplateSchema = createInsertSchema(messageTemplates).
 export type InsertMessageTemplate = z.infer<typeof insertMessageTemplateSchema>;
 export type MessageTemplate = typeof messageTemplates.$inferSelect;
 
-// Notifications table
+// Notifications table - matches actual database
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   type: varchar("type", { length: 50 }).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message"),
+  soundType: varchar("sound_type", { length: 50 }),
   relatedId: integer("related_id"),
+  relatedType: varchar("related_type", { length: 50 }),
   isRead: boolean("is_read").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
-  updatedAt: true,
 });
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
@@ -465,7 +472,7 @@ export const attendanceRecords = pgTable("attendance_records", {
   date: date("date").notNull(),
   checkIn: timestamp("check_in"),
   checkOut: timestamp("check_out"),
-  status: varchar("status", { length: 20 }).notNull().default("absent"), // present, absent, half-day, leave
+  status: varchar("status", { length: 20 }).notNull().default("absent"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -487,7 +494,7 @@ export const salaries = pgTable("salaries", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id"),
-  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
+  month: varchar("month", { length: 7 }).notNull(),
   baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull(),
   allowances: decimal("allowances", { precision: 10, scale: 2 }).default("0"),
   deductions: decimal("deductions", { precision: 10, scale: 2 }).default("0"),
@@ -552,15 +559,22 @@ export const insertExpenseCategorySchema = createInsertSchema(expenseCategories)
 export type InsertExpenseCategory = z.infer<typeof insertExpenseCategorySchema>;
 export type ExpenseCategory = typeof expenseCategories.$inferSelect;
 
-// Bank Transactions table
+// Bank Transactions table - matches actual database
 export const bankTransactions = pgTable("bank_transactions", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  transactionType: varchar("transaction_type", { length: 50 }).notNull(), // deposit, withdrawal, transfer
+  uploadId: varchar("upload_id", { length: 255 }),
+  transactionDate: timestamp("transaction_date"),
+  description: text("description"),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  date: date("date").notNull(),
-  description: varchar("description", { length: 255 }),
-  referenceNumber: varchar("reference_number", { length: 100 }),
+  transactionType: varchar("transaction_type", { length: 50 }),
+  suggestedCategoryId: integer("suggested_category_id"),
+  assignedCategoryId: integer("assigned_category_id"),
+  isImported: boolean("is_imported").default(false),
+  importedExpenseId: integer("imported_expense_id"),
+  matchConfidence: varchar("match_confidence", { length: 50 }),
+  rawData: text("raw_data"),
+  createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -603,7 +617,7 @@ export const changeApprovals = pgTable("change_approvals", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   changeType: varchar("change_type", { length: 50 }).notNull(),
   reason: text("reason").notNull(),
-  approval: varchar("approval", { length: 50 }).default("pending"), // pending, approved, rejected
+  approval: varchar("approval", { length: 50 }).default("pending"),
   requestedAt: timestamp("requested_at").defaultNow(),
   approvedAt: timestamp("approved_at"),
   approverNotes: text("approver_notes"),
@@ -635,12 +649,12 @@ export type AuditLog = typeof auditLog.$inferSelect;
 export const otaIntegrations = pgTable("ota_integrations", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  platform: varchar("platform", { length: 50 }).notNull(), // booking.com, airbnb, oyo, agoda, expedia, mmt, tripadvisor
+  platform: varchar("platform", { length: 50 }).notNull(),
   apiKey: varchar("api_key", { length: 500 }).notNull(),
   apiSecret: varchar("api_secret", { length: 500 }),
   isActive: boolean("is_active").notNull().default(true),
   lastSyncAt: timestamp("last_sync_at"),
-  lastSyncStatus: varchar("last_sync_status", { length: 50 }), // success, failed, in-progress
+  lastSyncStatus: varchar("last_sync_status", { length: 50 }),
   lastSyncError: text("last_sync_error"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -689,7 +703,7 @@ export type FeatureSettings = typeof featureSettings.$inferSelect;
 export const taskNotificationLogs = pgTable("task_notification_logs", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  taskType: varchar("task_type", { length: 50 }).notNull(), // cleaning, payment, food-order, staff-attendance
+  taskType: varchar("task_type", { length: 50 }).notNull(),
   taskId: integer("task_id"),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
   reminderSentAt: timestamp("reminder_sent_at"),
@@ -707,7 +721,7 @@ export const employeePerformanceMetrics = pgTable("employee_performance_metrics"
   id: serial("id").primaryKey(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
+  month: varchar("month", { length: 7 }).notNull(),
   tasksCompleted: integer("tasks_completed").default(0),
   tasksOnTime: integer("tasks_on_time").default(0),
   attendanceScore: integer("attendance_score").default(0),
@@ -801,16 +815,23 @@ export const insertPropertyExpenseSchema = createInsertSchema(propertyExpenses).
 });
 export type InsertPropertyExpense = z.infer<typeof insertPropertyExpenseSchema>;
 
-// Staff Members table
+// Staff Members table - matches actual database
 export const staffMembers = pgTable("staff_members", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  position: varchar("position", { length: 100 }).notNull(),
-  joinDate: date("join_date").notNull(),
-  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  role: varchar("role", { length: 50 }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  joiningDate: timestamp("joining_date"),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  jobTitle: varchar("job_title", { length: 100 }),
+  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }),
+  paymentMethod: varchar("payment_method", { length: 50 }),
+  bankDetails: text("bank_details"),
 });
 
 export type StaffMember = typeof staffMembers.$inferSelect;
@@ -821,17 +842,21 @@ export const insertStaffMemberSchema = createInsertSchema(staffMembers).omit({
 });
 export type InsertStaffMember = z.infer<typeof insertStaffMemberSchema>;
 
-// Staff Salaries table
+// Staff Salaries table - matches actual database
 export const staffSalaries = pgTable("staff_salaries", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
-  month: varchar("month", { length: 7 }).notNull(),
-  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull(),
-  allowances: decimal("allowances", { precision: 10, scale: 2 }).default("0"),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  grossSalary: decimal("gross_salary", { precision: 10, scale: 2 }),
   deductions: decimal("deductions", { precision: 10, scale: 2 }).default("0"),
   netSalary: decimal("net_salary", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 20 }).default("pending"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }),
 });
 
 export type StaffSalary = typeof staffSalaries.$inferSelect;
@@ -842,57 +867,60 @@ export const insertStaffSalarySchema = createInsertSchema(staffSalaries).omit({
 });
 export type InsertStaffSalary = z.infer<typeof insertStaffSalarySchema>;
 
-// Salary Advances table
+// Salary Advances table - matches actual database
 export const salaryAdvances = pgTable("salary_advances", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  salaryId: integer("salary_id").references(() => staffSalaries.id, { onDelete: 'cascade' }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  requestDate: date("request_date").notNull(),
-  approvalDate: date("approval_date"),
-  repaymentDate: date("repayment_date"),
-  status: varchar("status", { length: 20 }).default("pending"),
+  advanceDate: timestamp("advance_date"),
+  reason: text("reason"),
+  repaymentStatus: varchar("repayment_status", { length: 20 }),
+  deductedFromSalaryId: integer("deducted_from_salary_id"),
+  approvedBy: varchar("approved_by"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }),
 });
 
 export type SalaryAdvance = typeof salaryAdvances.$inferSelect;
 export const insertSalaryAdvanceSchema = createInsertSchema(salaryAdvances).omit({
   id: true,
   createdAt: true,
-  updatedAt: true,
 });
 export type InsertSalaryAdvance = z.infer<typeof insertSalaryAdvanceSchema>;
 
-// Salary Payments table
+// Salary Payments table - matches actual database
 export const salaryPayments = pgTable("salary_payments", {
   id: serial("id").primaryKey(),
   salaryId: integer("salary_id").notNull().references(() => staffSalaries.id, { onDelete: 'cascade' }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentDate: date("payment_date").notNull(),
-  method: varchar("method", { length: 50 }),
-  status: varchar("status", { length: 20 }).default("completed"),
+  paymentDate: timestamp("payment_date"),
+  paymentMethod: varchar("payment_method", { length: 50 }),
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  paidBy: varchar("paid_by"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type SalaryPayment = typeof salaryPayments.$inferSelect;
 export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit({
   id: true,
   createdAt: true,
-  updatedAt: true,
 });
 export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
 
-// Issue Reports table
+// Issue Reports table - matches actual database
 export const issueReports = pgTable("issue_reports", {
   id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  reportedBy: varchar("reported_by").references(() => users.id),
-  category: varchar("category", { length: 50 }).notNull(),
+  reportedByUserId: varchar("reported_by_user_id").references(() => users.id),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
+  category: varchar("category", { length: 50 }),
+  severity: varchar("severity", { length: 20 }),
+  screenshot: text("screenshot"),
   status: varchar("status", { length: 20 }).default("open"),
-  priority: varchar("priority", { length: 20 }).default("medium"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
