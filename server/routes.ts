@@ -1506,6 +1506,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
       
+      // Audit log for booking update
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: req.params.id,
+        action: "update",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: validatedData,
+        metadata: { 
+          previousStatus: existingBooking.status,
+          newStatus: booking.status,
+          updatedFields: Object.keys(validatedData),
+        },
+      });
+      
       // WhatsApp payment confirmation DISABLED per user request (only using check-in and checkout notifications)
       // To re-enable, uncomment the block below
       /*
@@ -3439,6 +3454,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = insertBillSchema.parse(req.body);
       const bill = await storage.createBill(data);
+      
+      // Audit log for bill creation
+      await storage.createAuditLog({
+        entityType: "bill",
+        entityId: String(bill.id),
+        action: "create",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: data,
+        metadata: { bookingId: data.bookingId, totalAmount: data.totalAmount },
+      });
+      
       res.status(201).json(bill);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -3456,6 +3483,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const bill = await storage.updateBill(parseInt(req.params.id), req.body);
+      
+      // Audit log for bill update
+      await storage.createAuditLog({
+        entityType: "bill",
+        entityId: req.params.id,
+        action: "update",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: req.body,
+        metadata: { updatedFields: Object.keys(req.body) },
+      });
+      
       res.json(bill);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -7248,6 +7287,28 @@ Types should be: "opportunity" (cost saving), "warning" (concerning trend), "sug
     } catch (error: any) {
       console.error("[AI INSIGHTS] Error:", error);
       res.status(500).json({ message: error.message, insights: [] });
+    }
+  });
+
+  // Audit Logs API endpoints
+  app.get("/api/audit-logs", isAuthenticated, async (req, res) => {
+    try {
+      const logs = await storage.getAllAuditLogs();
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[AUDIT] Error fetching logs:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/audit-logs/:entityType/:entityId", isAuthenticated, async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const logs = await storage.getAuditLogsByEntity(entityType, entityId);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[AUDIT] Error fetching entity logs:", error);
+      res.status(500).json({ message: error.message });
     }
   });
 

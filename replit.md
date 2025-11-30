@@ -58,6 +58,18 @@ Phase 1 represents the complete foundation of Hostezee with all core features wo
 
 ---
 
+## Recent Updates (Session 6 - Audit Trail & WhatsApp Controls)
+- ✅ **Complete Audit Trail System**: Tracks all critical user actions
+  - Database table `audit_logs` with entity tracking
+  - Logs bill creation/updates, booking changes with full changesets
+  - API endpoint `/api/audit-logs` for viewing logs
+  - UI page at `/audit-logs` with search and filtering
+- ✅ **WhatsApp Notification Controls**: Per-property message type toggles
+  - 6 message types: check-in, check-out, enquiry, payment request, booking confirmation, reminders
+  - Database table `whatsapp_notification_settings`
+  - API endpoints for settings management
+  - UI at `/whatsapp-settings`
+
 ## Recent Updates (Session 5 - Phase 1 Stabilization)
 - ✅ **Critical Database Schema Fix**: Aligned 15+ table schemas with actual PostgreSQL database
 - ✅ **Billing Data Fix**: Bills now display correct room_charges, food_charges, GST amounts
