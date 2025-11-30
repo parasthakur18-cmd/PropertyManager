@@ -477,7 +477,7 @@ export default function Billing() {
                     <p className="text-muted-foreground mb-1">Subtotal</p>
                     <p className="font-semibold font-mono" data-testid={`text-bill-subtotal-${bill.id}`}>₹{bill.subtotal}</p>
                   </div>
-                  {bill.includeGst && (
+                  {(bill.gstOnRooms || bill.gstOnFood) && (
                     <div>
                       <p className="text-muted-foreground mb-1">GST ({bill.gstRate}%)</p>
                       <p className="font-semibold font-mono" data-testid={`text-bill-gst-${bill.id}`}>₹{bill.gstAmount}</p>
@@ -679,7 +679,7 @@ export default function Billing() {
                     <span className="font-mono">₹{billDetails.subtotal}</span>
                   </div>
 
-                  {billDetails.includeGst && (
+                  {(billDetails.gstOnRooms || billDetails.gstOnFood) && (
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">GST ({billDetails.gstRate}%)</span>
                       <span className="font-mono">₹{billDetails.gstAmount}</span>

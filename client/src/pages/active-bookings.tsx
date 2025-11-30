@@ -152,7 +152,8 @@ export default function ActiveBookings() {
           discountType: discountType === "none" ? undefined : discountType,
           discountValue: discountType === "none" || !discountValue ? undefined : parseFloat(discountValue),
           discountAppliesTo: discountType === "none" ? undefined : discountAppliesTo,
-          includeGst,
+          gstOnRooms,
+          gstOnFood,
           includeServiceCharge,
           manualCharges,
         });
@@ -270,7 +271,8 @@ export default function ActiveBookings() {
     if (paymentMethod === "upi" && checkoutDialog.booking) {
       const breakdown = calculateTotalWithCharges(
         checkoutDialog.booking, 
-        includeGst, 
+        gstOnRooms,
+        gstOnFood,
         includeServiceCharge,
         manualCharges
       );
@@ -321,7 +323,7 @@ export default function ActiveBookings() {
   };
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, includeGst, includeServiceCharge, manualCharges, cashAmount, onlineAmount }: { 
+    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, gstOnRooms, gstOnFood, includeServiceCharge, manualCharges, cashAmount, onlineAmount }: { 
       bookingId: number; 
       paymentMethod?: string;
       paymentStatus: string;
@@ -330,7 +332,8 @@ export default function ActiveBookings() {
       discountType?: string;
       discountValue?: number;
       discountAppliesTo?: string;
-      includeGst: boolean;
+      gstOnRooms: boolean;
+      gstOnFood: boolean;
       includeServiceCharge: boolean;
       manualCharges: Array<{ name: string; amount: string }>;
       cashAmount?: number;
@@ -351,7 +354,8 @@ export default function ActiveBookings() {
         discountType: discountType === "none" ? null : discountType,
         discountValue: discountType === "none" ? null : discountValue,
         discountAppliesTo: discountType === "none" ? null : discountAppliesTo,
-        includeGst,
+        gstOnRooms,
+        gstOnFood,
         includeServiceCharge,
         manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
         cashAmount,
@@ -374,7 +378,8 @@ export default function ActiveBookings() {
       setDiscountType("none");
       setDiscountValue("");
       setDiscountAppliesTo("total");
-      setIncludeGst(false);
+      setGstOnRooms(true);
+      setGstOnFood(false);
       setIncludeServiceCharge(false);
       setManualCharges([{ name: "", amount: "" }]);
       setPreBillSent(false);
@@ -433,7 +438,8 @@ export default function ActiveBookings() {
     
     const breakdown = calculateTotalWithCharges(
       checkoutDialog.booking, 
-      includeGst, 
+      gstOnRooms,
+      gstOnFood,
       includeServiceCharge,
       manualCharges
     );
@@ -492,7 +498,7 @@ export default function ActiveBookings() {
       return;
     }
     
-    const breakdown = calculateTotalWithCharges(checkoutDialog.booking, includeGst, includeServiceCharge, manualCharges);
+    const breakdown = calculateTotalWithCharges(checkoutDialog.booking, gstOnRooms, gstOnFood, includeServiceCharge, manualCharges);
     const discountAmt = calculateDiscount(breakdown.grandTotal, discountType, discountValue);
     const finalTotal = breakdown.grandTotal - discountAmt;
     const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
@@ -514,7 +520,8 @@ export default function ActiveBookings() {
       discountType: discountType === "none" ? undefined : discountType,
       discountValue: discountType === "none" || !discountValue ? undefined : parseFloat(discountValue),
       discountAppliesTo: discountType === "none" ? undefined : discountAppliesTo,
-      includeGst,
+      gstOnRooms,
+      gstOnFood,
       includeServiceCharge,
       manualCharges,
       cashAmount: finalCashAmount > 0 ? finalCashAmount : undefined,
@@ -753,7 +760,8 @@ export default function ActiveBookings() {
         if (!open) {
           setCheckoutDialog({ open: false, booking: null });
           setCashAmount("");
-          setIncludeGst(false);
+          setGstOnRooms(true);
+          setGstOnFood(false);
           setIncludeServiceCharge(false);
           setManualCharges([{ name: "", amount: "" }]);
           setDiscountType("none");
@@ -779,8 +787,8 @@ export default function ActiveBookings() {
             const foodGstRate = 5;
             const serviceChargeRate = 10;
             
-            const roomGst = includeGst ? (roomCharges * roomGstRate / 100) : 0;
-            const foodGst = includeGst ? (foodCharges * foodGstRate / 100) : 0;
+            const roomGst = gstOnRooms ? (roomCharges * roomGstRate / 100) : 0;
+            const foodGst = gstOnFood ? (foodCharges * foodGstRate / 100) : 0;
             const totalGst = roomGst + foodGst;
             
             const serviceCharge = includeServiceCharge ? (subtotal * serviceChargeRate / 100) : 0;
@@ -826,17 +834,17 @@ export default function ActiveBookings() {
                     <span className="font-mono">₹{subtotal.toFixed(2)}</span>
                   </div>
                   
-                  {includeGst && (
-                    <>
-                      <div className="flex justify-between text-green-600">
-                        <span>GST on Room ({roomGstRate}%):</span>
-                        <span className="font-mono">₹{roomGst.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-green-600">
-                        <span>GST on Food ({foodGstRate}%):</span>
-                        <span className="font-mono">₹{foodGst.toFixed(2)}</span>
-                      </div>
-                    </>
+                  {gstOnRooms && roomGst > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>GST on Room ({roomGstRate}%):</span>
+                      <span className="font-mono">₹{roomGst.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {gstOnFood && foodGst > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>GST on Food ({foodGstRate}%):</span>
+                      <span className="font-mono">₹{foodGst.toFixed(2)}</span>
+                    </div>
                   )}
                   
                   {includeServiceCharge && (
@@ -866,17 +874,31 @@ export default function ActiveBookings() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="include-gst"
-                      checked={includeGst}
-                      onCheckedChange={(checked) => setIncludeGst(checked as boolean)}
-                      data-testid="checkbox-include-gst"
-                    />
-                    <Label htmlFor="include-gst" className="text-sm cursor-pointer">
-                      Include GST
-                    </Label>
+                <div className="space-y-3">
+                  <div className="text-sm font-medium">GST Options</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="gst-on-rooms"
+                        checked={gstOnRooms}
+                        onCheckedChange={(checked) => setGstOnRooms(checked as boolean)}
+                        data-testid="checkbox-gst-on-rooms"
+                      />
+                      <Label htmlFor="gst-on-rooms" className="text-sm cursor-pointer">
+                        GST on Rooms (5%)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="gst-on-food"
+                        checked={gstOnFood}
+                        onCheckedChange={(checked) => setGstOnFood(checked as boolean)}
+                        data-testid="checkbox-gst-on-food"
+                      />
+                      <Label htmlFor="gst-on-food" className="text-sm cursor-pointer">
+                        GST on Food (5%)
+                      </Label>
+                    </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -886,7 +908,7 @@ export default function ActiveBookings() {
                       data-testid="checkbox-include-service-charge"
                     />
                     <Label htmlFor="include-service-charge" className="text-sm cursor-pointer">
-                      Include Service Charge
+                      Include Service Charge (10%)
                     </Label>
                   </div>
                 </div>
@@ -1165,7 +1187,8 @@ export default function ActiveBookings() {
                             paymentStatus: paymentStatus,
                             dueDate: paymentStatus === "pending" && dueDate ? dueDate : null,
                             pendingReason: paymentStatus === "pending" && pendingReason ? pendingReason : null,
-                            includeGst,
+                            gstOnRooms,
+                            gstOnFood,
                             includeServiceCharge,
                             gstAmount: totalGst,
                             serviceChargeAmount: serviceCharge,
@@ -1184,7 +1207,8 @@ export default function ActiveBookings() {
                           queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
                           setCheckoutDialog({ open: false, booking: null });
                           setCashAmount("");
-                          setIncludeGst(false);
+                          setGstOnRooms(true);
+                          setGstOnFood(false);
                           setIncludeServiceCharge(false);
                           setManualCharges([{ name: "", amount: "" }]);
                           setDiscountType("none");

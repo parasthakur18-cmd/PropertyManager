@@ -25,7 +25,8 @@ export function CheckoutBillSummary({
   onClose 
 }: CheckoutBillSummaryProps) {
   const { toast } = useToast();
-  const [includeGst, setIncludeGst] = useState<boolean>(false);
+  const [gstOnRooms, setGstOnRooms] = useState<boolean>(true); // Default ON for room charges
+  const [gstOnFood, setGstOnFood] = useState<boolean>(false); // Default OFF for food charges
   const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
   const [dueDate, setDueDate] = useState<string>("");
@@ -123,9 +124,11 @@ export function CheckoutBillSummary({
   const subtotal = roomCharges + foodCharges + extraCharges;
   
   const gstRate = 5;
-  const gstAmount = includeGst ? (subtotal * gstRate) / 100 : 0;
+  const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
+  const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
+  const gstAmount = roomGst + foodGst;
   const serviceChargeRate = 10;
-  const serviceChargeAmount = includeServiceCharge ? (subtotal * serviceChargeRate) / 100 : 0;
+  const serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0;
   const totalAmount = subtotal + gstAmount + serviceChargeAmount;
 
   const advancePaid = parseFloat(booking.advanceAmount || "0");
@@ -138,7 +141,8 @@ export function CheckoutBillSummary({
       paymentStatus,
       dueDate: paymentStatus === "pending" && dueDate ? dueDate : null,
       pendingReason: paymentStatus === "pending" ? pendingReason : null,
-      includeGst,
+      gstOnRooms,
+      gstOnFood,
       includeServiceCharge,
     });
   };
@@ -208,10 +212,17 @@ export function CheckoutBillSummary({
             </div>
           </div>
 
-          {includeGst && (
-            <div className="flex justify-between text-sm">
-              <span>GST ({gstRate}%)</span>
-              <span className="font-mono">₹{gstAmount.toFixed(2)}</span>
+          {gstOnRooms && roomGst > 0 && (
+            <div className="flex justify-between text-sm text-green-600">
+              <span>GST on Room ({gstRate}%)</span>
+              <span className="font-mono">₹{roomGst.toFixed(2)}</span>
+            </div>
+          )}
+          
+          {gstOnFood && foodGst > 0 && (
+            <div className="flex justify-between text-sm text-green-600">
+              <span>GST on Food ({gstRate}%)</span>
+              <span className="font-mono">₹{foodGst.toFixed(2)}</span>
             </div>
           )}
 
@@ -246,17 +257,28 @@ export function CheckoutBillSummary({
       </div>
 
       <div className="border rounded-lg p-4 space-y-3">
-        <h4 className="font-semibold text-sm">Additional Charges (Optional)</h4>
+        <h4 className="font-semibold text-sm">GST & Additional Charges</h4>
         <div className="space-y-2">
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="include-gst"
-              checked={includeGst}
-              onCheckedChange={(checked) => setIncludeGst(checked as boolean)}
-              data-testid="checkbox-include-gst"
+              id="gst-on-rooms"
+              checked={gstOnRooms}
+              onCheckedChange={(checked) => setGstOnRooms(checked as boolean)}
+              data-testid="checkbox-gst-on-rooms"
             />
-            <Label htmlFor="include-gst" className="cursor-pointer font-normal">
-              Include GST (5%)
+            <Label htmlFor="gst-on-rooms" className="cursor-pointer font-normal">
+              GST on Room Charges (5%)
+            </Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="gst-on-food"
+              checked={gstOnFood}
+              onCheckedChange={(checked) => setGstOnFood(checked as boolean)}
+              data-testid="checkbox-gst-on-food"
+            />
+            <Label htmlFor="gst-on-food" className="cursor-pointer font-normal">
+              GST on Food Charges (5%)
             </Label>
           </div>
           <div className="flex items-center space-x-2">

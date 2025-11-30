@@ -58,7 +58,17 @@ Phase 1 represents the complete foundation of Hostezee with all core features wo
 
 ---
 
-## Recent Updates (Session 8 - Travel Agent Schema Fix)
+## Recent Updates (Session 9 - Separate GST Controls)
+- ✅ **Separate GST Controls**: Replaced single `includeGst` toggle with two independent controls
+  - `gstOnRooms` (default: ON) - 5% GST applied to room charges
+  - `gstOnFood` (default: OFF) - 5% GST applied to food charges
+  - Database columns added: `gst_on_rooms` and `gst_on_food` in bills table
+  - Updated checkout flows in: active-bookings.tsx, bookings.tsx, CheckoutBillSummary.tsx
+  - Server-side calculation in routes.ts now handles separate GST amounts
+  - Bill display shows separate line items for room GST and food GST when applicable
+  - Service charge (10%) remains applied only to room charges
+
+## Previous Updates (Session 8 - Travel Agent Schema Fix)
 - ✅ **Critical Schema Fix**: Fixed travel agent creation "property_id null" error
   - Root cause: `travelAgents` table in schema.ts was missing `propertyId` column
   - Added missing columns: propertyId, contactPerson, notes, isActive

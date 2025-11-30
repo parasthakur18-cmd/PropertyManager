@@ -1908,7 +1908,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", includeGst = true, includeServiceCharge = true, manualCharges, cashAmount, onlineAmount } = req.body;
+      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", gstOnRooms = true, gstOnFood = false, includeServiceCharge = true, manualCharges, cashAmount, onlineAmount } = req.body;
       
       // Validate input
       if (!bookingId) {
@@ -1997,7 +1997,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
       
       const gstRate = 5; // 5% GST
-      const gstAmount = includeGst ? (roomCharges * gstRate) / 100 : 0; // GST ONLY on room charges
+      const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
+      const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
+      const gstAmount = roomGst + foodGst;
       const serviceChargeRate = 10;
       const serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
       const totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
@@ -2058,7 +2060,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         gstAmount: gstAmount.toFixed(2),
         serviceChargeRate: serviceChargeRate.toString(),
         serviceChargeAmount: serviceChargeAmount.toFixed(2),
-        includeGst,
+        gstOnRooms,
+        gstOnFood,
         includeServiceCharge,
         discountType: discountType || null,
         discountValue: discountValue ? discountValue.toString() : null,
@@ -2328,7 +2331,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             gstAmount: gstAmount.toFixed(2),
             serviceChargeRate: "10",
             serviceChargeAmount: serviceChargeAmount.toFixed(2),
-            includeGst: true,
+            gstOnRooms: true,
+            gstOnFood: false,
             includeServiceCharge: true,
             discountType: null,
             discountValue: null,
