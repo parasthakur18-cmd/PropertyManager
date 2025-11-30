@@ -18,8 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, ChevronsUpDown } from "lucide-react";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -50,7 +48,6 @@ export default function Kitchen() {
     order: null,
   });
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
-  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
 
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
@@ -594,54 +591,34 @@ export default function Kitchen() {
               
               <div className="space-y-2 pt-4 border-t">
                 <Label>Add New Item</Label>
-                <Popover open={menuSearchOpen} onOpenChange={setMenuSearchOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={menuSearchOpen}
-                      className="w-full justify-between"
-                      data-testid="select-add-item"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Search className="h-4 w-4 opacity-50" />
-                        Click to search & add items...
-                      </span>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[350px] p-0" align="start" side="bottom" sideOffset={4}>
-                    <Command className="rounded-lg border shadow-md">
-                      <CommandInput 
-                        placeholder="Type item name to search..." 
-                        data-testid="input-search-menu"
-                        className="h-12"
-                      />
-                      <CommandList className="max-h-[250px]">
-                        <CommandEmpty>No menu items found.</CommandEmpty>
-                        <CommandGroup heading="Available Items">
-                          {menuItems?.filter(item => item.isAvailable).map((item) => (
-                            <CommandItem
-                              key={item.id}
-                              value={`${item.name} ${item.price}`}
-                              onSelect={() => {
-                                addNewItem(item);
-                                setMenuSearchOpen(false);
-                              }}
-                              data-testid={`menu-item-${item.id}`}
-                              className="cursor-pointer py-3"
-                            >
-                              <div className="flex justify-between w-full items-center">
-                                <span className="font-medium">{item.name}</span>
-                                <Badge variant="secondary">₹{item.price}</Badge>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                <Command className="rounded-lg border">
+                  <CommandInput 
+                    placeholder="Type to search menu items..." 
+                    data-testid="input-search-menu"
+                    className="h-11"
+                  />
+                  <CommandList className="max-h-[200px]">
+                    <CommandEmpty>No menu items found.</CommandEmpty>
+                    <CommandGroup>
+                      {menuItems?.filter(item => item.isAvailable).map((item) => (
+                        <CommandItem
+                          key={item.id}
+                          value={`${item.name} ${item.price}`}
+                          onSelect={() => {
+                            addNewItem(item);
+                          }}
+                          data-testid={`menu-item-${item.id}`}
+                          className="cursor-pointer py-2"
+                        >
+                          <div className="flex justify-between w-full items-center">
+                            <span>{item.name}</span>
+                            <Badge variant="secondary">₹{item.price}</Badge>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
               </div>
               
               <div className="pt-4 border-t">
