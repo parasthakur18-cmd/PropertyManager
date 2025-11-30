@@ -115,6 +115,20 @@ export default function Bookings() {
     queryKey: ["/api/orders"],
   });
 
+  const selectedPropertyId = form.watch("propertyId");
+  
+  const { data: travelAgents } = useQuery<TravelAgent[]>({
+    queryKey: ["/api/travel-agents", selectedPropertyId],
+    enabled: !!selectedPropertyId,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/travel-agents?propertyId=${selectedPropertyId}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch travel agents");
+      return response.json();
+    },
+  });
+
   // Helper to get default check-in time (11:00 AM today)
   const getDefaultCheckIn = () => {
     const date = new Date();
