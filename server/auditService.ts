@@ -16,13 +16,16 @@ export interface AuditContext {
 
 export class AuditService {
   private static async logAudit(context: AuditContext): Promise<void> {
+    // Convert string[] to number[] for propertyContext
+    const propertyIds = context.user.assignedPropertyIds?.map(id => Number(id)) || null;
+    
     const auditEntry: InsertAuditLog = {
       entityType: context.entityType,
       entityId: context.entityId,
       action: context.action,
       userId: context.user.id,
       userRole: context.user.role,
-      propertyContext: context.user.assignedPropertyIds || null,
+      propertyContext: propertyIds,
       changeSet: context.changeSet || null,
       metadata: context.metadata || null,
     };

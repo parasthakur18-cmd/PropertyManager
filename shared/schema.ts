@@ -640,7 +640,7 @@ export const auditLog = pgTable("audit_log", {
   action: varchar("action", { length: 255 }).notNull(),
   userId: varchar("user_id"),
   userRole: varchar("user_role", { length: 50 }),
-  propertyContext: jsonb("property_context"),
+  propertyContext: integer("property_context").array(),
   changeSet: jsonb("change_set"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
