@@ -17,6 +17,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Search, ChevronsUpDown } from "lucide-react";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -47,6 +50,7 @@ export default function Kitchen() {
     order: null,
   });
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
+  const [menuSearchOpen, setMenuSearchOpen] = useState(false);
 
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
@@ -590,21 +594,49 @@ export default function Kitchen() {
               
               <div className="space-y-2 pt-4 border-t">
                 <Label>Add New Item</Label>
-                <Select onValueChange={(value) => {
-                  const menuItem = menuItems?.find(m => m.id === parseInt(value));
-                  if (menuItem) addNewItem(menuItem);
-                }}>
-                  <SelectTrigger data-testid="select-add-item">
-                    <SelectValue placeholder="Select menu item to add..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {menuItems?.filter(item => item.isAvailable).map((item) => (
-                      <SelectItem key={item.id} value={item.id.toString()}>
-                        {item.name} - ₹{item.price}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={menuSearchOpen} onOpenChange={setMenuSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={menuSearchOpen}
+                      className="w-full justify-between"
+                      data-testid="select-add-item"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Search className="h-4 w-4 opacity-50" />
+                        Search menu items...
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Type to search menu items..." data-testid="input-search-menu" />
+                      <CommandList>
+                        <CommandEmpty>No menu items found.</CommandEmpty>
+                        <CommandGroup>
+                          {menuItems?.filter(item => item.isAvailable).map((item) => (
+                            <CommandItem
+                              key={item.id}
+                              value={`${item.name} ${item.price}`}
+                              onSelect={() => {
+                                addNewItem(item);
+                                setMenuSearchOpen(false);
+                              }}
+                              data-testid={`menu-item-${item.id}`}
+                            >
+                              <div className="flex justify-between w-full">
+                                <span>{item.name}</span>
+                                <span className="text-muted-foreground">₹{item.price}</span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               
               <div className="pt-4 border-t">
