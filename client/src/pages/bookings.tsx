@@ -64,6 +64,12 @@ export default function Bookings() {
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
   const [qrBookingId, setQrBookingId] = useState<number | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [cancelBookingId, setCancelBookingId] = useState<number | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellationType, setCancellationType] = useState<"full_refund" | "partial_refund" | "no_refund">("full_refund");
+  const [cancellationCharges, setCancellationCharges] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [cancellationReason, setCancellationReason] = useState("");
   const { toast} = useToast();
 
   // Auto-open dialog when coming from dashboard with ?new=true
@@ -332,6 +338,18 @@ export default function Bookings() {
 
   // Handler for status changes with ID validation for check-in
   const handleStatusChange = (booking: Booking, newStatus: string) => {
+    // If changing to cancelled, open cancellation dialog for advance handling
+    if (newStatus === "cancelled") {
+      const advanceAmount = parseFloat(booking.advanceAmount || "0");
+      setCancelBookingId(booking.id);
+      setCancellationType("full_refund");
+      setRefundAmount(advanceAmount > 0 ? String(advanceAmount) : "0");
+      setCancellationCharges("0");
+      setCancellationReason("");
+      setCancelDialogOpen(true);
+      return;
+    }
+
     // If changing to checked-in, validate guest has ID proof
     if (newStatus === "checked-in") {
       const guest = guests?.find(g => g.id === booking.guestId);
@@ -387,6 +405,58 @@ export default function Bookings() {
     onError: (error: Error) => {
       toast({
         title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelBookingMutation = useMutation({
+    mutationFn: async (data: { 
+      bookingId: number; 
+      cancellationType: string; 
+      cancellationCharges: number; 
+      refundAmount: number; 
+      cancellationReason: string;
+    }) => {
+      return await apiRequest(`/api/bookings/${data.bookingId}/cancel`, "POST", {
+        cancellationType: data.cancellationType,
+        cancellationCharges: data.cancellationCharges,
+        refundAmount: data.refundAmount,
+        cancellationReason: data.cancellationReason,
+      });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/property-expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      
+      const summary = data.financialSummary;
+      let message = `Booking cancelled. `;
+      if (summary.refundAmount > 0) {
+        message += `Refund: ₹${summary.refundAmount}. `;
+      }
+      if (summary.cancellationCharges > 0) {
+        message += `Cancellation income: ₹${summary.cancellationCharges}`;
+      }
+      
+      toast({
+        title: "Booking Cancelled",
+        description: message,
+      });
+      setCancelDialogOpen(false);
+      setCancelBookingId(null);
+      setCancellationType("full_refund");
+      setCancellationCharges("");
+      setRefundAmount("");
+      setCancellationReason("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Cancellation Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -1630,6 +1700,210 @@ export default function Bookings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cancellation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="max-w-md" data-testid="dialog-cancel-booking">
+          <DialogHeader>
+            <DialogTitle>Cancel Booking</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const booking = bookings?.find(b => b.id === cancelBookingId);
+                const advanceAmount = parseFloat(booking?.advanceAmount || "0");
+                if (advanceAmount > 0) {
+                  return `This booking has an advance payment of ₹${advanceAmount}. Choose how to handle the refund.`;
+                }
+                return "Confirm the cancellation of this booking.";
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {(() => {
+            const booking = bookings?.find(b => b.id === cancelBookingId);
+            const advanceAmount = parseFloat(booking?.advanceAmount || "0");
+            const guest = guests?.find(g => g.id === booking?.guestId);
+            
+            return (
+              <div className="space-y-4 py-4">
+                {/* Guest Info */}
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{guest?.fullName || "Guest"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Booking #{booking?.id} | Advance: ₹{advanceAmount}
+                  </p>
+                </div>
+
+                {advanceAmount > 0 && (
+                  <>
+                    {/* Refund Type Selection */}
+                    <div className="space-y-3">
+                      <Label className="font-medium">Refund Type</Label>
+                      
+                      {/* Full Refund */}
+                      <div 
+                        className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                          cancellationType === "full_refund" 
+                            ? "border-primary bg-primary/5" 
+                            : "border-border hover:border-primary/50"
+                        }`}
+                        onClick={() => {
+                          setCancellationType("full_refund");
+                          setRefundAmount(String(advanceAmount));
+                          setCancellationCharges("0");
+                        }}
+                        data-testid="option-full-refund"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 ${
+                            cancellationType === "full_refund" ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`} />
+                          <span className="font-medium">Full Refund</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 ml-6">
+                          Return entire ₹{advanceAmount} to customer
+                        </p>
+                      </div>
+
+                      {/* Partial Refund */}
+                      <div 
+                        className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                          cancellationType === "partial_refund" 
+                            ? "border-primary bg-primary/5" 
+                            : "border-border hover:border-primary/50"
+                        }`}
+                        onClick={() => {
+                          setCancellationType("partial_refund");
+                        }}
+                        data-testid="option-partial-refund"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 ${
+                            cancellationType === "partial_refund" ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`} />
+                          <span className="font-medium">Partial Refund</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 ml-6">
+                          Deduct cancellation charges, refund remaining
+                        </p>
+                        {cancellationType === "partial_refund" && (
+                          <div className="mt-3 ml-6 space-y-2">
+                            <div>
+                              <Label className="text-xs">Cancellation Charges (₹)</Label>
+                              <Input
+                                type="number"
+                                value={cancellationCharges}
+                                onChange={(e) => {
+                                  const charges = parseFloat(e.target.value) || 0;
+                                  setCancellationCharges(e.target.value);
+                                  setRefundAmount(String(Math.max(0, advanceAmount - charges)));
+                                }}
+                                placeholder="Enter charges"
+                                className="h-8"
+                                data-testid="input-cancellation-charges"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Refund Amount (₹)</Label>
+                              <Input
+                                type="number"
+                                value={refundAmount}
+                                readOnly
+                                className="h-8 bg-muted"
+                                data-testid="input-refund-amount"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* No Refund */}
+                      <div 
+                        className={`p-3 border rounded-lg cursor-pointer transition-all ${
+                          cancellationType === "no_refund" 
+                            ? "border-primary bg-primary/5" 
+                            : "border-border hover:border-primary/50"
+                        }`}
+                        onClick={() => {
+                          setCancellationType("no_refund");
+                          setCancellationCharges(String(advanceAmount));
+                          setRefundAmount("0");
+                        }}
+                        data-testid="option-no-refund"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 ${
+                            cancellationType === "no_refund" ? "border-primary bg-primary" : "border-muted-foreground"
+                          }`} />
+                          <span className="font-medium">No Refund</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 ml-6">
+                          Keep entire ₹{advanceAmount} as cancellation income
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Cancellation Reason */}
+                <div>
+                  <Label>Cancellation Reason (Optional)</Label>
+                  <Textarea
+                    value={cancellationReason}
+                    onChange={(e) => setCancellationReason(e.target.value)}
+                    placeholder="Enter reason for cancellation..."
+                    className="mt-1"
+                    data-testid="input-cancellation-reason"
+                  />
+                </div>
+
+                {/* P&L Summary */}
+                {advanceAmount > 0 && (
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-1 text-sm">
+                    <p className="font-medium">P&L Impact:</p>
+                    {parseFloat(refundAmount) > 0 && (
+                      <p className="text-red-600 dark:text-red-400">
+                        → Refund Expense: ₹{refundAmount}
+                      </p>
+                    )}
+                    {parseFloat(cancellationCharges) > 0 && (
+                      <p className="text-green-600 dark:text-green-400">
+                        → Cancellation Income: ₹{cancellationCharges}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setCancelDialogOpen(false)}
+              data-testid="button-cancel-cancellation"
+            >
+              Back
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!cancelBookingId) return;
+                cancelBookingMutation.mutate({
+                  bookingId: cancelBookingId,
+                  cancellationType,
+                  cancellationCharges: parseFloat(cancellationCharges) || 0,
+                  refundAmount: parseFloat(refundAmount) || 0,
+                  cancellationReason,
+                });
+              }}
+              disabled={cancelBookingMutation.isPending}
+              data-testid="button-confirm-cancellation"
+            >
+              {cancelBookingMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add Travel Agent Dialog */}
       <Dialog open={isAddAgentDialogOpen} onOpenChange={setIsAddAgentDialogOpen}>
