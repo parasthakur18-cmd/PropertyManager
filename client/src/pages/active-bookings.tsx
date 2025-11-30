@@ -26,6 +26,7 @@ interface ActiveBooking {
   specialRequests: string | null;
   advanceAmount: string;
   customPrice: string | null;
+  source: string | null;
   isGroupBooking: boolean;
   roomIds: number[] | null;
   guest: {
@@ -661,6 +662,24 @@ export default function ActiveBookings() {
                   <div>
                     <span className="text-muted-foreground">Nights</span>
                     <div className="font-semibold">{booking.nightsStayed}</div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Advance</span>
+                    <div className="font-semibold text-green-600">
+                      {parseFloat(booking.advanceAmount) > 0 ? `₹${booking.advanceAmount}` : "-"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Source</span>
+                    <div className="font-semibold">
+                      <Badge variant="outline" className="text-xs">
+                        {booking.source || "Walk-in"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Guests</span>
+                    <div className="font-semibold">{booking.numberOfGuests}</div>
                   </div>
                 </div>
 
