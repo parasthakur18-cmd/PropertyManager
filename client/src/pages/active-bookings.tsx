@@ -95,7 +95,8 @@ export default function ActiveBookings() {
   const [discountType, setDiscountType] = useState<string>("none");
   const [discountValue, setDiscountValue] = useState<string>("");
   const [discountAppliesTo, setDiscountAppliesTo] = useState<string>("total");
-  const [includeGst, setIncludeGst] = useState<boolean>(false);
+  const [gstOnRooms, setGstOnRooms] = useState<boolean>(true);
+  const [gstOnFood, setGstOnFood] = useState<boolean>(false);
   const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [manualCharges, setManualCharges] = useState<Array<{ name: string; amount: string }>>([
@@ -533,7 +534,7 @@ export default function ActiveBookings() {
     }
   };
 
-  const calculateTotalWithCharges = (booking: ActiveBooking, includeGst: boolean, includeServiceCharge: boolean, charges: Array<{ name: string; amount: string }>) => {
+  const calculateTotalWithCharges = (booking: ActiveBooking, gstOnRooms: boolean, gstOnFood: boolean, includeServiceCharge: boolean, charges: Array<{ name: string; amount: string }>) => {
     const roomCharges = parseFloat(booking.charges.roomCharges);
     const foodCharges = parseFloat(booking.charges.foodCharges);
     const manualAmount = charges.reduce((sum, charge) => {
@@ -541,7 +542,9 @@ export default function ActiveBookings() {
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0);
     
-    const gstAmount = includeGst ? roomCharges * 0.05 : 0;
+    const roomGst = gstOnRooms ? roomCharges * 0.05 : 0;
+    const foodGst = gstOnFood ? foodCharges * 0.05 : 0;
+    const gstAmount = roomGst + foodGst;
     const serviceChargeAmount = includeServiceCharge ? roomCharges * 0.10 : 0;
     
     const subtotal = roomCharges + foodCharges + manualAmount;
