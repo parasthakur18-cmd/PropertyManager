@@ -74,6 +74,7 @@ import Architecture from "@/pages/architecture";
 import AdvancedFeatures from "@/pages/advanced-features";
 import FeatureSettings from "@/pages/feature-settings";
 import WhatsappSettings from "@/pages/whatsapp-settings";
+import AnalyticsChat from "@/pages/analytics-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
 import { CompletionNotifications } from "@/components/completion-notifications";
@@ -156,6 +157,7 @@ function Router() {
           <Route path="/financials" component={Financials} />
           <Route path="/addons" component={AddOnServices} />
           <Route path="/analytics" component={Analytics} />
+          <Route path="/analytics-chat" component={AnalyticsChat} />
           <Route path="/salaries" component={Salaries} />
           <Route path="/attendance" component={Attendance} />
           <Route path="/performance" component={Performance} />
