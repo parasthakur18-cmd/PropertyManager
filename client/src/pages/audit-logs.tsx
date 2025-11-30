@@ -113,11 +113,13 @@ export default function AuditLogs() {
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mt-3 pt-3 border-t border-border">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <User className="h-4 w-4" />
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4 text-muted-foreground" />
                           <div>
-                            <div className="font-medium text-foreground">{log.userName || "System User"}</div>
-                            <div className="text-xs">{log.userRole}</div>
+                            <div className="font-medium text-foreground">
+                              {log.userName && log.userName.trim() ? log.userName : log.userId || "Unknown User"}
+                            </div>
+                            <div className="text-xs text-muted-foreground capitalize">{log.userRole || "N/A"}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
@@ -132,21 +134,29 @@ export default function AuditLogs() {
                       </div>
 
                       {/* Show detailed changes */}
-                      {log.changeSet && (log.changeSet.before || log.changeSet.after) && (
+                      {log.changeSet && (log.changeSet.before || log.changeSet.after) ? (
                         <div className="mt-4 space-y-2">
-                          <div className="text-xs font-semibold text-foreground">Changes:</div>
-                          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-xs space-y-1">
-                            <div className="font-medium text-red-900 dark:text-red-300">Before:</div>
-                            <div className="font-mono text-red-800 dark:text-red-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                              {JSON.stringify(log.changeSet.before, null, 2) || "N/A"}
+                          <div className="text-xs font-semibold text-foreground">Changes Recorded:</div>
+                          {log.changeSet.before && (
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-xs space-y-1">
+                              <div className="font-medium text-red-900 dark:text-red-300">Before:</div>
+                              <div className="font-mono text-red-800 dark:text-red-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                                {JSON.stringify(log.changeSet.before, null, 2)}
+                              </div>
                             </div>
-                          </div>
-                          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded p-3 text-xs space-y-1">
-                            <div className="font-medium text-green-900 dark:text-green-300">After:</div>
-                            <div className="font-mono text-green-800 dark:text-green-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                              {JSON.stringify(log.changeSet.after, null, 2) || "N/A"}
+                          )}
+                          {log.changeSet.after && (
+                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded p-3 text-xs space-y-1">
+                              <div className="font-medium text-green-900 dark:text-green-300">After:</div>
+                              <div className="font-mono text-green-800 dark:text-green-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                                {JSON.stringify(log.changeSet.after, null, 2)}
+                              </div>
                             </div>
-                          </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-4 text-xs text-muted-foreground italic">
+                          No change details recorded for this action.
                         </div>
                       )}
                     </div>
