@@ -27,6 +27,7 @@ import {
   attendanceRecords,
   featureSettings,
   otaIntegrations,
+  whatsappNotificationSettings,
   type User,
   type UpsertUser,
   type Property,
@@ -87,6 +88,8 @@ import {
   type InsertPreBill,
   type FeatureSettings,
   type InsertFeatureSettings,
+  type WhatsappNotificationSettings,
+  type InsertWhatsappNotificationSettings,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -2519,6 +2522,34 @@ export class DatabaseStorage implements IStorage {
       updates.syncErrorMessage = syncErrorMessage;
     }
     const [updated] = await db.update(otaIntegrations).set(updates).where(eq(otaIntegrations.id, id)).returning();
+    return updated;
+  }
+
+  // WhatsApp Notification Settings operations
+  async getWhatsappSettingsByProperty(propertyId: number): Promise<WhatsappNotificationSettings | undefined> {
+    const [settings] = await db.select().from(whatsappNotificationSettings).where(eq(whatsappNotificationSettings.propertyId, propertyId));
+    if (!settings) {
+      const [created] = await db.insert(whatsappNotificationSettings).values({
+        propertyId,
+        checkInEnabled: true,
+        checkOutEnabled: true,
+        enquiryConfirmationEnabled: true,
+        paymentRequestEnabled: true,
+        bookingConfirmationEnabled: true,
+        reminderMessagesEnabled: true,
+      }).returning();
+      return created;
+    }
+    return settings;
+  }
+
+  async updateWhatsappSettings(propertyId: number, settings: Partial<InsertWhatsappNotificationSettings>): Promise<WhatsappNotificationSettings> {
+    await this.getWhatsappSettingsByProperty(propertyId);
+    const [updated] = await db
+      .update(whatsappNotificationSettings)
+      .set({ ...settings, updatedAt: new Date() })
+      .where(eq(whatsappNotificationSettings.propertyId, propertyId))
+      .returning();
     return updated;
   }
 }

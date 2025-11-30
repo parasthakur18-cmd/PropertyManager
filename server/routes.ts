@@ -25,12 +25,6 @@ import {
   bills,
   extraServices,
   enquiries,
-  notifications,
-  changeApprovals,
-  insertChangeApprovalSchema,
-  auditLog,
-  employeePerformanceMetrics,
-  taskNotificationLogs,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
@@ -6911,27 +6905,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   });
 
   // ===== AUDIT LOG ROUTES =====
-
-  // Get audit logs - Admin only
-  app.get("/api/audit-logs", isAuthenticated, async (req: any, res) => {
-    try {
-      const user = await storage.getUser(req.user.claims.sub);
-      if (user?.role !== "admin" && user?.role !== "super-admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
-      const logs = await db
-        .select()
-        .from(auditLog)
-        .orderBy(desc(auditLog.createdAt))
-        .limit(500);
-      
-      res.json(logs);
-    } catch (error: any) {
-      console.error("[AUDIT-LOGS] Error:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
+  // Audit logs temporarily disabled
 
   // ===== EXPENSE BUDGETS ROUTES =====
 
