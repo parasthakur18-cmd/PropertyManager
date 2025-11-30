@@ -207,16 +207,23 @@ export type MenuCategory = typeof menuCategories.$inferSelect;
 // Menu Items table
 export const menuItems = pgTable("menu_items", {
   id: serial("id").primaryKey(),
-  categoryId: integer("category_id").notNull().references(() => menuCategories.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id"),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  category: varchar("category", { length: 255 }),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  veg: boolean("veg").default(true),
   isAvailable: boolean("is_available").notNull().default(true),
   preparationTime: integer("preparation_time"),
-  image: varchar("image", { length: 500 }),
+  imageUrl: text("image_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  categoryId: integer("category_id"),
+  foodType: varchar("food_type", { length: 50 }),
+  actualPrice: decimal("actual_price", { precision: 10, scale: 2 }),
+  discountedPrice: decimal("discounted_price", { precision: 10, scale: 2 }),
+  hasVariants: boolean("has_variants").default(false),
+  hasAddOns: boolean("has_add_ons").default(false),
+  displayOrder: integer("display_order").default(0),
 });
 
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({

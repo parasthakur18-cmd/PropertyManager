@@ -704,7 +704,7 @@ export class DatabaseStorage implements IStorage {
 
   // Menu Item operations
   async getAllMenuItems(): Promise<MenuItem[]> {
-    return await db.select().from(menuItems).orderBy(menuItems.displayOrder, menuItems.name);
+    return await db.select().from(menuItems).orderBy(menuItems.name);
   }
 
   async getMenuItemsByProperty(propertyId: number): Promise<MenuItem[]> {
@@ -712,7 +712,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(menuItems)
       .where(eq(menuItems.propertyId, propertyId))
-      .orderBy(menuItems.displayOrder, menuItems.name);
+      .orderBy(menuItems.name);
   }
 
   async getMenuItem(id: number): Promise<MenuItem | undefined> {
