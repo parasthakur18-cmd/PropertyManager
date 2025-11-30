@@ -289,17 +289,16 @@ export const orders = pgTable("orders", {
   roomId: integer("room_id"),
   bookingId: integer("booking_id"),
   guestId: integer("guest_id"),
-  orderId: varchar("order_id", { length: 100 }),
-  items: jsonb("items").default([]),
-  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+  items: jsonb("items").notNull(),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   status: varchar("status", { length: 20 }).notNull().default("new"),
-  preparationTime: integer("preparation_time"),
   specialInstructions: text("special_instructions"),
-  qrCodeUrl: text("qr_code_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  orderNumber: varchar("order_number", { length: 50 }),
-  itemsSummary: varchar("items_summary", { length: 500 }),
+  orderSource: varchar("order_source", { length: 50 }).notNull(),
+  orderType: varchar("order_type", { length: 50 }),
+  customerName: varchar("customer_name", { length: 255 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -315,11 +314,15 @@ export type Order = typeof orders.$inferSelect;
 export const extraServices = pgTable("extra_services", {
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'cascade' }),
-  serviceName: varchar("service_name", { length: 100 }).notNull(),
-  serviceDescription: text("service_description"),
-  serviceCharge: decimal("service_charge", { precision: 10, scale: 2 }).notNull(),
-  quantity: integer("quantity").default(1),
-  addedAt: timestamp("added_at").defaultNow(),
+  serviceName: varchar("service_name", { length: 255 }).notNull(),
+  description: text("description"),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  serviceType: varchar("service_type", { length: 50 }).notNull(),
+  vendorName: varchar("vendor_name", { length: 255 }),
+  vendorContact: varchar("vendor_contact", { length: 20 }),
+  commission: decimal("commission", { precision: 10, scale: 2 }),
+  serviceDate: timestamp("service_date").notNull(),
 });
 
 export const insertExtraServiceSchema = createInsertSchema(extraServices).omit({
@@ -338,14 +341,26 @@ export const bills = pgTable("bills", {
   roomCharges: decimal("room_charges", { precision: 10, scale: 2 }).default("0"),
   foodCharges: decimal("food_charges", { precision: 10, scale: 2 }).default("0"),
   extraCharges: decimal("extra_charges", { precision: 10, scale: 2 }).default("0"),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).default("0"),
+  gstRate: decimal("gst_rate", { precision: 5, scale: 2 }).default("0"),
   gstAmount: decimal("gst_amount", { precision: 10, scale: 2 }).default("0"),
-  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0"),
+  serviceChargeRate: decimal("service_charge_rate", { precision: 5, scale: 2 }).default("0"),
+  serviceChargeAmount: decimal("service_charge_amount", { precision: 10, scale: 2 }).default("0"),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
-  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"),
   paymentMethod: varchar("payment_method", { length: 50 }),
-  notes: text("notes"),
-  issuedDate: date("issued_date"),
-  dueDate: date("due_date"),
+  paidAt: timestamp("paid_at"),
+  mergedBookingIds: integer("merged_booking_ids").array(),
+  advancePaid: decimal("advance_paid", { precision: 10, scale: 2 }).default("0"),
+  balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }).default("0"),
+  discountType: varchar("discount_type", { length: 50 }),
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).default("0"),
+  includeGst: boolean("include_gst").default(true),
+  includeServiceCharge: boolean("include_service_charge").default(false),
+  dueDate: timestamp("due_date"),
+  pendingReason: text("pending_reason"),
+  paymentMethods: jsonb("payment_methods"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -364,19 +379,29 @@ export const enquiries = pgTable("enquiries", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   guestName: varchar("guest_name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
-  phone: varchar("phone", { length: 20 }).notNull(),
-  checkInDate: date("check_in_date"),
-  checkOutDate: date("check_out_date"),
-  numberOfGuests: integer("number_of_guests"),
-  roomPreference: varchar("room_preference", { length: 100 }),
-  specialRequests: text("special_requests"),
+  guestPhone: varchar("guest_phone", { length: 20 }).notNull(),
+  guestEmail: varchar("guest_email", { length: 255 }),
+  checkInDate: timestamp("check_in_date").notNull(),
+  checkOutDate: timestamp("check_out_date").notNull(),
+  roomId: integer("room_id"),
+  numberOfGuests: integer("number_of_guests").notNull(),
+  priceQuoted: decimal("price_quoted", { precision: 10, scale: 2 }),
+  advanceAmount: decimal("advance_amount", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
-  followUpDate: date("follow_up_date"),
-  notes: text("notes"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  stripePaymentLinkUrl: text("stripe_payment_link_url"),
+  twilioMessageSid: varchar("twilio_message_sid", { length: 255 }),
+  specialRequests: text("special_requests"),
+  createdBy: varchar("created_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-  conversions: integer("conversions").default(0),
+  paymentStatus: varchar("payment_status", { length: 20 }).notNull().default("pending"),
+  roomIds: integer("room_ids").array(),
+  isGroupEnquiry: boolean("is_group_enquiry").default(false),
+  mealPlan: varchar("meal_plan", { length: 50 }),
+  bedsBooked: integer("beds_booked"),
+  source: varchar("source", { length: 50 }),
+  travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
 });
 
 export const insertEnquirySchema = createInsertSchema(enquiries).omit({
@@ -706,6 +731,27 @@ export const otaIntegrations = pgTable("ota_integrations", {
 });
 
 export type OtaIntegration = typeof otaIntegrations.$inferSelect;
+
+// Notifications table - matches actual database
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  type: varchar("type", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  soundType: varchar("sound_type", { length: 50 }),
+  relatedId: integer("related_id"),
+  relatedType: varchar("related_type", { length: 50 }),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
 // Contact Enquiries table
 export const contactEnquiries = pgTable("contact_enquiries", {
