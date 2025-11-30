@@ -1144,8 +1144,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json([]);
       }
 
-      const allOrders = await db.select().from(orders);
-      const allExtras = await db.select().from(extraServices);
+      // Query orders and extras with error handling for schema mismatches
+      let allOrders = [];
+      let allExtras = [];
+      
+      try {
+        allOrders = await db.select().from(orders);
+      } catch (err) {
+        console.warn("[Active Bookings] Could not fetch orders - continuing without order data:", err);
+      }
+      
+      try {
+        allExtras = await db.select().from(extraServices);
+      } catch (err) {
+        console.warn("[Active Bookings] Could not fetch extras - continuing without extra services data:", err);
+      }
 
       // Build enriched data
       const enrichedBookings = activeBookings.map(booking => {
