@@ -28,6 +28,7 @@ import {
   featureSettings,
   otaIntegrations,
   whatsappNotificationSettings,
+  auditLogs,
   type User,
   type UpsertUser,
   type Property,

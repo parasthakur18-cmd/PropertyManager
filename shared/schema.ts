@@ -732,3 +732,24 @@ export const insertPreBillSchema = createInsertSchema(preBills).omit({
   updatedAt: true,
 });
 export type InsertPreBill = z.infer<typeof insertPreBillSchema>;
+
+// Audit Logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  entityType: varchar("entity_type", { length: 50 }).notNull(),
+  entityId: varchar("entity_id", { length: 255 }).notNull(),
+  action: varchar("action", { length: 50 }).notNull(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  userRole: varchar("user_role", { length: 50 }),
+  propertyContext: varchar("property_context", { length: 255 }).array(),
+  changeSet: jsonb("change_set"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
