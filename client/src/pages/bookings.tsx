@@ -115,18 +115,16 @@ export default function Bookings() {
     queryKey: ["/api/orders"],
   });
 
-  // Helper to get default check-in time (2:00 PM today)
+  // Helper to get default check-in time (current real time today)
   const getDefaultCheckIn = () => {
-    const date = new Date();
-    date.setHours(14, 0, 0, 0); // 2:00 PM
-    return date;
+    return new Date(); // Current real time
   };
 
-  // Helper to get default checkout time (11:00 AM tomorrow)
+  // Helper to get default checkout time (10:00 AM tomorrow)
   const getDefaultCheckOut = () => {
     const date = new Date();
     date.setDate(date.getDate() + 1);
-    date.setHours(11, 0, 0, 0); // 11:00 AM
+    date.setHours(10, 0, 0, 0); // 10:00 AM
     return date;
   };
 

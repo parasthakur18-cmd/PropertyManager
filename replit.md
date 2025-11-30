@@ -58,7 +58,13 @@ Phase 1 represents the complete foundation of Hostezee with all core features wo
 
 ---
 
-## Recent Updates (Session 6 - Audit Trail & WhatsApp Controls)
+## Recent Updates (Session 7 - Default Check-in/Check-out Times)
+- ✅ **Updated Default Booking Times**: Now uses real current time and 10:00 AM checkout
+  - Check-in: Uses current/real time (e.g., if it's 3:45 PM, default is 3:45 PM)
+  - Check-out: 10:00 AM (changed from 11:00 AM)
+  - Reduces confusion - times match what staff are actually seeing
+
+## Previous Updates (Session 6 - Audit Trail & WhatsApp Controls)
 - ✅ **Complete Audit Trail System**: Tracks all critical user actions
   - Database table `audit_logs` with entity tracking
   - Logs bill creation/updates, booking changes with full changesets
