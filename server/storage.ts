@@ -2567,7 +2567,24 @@ export class DatabaseStorage implements IStorage {
 
   async getAllAuditLogs(): Promise<any[]> {
     try {
-      const result = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(1000);
+      const result = await db
+        .select({
+          id: auditLogs.id,
+          entityType: auditLogs.entityType,
+          entityId: auditLogs.entityId,
+          action: auditLogs.action,
+          userId: auditLogs.userId,
+          userName: sql`COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')`.as("userName"),
+          userRole: users.role,
+          propertyContext: auditLogs.propertyContext,
+          changeSet: auditLogs.changeSet,
+          metadata: auditLogs.metadata,
+          createdAt: auditLogs.createdAt,
+        })
+        .from(auditLogs)
+        .leftJoin(users, eq(auditLogs.userId, users.id))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(1000);
       return result;
     } catch (err) {
       console.warn("[Audit] Failed to fetch audit logs:", err);
@@ -2578,8 +2595,21 @@ export class DatabaseStorage implements IStorage {
   async getAuditLogsByEntity(entityType: string, entityId: string): Promise<any[]> {
     try {
       const result = await db
-        .select()
+        .select({
+          id: auditLogs.id,
+          entityType: auditLogs.entityType,
+          entityId: auditLogs.entityId,
+          action: auditLogs.action,
+          userId: auditLogs.userId,
+          userName: sql`COALESCE(${users.firstName}, '') || ' ' || COALESCE(${users.lastName}, '')`.as("userName"),
+          userRole: users.role,
+          propertyContext: auditLogs.propertyContext,
+          changeSet: auditLogs.changeSet,
+          metadata: auditLogs.metadata,
+          createdAt: auditLogs.createdAt,
+        })
         .from(auditLogs)
+        .leftJoin(users, eq(auditLogs.userId, users.id))
         .where(and(eq(auditLogs.entityType, entityType), eq(auditLogs.entityId, entityId)))
         .orderBy(desc(auditLogs.createdAt));
       return result;
