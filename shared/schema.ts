@@ -27,6 +27,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
+export const updateUserRoleSchema = z.object({
+  role: z.string().min(1),
+  assignedPropertyIds: z.array(z.number()).optional(),
+});
+
+export type UpsertUser = InsertUser & { id?: string };
+
 // Properties table
 export const properties = pgTable("properties", {
   id: serial("id").primaryKey(),
