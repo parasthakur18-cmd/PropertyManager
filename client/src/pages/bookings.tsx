@@ -977,8 +977,8 @@ export default function Bookings() {
                         <FormLabel>Check-in Date *</FormLabel>
                         <FormControl>
                           <Input
-                            type="datetime-local"
-                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            type="date"
+                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 10) : ""}
                             onChange={(e) => field.onChange(new Date(e.target.value))}
                             data-testid="input-booking-checkin"
                           />
@@ -995,8 +995,8 @@ export default function Bookings() {
                         <FormLabel>Check-out Date *</FormLabel>
                         <FormControl>
                           <Input
-                            type="datetime-local"
-                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            type="date"
+                            value={field.value && !isNaN(new Date(field.value).getTime()) ? new Date(field.value).toISOString().slice(0, 10) : ""}
                             onChange={(e) => field.onChange(new Date(e.target.value))}
                             data-testid="input-booking-checkout"
                           />
