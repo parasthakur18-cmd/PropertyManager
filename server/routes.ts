@@ -1668,8 +1668,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
             const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
             
-            await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
-            console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName}`);
+            // Check if check-in notifications are enabled
+            if (booking.propertyId) {
+              const whatsappSettings = await storage.getWhatsappSettingsByProperty(booking.propertyId);
+              if (whatsappSettings?.checkInEnabled) {
+                await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName}`);
+              } else {
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled for this property`);
+              }
+            }
           }
         } catch (whatsappError: any) {
           console.error(`[WhatsApp] Booking #${booking.id} - Check-in notification failed (non-critical):`, whatsappError.message);
@@ -7072,6 +7080,55 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       }
 
       const settings = await storage.updateFeatureSettings(parseInt(propertyId), req.body);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== WHATSAPP NOTIFICATION SETTINGS ROUTES =====
+
+  app.get("/api/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      let propertyId = req.query.propertyId;
+      
+      if (!propertyId) {
+        propertyId = req.user?.assignedPropertyIds?.[0];
+      }
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const settings = await storage.getWhatsappSettingsByProperty(parseInt(propertyId));
+      res.json(settings);
+    } catch (error: any) {
+      console.error("[WHATSAPP-SETTINGS] GET error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/whatsapp-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.body.propertyId || req.user?.assignedPropertyIds?.[0];
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      // Admin and super-admin can update settings
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admin can update WhatsApp notification settings" });
+      }
+
+      // Verify admin has access to this property
+      const assignedProps = req.user?.assignedPropertyIds || [];
+      if (!assignedProps.includes(parseInt(propertyId))) {
+        return res.status(403).json({ message: "You don't have access to this property" });
+      }
+
+      const settings = await storage.updateWhatsappSettings(parseInt(propertyId), req.body);
       res.json(settings);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
