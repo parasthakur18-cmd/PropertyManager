@@ -632,13 +632,23 @@ export default function Billing() {
                         <span className="text-muted-foreground">Food & Beverage</span>
                         <span className="font-mono font-semibold">₹{billDetails.foodCharges}</span>
                       </div>
-                      <div className="ml-4 space-y-1">
-                        {billDetails.orders.map((order: any) => (
-                          <div key={order.id} className="flex justify-between text-sm text-muted-foreground">
-                            <span>• Order #{order.id}</span>
-                            <span className="font-mono">₹{order.totalAmount}</span>
-                          </div>
-                        ))}
+                      <div className="ml-4 space-y-2">
+                        {billDetails.orders.map((order: any) => {
+                          const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                          return (
+                            <div key={order.id} className="space-y-1">
+                              <div className="text-xs text-muted-foreground font-medium">
+                                Order #{order.id} ({order.status})
+                              </div>
+                              {items && items.map((item: any, idx: number) => (
+                                <div key={idx} className="flex justify-between text-sm text-muted-foreground pl-2">
+                                  <span>• {item.name} {item.quantity > 1 ? `x${item.quantity}` : ''}</span>
+                                  <span className="font-mono">₹{parseFloat(item.price || 0) * (item.quantity || 1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     </>
                   )}
