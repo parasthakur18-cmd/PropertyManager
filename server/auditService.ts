@@ -32,7 +32,7 @@ export class AuditService {
     eventBus.publish({
       type: 'audit_log',
       userId: context.user.id.toString(),
-      propertyId: context.user.assignedPropertyIds?.[0] || undefined,
+      propertyId: context.user.assignedPropertyIds?.[0] ? Number(context.user.assignedPropertyIds[0]) : undefined,
       data: {
         ...auditEntry,
         entityType: context.entityType,

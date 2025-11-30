@@ -635,14 +635,23 @@ export type ChangeApproval = typeof changeApprovals.$inferSelect;
 // Audit Log table
 export const auditLog = pgTable("audit_log", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id"),
+  entityType: varchar("entity_type", { length: 100 }),
+  entityId: varchar("entity_id", { length: 100 }),
   action: varchar("action", { length: 255 }).notNull(),
-  resource: varchar("resource", { length: 100 }).notNull(),
-  resourceId: varchar("resource_id", { length: 100 }),
-  changes: jsonb("changes"),
-  timestamp: timestamp("timestamp").defaultNow(),
+  userId: varchar("user_id"),
+  userRole: varchar("user_role", { length: 50 }),
+  propertyContext: jsonb("property_context"),
+  changeSet: jsonb("change_set"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type AuditLog = typeof auditLog.$inferSelect;
 
 // OTA Integrations table
