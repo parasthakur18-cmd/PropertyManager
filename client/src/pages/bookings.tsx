@@ -61,7 +61,6 @@ export default function Bookings() {
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
-  const [dialogPropertyId, setDialogPropertyId] = useState<number | null>(null);
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
   const [qrBookingId, setQrBookingId] = useState<number | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -1416,7 +1415,6 @@ export default function Bookings() {
                                 });
                                 return;
                               }
-                              setDialogPropertyId(selectedPropertyId);
                               setIsAddAgentDialogOpen(true);
                             }}
                             className="mt-2"
@@ -1943,17 +1941,12 @@ export default function Bookings() {
       </Dialog>
 
       {/* Add Travel Agent Dialog */}
-      <Dialog open={isAddAgentDialogOpen} onOpenChange={(open) => {
-        setIsAddAgentDialogOpen(open);
-        if (!open) {
-          setDialogPropertyId(null);
-        }
-      }}>
+      <Dialog open={isAddAgentDialogOpen} onOpenChange={setIsAddAgentDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add New Travel Agent</DialogTitle>
             <DialogDescription>
-              Create a new travel agent for {dialogPropertyId ? properties?.find(p => p.id === dialogPropertyId)?.name : "this property"}
+              Create a new travel agent for {selectedPropertyId ? properties?.find(p => p.id === selectedPropertyId)?.name : "this property"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -2013,9 +2006,7 @@ export default function Bookings() {
                   });
                   return;
                 }
-                console.log("[TravelAgent] Creating agent with dialogPropertyId:", dialogPropertyId);
-                console.log("[TravelAgent] newAgentData:", newAgentData);
-                if (!dialogPropertyId) {
+                if (!selectedPropertyId) {
                   toast({
                     title: "Error",
                     description: "Please select a property in the booking form first",
@@ -2023,12 +2014,10 @@ export default function Bookings() {
                   });
                   return;
                 }
-                const mutationData = {
+                createTravelAgentMutation.mutate({
                   ...newAgentData,
-                  propertyId: dialogPropertyId,
-                };
-                console.log("[TravelAgent] Final mutation data:", mutationData);
-                createTravelAgentMutation.mutate(mutationData);
+                  propertyId: selectedPropertyId,
+                });
               }}
               disabled={createTravelAgentMutation.isPending}
               data-testid="button-submit-agent"

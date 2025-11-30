@@ -58,7 +58,14 @@ Phase 1 represents the complete foundation of Hostezee with all core features wo
 
 ---
 
-## Recent Updates (Session 7 - Default Check-in/Check-out Times & Actual Check-in Tracking)
+## Recent Updates (Session 8 - Travel Agent Schema Fix)
+- ✅ **Critical Schema Fix**: Fixed travel agent creation "property_id null" error
+  - Root cause: `travelAgents` table in schema.ts was missing `propertyId` column
+  - Added missing columns: propertyId, contactPerson, notes, isActive
+  - Now Drizzle correctly includes property_id in INSERT statements
+  - Test verified: New agents create successfully with correct property assignment
+
+## Previous Updates (Session 7 - Default Check-in/Check-out Times & Actual Check-in Tracking)
 - ✅ **Updated Default Booking Times**: Now uses 11:00 AM check-in and 10:00 AM checkout
   - Check-in: 11:00 AM (standard hotel check-in time)
   - Check-out: 10:00 AM (standard hotel checkout time)

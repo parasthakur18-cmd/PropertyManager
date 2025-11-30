@@ -124,14 +124,18 @@ export type Guest = typeof guests.$inferSelect;
 // Travel Agents table - matches actual database
 export const travelAgents = pgTable("travel_agents", {
   id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  email: varchar("email", { length: 255 }),
+  contactPerson: varchar("contact_person", { length: 255 }),
   phone: varchar("phone", { length: 20 }),
-  address: text("address"),
+  email: varchar("email", { length: 255 }),
   commission: decimal("commission", { precision: 5, scale: 2 }),
-  bankDetails: text("bank_details"),
+  address: text("address"),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  bankDetails: text("bank_details"),
 });
 
 export const insertTravelAgentSchema = createInsertSchema(travelAgents).omit({
