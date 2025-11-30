@@ -13,6 +13,7 @@ interface AuditLogEntry {
   entityId: string;
   action: string;
   userId: string;
+  userName?: string;
   userRole?: string;
   propertyContext?: number[] | null;
   changeSet?: Record<string, any> | null;
@@ -114,7 +115,10 @@ export default function AuditLogs() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mt-3 pt-3 border-t border-border">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <User className="h-4 w-4" />
-                          <span>{log.userRole || "Unknown"}</span>
+                          <div>
+                            <div className="font-medium text-foreground">{log.userName || "System User"}</div>
+                            <div className="text-xs">{log.userRole}</div>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Calendar className="h-4 w-4" />
@@ -127,21 +131,22 @@ export default function AuditLogs() {
                         )}
                       </div>
 
-                      {/* Show changes if available */}
+                      {/* Show detailed changes */}
                       {log.changeSet && (log.changeSet.before || log.changeSet.after) && (
-                        <div className="mt-3 text-xs bg-muted p-3 rounded font-mono text-muted-foreground overflow-auto max-h-32">
-                          {log.changeSet.before && (
-                            <div>
-                              <span className="text-red-600 dark:text-red-400">Before: </span>
-                              {JSON.stringify(log.changeSet.before).substring(0, 150)}...
+                        <div className="mt-4 space-y-2">
+                          <div className="text-xs font-semibold text-foreground">Changes:</div>
+                          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-xs space-y-1">
+                            <div className="font-medium text-red-900 dark:text-red-300">Before:</div>
+                            <div className="font-mono text-red-800 dark:text-red-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                              {JSON.stringify(log.changeSet.before, null, 2) || "N/A"}
                             </div>
-                          )}
-                          {log.changeSet.after && (
-                            <div>
-                              <span className="text-green-600 dark:text-green-400">After: </span>
-                              {JSON.stringify(log.changeSet.after).substring(0, 150)}...
+                          </div>
+                          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded p-3 text-xs space-y-1">
+                            <div className="font-medium text-green-900 dark:text-green-300">After:</div>
+                            <div className="font-mono text-green-800 dark:text-green-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+                              {JSON.stringify(log.changeSet.after, null, 2) || "N/A"}
                             </div>
-                          )}
+                          </div>
                         </div>
                       )}
                     </div>
