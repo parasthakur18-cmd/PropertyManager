@@ -250,15 +250,18 @@ export type MenuItem = typeof menuItems.$inferSelect;
 export const menuItemVariants = pgTable("menu_item_variants", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
-  name: varchar("name", { length: 255 }).notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  variantName: varchar("variant_name", { length: 255 }).notNull(),
+  actualPrice: decimal("actual_price", { precision: 10, scale: 2 }),
+  discountedPrice: decimal("discounted_price", { precision: 10, scale: 2 }),
   displayOrder: integer("display_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertMenuItemVariantSchema = createInsertSchema(menuItemVariants).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertMenuItemVariant = z.infer<typeof insertMenuItemVariantSchema>;
@@ -268,15 +271,17 @@ export type MenuItemVariant = typeof menuItemVariants.$inferSelect;
 export const menuItemAddOns = pgTable("menu_item_add_ons", {
   id: serial("id").primaryKey(),
   menuItemId: integer("menu_item_id").notNull().references(() => menuItems.id, { onDelete: 'cascade' }),
-  name: varchar("name", { length: 255 }).notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  addOnName: varchar("add_on_name", { length: 255 }).notNull(),
+  addOnPrice: decimal("add_on_price", { precision: 10, scale: 2 }).notNull(),
   displayOrder: integer("display_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const insertMenuItemAddOnSchema = createInsertSchema(menuItemAddOns).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export type InsertMenuItemAddOn = z.infer<typeof insertMenuItemAddOnSchema>;
