@@ -1229,7 +1229,7 @@ export default function ActiveBookings() {
           {billPreviewBooking && (
             <>
               {/* Hidden PDF Export Content */}
-              <div id="bill-pdf-export" style={{ display: "none" }}>
+              <div id="bill-pdf-export" style={{ position: "absolute", left: "-9999px", top: "-9999px", width: "800px", visibility: "hidden" }}>
                 <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6" }}>
                   <h2 style={{ textAlign: "center", marginBottom: "20px", fontSize: "18px", fontWeight: "bold" }}>BILL INVOICE</h2>
                   <div style={{ marginBottom: "15px", border: "1px solid #ddd", padding: "10px" }}>
