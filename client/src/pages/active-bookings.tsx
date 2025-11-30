@@ -1500,26 +1500,41 @@ export default function ActiveBookings() {
                       const element = document.getElementById("bill-preview-content");
                       if (!element) return;
                       
-                      // Clone the element to avoid modifying the original
+                      // Clone and strip Tailwind classes to avoid CSS parsing errors
                       const clone = element.cloneNode(true) as HTMLElement;
+                      const stripClasses = (el: Element) => {
+                        el.removeAttribute("class");
+                        el.removeAttribute("data-testid");
+                        Array.from(el.children).forEach(child => stripClasses(child));
+                      };
+                      stripClasses(clone);
                       
-                      // Create a temporary container off-screen
+                      // Add basic PDF-friendly styles
+                      clone.style.fontFamily = "Arial, sans-serif";
+                      clone.style.fontSize = "14px";
+                      clone.style.color = "#000";
+                      clone.style.padding = "20px";
+                      
+                      // Create temporary container
                       const container = document.createElement("div");
-                      container.style.position = "absolute";
+                      container.style.position = "fixed";
                       container.style.left = "0";
                       container.style.top = "0";
-                      container.style.width = "800px";
-                      container.style.backgroundColor = "white";
+                      container.style.width = "210mm";
+                      container.style.height = "297mm";
+                      container.style.backgroundColor = "#fff";
+                      container.style.padding = "0";
+                      container.style.margin = "0";
+                      container.style.overflow = "visible";
                       container.appendChild(clone);
                       document.body.appendChild(container);
                       
-                      // Wait for rendering
                       setTimeout(() => {
                         const opt = {
-                          margin: 10,
+                          margin: 5,
                           filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
                           image: { type: "png" as const, quality: 0.98 },
-                          html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+                          html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#fff" },
                           jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
                         };
                         
@@ -1530,7 +1545,7 @@ export default function ActiveBookings() {
                           .finally(() => {
                             document.body.removeChild(container);
                           });
-                      }, 100);
+                      }, 50);
                     } catch (error) {
                       console.error("PDF download error:", error);
                       toast({ title: "Error", description: "Failed to download bill", variant: "destructive" });
