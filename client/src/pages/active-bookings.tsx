@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -976,12 +976,84 @@ export default function ActiveBookings() {
                 </div>
 
                 <div className="bg-primary/10 p-3 rounded-md">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between gap-4 items-center">
                     <span className="font-semibold">Balance Due:</span>
-                    <span className={`font-mono text-xl font-bold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                    <span className={`font-mono text-xl font-bold whitespace-nowrap ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       ₹{Math.max(0, remainingBalance).toFixed(2)}
                     </span>
                   </div>
+                </div>
+
+                {/* Payment Status - Mark as Paid or Pending */}
+                <div className="space-y-3 border rounded-lg p-3 bg-muted/30">
+                  <Label className="text-sm font-medium">Bill Status</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={paymentStatus === "paid" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setPaymentStatus("paid")}
+                      data-testid="button-status-paid"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Paid
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={paymentStatus === "pending" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setPaymentStatus("pending")}
+                      data-testid="button-status-pending"
+                    >
+                      <Clock className="h-4 w-4 mr-1" />
+                      Pending
+                    </Button>
+                  </div>
+                  
+                  {paymentStatus === "pending" && (
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Due Date (Optional)</Label>
+                          <Input
+                            type="date"
+                            value={dueDate}
+                            onChange={(e) => setDueDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                            data-testid="input-due-date"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Pending Amount</Label>
+                          <div className="h-9 flex items-center px-3 bg-orange-100 dark:bg-orange-900/30 rounded-md text-orange-700 dark:text-orange-300 font-mono font-semibold">
+                            ₹{Math.max(0, remainingBalance).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Reason for Pending (Optional)</Label>
+                        <Select value={pendingReason} onValueChange={setPendingReason}>
+                          <SelectTrigger data-testid="select-pending-reason">
+                            <SelectValue placeholder="Select reason..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="corporate_billing">Corporate Billing</SelectItem>
+                            <SelectItem value="travel_agent">Travel Agent Settlement</SelectItem>
+                            <SelectItem value="payment_pending">Payment Processing</SelectItem>
+                            <SelectItem value="partial_payment">Partial Payment Received</SelectItem>
+                            <SelectItem value="dispute">Dispute / Clarification</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="bg-orange-50 dark:bg-orange-900/20 p-2 rounded text-xs text-orange-700 dark:text-orange-300 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                        <span>Guest will be checked out and bill will be marked as pending. You can collect payment later from the Billing page.</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -1061,12 +1133,15 @@ export default function ActiveBookings() {
                     </Button>
                     <Button
                       className="flex-1"
+                      variant={paymentStatus === "pending" ? "secondary" : "default"}
                       onClick={async () => {
                         try {
                           await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: booking.id,
-                            paymentMethod: paymentMethod,
-                            paymentStatus: remainingBalance <= 0 ? "paid" : "pending",
+                            paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
+                            paymentStatus: paymentStatus,
+                            dueDate: paymentStatus === "pending" && dueDate ? dueDate : null,
+                            pendingReason: paymentStatus === "pending" && pendingReason ? pendingReason : null,
                             includeGst,
                             includeServiceCharge,
                             gstAmount: totalGst,
@@ -1081,6 +1156,7 @@ export default function ActiveBookings() {
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
                           setCheckoutDialog({ open: false, booking: null });
@@ -1090,7 +1166,15 @@ export default function ActiveBookings() {
                           setManualCharges([{ name: "", amount: "" }]);
                           setDiscountType("none");
                           setDiscountValue("");
-                          toast({ title: "Success", description: "Checkout completed successfully" });
+                          setPaymentStatus("paid");
+                          setDueDate("");
+                          setPendingReason("");
+                          toast({ 
+                            title: paymentStatus === "pending" ? "Checkout with Pending Bill" : "Checkout Complete", 
+                            description: paymentStatus === "pending" 
+                              ? `Guest checked out. ₹${remainingBalance.toFixed(2)} pending - collect from Billing page.`
+                              : "Checkout completed successfully" 
+                          });
                         } catch (error: any) {
                           const errorMsg = error.message || "Checkout failed";
                           if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {
@@ -1108,8 +1192,17 @@ export default function ActiveBookings() {
                       }}
                       data-testid="button-complete-checkout"
                     >
-                      <Check className="h-4 w-4 mr-2" />
-                      Complete Checkout
+                      {paymentStatus === "pending" ? (
+                        <>
+                          <Clock className="h-4 w-4 mr-2" />
+                          Checkout with Pending Bill
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-4 w-4 mr-2" />
+                          Complete Checkout
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
