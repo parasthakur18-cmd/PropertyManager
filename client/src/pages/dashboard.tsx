@@ -263,37 +263,38 @@ export default function Dashboard() {
         }
       }
 
-      if (currentHour >= 16) {
-        try {
-          console.log("[AUTO_CHECKOUT] Executing force auto-checkout at 4 PM...");
-          const response = await fetch("/api/bookings/force-auto-checkout", { method: "POST" });
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-          const data = await response.json();
-          if (data.processedCount > 0) {
-            console.log("[AUTO_CHECKOUT_SUCCESS] Force auto-checked out bookings:", data.processedCount);
-            
-            setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
-            toast({
-              title: "Forced Auto-Checkout Executed",
-              description: `${data.processedCount} booking(s) auto-checked out at 4 PM. Guest notifications sent via WhatsApp.`,
-              duration: 8000,
-            });
-            
-            createNotification(
-              "auto_checkout",
-              "Auto-Checkout Executed",
-              `${data.processedCount} booking(s) auto-checked out. WhatsApp notifications sent.`,
-              "critical"
-            );
-            
-            setShownReminderIds(new Set());
-          }
-        } catch (error: any) {
-          console.error("[AUTO_CHECKOUT_ERROR] Failed to process force auto-checkout:", error?.message);
-        }
-      }
+      // AUTO_CHECKOUT DISABLED - Manual checkout recommended
+      // if (currentHour >= 16) {
+      //   try {
+      //     console.log("[AUTO_CHECKOUT] Executing force auto-checkout at 4 PM...");
+      //     const response = await fetch("/api/bookings/force-auto-checkout", { method: "POST" });
+      //     if (!response.ok) {
+      //       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      //     }
+      //     const data = await response.json();
+      //     if (data.processedCount > 0) {
+      //       console.log("[AUTO_CHECKOUT_SUCCESS] Force auto-checked out bookings:", data.processedCount);
+      //       
+      //       setAutoCheckoutAlert({ count: data.processedCount, timestamp: Date.now() });
+      //       toast({
+      //         title: "Forced Auto-Checkout Executed",
+      //         description: `${data.processedCount} booking(s) auto-checked out at 4 PM. Guest notifications sent via WhatsApp.`,
+      //         duration: 8000,
+      //       });
+      //       
+      //       createNotification(
+      //         "auto_checkout",
+      //         "Auto-Checkout Executed",
+      //         `${data.processedCount} booking(s) auto-checked out. WhatsApp notifications sent.`,
+      //         "critical"
+      //       );
+      //       
+      //       setShownReminderIds(new Set());
+      //     }
+      //   } catch (error: any) {
+      //     console.error("[AUTO_CHECKOUT_ERROR] Failed to process force auto-checkout:", error?.message);
+      //   }
+      // }
     };
 
     const fetchRecentPayments = async () => {
