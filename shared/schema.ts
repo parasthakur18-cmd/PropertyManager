@@ -711,3 +711,183 @@ export const employeePerformanceMetrics = pgTable("employee_performance_metrics"
 });
 
 export type EmployeePerformanceMetrics = typeof employeePerformanceMetrics.$inferSelect;
+
+// Communications table
+export const communications = pgTable("communications", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  type: varchar("type", { length: 50 }).notNull(),
+  subject: varchar("subject", { length: 255 }),
+  message: text("message"),
+  recipientId: varchar("recipient_id").references(() => users.id),
+  sentAt: timestamp("sent_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Communication = typeof communications.$inferSelect;
+export const insertCommunicationSchema = createInsertSchema(communications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentAt: true,
+});
+export type InsertCommunication = z.infer<typeof insertCommunicationSchema>;
+
+// Property Leases table
+export const propertyLeases = pgTable("property_leases", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  monthlyRent: decimal("monthly_rent", { precision: 10, scale: 2 }).notNull(),
+  deposit: decimal("deposit", { precision: 10, scale: 2 }),
+  leaseeDetails: text("leasee_details"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type PropertyLease = typeof propertyLeases.$inferSelect;
+export const insertPropertyLeaseSchema = createInsertSchema(propertyLeases).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPropertyLease = z.infer<typeof insertPropertyLeaseSchema>;
+
+// Lease Payments table
+export const leasePayments = pgTable("lease_payments", {
+  id: serial("id").primaryKey(),
+  leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: date("payment_date").notNull(),
+  method: varchar("method", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type LeasePayment = typeof leasePayments.$inferSelect;
+export const insertLeasePaymentSchema = createInsertSchema(leasePayments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertLeasePayment = z.infer<typeof insertLeasePaymentSchema>;
+
+// Property Expenses table
+export const propertyExpenses = pgTable("property_expenses", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  description: varchar("description", { length: 255 }).notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  category: varchar("category", { length: 100 }),
+  date: date("date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type PropertyExpense = typeof propertyExpenses.$inferSelect;
+export const insertPropertyExpenseSchema = createInsertSchema(propertyExpenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPropertyExpense = z.infer<typeof insertPropertyExpenseSchema>;
+
+// Staff Members table
+export const staffMembers = pgTable("staff_members", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  position: varchar("position", { length: 100 }).notNull(),
+  joinDate: date("join_date").notNull(),
+  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type StaffMember = typeof staffMembers.$inferSelect;
+export const insertStaffMemberSchema = createInsertSchema(staffMembers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertStaffMember = z.infer<typeof insertStaffMemberSchema>;
+
+// Staff Salaries table
+export const staffSalaries = pgTable("staff_salaries", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  month: varchar("month", { length: 7 }).notNull(),
+  baseSalary: decimal("base_salary", { precision: 10, scale: 2 }).notNull(),
+  allowances: decimal("allowances", { precision: 10, scale: 2 }).default("0"),
+  deductions: decimal("deductions", { precision: 10, scale: 2 }).default("0"),
+  netSalary: decimal("net_salary", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type StaffSalary = typeof staffSalaries.$inferSelect;
+export const insertStaffSalarySchema = createInsertSchema(staffSalaries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertStaffSalary = z.infer<typeof insertStaffSalarySchema>;
+
+// Salary Advances table
+export const salaryAdvances = pgTable("salary_advances", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  requestDate: date("request_date").notNull(),
+  approvalDate: date("approval_date"),
+  repaymentDate: date("repayment_date"),
+  status: varchar("status", { length: 20 }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SalaryAdvance = typeof salaryAdvances.$inferSelect;
+export const insertSalaryAdvanceSchema = createInsertSchema(salaryAdvances).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSalaryAdvance = z.infer<typeof insertSalaryAdvanceSchema>;
+
+// Salary Payments table
+export const salaryPayments = pgTable("salary_payments", {
+  id: serial("id").primaryKey(),
+  salaryId: integer("salary_id").notNull().references(() => staffSalaries.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  paymentDate: date("payment_date").notNull(),
+  method: varchar("method", { length: 50 }),
+  status: varchar("status", { length: 20 }).default("completed"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SalaryPayment = typeof salaryPayments.$inferSelect;
+export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
+
+// Issue Reports table
+export const issueReports = pgTable("issue_reports", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  reportedBy: varchar("reported_by").references(() => users.id),
+  category: varchar("category", { length: 50 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).default("open"),
+  priority: varchar("priority", { length: 20 }).default("medium"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type IssueReport = typeof issueReports.$inferSelect;
