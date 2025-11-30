@@ -2553,6 +2553,41 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updated;
   }
+
+  // Audit Logs operations
+  async createAuditLog(auditLog: any): Promise<any> {
+    try {
+      const [created] = await db.insert(auditLogs).values(auditLog).returning();
+      return created;
+    } catch (err) {
+      console.warn("[Audit] Failed to create audit log (non-critical):", err);
+      return null;
+    }
+  }
+
+  async getAllAuditLogs(): Promise<any[]> {
+    try {
+      const result = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(1000);
+      return result;
+    } catch (err) {
+      console.warn("[Audit] Failed to fetch audit logs:", err);
+      return [];
+    }
+  }
+
+  async getAuditLogsByEntity(entityType: string, entityId: string): Promise<any[]> {
+    try {
+      const result = await db
+        .select()
+        .from(auditLogs)
+        .where(and(eq(auditLogs.entityType, entityType), eq(auditLogs.entityId, entityId)))
+        .orderBy(desc(auditLogs.createdAt));
+      return result;
+    } catch (err) {
+      console.warn("[Audit] Failed to fetch entity audit logs:", err);
+      return [];
+    }
+  }
 }
 
 export const storage = new DatabaseStorage();
