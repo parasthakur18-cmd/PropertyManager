@@ -1642,7 +1642,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const booking = await storage.updateBookingStatus(bookingId, status);
+      // Update booking with new status, and capture actual check-in time if checking in
+      const { bookings: bookingsTable } = await import("@shared/schema");
+      const updateData: any = {};
+      if (status === "checked-in") {
+        updateData.actualCheckInTime = new Date();
+      }
+      
+      // Update booking status and actual check-in time if applicable
+      const booking = await db
+        .update(bookingsTable)
+        .set({ 
+          status, 
+          ...updateData 
+        })
+        .where(eq(bookingsTable.id, bookingId))
+        .returning()
+        .then(result => result[0] || null);
+      
+      if (!booking) {
+        return res.status(404).json({ message: "Failed to update booking" });
+      }
       
       // Create in-app notification for status changes
       if (status === "checked-in" || status === "checked-out") {

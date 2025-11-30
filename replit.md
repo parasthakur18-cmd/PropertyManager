@@ -58,11 +58,15 @@ Phase 1 represents the complete foundation of Hostezee with all core features wo
 
 ---
 
-## Recent Updates (Session 7 - Default Check-in/Check-out Times)
+## Recent Updates (Session 7 - Default Check-in/Check-out Times & Actual Check-in Tracking)
 - ✅ **Updated Default Booking Times**: Now uses 11:00 AM check-in and 10:00 AM checkout
   - Check-in: 11:00 AM (standard hotel check-in time)
   - Check-out: 10:00 AM (standard hotel checkout time)
   - Aligns with industry standards and prevents booking conflicts
+- ✅ **Actual Check-in Time Tracking**: New `actualCheckInTime` field added to track when guests actually check in
+  - Captures timestamp when staff marks booking as "checked-in"
+  - Separate from scheduled `checkInDate` - useful for analytics and compliance
+  - Automatically set to current time when check-in status is triggered
 
 ## Previous Updates (Session 6 - Audit Trail & WhatsApp Controls)
 - ✅ **Complete Audit Trail System**: Tracks all critical user actions
