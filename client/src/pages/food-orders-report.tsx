@@ -498,7 +498,10 @@ export default function FoodOrdersReport() {
                   {activeBookings && activeBookings.length > 0 ? (
                     activeBookings.map((booking) => (
                       <SelectItem key={booking.id} value={booking.id.toString()}>
-                        {booking.guest.fullName} - Room {booking.room.roomNumber}
+                        {booking.guest?.fullName && booking.room?.roomNumber
+                          ? `${booking.guest.fullName} - Room ${booking.room.roomNumber}`
+                          : `Booking #${booking.id}`
+                        }
                       </SelectItem>
                     ))
                   ) : (
