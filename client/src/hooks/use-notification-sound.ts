@@ -6,8 +6,8 @@ export function useNotificationSound() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const [isEnabled, setIsEnabled] = useState(true);
   const [alarmTone, setAlarmTone] = useState<AlarmTone>('bell');
-  const [repeatCount, setRepeatCount] = useState(3); // How many times to repeat
-  const [volume, setVolume] = useState(0.6); // Volume level (0-1)
+  const [repeatCount, setRepeatCount] = useState(5); // How many times to repeat (5 rings)
+  const [volume, setVolume] = useState(0.8); // Volume level (0-1) - 80% loud
 
   useEffect(() => {
     // Initialize audio context on first user interaction
@@ -132,9 +132,9 @@ export function useNotificationSound() {
   const playNotification = () => {
     if (!isEnabled || !audioContextRef.current) return;
 
-    // Play the alarm multiple times with 1.5 second intervals
+    // Play the alarm multiple times with 2 second intervals
     for (let i = 0; i < repeatCount; i++) {
-      playTone(alarmTone, i * 1.5);
+      playTone(alarmTone, i * 2);
     }
 
     // Also request browser notification permission and show notification
