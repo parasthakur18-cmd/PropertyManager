@@ -673,8 +673,16 @@ export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema
 export const featureSettings = pgTable("feature_settings", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  featureName: varchar("feature_name", { length: 100 }).notNull(),
-  isEnabled: boolean("is_enabled").notNull().default(true),
+  foodOrderNotifications: boolean("food_order_notifications").notNull().default(true),
+  whatsappNotifications: boolean("whatsapp_notifications").notNull().default(true),
+  emailNotifications: boolean("email_notifications").notNull().default(false),
+  paymentReminders: boolean("payment_reminders").notNull().default(true),
+  autoCheckout: boolean("auto_checkout").notNull().default(true),
+  autoSalaryCalculation: boolean("auto_salary_calculation").notNull().default(true),
+  attendanceTracking: boolean("attendance_tracking").notNull().default(true),
+  performanceAnalytics: boolean("performance_analytics").notNull().default(true),
+  expenseForecasting: boolean("expense_forecasting").notNull().default(true),
+  budgetAlerts: boolean("budget_alerts").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
