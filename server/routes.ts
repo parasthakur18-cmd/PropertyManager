@@ -2930,6 +2930,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk import menu items with variants and add-ons
+  app.post("/api/menu-items/bulk-import", isAuthenticated, async (req, res) => {
+    try {
+      const { items, propertyId } = req.body;
+      
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "No items provided for import" });
+      }
+
+      const results = {
+        created: 0,
+        failed: 0,
+        errors: [] as string[],
+      };
+
+      for (const item of items) {
+        try {
+          // Create the menu item
+          const menuItemData = {
+            propertyId: propertyId || item.propertyId || null,
+            name: item.name,
+            description: item.description || null,
+            category: item.category || null,
+            price: item.price?.toString() || "0",
+            isAvailable: item.isAvailable !== false,
+            preparationTime: item.preparationTime ? parseInt(item.preparationTime) : null,
+            foodType: item.foodType || null,
+            hasVariants: !!(item.variants && item.variants.length > 0),
+            hasAddOns: !!(item.addOns && item.addOns.length > 0),
+            displayOrder: item.displayOrder || 0,
+          };
+
+          const createdItem = await storage.createMenuItem(menuItemData);
+
+          // Create variants if provided (with validation)
+          if (item.variants && Array.isArray(item.variants)) {
+            for (const variant of item.variants) {
+              if (variant.name) {
+                // Validate variant price modifier is a valid number
+                const priceModifier = parseFloat(variant.priceModifier);
+                if (isNaN(priceModifier)) {
+                  throw new Error(`Invalid price modifier for variant "${variant.name}"`);
+                }
+                await storage.createMenuItemVariant({
+                  menuItemId: createdItem.id,
+                  name: variant.name,
+                  priceModifier: priceModifier.toString(),
+                });
+              }
+            }
+          }
+
+          // Create add-ons if provided (with validation)
+          if (item.addOns && Array.isArray(item.addOns)) {
+            for (const addOn of item.addOns) {
+              if (addOn.name) {
+                // Validate add-on price is a valid number
+                const price = parseFloat(addOn.price);
+                if (isNaN(price) || price < 0) {
+                  throw new Error(`Invalid price for add-on "${addOn.name}"`);
+                }
+                await storage.createMenuItemAddOn({
+                  menuItemId: createdItem.id,
+                  name: addOn.name,
+                  price: price.toString(),
+                });
+              }
+            }
+          }
+
+          results.created++;
+        } catch (itemError: any) {
+          results.failed++;
+          results.errors.push(`${item.name || 'Unknown item'}: ${itemError.message}`);
+        }
+      }
+
+      res.status(201).json({
+        message: `Imported ${results.created} items successfully${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
+        ...results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Orders
   app.get("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
