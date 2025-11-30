@@ -50,19 +50,46 @@ export function Chatbot() {
     setLoading(true);
 
     try {
-      const response = await apiRequest('/api/chat', 'POST', {
-        messages: messages.concat(userMessage).map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      });
-
-      const data = await response.json();
+      // Detect if this is a PMS analytics question
+      const pmsKeywords = [
+        'booking', 'revenue', 'business', 'occupancy', 'payment', 'bill', 'monthly', 'weekly',
+        'total', 'current', 'how many', 'how much', 'what\'s', 'food order', 'guest', 'rooms',
+        'profit', 'income', 'earning', 'expense', 'sales', 'orders', 'checkin', 'checkout',
+        'pending', 'collect', 'paid', 'unpaid', 'analytics', 'metrics', 'data', 'report'
+      ];
+      
+      const lowerInput = input.toLowerCase();
+      const isPMSQuestion = pmsKeywords.some(keyword => lowerInput.includes(keyword));
+      
+      let response;
+      let data;
+      
+      if (isPMSQuestion) {
+        // Route to PMS analytics chat for real data
+        response = await apiRequest('/api/pms-analytics-chat', 'POST', {
+          query: input,
+        });
+        data = await response.json();
+        
+        // PMS chat returns { response: string }
+        if (!response.ok || !data.response) {
+          throw new Error('PMS query failed');
+        }
+      } else {
+        // Route to generic chat for other questions
+        response = await apiRequest('/api/chat', 'POST', {
+          messages: messages.concat(userMessage).map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        });
+        data = await response.json();
+      }
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message,
+        content: isPMSQuestion ? data.response : data.message,
         timestamp: new Date(),
       };
 
