@@ -115,6 +115,16 @@ export default function Bookings() {
     queryKey: ["/api/orders"],
   });
 
+  // Watch propertyId to filter travel agents by property
+  const selectedPropertyId = form.watch("propertyId");
+  
+  const { data: travelAgents } = useQuery<TravelAgent[]>({
+    queryKey: ["/api/travel-agents"],
+    select: (agents) => selectedPropertyId 
+      ? agents.filter(agent => agent.propertyId === selectedPropertyId)
+      : agents,
+  });
+
   // Helper to get default check-in time (11:00 AM today)
   const getDefaultCheckIn = () => {
     const date = new Date();
@@ -487,16 +497,6 @@ export default function Bookings() {
         variant: "destructive",
       });
     },
-  });
-
-  // Watch propertyId to filter travel agents by property
-  const selectedPropertyId = form.watch("propertyId");
-  
-  const { data: travelAgents } = useQuery<TravelAgent[]>({
-    queryKey: ["/api/travel-agents"],
-    select: (agents) => selectedPropertyId 
-      ? agents.filter(agent => agent.propertyId === selectedPropertyId)
-      : agents,
   });
 
   // Clear travelAgentId when source changes away from "Travel Agent"
