@@ -186,9 +186,11 @@ export type Booking = typeof bookings.$inferSelect;
 // Menu Categories table
 export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 255 }).notNull(),
-  description: text("description"),
+  imageUrl: text("image_url"),
+  startTime: varchar("start_time", { length: 10 }),
+  endTime: varchar("end_time", { length: 10 }),
   displayOrder: integer("display_order").default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
