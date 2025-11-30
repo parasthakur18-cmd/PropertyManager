@@ -7450,6 +7450,112 @@ Types should be: "opportunity" (cost saving), "warning" (concerning trend), "sug
     }
   });
 
+  // PMS Analytics Chat - AI-powered query endpoint
+  app.post("/api/pms-analytics-chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const { query } = req.body;
+      if (!query) {
+        return res.status(400).json({ response: "Please ask a question about your PMS metrics." });
+      }
+
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ response: "AI service not configured. Please contact support." });
+      }
+
+      // Fetch all necessary data for analysis
+      const allBookings = await storage.getAllBookings();
+      const allBills = await storage.getAllBills();
+      const allGuests = await storage.getAllGuests();
+      const allProperties = await storage.getAllProperties();
+      const allOrders = await storage.getAllOrders();
+
+      // Calculate metrics
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const weeklyBookings = allBookings.filter((b: any) => {
+        const date = new Date(b.checkInDate);
+        return date >= weekAgo && date <= now;
+      });
+      const monthlyBookings = allBookings.filter((b: any) => {
+        const date = new Date(b.checkInDate);
+        return date >= monthAgo && date <= now;
+      });
+
+      const weeklyRevenue = allBills.filter((b: any) => {
+        const date = new Date(b.createdAt || now);
+        return date >= weekAgo && date <= now;
+      }).reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0);
+
+      const monthlyRevenue = allBills.filter((b: any) => {
+        const date = new Date(b.createdAt || now);
+        return date >= monthAgo && date <= now;
+      }).reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0);
+
+      const foodOrdersThisWeek = allOrders.filter((o: any) => {
+        const date = new Date(o.createdAt || now);
+        return date >= weekAgo && date <= now;
+      }).length;
+
+      const paidBills = allBills.filter((b: any) => b.paymentStatus === "paid").length;
+      const pendingBills = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+
+      const pmsContext = `
+Current PMS Metrics:
+- Total Properties: ${allProperties.length}
+- Total Bookings: ${allBookings.length}
+- Total Guests: ${allGuests.length}
+- Weekly Bookings: ${weeklyBookings.length}
+- Monthly Bookings: ${monthlyBookings.length}
+- Weekly Revenue: ₹${weeklyRevenue.toFixed(2)}
+- Monthly Revenue: ₹${monthlyRevenue.toFixed(2)}
+- Total Revenue: ₹${allBills.reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0).toFixed(2)}
+- Paid Bills: ${paidBills}
+- Pending Bills: ${pendingBills}
+- Food Orders This Week: ${foodOrdersThisWeek}
+- Occupancy Rate: ${((weeklyBookings.length / (allProperties.length * 7)) * 100).toFixed(1)}%
+`;
+
+      const aiPrompt = `You are a hotel PMS analytics assistant. Based on this data and user query, provide a helpful, concise answer.
+
+${pmsContext}
+
+User Query: "${query}"
+
+Provide a direct, actionable answer with specific numbers and insights. Keep response under 150 words.`;
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: aiPrompt }],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[ANALYTICS-CHAT] OpenAI error:", error);
+        return res.json({ response: "Unable to process your query. Please try again." });
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices?.[0]?.message?.content || "Unable to generate response";
+      
+      res.json({ response: aiResponse });
+    } catch (error: any) {
+      console.error("[ANALYTICS-CHAT] Error:", error);
+      res.status(500).json({ response: "Error processing your query. Please try again." });
+    }
+  });
+
   // Audit Logs API endpoints
   app.get("/api/audit-logs", isAuthenticated, async (req, res) => {
     try {
