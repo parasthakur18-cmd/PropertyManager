@@ -25,6 +25,8 @@ import {
   bills,
   extraServices,
   enquiries,
+  notifications,
+  featureSettings,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
