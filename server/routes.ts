@@ -1206,13 +1206,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .filter(order => order.status !== "rejected")
           .reduce((sum, order) => {
             const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
-            return sum + amount;
+            return sum + (isNaN(amount) ? 0 : amount);
           }, 0);
 
         const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
         const extraCharges = bookingExtras.reduce((sum, extra) => {
           const amount = extra.amount ? parseFloat(String(extra.amount)) : 0;
-          return sum + amount;
+          return sum + (isNaN(amount) ? 0 : amount);
         }, 0);
 
         const subtotal = roomCharges + foodCharges + extraCharges;
