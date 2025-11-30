@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { auditLog, type InsertAuditLog, type User } from "@shared/schema";
+import { auditLogs, type InsertAuditLog, type User } from "@shared/schema";
 import { eventBus } from "./eventBus";
 
 export interface AuditContext {
@@ -16,8 +16,8 @@ export interface AuditContext {
 
 export class AuditService {
   private static async logAudit(context: AuditContext): Promise<void> {
-    // Convert string[] to number[] for propertyContext
-    const propertyIds = context.user.assignedPropertyIds?.map(id => Number(id)) || null;
+    // Keep propertyIds as string[] for propertyContext
+    const propertyIds = context.user.assignedPropertyIds || null;
     
     const auditEntry: InsertAuditLog = {
       entityType: context.entityType,
@@ -30,7 +30,7 @@ export class AuditService {
       metadata: context.metadata || null,
     };
 
-    await db.insert(auditLog).values(auditEntry);
+    await db.insert(auditLogs).values(auditEntry);
 
     eventBus.publish({
       type: 'audit_log',
