@@ -327,7 +327,7 @@ export const extraServices = pgTable("extra_services", {
 
 export const insertExtraServiceSchema = createInsertSchema(extraServices).omit({
   id: true,
-  addedAt: true,
+  createdAt: true,
 });
 
 export type InsertExtraService = z.infer<typeof insertExtraServiceSchema>;
@@ -458,10 +458,14 @@ export type Communication = typeof communications.$inferSelect;
 export const propertyLeases = pgTable("property_leases", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  leaseStartDate: date("lease_start_date"),
-  leaseEndDate: date("lease_end_date"),
-  monthlyRent: decimal("monthly_rent", { precision: 10, scale: 2 }),
-  leaseDocument: text("lease_document"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  paymentFrequency: varchar("payment_frequency", { length: 50 }),
+  landlordName: varchar("landlord_name", { length: 255 }),
+  landlordContact: varchar("landlord_contact", { length: 255 }),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -478,9 +482,12 @@ export type InsertPropertyLease = z.infer<typeof insertPropertyLeaseSchema>;
 export const leasePayments = pgTable("lease_payments", {
   id: serial("id").primaryKey(),
   leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
-  paymentDate: date("payment_date"),
   amount: decimal("amount", { precision: 10, scale: 2 }),
-  status: varchar("status", { length: 20 }).default("paid"),
+  paymentDate: timestamp("payment_date"),
+  paymentMethod: varchar("payment_method", { length: 50 }),
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  notes: text("notes"),
+  createdBy: varchar("created_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
