@@ -1718,6 +1718,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Booking cancellation with refund handling
+  app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { 
+        cancellationType, // 'full_refund', 'partial_refund', 'no_refund'
+        cancellationCharges = 0,
+        refundAmount = 0,
+        cancellationReason 
+      } = req.body;
+
+      // Validate cancellation type
+      if (!['full_refund', 'partial_refund', 'no_refund'].includes(cancellationType)) {
+        return res.status(400).json({ 
+          message: "Invalid cancellation type. Must be 'full_refund', 'partial_refund', or 'no_refund'" 
+        });
+      }
+
+      // Fetch booking
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Prevent cancelling already cancelled or checked-out bookings
+      if (booking.status === "cancelled") {
+        return res.status(400).json({ message: "Booking is already cancelled" });
+      }
+      if (booking.status === "checked-out") {
+        return res.status(400).json({ message: "Cannot cancel a checked-out booking" });
+      }
+
+      const advanceAmount = parseFloat(booking.advanceAmount || "0");
+
+      // Validate amounts based on cancellation type
+      if (cancellationType === "full_refund") {
+        if (refundAmount !== advanceAmount) {
+          return res.status(400).json({ 
+            message: `Full refund amount must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      } else if (cancellationType === "partial_refund") {
+        const totalHandled = parseFloat(String(cancellationCharges)) + parseFloat(String(refundAmount));
+        if (Math.abs(totalHandled - advanceAmount) > 0.01) {
+          return res.status(400).json({ 
+            message: `Cancellation charges + refund must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      } else if (cancellationType === "no_refund") {
+        if (parseFloat(String(cancellationCharges)) !== advanceAmount) {
+          return res.status(400).json({ 
+            message: `No refund means cancellation charges must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      }
+
+      // Update booking with cancellation details
+      const updatedBooking = await storage.updateBooking(bookingId, {
+        status: "cancelled",
+        cancellationDate: new Date(),
+        cancellationType,
+        cancellationCharges: String(cancellationCharges),
+        refundAmount: String(refundAmount),
+        cancellationReason,
+        cancelledBy: req.user?.id || "unknown",
+      });
+
+      // Create P&L entries for the property
+      const propertyId = booking.propertyId;
+      const today = new Date().toISOString().split('T')[0];
+
+      // If there's a refund, create a Refund Expense entry
+      if (parseFloat(String(refundAmount)) > 0) {
+        await storage.createPropertyExpense({
+          propertyId,
+          amount: String(refundAmount),
+          description: `Refund for cancelled booking #${bookingId} - ${cancellationReason || 'No reason provided'}`,
+          expenseDate: today,
+          paymentMethod: "cash",
+          status: "paid",
+        });
+        console.log(`[CANCELLATION] Booking #${bookingId} - Refund expense of ₹${refundAmount} recorded`);
+      }
+
+      // If there's cancellation income, create a bank transaction entry
+      if (parseFloat(String(cancellationCharges)) > 0) {
+        await storage.createBankTransaction({
+          propertyId,
+          transactionType: "cancellation_income",
+          amount: String(cancellationCharges),
+          description: `Cancellation charges for booking #${bookingId}`,
+          transactionDate: today,
+        });
+        console.log(`[CANCELLATION] Booking #${bookingId} - Cancellation income of ₹${cancellationCharges} recorded`);
+      }
+
+      // Audit log for cancellation
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: String(bookingId),
+        action: "cancel",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: {
+          cancellationType,
+          cancellationCharges,
+          refundAmount,
+          cancellationReason,
+          advanceAmount,
+        },
+        metadata: {
+          guestId: booking.guestId,
+          propertyId: booking.propertyId,
+        },
+      });
+
+      res.json({
+        success: true,
+        booking: updatedBooking,
+        financialSummary: {
+          originalAdvance: advanceAmount,
+          cancellationCharges: parseFloat(String(cancellationCharges)),
+          refundAmount: parseFloat(String(refundAmount)),
+          cancellationType,
+        },
+      });
+    } catch (error: any) {
+      console.error("[CANCELLATION] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const bookingId = parseInt(req.params.id);

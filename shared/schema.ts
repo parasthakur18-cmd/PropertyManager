@@ -165,6 +165,13 @@ export const bookings = pgTable("bookings", {
   isGroupBooking: boolean("is_group_booking").default(false),
   bedsBooked: integer("beds_booked"),
   travelAgentId: integer("travel_agent_id").references(() => travelAgents.id),
+  // Cancellation fields
+  cancellationDate: timestamp("cancellation_date"),
+  cancellationType: varchar("cancellation_type", { length: 20 }), // 'full_refund', 'partial_refund', 'no_refund'
+  cancellationCharges: decimal("cancellation_charges", { precision: 10, scale: 2 }).default("0"),
+  refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }).default("0"),
+  cancellationReason: text("cancellation_reason"),
+  cancelledBy: varchar("cancelled_by", { length: 255 }),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
