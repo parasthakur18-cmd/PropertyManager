@@ -1496,17 +1496,45 @@ export default function ActiveBookings() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    const element = document.getElementById("bill-pdf-export");
-                    if (!element) return;
-                    
-                    const opt = {
-                      margin: 10,
-                      filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
-                      image: { type: "png" as const, quality: 0.98 },
-                      html2canvas: { scale: 2 },
-                      jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
-                    };
-                    html2pdf().set(opt).from(element).save();
+                    try {
+                      const element = document.getElementById("bill-preview-content");
+                      if (!element) return;
+                      
+                      // Clone the element to avoid modifying the original
+                      const clone = element.cloneNode(true) as HTMLElement;
+                      
+                      // Create a temporary container off-screen
+                      const container = document.createElement("div");
+                      container.style.position = "absolute";
+                      container.style.left = "0";
+                      container.style.top = "0";
+                      container.style.width = "800px";
+                      container.style.backgroundColor = "white";
+                      container.appendChild(clone);
+                      document.body.appendChild(container);
+                      
+                      // Wait for rendering
+                      setTimeout(() => {
+                        const opt = {
+                          margin: 10,
+                          filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
+                          image: { type: "png" as const, quality: 0.98 },
+                          html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+                          jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
+                        };
+                        
+                        html2pdf()
+                          .set(opt)
+                          .from(clone)
+                          .save()
+                          .finally(() => {
+                            document.body.removeChild(container);
+                          });
+                      }, 100);
+                    } catch (error) {
+                      console.error("PDF download error:", error);
+                      toast({ title: "Error", description: "Failed to download bill", variant: "destructive" });
+                    }
                   }}
                   data-testid="button-download-bill"
                 >
