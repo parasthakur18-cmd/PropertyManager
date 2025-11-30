@@ -75,7 +75,6 @@ import AdvancedFeatures from "@/pages/advanced-features";
 import FeatureSettings from "@/pages/feature-settings";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
-import { PendingNotifications } from "@/components/pending-notifications";
 import { CompletionNotifications } from "@/components/completion-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 
@@ -276,7 +275,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       </div>
       {children}
       <Chatbot />
-      <PendingNotifications />
       <CompletionNotifications />
     </div>
   );
