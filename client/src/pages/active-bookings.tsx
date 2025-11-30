@@ -297,7 +297,7 @@ export default function ActiveBookings() {
       };
 
       try {
-        const result = await apiRequest("/api/payment-link/generate", "POST", {
+        const result: any = await apiRequest("/api/payment-link/generate", "POST", {
           bookingId: checkoutDialog.booking.id,
           billDetails
         });
@@ -712,10 +712,21 @@ export default function ActiveBookings() {
         </div>
       )}
 
-      <Dialog open={checkoutDialog.open} onOpenChange={(open) => setCheckoutDialog({ open, booking: null })}>
-        <DialogContent className="max-w-md" data-testid="dialog-checkout">
+      <Dialog open={checkoutDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setCheckoutDialog({ open: false, booking: null });
+          setCashAmount("");
+          setIncludeGst(false);
+          setIncludeServiceCharge(false);
+          setManualCharges([{ name: "", amount: "" }]);
+          setDiscountType("none");
+          setDiscountValue("");
+          setPaymentMethod("cash");
+        }
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-checkout">
           <DialogHeader>
-            <DialogTitle>Split Payment Checkout</DialogTitle>
+            <DialogTitle>Checkout - {checkoutDialog.booking?.guest.fullName}</DialogTitle>
           </DialogHeader>
 
           {checkoutDialog.booking && (() => {
@@ -723,106 +734,314 @@ export default function ActiveBookings() {
             const roomCharges = parseFloat(booking.charges.roomCharges) || 0;
             const foodCharges = parseFloat(booking.charges.foodCharges) || 0;
             const extraCharges = parseFloat(booking.charges.extraCharges) || 0;
-            const billTotal = roomCharges + foodCharges + extraCharges;
+            
+            const manualChargesTotal = manualCharges.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+            const subtotal = roomCharges + foodCharges + extraCharges + manualChargesTotal;
+            
+            const roomGstRate = 12;
+            const foodGstRate = 5;
+            const serviceChargeRate = 10;
+            
+            const roomGst = includeGst ? (roomCharges * roomGstRate / 100) : 0;
+            const foodGst = includeGst ? (foodCharges * foodGstRate / 100) : 0;
+            const totalGst = roomGst + foodGst;
+            
+            const serviceCharge = includeServiceCharge ? (subtotal * serviceChargeRate / 100) : 0;
+            
+            let discount = 0;
+            if (discountType === "percentage" && discountValue) {
+              discount = (subtotal + totalGst + serviceCharge) * (parseFloat(discountValue) / 100);
+            } else if (discountType === "fixed" && discountValue) {
+              discount = parseFloat(discountValue) || 0;
+            }
+            
+            const grandTotal = subtotal + totalGst + serviceCharge - discount;
+            const advancePaid = parseFloat(booking.charges.advancePaid) || 0;
             const cashPaid = parseFloat(cashAmount) || 0;
-            const remainingBalance = billTotal - cashPaid;
+            const remainingBalance = grandTotal - advancePaid - cashPaid;
 
             return (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Cash Received</label>
-                  <input
-                    type="number"
-                    value={cashAmount}
-                    onChange={(e) => setCashAmount(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    placeholder="0"
-                    id="cash-amount"
-                  />
-                </div>
-                
+              <div className="space-y-4">
                 <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
+                  <div className="font-semibold text-base mb-2">Bill Breakdown</div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Bill Total:</span>
-                    <span className="font-mono font-semibold">₹{billTotal.toFixed(2)}</span>
+                    <span className="text-muted-foreground">Room Charges ({booking.nightsStayed} nights):</span>
+                    <span className="font-mono">₹{roomCharges.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cash Paid:</span>
-                    <span className="font-mono font-semibold">₹{cashPaid.toFixed(2)}</span>
+                    <span className="text-muted-foreground">Food Orders:</span>
+                    <span className="font-mono">₹{foodCharges.toFixed(2)}</span>
                   </div>
-                  <div className="border-t pt-2 flex justify-between">
-                    <span className="font-semibold">Remaining Balance:</span>
-                    <span className={`font-mono font-bold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {extraCharges > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Extra Services:</span>
+                      <span className="font-mono">₹{extraCharges.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {manualChargesTotal > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Additional Charges:</span>
+                      <span className="font-mono">₹{manualChargesTotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="border-t pt-2 flex justify-between font-semibold">
+                    <span>Subtotal:</span>
+                    <span className="font-mono">₹{subtotal.toFixed(2)}</span>
+                  </div>
+                  
+                  {includeGst && (
+                    <>
+                      <div className="flex justify-between text-green-600">
+                        <span>GST on Room ({roomGstRate}%):</span>
+                        <span className="font-mono">₹{roomGst.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-green-600">
+                        <span>GST on Food ({foodGstRate}%):</span>
+                        <span className="font-mono">₹{foodGst.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {includeServiceCharge && (
+                    <div className="flex justify-between text-blue-600">
+                      <span>Service Charge ({serviceChargeRate}%):</span>
+                      <span className="font-mono">₹{serviceCharge.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  {discount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Discount:</span>
+                      <span className="font-mono">-₹{discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  
+                  <div className="border-t pt-2 flex justify-between font-bold text-lg">
+                    <span>Grand Total:</span>
+                    <span className="font-mono">₹{grandTotal.toFixed(2)}</span>
+                  </div>
+                  
+                  {advancePaid > 0 && (
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Advance Paid:</span>
+                      <span className="font-mono">-₹{advancePaid.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include-gst"
+                      checked={includeGst}
+                      onCheckedChange={(checked) => setIncludeGst(checked as boolean)}
+                      data-testid="checkbox-include-gst"
+                    />
+                    <Label htmlFor="include-gst" className="text-sm cursor-pointer">
+                      Include GST
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include-service-charge"
+                      checked={includeServiceCharge}
+                      onCheckedChange={(checked) => setIncludeServiceCharge(checked as boolean)}
+                      data-testid="checkbox-include-service-charge"
+                    />
+                    <Label htmlFor="include-service-charge" className="text-sm cursor-pointer">
+                      Include Service Charge
+                    </Label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Add Extra Items</Label>
+                  {manualCharges.map((charge, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder="Item name"
+                        value={charge.name}
+                        onChange={(e) => {
+                          const updated = [...manualCharges];
+                          updated[index].name = e.target.value;
+                          setManualCharges(updated);
+                        }}
+                        className="flex-1"
+                        data-testid={`input-extra-item-name-${index}`}
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Amount"
+                        value={charge.amount}
+                        onChange={(e) => {
+                          const updated = [...manualCharges];
+                          updated[index].amount = e.target.value;
+                          setManualCharges(updated);
+                        }}
+                        className="w-24"
+                        data-testid={`input-extra-item-amount-${index}`}
+                      />
+                      {manualCharges.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setManualCharges(manualCharges.filter((_, i) => i !== index))}
+                          data-testid={`button-remove-extra-item-${index}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setManualCharges([...manualCharges, { name: "", amount: "" }])}
+                    data-testid="button-add-extra-item"
+                  >
+                    <Plus className="h-4 w-4 mr-1" /> Add Item
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Discount Type</Label>
+                    <Select value={discountType} onValueChange={setDiscountType}>
+                      <SelectTrigger data-testid="select-discount-type">
+                        <SelectValue placeholder="No discount" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Discount</SelectItem>
+                        <SelectItem value="percentage">Percentage (%)</SelectItem>
+                        <SelectItem value="fixed">Fixed Amount (₹)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {discountType !== "none" && (
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {discountType === "percentage" ? "Discount %" : "Discount ₹"}
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder={discountType === "percentage" ? "10" : "500"}
+                        value={discountValue}
+                        onChange={(e) => setDiscountValue(e.target.value)}
+                        data-testid="input-discount-value"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Payment Method</Label>
+                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <SelectTrigger data-testid="select-payment-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="upi">UPI</SelectItem>
+                        <SelectItem value="card">Card</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="split">Split Payment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Cash Received</Label>
+                    <Input
+                      type="number"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                      placeholder="0"
+                      data-testid="input-cash-received"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-primary/10 p-3 rounded-md">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">Balance Due:</span>
+                    <span className={`font-mono text-xl font-bold ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       ₹{Math.max(0, remainingBalance).toFixed(2)}
                     </span>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={async () => {
-                      try {
-                        const res = await fetch('/api/whatsapp/send-prebill', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            bookingId: booking.id,
-                            phoneNumber: booking.guest.phone,
-                            guestName: booking.guest.fullName,
-                            billTotal
-                          })
-                        });
-                        if (!res.ok) {
-                          const error = await res.json();
-                          throw new Error(error.message || 'Failed to send pre-bill');
-                        }
-                        toast({ title: "Success", description: "Pre-bill sent via WhatsApp" });
-                      } catch (error: any) {
-                        toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
-                      }
-                    }}
-                  >
-                    Send Pre-Bill via WhatsApp
-                  </Button>
-                  
-                  {remainingBalance > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
-                      className="w-full"
                       onClick={async () => {
                         try {
-                          const res = await fetch('/api/whatsapp/send-payment-link', {
+                          const res = await fetch('/api/whatsapp/send-prebill', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              amount: remainingBalance,
+                              bookingId: booking.id,
+                              phoneNumber: booking.guest.phone,
                               guestName: booking.guest.fullName,
-                              guestPhone: booking.guest.phone,
-                              guestEmail: booking.guest.email,
-                              bookingId: booking.id
+                              billTotal: grandTotal,
+                              roomCharges, foodCharges, extraCharges,
+                              gstAmount: totalGst,
+                              serviceCharge,
+                              discount
                             })
                           });
                           if (!res.ok) {
                             const error = await res.json();
-                            throw new Error(error.message || 'Failed to send payment link');
+                            throw new Error(error.message || 'Failed to send pre-bill');
                           }
-                          toast({ title: "Success", description: "Payment link sent via WhatsApp" });
+                          toast({ title: "Success", description: "Pre-bill sent via WhatsApp" });
                         } catch (error: any) {
-                          toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
+                          toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
                         }
                       }}
+                      data-testid="button-send-prebill"
                     >
-                      Send Payment Link
+                      Send Pre-Bill
                     </Button>
-                  )}
+                    
+                    {remainingBalance > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/whatsapp/send-payment-link', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                amount: remainingBalance,
+                                guestName: booking.guest.fullName,
+                                guestPhone: booking.guest.phone,
+                                guestEmail: booking.guest.email,
+                                bookingId: booking.id
+                              })
+                            });
+                            if (!res.ok) {
+                              const error = await res.json();
+                              throw new Error(error.message || 'Failed to send payment link');
+                            }
+                            toast({ title: "Success", description: "Payment link sent via WhatsApp" });
+                          } catch (error: any) {
+                            toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
+                          }
+                        }}
+                        data-testid="button-send-payment-link"
+                      >
+                        Send Payment Link
+                      </Button>
+                    )}
+                  </div>
                   
                   <div className="flex gap-2 pt-2">
                     <Button
                       variant="outline"
                       className="flex-1"
                       onClick={() => setCheckoutDialog({ open: false, booking: null })}
+                      data-testid="button-cancel-checkout"
                     >
                       Cancel
                     </Button>
@@ -833,34 +1052,49 @@ export default function ActiveBookings() {
                           await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: booking.id,
                             paymentMethod: paymentMethod,
+                            paymentStatus: remainingBalance <= 0 ? "paid" : "pending",
+                            includeGst,
+                            includeServiceCharge,
+                            gstAmount: totalGst,
+                            serviceChargeAmount: serviceCharge,
+                            discountType: discountType === "none" ? null : discountType,
+                            discountValue: discountType === "none" ? null : parseFloat(discountValue),
+                            manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
                             cashReceived: cashPaid,
                             remainingBalance: Math.max(0, remainingBalance),
-                            totalAmount: billTotal
+                            totalAmount: grandTotal
                           });
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
                           setCheckoutDialog({ open: false, booking: null });
-                          setCashAmount("0");
-                          toast({ title: "Success", description: "Checkout completed" });
+                          setCashAmount("");
+                          setIncludeGst(false);
+                          setIncludeServiceCharge(false);
+                          setManualCharges([{ name: "", amount: "" }]);
+                          setDiscountType("none");
+                          setDiscountValue("");
+                          toast({ title: "Success", description: "Checkout completed successfully" });
                         } catch (error: any) {
                           const errorMsg = error.message || "Checkout failed";
                           if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {
                             toast({ 
-                              title: "⚠️ Cannot Checkout", 
+                              title: "Cannot Checkout", 
                               description: errorMsg.includes("food order") 
-                                ? "Complete all pending food orders before checkout. Go to Orders column and mark orders as completed."
+                                ? "Complete all pending food orders before checkout. Go to Orders and mark orders as completed."
                                 : errorMsg,
-                              variant: "destructive",
-                              className: "border-2 border-destructive"
+                              variant: "destructive"
                             });
                           } else {
                             toast({ title: "Error", description: errorMsg, variant: "destructive" });
                           }
                         }
                       }}
+                      data-testid="button-complete-checkout"
                     >
+                      <Check className="h-4 w-4 mr-2" />
                       Complete Checkout
                     </Button>
                   </div>
