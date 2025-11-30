@@ -139,6 +139,8 @@ export default function Bookings() {
       source: "Walk-in",
       travelAgentId: null,
       mealPlan: "EP",
+      advanceAmount: "",
+      bedsBooked: null as number | null,
     },
   });
 
@@ -156,6 +158,8 @@ export default function Bookings() {
       source: "Walk-in",
       travelAgentId: undefined as number | undefined,
       mealPlan: "EP",
+      advanceAmount: "",
+      bedsBooked: null as number | null,
     },
   });
 
@@ -1416,6 +1420,8 @@ export default function Bookings() {
                     <TableHead className="font-semibold">Guests</TableHead>
                     <TableHead className="font-semibold">Meal Plan</TableHead>
                     <TableHead className="font-semibold">Amount</TableHead>
+                    <TableHead className="font-semibold">Advance</TableHead>
+                    <TableHead className="font-semibold">Source</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
                     <TableHead className="font-semibold text-right">Actions</TableHead>
                   </TableRow>
@@ -1489,17 +1495,18 @@ export default function Bookings() {
                         <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
                           {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
                         </TableCell>
+                        <TableCell className="font-mono py-2 text-sm text-green-600" data-testid={`text-advance-${booking.id}`}>
+                          {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? `₹${booking.advanceAmount}` : "-"}
+                        </TableCell>
+                        <TableCell className="py-2 text-sm" data-testid={`text-source-${booking.id}`}>
+                          <Badge variant="outline" className="text-xs">
+                            {booking.source || "Walk-in"}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1">
-                            <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
-                              {booking.status}
-                            </Badge>
-                            {booking.source && (
-                              <span className="text-xs text-muted-foreground" data-testid={`text-source-${booking.id}`}>
-                                {booking.source}
-                              </span>
-                            )}
-                          </div>
+                          <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
+                            {booking.status}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
