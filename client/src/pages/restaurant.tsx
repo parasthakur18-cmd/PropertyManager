@@ -162,7 +162,7 @@ export default function Kitchen() {
   };
 
   // Filter orders based on active tab
-  const allActiveOrders = orders?.filter((order) => order.status !== "delivered" && order.status !== "cancelled" && order.status !== "rejected") || [];
+  const allActiveOrders = orders?.filter((order) => order.status === "pending" || order.status === "preparing" || order.status === "ready") || [];
   const pendingOrders = orders?.filter((order) => order.status === "pending") || [];
   const completedOrders = orders?.filter((order) => order.status === "delivered") || [];
   const rejectedOrders = orders?.filter((order) => order.status === "rejected") || [];
