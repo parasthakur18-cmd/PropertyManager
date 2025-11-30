@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
+import html2pdf from "html2pdf.js";
 
 interface ActiveBooking {
   id: number;
@@ -1226,7 +1227,7 @@ export default function ActiveBookings() {
           </SheetHeader>
 
           {billPreviewBooking && (
-            <div className="mt-6 space-y-6">
+            <div id="bill-preview-content" className="mt-6 space-y-6">
               {/* Guest & Room Info */}
               <div className="bg-muted/50 p-4 rounded-lg space-y-2">
                 <div className="flex justify-between gap-4">
@@ -1393,6 +1394,27 @@ export default function ActiveBookings() {
 
               {/* Action Buttons */}
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const element = document.getElementById("bill-preview-content");
+                    if (!element) return;
+                    
+                    const opt = {
+                      margin: 10,
+                      filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
+                      image: { type: "png", quality: 0.98 },
+                      html2canvas: { scale: 2 },
+                      jsPDF: { orientation: "portrait", unit: "mm", format: "a4" }
+                    };
+                    html2pdf().set(opt).from(element).save();
+                  }}
+                  data-testid="button-download-bill"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Download PDF
+                </Button>
                 <Button
                   variant="outline"
                   className="flex-1"
