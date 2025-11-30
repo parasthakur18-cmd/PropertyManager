@@ -27,6 +27,8 @@ import {
   enquiries,
   notifications,
   featureSettings,
+  employeePerformanceMetrics,
+  taskNotificationLogs,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";

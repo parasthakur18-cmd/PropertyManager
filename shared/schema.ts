@@ -832,3 +832,46 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   createdAt: true,
 });
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// Employee Performance Metrics table
+export const employeePerformanceMetrics = pgTable("employee_performance_metrics", {
+  id: serial("id").primaryKey(),
+  staffId: varchar("staff_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  totalTasksAssigned: integer("total_tasks_assigned").notNull().default(0),
+  tasksCompletedOnTime: integer("tasks_completed_on_time").notNull().default(0),
+  tasksCompletedLate: integer("tasks_completed_late").notNull().default(0),
+  averageCompletionTimeMinutes: integer("average_completion_time_minutes").notNull().default(0),
+  performanceScore: decimal("performance_score", { precision: 5, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type EmployeePerformanceMetric = typeof employeePerformanceMetrics.$inferSelect;
+export const insertEmployeePerformanceMetricSchema = createInsertSchema(employeePerformanceMetrics).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertEmployeePerformanceMetric = z.infer<typeof insertEmployeePerformanceMetricSchema>;
+
+// Task Notification Logs table
+export const taskNotificationLogs = pgTable("task_notification_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  taskType: varchar("task_type", { length: 100 }).notNull(),
+  taskCount: integer("task_count").notNull().default(0),
+  reminderCount: integer("reminder_count").notNull().default(0),
+  completionTime: integer("completion_time").default(0),
+  lastRemindedAt: timestamp("last_reminded_at"),
+  allTasksCompletedAt: timestamp("all_tasks_completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type TaskNotificationLog = typeof taskNotificationLogs.$inferSelect;
+export const insertTaskNotificationLogSchema = createInsertSchema(taskNotificationLogs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTaskNotificationLog = z.infer<typeof insertTaskNotificationLogSchema>;
