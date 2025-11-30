@@ -605,17 +605,21 @@ export default function Kitchen() {
                     >
                       <span className="flex items-center gap-2">
                         <Search className="h-4 w-4 opacity-50" />
-                        Search menu items...
+                        Click to search & add items...
                       </span>
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-full p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder="Type to search menu items..." data-testid="input-search-menu" />
-                      <CommandList>
+                  <PopoverContent className="w-[350px] p-0" align="start" side="bottom" sideOffset={4}>
+                    <Command className="rounded-lg border shadow-md">
+                      <CommandInput 
+                        placeholder="Type item name to search..." 
+                        data-testid="input-search-menu"
+                        className="h-12"
+                      />
+                      <CommandList className="max-h-[250px]">
                         <CommandEmpty>No menu items found.</CommandEmpty>
-                        <CommandGroup>
+                        <CommandGroup heading="Available Items">
                           {menuItems?.filter(item => item.isAvailable).map((item) => (
                             <CommandItem
                               key={item.id}
@@ -625,10 +629,11 @@ export default function Kitchen() {
                                 setMenuSearchOpen(false);
                               }}
                               data-testid={`menu-item-${item.id}`}
+                              className="cursor-pointer py-3"
                             >
-                              <div className="flex justify-between w-full">
-                                <span>{item.name}</span>
-                                <span className="text-muted-foreground">₹{item.price}</span>
+                              <div className="flex justify-between w-full items-center">
+                                <span className="font-medium">{item.name}</span>
+                                <Badge variant="secondary">₹{item.price}</Badge>
                               </div>
                             </CommandItem>
                           ))}
