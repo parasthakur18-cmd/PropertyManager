@@ -444,12 +444,12 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/property-expenses"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
       
-      const summary = data.financialSummary;
+      const summary = data?.financialSummary || {};
       let message = `Booking cancelled. `;
-      if (summary.refundAmount > 0) {
+      if (summary?.refundAmount > 0) {
         message += `Refund: ₹${summary.refundAmount}. `;
       }
-      if (summary.cancellationCharges > 0) {
+      if (summary?.cancellationCharges > 0) {
         message += `Cancellation income: ₹${summary.cancellationCharges}`;
       }
       
