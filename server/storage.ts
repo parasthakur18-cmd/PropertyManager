@@ -1065,27 +1065,24 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Primary booking not found");
     }
 
-    // Set secondary booking bills to ₹0 (merged into primary)
-    console.log(`[MERGE] Zeroing out secondary bills for bookings:`, bookingIds);
+    // Set ALL secondary booking bills to ₹0 (merged into primary)
+    console.log(`[MERGE] Zeroing out ALL secondary bills for bookings:`, bookingIds);
     for (const bookingId of bookingIds) {
       if (bookingId !== primaryBookingId) {
-        const oldBill = await this.getBillByBooking(bookingId);
-        if (oldBill) {
-          console.log(`[MERGE] Setting bill ID ${oldBill.id} for secondary booking ${bookingId} to ₹0`);
-          // Update secondary booking bill to show 0 amount (merged into primary)
-          await db.update(bills).set({
-            roomCharges: "0.00",
-            foodCharges: "0.00",
-            extraCharges: "0.00",
-            subtotal: "0.00",
-            gstAmount: "0.00",
-            serviceChargeAmount: "0.00",
-            totalAmount: "0.00",
-            balanceAmount: "0.00",
-            paymentStatus: "paid", // Mark as paid (since it's merged)
-            updatedAt: new Date()
-          }).where(eq(bills.id, oldBill.id));
-        }
+        console.log(`[MERGE] Zeroing all bills for secondary booking ${bookingId}`);
+        // Update ALL bills for this secondary booking to show 0 amount (merged into primary)
+        await db.update(bills).set({
+          roomCharges: "0.00",
+          foodCharges: "0.00",
+          extraCharges: "0.00",
+          subtotal: "0.00",
+          gstAmount: "0.00",
+          serviceChargeAmount: "0.00",
+          totalAmount: "0.00",
+          balanceAmount: "0.00",
+          paymentStatus: "paid", // Mark as paid (since it's merged)
+          updatedAt: new Date()
+        }).where(eq(bills.booking_id, bookingId));
       }
     }
 
