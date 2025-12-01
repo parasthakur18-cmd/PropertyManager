@@ -2105,8 +2105,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[NOTIFICATIONS] Failed to create checkout notification:`, notifError.message);
       }
 
-      // Only update booking status after successful bill creation
+      // Update booking status - handle merged bills
       await storage.updateBookingStatus(bookingId, "checked-out");
+      
+      // If this is a merged bill, also mark all merged bookings as checked-out
+      if (bill.mergedBookingIds && Array.isArray(bill.mergedBookingIds) && bill.mergedBookingIds.length > 0) {
+        console.log(`[CHECKOUT] Merged bill detected. Checking out ${bill.mergedBookingIds.length} merged bookings:`, bill.mergedBookingIds);
+        for (const mergedBookingId of bill.mergedBookingIds) {
+          if (mergedBookingId !== bookingId) {
+            await storage.updateBookingStatus(mergedBookingId, "checked-out");
+            console.log(`[CHECKOUT] Marked merged booking ${mergedBookingId} as checked-out`);
+          }
+        }
+      }
       
       // Send WhatsApp checkout notification
       try {
