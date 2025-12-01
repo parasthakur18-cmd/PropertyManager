@@ -136,6 +136,7 @@ function Router() {
           <Route path="/properties" component={Properties} />
           <Route path="/rooms" component={Rooms} />
           <Route path="/bookings" component={Bookings} />
+          <Route path="/bookings/:id" component={Bookings} />
           <Route path="/check-ins" component={CheckIns} />
           <Route path="/active-bookings" component={ActiveBookings} />
           <Route path="/calendar" component={CalendarView} />
