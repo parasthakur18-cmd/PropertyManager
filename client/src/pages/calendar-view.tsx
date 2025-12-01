@@ -591,7 +591,8 @@ export default function CalendarView() {
                           if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
                           
                           const visibleStartIdx = Math.max(0, checkInDaysDiff);
-                          const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff);
+                          // Include checkout day (add 1 to make it inclusive)
+                          const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
                           
                           // Calculate position with half-day offsets
                           let leftPx = visibleStartIdx * CELL_WIDTH;
