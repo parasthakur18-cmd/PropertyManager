@@ -239,7 +239,20 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const now = Math.floor(Date.now() / 1000);
   if (now <= user.expires_at) {
-    // Skip DB user loading - just continue with session data
+    // Load user role from database for permission checks
+    try {
+      const userId = user.claims?.sub;
+      if (userId) {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          user.id = dbUser.id;
+          user.role = dbUser.role;
+          user.assignedPropertyIds = dbUser.assignedPropertyIds;
+        }
+      }
+    } catch (err) {
+      console.error("[isAuthenticated] Error loading user from DB:", err);
+    }
     return next();
   }
 
