@@ -1082,7 +1082,7 @@ export class DatabaseStorage implements IStorage {
           balanceAmount: "0.00",
           paymentStatus: "paid", // Mark as paid (since it's merged)
           updatedAt: new Date()
-        }).where(eq(bills.booking_id, bookingId));
+        }).where(eq(bills.bookingId, bookingId));
       }
     }
 
