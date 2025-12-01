@@ -2239,189 +2239,200 @@ export default function Bookings() {
                 </TabsContent>
               </Tabs>
               
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="checkInDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Check-in Date</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="datetime-local"
-                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                          onChange={(e) => field.onChange(new Date(e.target.value))}
-                          data-testid="input-edit-booking-checkin"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="checkOutDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Check-out Date</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="datetime-local"
-                          value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                          onChange={(e) => field.onChange(new Date(e.target.value))}
-                          data-testid="input-edit-booking-checkout"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Booking Status</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || "pending"}
-                      >
+              <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
+                <h4 className="font-semibold text-sm mb-3">Booking Dates</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="checkInDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check-in Date</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-edit-booking-status">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
+                          <Input
+                            type="datetime-local"
+                            value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            data-testid="input-edit-booking-checkin"
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="confirmed">Confirmed</SelectItem>
-                          <SelectItem value="checked-in">Checked In</SelectItem>
-                          <SelectItem value="cancelled">Cancelled</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="numberOfGuests"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Number of Guests</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={field.value || 1}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                          data-testid="input-edit-booking-guests"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="customPrice"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Custom Price Per Night (Optional)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="Leave empty for room price"
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value ? e.target.value : null)}
-                          data-testid="input-edit-booking-custom-price"
-                        />
-                      </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        Override room price with a custom rate
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="advanceAmount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Advance Payment</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="0"
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value ? e.target.value : "0")}
-                          data-testid="input-edit-booking-advance"
-                        />
-                      </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        Amount received in advance
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={editForm.control}
-                  name="source"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Booking Source</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || "walk-in"}
-                      >
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="checkOutDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check-out Date</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-edit-booking-source">
-                            <SelectValue placeholder="Select source" />
-                          </SelectTrigger>
+                          <Input
+                            type="datetime-local"
+                            value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
+                            onChange={(e) => field.onChange(new Date(e.target.value))}
+                            data-testid="input-edit-booking-checkout"
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="walk-in">Walk-in</SelectItem>
-                          <SelectItem value="phone">Phone</SelectItem>
-                          <SelectItem value="online">Online</SelectItem>
-                          <SelectItem value="self-generated">Self Generated</SelectItem>
-                          <SelectItem value="booking.com">Booking.com</SelectItem>
-                          <SelectItem value="airbnb">Airbnb</SelectItem>
-                          <SelectItem value="ota">OTA (Other)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="mealPlan"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Meal Plan</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || "EP"}
-                      >
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
+                <h4 className="font-semibold text-sm mb-3">Guest & Status</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Booking Status</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || "pending"}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-booking-status">
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="confirmed">Confirmed</SelectItem>
+                            <SelectItem value="checked-in">Checked In</SelectItem>
+                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="numberOfGuests"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Number of Guests</FormLabel>
                         <FormControl>
-                          <SelectTrigger data-testid="select-edit-booking-meal-plan">
-                            <SelectValue placeholder="Select meal plan" />
-                          </SelectTrigger>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={field.value || 1}
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            data-testid="input-edit-booking-guests"
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="EP">EP - Room Only</SelectItem>
-                          <SelectItem value="CP">CP - Room + Breakfast</SelectItem>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
+                <h4 className="font-semibold text-sm mb-3">Pricing & Payments</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="customPrice"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Custom Price Per Night (Optional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="Leave empty for room price"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value ? e.target.value : null)}
+                            data-testid="input-edit-booking-custom-price"
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Override room price with a custom rate
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="advanceAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Advance Payment</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value ? e.target.value : "0")}
+                            data-testid="input-edit-booking-advance"
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Amount received in advance
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
+                <h4 className="font-semibold text-sm mb-3">Booking Details</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="source"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Booking Source</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || "walk-in"}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-booking-source">
+                              <SelectValue placeholder="Select source" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="walk-in">Walk-in</SelectItem>
+                            <SelectItem value="phone">Phone</SelectItem>
+                            <SelectItem value="online">Online</SelectItem>
+                            <SelectItem value="self-generated">Self Generated</SelectItem>
+                            <SelectItem value="booking.com">Booking.com</SelectItem>
+                            <SelectItem value="airbnb">Airbnb</SelectItem>
+                            <SelectItem value="ota">OTA (Other)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="mealPlan"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Meal Plan</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || "EP"}
+                        >
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-booking-meal-plan">
+                              <SelectValue placeholder="Select meal plan" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="EP">EP - Room Only</SelectItem>
+                            <SelectItem value="CP">CP - Room + Breakfast</SelectItem>
                           <SelectItem value="MAP">MAP - Room + Breakfast + Dinner</SelectItem>
                           <SelectItem value="AP">AP - All Meals Included</SelectItem>
                         </SelectContent>
