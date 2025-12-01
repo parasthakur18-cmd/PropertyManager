@@ -1065,13 +1065,17 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Primary booking not found");
     }
 
-    // Calculate total room charges from all bookings
+    // Calculate total room charges from all bookings (using roomCharge/subtotal)
     let totalRoomCharges = 0;
     for (const booking of allBookings) {
       if (booking) {
-        totalRoomCharges += parseFloat(booking.totalAmount || "0");
+        // Use the booking's charges.subtotal or roomCharge
+        const roomCharge = booking.charges?.subtotal || parseFloat(booking.totalAmount || "0");
+        console.log(`[MERGE] Booking ${booking.id} room charge:`, roomCharge);
+        totalRoomCharges += roomCharge;
       }
     }
+    console.log(`[MERGE] Total room charges from ${bookingIds.length} bookings:`, totalRoomCharges);
 
     // Get all orders for these bookings
     const allOrders = await Promise.all(
