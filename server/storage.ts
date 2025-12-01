@@ -1086,13 +1086,13 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Calculate total room charges from all bookings (using roomCharge/subtotal)
+    // Calculate total room charges from actual bills for each booking
     let totalRoomCharges = 0;
-    for (const booking of allBookings) {
-      if (booking) {
-        // Use the booking's charges.subtotal or roomCharge
-        const roomCharge = booking.charges?.subtotal || parseFloat(booking.totalAmount || "0");
-        console.log(`[MERGE] Booking ${booking.id} room charge:`, roomCharge);
+    for (const bookingId of bookingIds) {
+      const bill = await this.getBillByBooking(bookingId);
+      if (bill) {
+        const roomCharge = parseFloat(bill.roomCharges || "0");
+        console.log(`[MERGE] Bill for booking ${bookingId} room charges:`, roomCharge);
         totalRoomCharges += roomCharge;
       }
     }
