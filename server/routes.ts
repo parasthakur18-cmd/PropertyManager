@@ -3663,9 +3663,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bills/merge", isAuthenticated, async (req, res) => {
     try {
-      // Only admins can merge bills
-      if (req.user?.role !== "admin") {
-        return res.status(403).json({ message: "Only administrators can merge bills" });
+      // Admins, super-admins, and managers can merge bills
+      if (req.user?.role !== "admin" && req.user?.role !== "super-admin" && req.user?.role !== "manager") {
+        return res.status(403).json({ message: "Only administrators and managers can merge bills" });
       }
 
       const schema = z.object({
