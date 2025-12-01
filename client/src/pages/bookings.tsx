@@ -226,12 +226,12 @@ export default function Bookings() {
     const availability = isEditMode ? editRoomAvailability : roomAvailability;
     
     if (!availability || !rooms) {
-      // Fallback to status-based filtering while loading
-      // Include both "available" and "cleaning" rooms (cleaning rooms can be booked for future dates)
+      // Fallback: return all rooms while availability data is loading
+      // The availability endpoint will filter properly once dates are confirmed
       if (import.meta.env.DEV) {
-        console.debug('[Availability] No availability data yet, using status filter fallback');
+        console.debug('[Availability] No availability data yet, returning all rooms as fallback');
       }
-      return rooms?.filter(r => r.status === "available" || r.status === "cleaning") || [];
+      return rooms || [];
     }
 
     // Filter rooms based on availability
