@@ -3674,12 +3674,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/bills/merge", isAuthenticated, async (req, res) => {
     try {
-      // Admins, super-admins, and managers can merge bills
+      // Admins, super-admins, managers, and staff can merge bills
       console.log("[MERGE BILLS] User role:", req.user?.role, "Full user:", req.user);
-      const allowedRoles = ["admin", "super-admin", "manager"];
+      const allowedRoles = ["admin", "super-admin", "manager", "staff"];
       if (!allowedRoles.includes(req.user?.role)) {
         console.log("[MERGE BILLS] Permission denied - role not in allowed list");
-        return res.status(403).json({ message: "Only administrators and managers can merge bills" });
+        return res.status(403).json({ message: "Only administrators, managers, and staff can merge bills" });
       }
 
       const schema = z.object({
