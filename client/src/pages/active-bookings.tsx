@@ -647,13 +647,18 @@ export default function ActiveBookings() {
                           key={booking.id}
                           className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted cursor-pointer"
                           onClick={() => {
-                            setSelectedBookingsForMerge(prev =>
-                              prev.includes(booking.id)
-                                ? prev.filter(id => id !== booking.id)
-                                : [...prev, booking.id]
-                            );
-                            if (!prev.includes(booking.id) && selectedBookingsForMerge.length === 0) {
-                              setPrimaryBookingForMerge(booking.id);
+                            const isCurrentlySelected = selectedBookingsForMerge.includes(booking.id);
+                            if (isCurrentlySelected) {
+                              const newIds = selectedBookingsForMerge.filter(id => id !== booking.id);
+                              setSelectedBookingsForMerge(newIds);
+                              if (primaryBookingForMerge === booking.id) {
+                                setPrimaryBookingForMerge(newIds.length > 0 ? newIds[0] : null);
+                              }
+                            } else {
+                              setSelectedBookingsForMerge([...selectedBookingsForMerge, booking.id]);
+                              if (primaryBookingForMerge === null) {
+                                setPrimaryBookingForMerge(booking.id);
+                              }
                             }
                           }}
                         >
