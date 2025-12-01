@@ -917,7 +917,41 @@ export default function ActiveBookings() {
                   <Button
                     className="flex-1"
                     variant="default"
-                    onClick={() => setCheckoutDialog({ open: true, booking })}
+                    onClick={async () => {
+                      // Fetch bill to check if it's a merged bill
+                      try {
+                        const billRes = await fetch(`/api/bills/booking/${booking.id}`);
+                        if (billRes.ok) {
+                          const bill = await billRes.json();
+                          // If bill has mergedBookingIds, use merged charges
+                          if (bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
+                            setCheckoutDialog({ 
+                              open: true, 
+                              booking: {
+                                ...booking,
+                                charges: {
+                                  roomCharges: String(bill.roomCharges || 0),
+                                  foodCharges: String(bill.foodCharges || 0),
+                                  extraCharges: String(bill.extraCharges || 0),
+                                  subtotal: String(bill.subtotal || 0),
+                                  gstAmount: String(bill.gstAmount || 0),
+                                  serviceChargeAmount: String(bill.serviceChargeAmount || 0),
+                                  totalAmount: String(bill.totalAmount || 0),
+                                  advancePaid: String(booking.charges.advancePaid || 0),
+                                  balanceAmount: String(bill.totalAmount - parseFloat(booking.charges.advancePaid || 0)),
+                                }
+                              }
+                            });
+                          } else {
+                            setCheckoutDialog({ open: true, booking });
+                          }
+                        } else {
+                          setCheckoutDialog({ open: true, booking });
+                        }
+                      } catch (err) {
+                        setCheckoutDialog({ open: true, booking });
+                      }
+                    }}
                     data-testid={`button-checkout-${booking.id}`}
                   >
                     <LogOut className="h-4 w-4 mr-2" />
