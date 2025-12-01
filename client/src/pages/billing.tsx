@@ -458,6 +458,11 @@ export default function Billing() {
                     <p className="text-sm text-muted-foreground mt-1">
                       Created {format(new Date(bill.createdAt!), "PPP")} • Invoice #{bill.id}
                     </p>
+                    {((bill as any).mergedBookingIds && (bill as any).mergedBookingIds.length > 0) && (
+                      <p className="text-xs text-purple-600 mt-2 font-medium">
+                        Merged Bookings: #{(bill as any).mergedBookingIds.join(', #')}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">Total Amount</p>
@@ -469,19 +474,19 @@ export default function Billing() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
                   <div>
                     <p className="text-muted-foreground mb-1">Room Charges</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-room-charges-${bill.id}`}>₹{bill.roomCharges}</p>
+                    <p className="font-semibold font-mono" data-testid={`text-bill-room-charges-${bill.id}`}>₹{parseFloat(bill.roomCharges || "0").toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Food Charges</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-food-charges-${bill.id}`}>₹{bill.foodCharges}</p>
+                    <p className="font-semibold font-mono" data-testid={`text-bill-food-charges-${bill.id}`}>₹{parseFloat(bill.foodCharges || "0").toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Extra Services</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-extra-charges-${bill.id}`}>₹{bill.extraCharges}</p>
+                    <p className="font-semibold font-mono" data-testid={`text-bill-extra-charges-${bill.id}`}>₹{parseFloat(bill.extraCharges || "0").toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Subtotal</p>
-                    <p className="font-semibold font-mono" data-testid={`text-bill-subtotal-${bill.id}`}>₹{bill.subtotal}</p>
+                    <p className="font-semibold font-mono" data-testid={`text-bill-subtotal-${bill.id}`}>₹{parseFloat(bill.subtotal || "0").toFixed(2)}</p>
                   </div>
                   {(bill.gstOnRooms || bill.gstOnFood) && (
                     <div>
