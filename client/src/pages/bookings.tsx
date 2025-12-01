@@ -2433,14 +2433,15 @@ export default function Bookings() {
                           <SelectContent>
                             <SelectItem value="EP">EP - Room Only</SelectItem>
                             <SelectItem value="CP">CP - Room + Breakfast</SelectItem>
-                          <SelectItem value="MAP">MAP - Room + Breakfast + Dinner</SelectItem>
-                          <SelectItem value="AP">AP - All Meals Included</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                            <SelectItem value="MAP">MAP - Room + Breakfast + Dinner</SelectItem>
+                            <SelectItem value="AP">AP - All Meals Included</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
               <FormField
                 control={editForm.control}
