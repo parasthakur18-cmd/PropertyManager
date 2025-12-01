@@ -400,9 +400,10 @@ export default function ActiveBookings() {
       return await apiRequest("/api/bills/merge", "POST", { bookingIds, primaryBookingId });
     },
     onSuccess: (mergedBill: any) => {
+      const totalAmount = mergedBill?.totalAmount || mergedBill?.total || "0";
       toast({
         title: "Bills Merged Successfully ✓",
-        description: `${selectedBookingsForMerge.length} bookings merged. Total: ₹${mergedBill.totalAmount}`,
+        description: `${selectedBookingsForMerge.length} bookings merged. Total: ₹${totalAmount}`,
       });
       setMergeDialogOpen(false);
       setSelectedBookingsForMerge([]);
