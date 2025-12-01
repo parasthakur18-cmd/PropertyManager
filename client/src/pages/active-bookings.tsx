@@ -4,11 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -104,6 +104,8 @@ export default function ActiveBookings() {
   ]);
   const [cashAmount, setCashAmount] = useState<string>("");
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [selectedBookingsForMerge, setSelectedBookingsForMerge] = useState<number[]>([]);
+  const [primaryBookingForMerge, setPrimaryBookingForMerge] = useState<number | null>(null);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
   const [billPreviewOpen, setBillPreviewOpen] = useState(false);
@@ -393,6 +395,30 @@ export default function ActiveBookings() {
     },
   });
 
+  const mergeBillsForCheckoutMutation = useMutation({
+    mutationFn: async ({ bookingIds, primaryBookingId }: { bookingIds: number[]; primaryBookingId: number }) => {
+      return await apiRequest("/api/bills/merge", "POST", { bookingIds, primaryBookingId });
+    },
+    onSuccess: (mergedBill: any) => {
+      toast({
+        title: "Bills Merged Successfully ✓",
+        description: `${selectedBookingsForMerge.length} bookings merged. Total: ₹${mergedBill.totalAmount}`,
+      });
+      setMergeDialogOpen(false);
+      setSelectedBookingsForMerge([]);
+      setPrimaryBookingForMerge(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Merge Failed",
+        description: error.message || "Failed to merge bills",
+        variant: "destructive",
+      });
+    },
+  });
+
   const mergeCafeOrdersMutation = useMutation({
     mutationFn: async ({ orderIds, bookingId }: { orderIds: number[]; bookingId: number }) => {
       return await apiRequest("/api/orders/merge-to-booking", "PATCH", { orderIds, bookingId });
@@ -587,11 +613,153 @@ export default function ActiveBookings() {
 
   return (
     <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Hotel className="h-8 w-8" />
-          Active Bookings
-        </h1>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Hotel className="h-8 w-8" />
+            Active Bookings
+          </h1>
+          <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" data-testid="button-merge-bills-header">
+                <Merge className="h-4 w-4 mr-2" />
+                Merge Bills
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Merge Bookings & Create Bill</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-semibold mb-3">Select Bookings to Merge</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Select at least 2 bookings to merge into one bill
+                  </p>
+                  <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
+                    {activeBookings && activeBookings.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No active bookings available
+                      </p>
+                    ) : (
+                      activeBookings?.map((booking) => (
+                        <div
+                          key={booking.id}
+                          className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted cursor-pointer"
+                          onClick={() => {
+                            setSelectedBookingsForMerge(prev =>
+                              prev.includes(booking.id)
+                                ? prev.filter(id => id !== booking.id)
+                                : [...prev, booking.id]
+                            );
+                            if (!prev.includes(booking.id) && selectedBookingsForMerge.length === 0) {
+                              setPrimaryBookingForMerge(booking.id);
+                            }
+                          }}
+                        >
+                          <Checkbox
+                            checked={selectedBookingsForMerge.includes(booking.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedBookingsForMerge([...selectedBookingsForMerge, booking.id]);
+                                if (primaryBookingForMerge === null) {
+                                  setPrimaryBookingForMerge(booking.id);
+                                }
+                              } else {
+                                const newIds = selectedBookingsForMerge.filter(id => id !== booking.id);
+                                setSelectedBookingsForMerge(newIds);
+                                if (primaryBookingForMerge === booking.id) {
+                                  setPrimaryBookingForMerge(newIds.length > 0 ? newIds[0] : null);
+                                }
+                              }
+                            }}
+                            data-testid={`checkbox-merge-booking-${booking.id}`}
+                          />
+                          <div className="flex-1 text-sm">
+                            <p className="font-medium">Booking #{booking.id} - {booking.guest.fullName}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Room {booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber} • ₹{booking.charges.subtotal}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {selectedBookingsForMerge.length >= 2 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-3">Select Primary Booking</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      The merged bill will be linked to this booking
+                    </p>
+                    <div className="space-y-2">
+                      {selectedBookingsForMerge.map((bookingId) => {
+                        const booking = activeBookings?.find(b => b.id === bookingId);
+                        if (!booking) return null;
+                        return (
+                          <div
+                            key={bookingId}
+                            className={`flex items-center space-x-3 p-2 rounded-md cursor-pointer border ${
+                              primaryBookingForMerge === bookingId ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                            }`}
+                            onClick={() => setPrimaryBookingForMerge(bookingId)}
+                            data-testid={`radio-primary-merge-${bookingId}`}
+                          >
+                            <div className={`w-4 h-4 rounded-full border-2 ${
+                              primaryBookingForMerge === bookingId ? 'border-primary bg-primary' : 'border-muted-foreground'
+                            }`} />
+                            <div className="text-sm">
+                              <p className="font-medium">Booking #{bookingId} - {booking.guest.fullName}</p>
+                              <p className="text-xs text-muted-foreground">₹{booking.charges.subtotal} total</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {selectedBookingsForMerge.length >= 2 && primaryBookingForMerge && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-sm">
+                    <p className="font-medium text-blue-900 dark:text-blue-300 mb-1">Merge Summary:</p>
+                    <p className="text-blue-800 dark:text-blue-200">
+                      {selectedBookingsForMerge.length} bookings will be combined into 1 bill linked to Booking #{primaryBookingForMerge}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setMergeDialogOpen(false);
+                    setSelectedBookingsForMerge([]);
+                    setPrimaryBookingForMerge(null);
+                  }}
+                  data-testid="button-cancel-merge"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (selectedBookingsForMerge.length >= 2 && primaryBookingForMerge) {
+                      mergeBillsForCheckoutMutation.mutate({
+                        bookingIds: selectedBookingsForMerge,
+                        primaryBookingId: primaryBookingForMerge,
+                      });
+                    }
+                  }}
+                  disabled={selectedBookingsForMerge.length < 2 || !primaryBookingForMerge || mergeBillsForCheckoutMutation.isPending}
+                  data-testid="button-confirm-merge"
+                >
+                  {mergeBillsForCheckoutMutation.isPending ? "Merging..." : "Merge Bills"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
         <div className="relative w-64">
           <Search className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
           <input
