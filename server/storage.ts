@@ -1065,6 +1065,16 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Primary booking not found");
     }
 
+    // Delete old bills for ALL bookings (both primary and secondary) before creating merged bill
+    console.log(`[MERGE] Deleting old bills for bookings:`, bookingIds);
+    for (const bookingId of bookingIds) {
+      const oldBill = await this.getBillByBooking(bookingId);
+      if (oldBill) {
+        console.log(`[MERGE] Deleting old bill ID ${oldBill.id} for booking ${bookingId}`);
+        await db.delete(bills).where(eq(bills.id, oldBill.id));
+      }
+    }
+
     // Calculate total room charges from all bookings (using roomCharge/subtotal)
     let totalRoomCharges = 0;
     for (const booking of allBookings) {
