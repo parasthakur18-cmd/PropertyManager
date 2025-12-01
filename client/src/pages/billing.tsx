@@ -439,6 +439,12 @@ export default function Billing() {
                       <Badge className={paymentStatusColors[bill.paymentStatus as keyof typeof paymentStatusColors]}>
                         {bill.paymentStatus}
                       </Badge>
+                      {((bill as any).mergedBookingIds && (bill as any).mergedBookingIds.length > 0) && (
+                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
+                          <Merge className="h-3 w-3 mr-1" />
+                          Merged Bill
+                        </Badge>
+                      )}
                       {(() => {
                         const booking = allBookings.find(b => b.id === bill.bookingId);
                         const agent = booking?.travelAgentId ? travelAgents.find(a => a.id === booking.travelAgentId) : null;
