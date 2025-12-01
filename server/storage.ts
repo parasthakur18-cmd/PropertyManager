@@ -1801,14 +1801,15 @@ export class DatabaseStorage implements IStorage {
       .from(users)
       .where(eq(users.status, 'active'));
 
-    const currentMonth = new Date();
-    currentMonth.setDate(1);
-    currentMonth.setHours(0, 0, 0, 0);
+    // Use last 30 days instead of calendar month for more accurate KPIs
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
 
     let monthlyRevenueQuery = db
       .select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
       .from(bills)
-      .where(gte(bills.createdAt, currentMonth));
+      .where(gte(bills.createdAt, thirtyDaysAgo));
 
     if (propertyId) {
       monthlyRevenueQuery = monthlyRevenueQuery
