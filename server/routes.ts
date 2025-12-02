@@ -1975,7 +1975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalAmount: number;
       
       if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
-        // MERGED BILL: Use existing calculated values
+        // MERGED BILL: Use existing calculated values (don't recalculate)
         console.log(`[CHECKOUT] Merged bill detected for booking ${bookingId}. Using existing bill values.`);
         roomCharges = parseFloat(existingBill.roomCharges || "0");
         foodCharges = parseFloat(existingBill.foodCharges || "0");
@@ -1986,11 +1986,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         discountAmount = parseFloat(existingBill.discountAmount || "0");
         totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
         totalAmount = parseFloat(existingBill.totalAmount || "0");
-        
-        // Set gstRate for merged bills (override passed params)
-        gstOnRooms = existingBill.gstOnRooms || true;
-        gstOnFood = existingBill.gstOnFood || false;
-        includeServiceCharge = existingBill.includeServiceCharge || false;
       } else {
         // REGULAR BOOKING: Recalculate charges
         // Fetch room(s) to get price
