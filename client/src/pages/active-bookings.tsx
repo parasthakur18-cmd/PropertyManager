@@ -1075,23 +1075,15 @@ export default function ActiveBookings() {
                   </div>
                   
                   {advancePaid > 0 && (
-                    <>
-                      <div className="flex justify-between text-green-600">
-                        <span>Advance Paid:</span>
-                        <span className="font-mono">-₹{advancePaid.toFixed(2)}</span>
-                      </div>
-                      <div className="border-t pt-2 flex justify-between font-bold text-lg text-destructive">
-                        <span>Balance Due:</span>
-                        <span className="font-mono">₹{Math.max(0, grandTotal - advancePaid).toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
-                  {advancePaid === 0 && (
-                    <div className="border-t pt-2 flex justify-between font-bold text-lg text-orange-600">
-                      <span>Total to Collect:</span>
-                      <span className="font-mono">₹{grandTotal.toFixed(2)}</span>
+                    <div className="flex justify-between text-green-600">
+                      <span>Advance Paid:</span>
+                      <span className="font-mono">-₹{advancePaid.toFixed(2)}</span>
                     </div>
                   )}
+                  <div className={`border-t pt-2 flex justify-between font-bold text-lg ${advancePaid > 0 ? 'text-destructive' : 'text-orange-600'}`}>
+                    <span>Balance Due:</span>
+                    <span className="font-mono">₹{Math.max(0, grandTotal - advancePaid).toFixed(2)}</span>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
