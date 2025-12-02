@@ -465,8 +465,26 @@ export default function Billing() {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Total Amount</p>
-                    <p className="text-2xl font-bold font-mono" data-testid={`text-bill-total-${bill.id}`}>₹{bill.totalAmount}</p>
+                    {(() => {
+                      const advanceAmount = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
+                      const totalAmount = parseFloat(String(bill.totalAmount || "0"));
+                      const balanceDue = Math.max(0, totalAmount - advanceAmount);
+                      
+                      if (advanceAmount > 0) {
+                        return (
+                          <>
+                            <p className="text-sm text-muted-foreground">Amount Collected</p>
+                            <p className="text-2xl font-bold font-mono text-green-600" data-testid={`text-bill-total-${bill.id}`}>₹{balanceDue.toFixed(2)}</p>
+                          </>
+                        );
+                      }
+                      return (
+                        <>
+                          <p className="text-sm text-muted-foreground">Total Amount</p>
+                          <p className="text-2xl font-bold font-mono" data-testid={`text-bill-total-${bill.id}`}>₹{bill.totalAmount}</p>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </CardHeader>
