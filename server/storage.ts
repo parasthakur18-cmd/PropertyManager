@@ -1018,7 +1018,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBillByBooking(bookingId: number): Promise<Bill | undefined> {
-    const [bill] = await db.select().from(bills).where(eq(bills.bookingId, bookingId));
+    // Return the LATEST bill for this booking (highest ID = most recent, including merged bills)
+    const [bill] = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).orderBy(desc(bills.id)).limit(1);
     return bill;
   }
 
