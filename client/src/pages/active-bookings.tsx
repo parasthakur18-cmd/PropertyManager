@@ -925,6 +925,9 @@ export default function ActiveBookings() {
                           const bill = await billRes.json();
                           // If bill has mergedBookingIds, use merged charges
                           if (bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
+                            // For merged bills, use the bill's totalAdvance which combines all booking advances
+                            const mergedAdvance = parseFloat(String(bill.totalAdvance || bill.advancePaid || 0));
+                            const mergedTotal = parseFloat(String(bill.totalAmount || 0));
                             setCheckoutDialog({ 
                               open: true, 
                               booking: {
@@ -937,8 +940,8 @@ export default function ActiveBookings() {
                                   gstAmount: String(bill.gstAmount || 0),
                                   serviceChargeAmount: String(bill.serviceChargeAmount || 0),
                                   totalAmount: String(bill.totalAmount || 0),
-                                  advancePaid: String(booking.charges.advancePaid || 0),
-                                  balanceAmount: String(Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String(booking.charges.advancePaid || "0")))),
+                                  advancePaid: String(mergedAdvance),
+                                  balanceAmount: String(Math.max(0, mergedTotal - mergedAdvance)),
                                 }
                               }
                             });
