@@ -1143,6 +1143,9 @@ export class DatabaseStorage implements IStorage {
       gstAmount: gstAmount.toFixed(2),
       serviceChargeRate: serviceChargeRate.toFixed(2),
       serviceChargeAmount: serviceChargeAmount.toFixed(2),
+      gstOnRooms: true, // GST applied to room charges
+      gstOnFood: false, // GST NOT applied to food by default
+      includeServiceCharge: false, // Service charge NOT included by default for merged bills
       totalAmount: totalAmount.toFixed(2),
       paymentStatus: "unpaid",
       mergedBookingIds: bookingIds,
