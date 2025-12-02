@@ -664,7 +664,7 @@ export default function Billing() {
                     </>
                   )}
 
-                  {parseFloat(billDetails.extraCharges) > 0 && (
+                  {parseFloat(billDetails.extraCharges || "0") > 0 && (
                     <>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Extra Services</span>
