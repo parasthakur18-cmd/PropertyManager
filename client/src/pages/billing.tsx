@@ -500,6 +500,24 @@ export default function Billing() {
                       <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{bill.serviceChargeAmount}</p>
                     </div>
                   )}
+                  {/* Show Advance Payment if exists */}
+                  {parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")) > 0 && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">Advance Paid</p>
+                      <p className="font-semibold font-mono text-green-600" data-testid={`text-bill-advance-${bill.id}`}>
+                        -₹{parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                  {/* Show Balance Due if there was advance */}
+                  {parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")) > 0 && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">Balance Due</p>
+                      <p className="font-semibold font-mono text-orange-600" data-testid={`text-bill-balance-${bill.id}`}>
+                        ₹{Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"))).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
                   {/* Payment Method/Split Payment Display */}
                   {bill.paymentMethods && Array.isArray(bill.paymentMethods) && bill.paymentMethods.length > 0 ? (
                     <div className="col-span-2">

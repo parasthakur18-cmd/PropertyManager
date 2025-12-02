@@ -2061,8 +2061,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalAmount = totalAmountBeforeDiscount - discountAmount;
       }
       
-      const advancePaid = parseFloat(booking.advanceAmount || "0");
+      // For merged bills, use the bill's totalAdvance (combined advance from all merged bookings)
+      // For regular bills, use the booking's advanceAmount
+      let advancePaid: number;
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        advancePaid = parseFloat(existingBill.totalAdvance || existingBill.advancePaid || "0");
+        console.log(`[CHECKOUT] Using merged bill totalAdvance: ${advancePaid}`);
+      } else {
+        advancePaid = parseFloat(booking.advanceAmount || "0");
+      }
       const balanceAmount = totalAmount - advancePaid;
+      console.log(`[CHECKOUT] Total: ${totalAmount}, Advance: ${advancePaid}, Balance: ${balanceAmount}`);
 
       // Create/Update bill with server-calculated amounts
       // When payment status is "paid", set balance to 0 (payment collected)
@@ -2084,7 +2093,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         splitPaymentMethods = [{ method: paymentMethod, amount: balanceAmount }];
       }
       
-      const billData = {
+      const billData: any = {
         bookingId,
         guestId: booking.guestId,
         roomCharges: roomCharges.toFixed(2),
@@ -2111,6 +2120,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dueDate: dueDate ? new Date(dueDate) : null,
         pendingReason: pendingReason || null,
       };
+      
+      // Preserve merged bill properties
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        billData.mergedBookingIds = existingBill.mergedBookingIds;
+        billData.totalAdvance = advancePaid.toFixed(2);
+      }
       
       const bill = await storage.createOrUpdateBill(billData);
 
