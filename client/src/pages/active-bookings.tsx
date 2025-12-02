@@ -938,7 +938,7 @@ export default function ActiveBookings() {
                                   serviceChargeAmount: String(bill.serviceChargeAmount || 0),
                                   totalAmount: String(bill.totalAmount || 0),
                                   advancePaid: String(booking.charges.advancePaid || 0),
-                                  balanceAmount: String(parseFloat(bill.totalAmount || "0") - parseFloat(booking.charges.advancePaid || 0)),
+                                  balanceAmount: String(Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String(booking.charges.advancePaid || "0")))),
                                 }
                               }
                             });
