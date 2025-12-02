@@ -1129,7 +1129,13 @@ export class DatabaseStorage implements IStorage {
     const serviceChargeAmount = 0; // Don't include service charge by default - only when user selects it
     const totalAmount = subtotal + gstAmount + serviceChargeAmount;
 
-    console.log(`[MERGE] Calculated totals - Room: ${totalRoomCharges}, Food: ${totalFoodCharges}, Extra: ${totalExtraCharges}, Total: ${totalAmount}`);
+    // Calculate total advance from all bookings
+    const totalAdvance = allBookings.reduce((sum, booking) => {
+      return sum + parseFloat(booking?.advanceAmount || "0");
+    }, 0);
+    const balanceAmount = totalAmount - totalAdvance;
+
+    console.log(`[MERGE] Calculated totals - Room: ${totalRoomCharges}, Food: ${totalFoodCharges}, Extra: ${totalExtraCharges}, Total: ${totalAmount}, Advance: ${totalAdvance}, Balance: ${balanceAmount}`);
 
     // Create merged bill with calculated totals
     const mergedBill = await this.createBill({
@@ -1146,6 +1152,8 @@ export class DatabaseStorage implements IStorage {
       gstOnRooms: true, // GST applied to room charges
       gstOnFood: false, // GST NOT applied to food by default
       includeServiceCharge: false, // Service charge NOT included by default for merged bills
+      advancePaid: totalAdvance.toFixed(2),
+      balanceAmount: balanceAmount.toFixed(2),
       totalAmount: totalAmount.toFixed(2),
       paymentStatus: "unpaid",
       mergedBookingIds: bookingIds,
