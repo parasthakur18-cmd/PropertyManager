@@ -1959,77 +1959,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Fetch room(s) to get price
-      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+      // Check if this booking has an existing bill (merged or not)
+      const existingBill = await storage.getBillByBooking(bookingId);
       
-      // Calculate nights (minimum 1 night even if same-day checkout)
-      const checkInDate = new Date(booking.checkInDate);
-      const checkOutDate = new Date(booking.checkOutDate);
-      const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
-      const nights = Math.max(1, calculatedNights); // Ensure at least 1 night
+      // If this is a MERGED BILL, don't recalculate - just mark as paid
+      // Merged bills have their totals already calculated
+      let roomCharges: number;
+      let foodCharges: number;
+      let extraCharges: number;
+      let subtotal: number;
+      let gstAmount: number;
+      let serviceChargeAmount: number;
+      let totalAmountBeforeDiscount: number;
+      let discountAmount = 0;
+      let totalAmount: number;
       
-      // Calculate room charges - handle both single and group bookings
-      let roomCharges = 0;
-      if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
-        // Group booking: calculate total for all rooms
-        for (const roomId of booking.roomIds) {
-          const groupRoom = await storage.getRoom(roomId);
-          if (groupRoom) {
-            const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(groupRoom.pricePerNight);
-            roomCharges += pricePerNight * nights;
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        // MERGED BILL: Use existing calculated values
+        console.log(`[CHECKOUT] Merged bill detected for booking ${bookingId}. Using existing bill values.`);
+        roomCharges = parseFloat(existingBill.roomCharges || "0");
+        foodCharges = parseFloat(existingBill.foodCharges || "0");
+        extraCharges = parseFloat(existingBill.extraCharges || "0");
+        subtotal = parseFloat(existingBill.subtotal || "0");
+        gstAmount = parseFloat(existingBill.gstAmount || "0");
+        serviceChargeAmount = parseFloat(existingBill.serviceChargeAmount || "0");
+        discountAmount = parseFloat(existingBill.discountAmount || "0");
+        totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
+        totalAmount = parseFloat(existingBill.totalAmount || "0");
+      } else {
+        // REGULAR BOOKING: Recalculate charges
+        // Fetch room(s) to get price
+        const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+        
+        // Calculate nights (minimum 1 night even if same-day checkout)
+        const checkInDate = new Date(booking.checkInDate);
+        const checkOutDate = new Date(booking.checkOutDate);
+        const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+        const nights = Math.max(1, calculatedNights); // Ensure at least 1 night
+        
+        // Calculate room charges - handle both single and group bookings
+        roomCharges = 0;
+        if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+          // Group booking: calculate total for all rooms
+          for (const roomId of booking.roomIds) {
+            const groupRoom = await storage.getRoom(roomId);
+            if (groupRoom) {
+              const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(groupRoom.pricePerNight);
+              roomCharges += pricePerNight * nights;
+            }
+          }
+        } else {
+          // Single room booking
+          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+          roomCharges = pricePerNight * nights;
+        }
+
+        // Calculate food charges (reusing allOrders and bookingOrders from pending order check above)
+        // Exclude rejected orders from food charges
+        foodCharges = bookingOrders
+          .filter(order => order.status !== "rejected")
+          .reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
+
+        // Fetch and calculate extra service charges (now including manual charges)
+        const allExtras = await storage.getAllExtraServices();
+        const bookingExtras = allExtras.filter(e => e.bookingId === bookingId);
+        extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+
+        // Calculate totals
+        // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
+        subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
+        
+        const gstRate = 5; // 5% GST
+        const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
+        const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
+        gstAmount = roomGst + foodGst;
+        const serviceChargeRate = 10;
+        serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
+        totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
+
+        // Calculate discount based on where it applies
+        discountAmount = 0;
+        
+        if (discountType && discountValue && discountType !== "none") {
+          const discount = parseFloat(discountValue);
+          let baseAmountForDiscount = totalAmountBeforeDiscount; // Default: apply to total
+          
+          // Determine base amount based on what discount applies to
+          if (discountAppliesTo === "room") {
+            baseAmountForDiscount = roomCharges;
+          } else if (discountAppliesTo === "food") {
+            baseAmountForDiscount = foodCharges;
+          }
+          
+          if (discountType === "percentage") {
+            discountAmount = (baseAmountForDiscount * discount) / 100;
+          } else if (discountType === "fixed") {
+            discountAmount = discount;
           }
         }
-      } else {
-        // Single room booking
-        const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
-        roomCharges = pricePerNight * nights;
+
+        totalAmount = totalAmountBeforeDiscount - discountAmount;
       }
-
-      // Calculate food charges (reusing allOrders and bookingOrders from pending order check above)
-      // Exclude rejected orders from food charges
-      const foodCharges = bookingOrders
-        .filter(order => order.status !== "rejected")
-        .reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
-
-      // Fetch and calculate extra service charges (now including manual charges)
-      const allExtras = await storage.getAllExtraServices();
-      const bookingExtras = allExtras.filter(e => e.bookingId === bookingId);
-      const extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
-
-      // Calculate totals
-      // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
-      const subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
       
-      const gstRate = 5; // 5% GST
-      const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
-      const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
-      const gstAmount = roomGst + foodGst;
-      const serviceChargeRate = 10;
-      const serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
-      const totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
-
-      // Calculate discount based on where it applies
-      let discountAmount = 0;
-      
-      if (discountType && discountValue && discountType !== "none") {
-        const discount = parseFloat(discountValue);
-        let baseAmountForDiscount = totalAmountBeforeDiscount; // Default: apply to total
-        
-        // Determine base amount based on what discount applies to
-        if (discountAppliesTo === "room") {
-          baseAmountForDiscount = roomCharges;
-        } else if (discountAppliesTo === "food") {
-          baseAmountForDiscount = foodCharges;
-        }
-        
-        if (discountType === "percentage") {
-          discountAmount = (baseAmountForDiscount * discount) / 100;
-        } else if (discountType === "fixed") {
-          discountAmount = discount;
-        }
-      }
-
-      const totalAmount = totalAmountBeforeDiscount - discountAmount;
       const advancePaid = parseFloat(booking.advanceAmount || "0");
       const balanceAmount = totalAmount - advancePaid;
 
