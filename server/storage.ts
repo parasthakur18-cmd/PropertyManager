@@ -1121,12 +1121,12 @@ export class DatabaseStorage implements IStorage {
       return sum + parseFloat(service.amount);
     }, 0);
 
-    // Calculate bill totals
+    // Calculate bill totals (service charge NOT included by default - only on user selection)
     const subtotal = totalRoomCharges + totalFoodCharges + totalExtraCharges;
     const gstRate = 5;
     const serviceChargeRate = 10;
     const gstAmount = (subtotal * gstRate) / 100;
-    const serviceChargeAmount = (subtotal * serviceChargeRate) / 100;
+    const serviceChargeAmount = 0; // Don't include service charge by default - only when user selects it
     const totalAmount = subtotal + gstAmount + serviceChargeAmount;
 
     console.log(`[MERGE] Calculated totals - Room: ${totalRoomCharges}, Food: ${totalFoodCharges}, Extra: ${totalExtraCharges}, Total: ${totalAmount}`);
