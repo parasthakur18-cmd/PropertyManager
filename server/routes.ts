@@ -1973,6 +1973,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalAmountBeforeDiscount: number;
       let discountAmount = 0;
       let totalAmount: number;
+      const gstRate = 5; // 5% GST
+      const serviceChargeRate = 10; // 10% Service Charge
       
       if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
         // MERGED BILL: Use existing calculated values (don't recalculate)
@@ -2029,11 +2031,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
         subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
         
-        const gstRate = 5; // 5% GST
         const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
         const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
         gstAmount = roomGst + foodGst;
-        const serviceChargeRate = 10;
         serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
         totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
 
