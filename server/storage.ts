@@ -1065,14 +1065,36 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Primary booking not found");
     }
 
-    // FIRST: Calculate total room charges from actual bills for each booking (BEFORE zeroing)
+    // FIRST: Calculate total room charges from booking data (not from bills which may be empty)
     let totalRoomCharges = 0;
-    for (const bookingId of bookingIds) {
-      const bill = await this.getBillByBooking(bookingId);
-      if (bill) {
-        const roomCharge = parseFloat(bill.roomCharges || "0");
-        console.log(`[MERGE] Bill for booking ${bookingId} room charges:`, roomCharge);
-        totalRoomCharges += roomCharge;
+    for (const booking of allBookings) {
+      if (booking) {
+        // Calculate nights
+        const checkInDate = new Date(booking.checkInDate);
+        const checkOutDate = new Date(booking.checkOutDate);
+        const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+        const nights = Math.max(1, calculatedNights);
+        
+        // Calculate room charges for this booking
+        let bookingRoomCharges = 0;
+        if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+          // Group booking: calculate total for all rooms
+          for (const roomId of booking.roomIds) {
+            const room = await this.getRoom(roomId);
+            if (room) {
+              const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(room.pricePerNight);
+              bookingRoomCharges += pricePerNight * nights;
+            }
+          }
+        } else {
+          // Single room booking
+          const room = booking.roomId ? await this.getRoom(booking.roomId) : null;
+          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+          bookingRoomCharges = pricePerNight * nights;
+        }
+        
+        console.log(`[MERGE] Booking ${booking.id} calculated room charges: ${bookingRoomCharges} (${nights} nights)`);
+        totalRoomCharges += bookingRoomCharges;
       }
     }
     console.log(`[MERGE] Total room charges from ${bookingIds.length} bookings:`, totalRoomCharges);
