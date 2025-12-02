@@ -1065,28 +1065,7 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Primary booking not found");
     }
 
-    // Set ALL secondary booking bills to ₹0 (merged into primary)
-    console.log(`[MERGE] Zeroing out ALL secondary bills for bookings:`, bookingIds);
-    for (const bookingId of bookingIds) {
-      if (bookingId !== primaryBookingId) {
-        console.log(`[MERGE] Zeroing all bills for secondary booking ${bookingId}`);
-        // Update ALL bills for this secondary booking to show 0 amount (merged into primary)
-        await db.update(bills).set({
-          roomCharges: "0.00",
-          foodCharges: "0.00",
-          extraCharges: "0.00",
-          subtotal: "0.00",
-          gstAmount: "0.00",
-          serviceChargeAmount: "0.00",
-          totalAmount: "0.00",
-          balanceAmount: "0.00",
-          paymentStatus: "paid", // Mark as paid (since it's merged)
-          updatedAt: new Date()
-        }).where(eq(bills.bookingId, bookingId));
-      }
-    }
-
-    // Calculate total room charges from actual bills for each booking
+    // FIRST: Calculate total room charges from actual bills for each booking (BEFORE zeroing)
     let totalRoomCharges = 0;
     for (const bookingId of bookingIds) {
       const bill = await this.getBillByBooking(bookingId);
@@ -1128,7 +1107,9 @@ export class DatabaseStorage implements IStorage {
     const serviceChargeAmount = (subtotal * serviceChargeRate) / 100;
     const totalAmount = subtotal + gstAmount + serviceChargeAmount;
 
-    // Create merged bill
+    console.log(`[MERGE] Calculated totals - Room: ${totalRoomCharges}, Food: ${totalFoodCharges}, Extra: ${totalExtraCharges}, Total: ${totalAmount}`);
+
+    // Create merged bill with calculated totals
     const mergedBill = await this.createBill({
       bookingId: primaryBookingId,
       guestId: primaryBooking.guestId,
@@ -1144,6 +1125,27 @@ export class DatabaseStorage implements IStorage {
       paymentStatus: "unpaid",
       mergedBookingIds: bookingIds,
     });
+
+    // THEN: Set ALL secondary booking bills to ₹0 (merged into primary) - AFTER calculating totals
+    console.log(`[MERGE] Zeroing out ALL secondary bills for bookings:`, bookingIds);
+    for (const bookingId of bookingIds) {
+      if (bookingId !== primaryBookingId) {
+        console.log(`[MERGE] Zeroing all bills for secondary booking ${bookingId}`);
+        // Update ALL bills for this secondary booking to show 0 amount (merged into primary)
+        await db.update(bills).set({
+          roomCharges: "0.00",
+          foodCharges: "0.00",
+          extraCharges: "0.00",
+          subtotal: "0.00",
+          gstAmount: "0.00",
+          serviceChargeAmount: "0.00",
+          totalAmount: "0.00",
+          balanceAmount: "0.00",
+          paymentStatus: "paid", // Mark as paid (since it's merged)
+          updatedAt: new Date()
+        }).where(eq(bills.bookingId, bookingId));
+      }
+    }
 
     return mergedBill;
   }
