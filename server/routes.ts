@@ -1986,6 +1986,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         discountAmount = parseFloat(existingBill.discountAmount || "0");
         totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
         totalAmount = parseFloat(existingBill.totalAmount || "0");
+        
+        // Set gstRate for merged bills (override passed params)
+        gstOnRooms = existingBill.gstOnRooms || true;
+        gstOnFood = existingBill.gstOnFood || false;
+        includeServiceCharge = existingBill.includeServiceCharge || false;
       } else {
         // REGULAR BOOKING: Recalculate charges
         // Fetch room(s) to get price
