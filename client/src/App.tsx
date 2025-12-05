@@ -206,6 +206,23 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const [, setForceUpdate] = useState(0);
 
+  // Development: Auto-login on app load
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading && import.meta.env.DEV) {
+      console.log('[Dev] Attempting auto-login...');
+      fetch('/api/dev/auto-login')
+        .then(res => res.json())
+        .then(data => {
+          console.log('[Dev] Auto-login successful, reloading auth...');
+          // Invalidate auth cache to refetch user
+          import('react').then(React => {
+            window.location.reload();
+          });
+        })
+        .catch(err => console.log('[Dev] Auto-login not available (production):', err));
+    }
+  }, [isAuthenticated, isLoading]);
+
   // MUST be before any early returns to maintain hook order
   useEffect(() => {
     if (isAuthenticated && !eventSourceRef.current) {

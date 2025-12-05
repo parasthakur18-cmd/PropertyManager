@@ -352,6 +352,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Development only: Auto-login for testing
+  if (process.env.NODE_ENV === 'development') {
+    app.get('/api/dev/auto-login', (req: any, res) => {
+      try {
+        // Create or get test user session
+        const testUserId = 'dev-test-user-' + Date.now();
+        req.session.userId = testUserId;
+        req.session.save((err: any) => {
+          if (err) {
+            console.error('Session save error:', err);
+            return res.status(500).json({ message: 'Failed to create session' });
+          }
+          res.json({ message: 'Dev session created', userId: testUserId });
+        });
+      } catch (error) {
+        console.error('Dev auto-login error:', error);
+        res.status(500).json({ message: 'Failed to create dev session' });
+      }
+    });
+  }
+
   // Server-Sent Events (SSE) endpoint for real-time updates
   app.get('/api/events/stream', isAuthenticated, (req: any, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
