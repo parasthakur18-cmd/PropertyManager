@@ -388,7 +388,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -426,7 +427,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/users", isAuthenticated, async (req: any, res) => {
     try {
       // Check if user is admin
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (currentUser?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -441,7 +443,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/users/:id/role", isAuthenticated, async (req: any, res) => {
     try {
       // Check if user is admin
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (currentUser?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -467,7 +470,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Check if user is admin
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (currentUser?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -475,7 +479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       
       // Prevent self-deletion
-      if (id === req.user.claims.sub) {
+      if (id === userId) {
         return res.status(400).json({ message: "You cannot delete your own account" });
       }
       
@@ -520,7 +524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Properties
   app.get("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -544,7 +548,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -571,7 +576,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -598,7 +604,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -627,7 +634,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -651,7 +659,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Rooms
   app.get("/api/rooms", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
         return res.status(403).json({ message: "User not found. Please log in again." });
@@ -890,7 +899,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/rooms", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -918,7 +928,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -946,7 +957,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/rooms/:id/status", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -975,7 +987,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
@@ -1062,7 +1075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Travel Agents
   app.get("/api/travel-agents", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1087,7 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1114,7 +1127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/travel-agents", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1142,7 +1155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1171,7 +1184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1201,7 +1214,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bookings
   app.get("/api/bookings", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1247,7 +1260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Active bookings MUST come before /api/bookings/:id to avoid route collision
   app.get("/api/bookings/active", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -1407,7 +1420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Bookings with details for analytics
   app.get("/api/bookings/with-details", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
       
       if (!currentUser) {
@@ -2988,7 +3001,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/menu-items", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -3031,7 +3045,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/menu-items", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -3065,7 +3080,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -3100,7 +3116,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -3145,7 +3162,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Menu Categories
   app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
@@ -3171,7 +3189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       if (!currentUser) {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
@@ -3408,7 +3427,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
-      const currentUser = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
       
       // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
@@ -3912,8 +3932,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mark a bill as paid
   app.post("/api/bills/:id/mark-paid", isAuthenticated, async (req, res) => {
     try {
-      // Get userId from auth claims - req.user.claims.sub has the actual user ID
-      const userId = req.user?.claims?.sub;
+      // Get userId from multiple auth sources (OAuth, email/password, session)
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized - no user ID" });
@@ -7749,7 +7769,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   // Get notifications for current user
   app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const userNotifications = await db
         .select()
         .from(notifications)
@@ -7795,7 +7815,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   app.post("/api/change-approvals", isAuthenticated, async (req: any, res) => {
     try {
       const { changeType, bookingId, roomId, description, oldValue, newValue } = req.body;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       
       const validated = insertChangeApprovalSchema.parse({
         userId,
@@ -7841,7 +7861,8 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   // Get pending change approvals
   app.get("/api/change-approvals", isAuthenticated, async (req: any, res) => {
     try {
-      const user = await storage.getUser(req.user.claims.sub);
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
       if (user?.role !== "admin" && user?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -7861,7 +7882,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   app.post("/api/change-approvals/:id/approve", isAuthenticated, async (req: any, res) => {
     try {
       const approvalId = parseInt(req.params.id);
-      const approvedBy = req.user.claims.sub;
+      const approvedBy = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const user = await storage.getUser(approvedBy);
       if (user?.role !== "admin" && user?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -7909,7 +7930,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     try {
       const approvalId = parseInt(req.params.id);
       const { rejectionReason } = req.body;
-      const approvedBy = req.user.claims.sub;
+      const approvedBy = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const user = await storage.getUser(approvedBy);
       if (user?.role !== "admin" && user?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
