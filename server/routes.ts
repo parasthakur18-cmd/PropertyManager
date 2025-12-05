@@ -5665,11 +5665,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public Registration endpoint - Multi-tenant aware
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, businessName, firstName, lastName, phone } = req.body;
+      const { email, password, businessName, businessLocation, firstName, lastName, phone } = req.body;
 
       // Validate input
-      if (!email || !password || !businessName) {
-        return res.status(400).json({ message: "Email, password, and business name are required" });
+      if (!email || !password || !businessName || !businessLocation) {
+        return res.status(400).json({ message: "Email, password, business name, and location are required" });
       }
 
       if (password.length < 8) {

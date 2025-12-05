@@ -126,6 +126,14 @@ export default function SuperAdmin() {
     queryKey: ["/api/super-admin/pending-users"],
   });
 
+  // Handle opening approval dialog - pre-fill location from user data
+  const handleOpenApprovalDialog = (user: User) => {
+    setSelectedPendingUser(user);
+    setApprovalPropertyName(user.businessName || "");
+    setApprovalPropertyLocation(user.businessLocation || "");
+    setApprovalDialog(true);
+  };
+
   // Approve user mutation
   const approveUser = useMutation({
     mutationFn: async (data: {

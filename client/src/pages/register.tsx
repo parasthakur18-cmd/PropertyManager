@@ -15,6 +15,7 @@ export default function Register() {
     email: "",
     password: "",
     businessName: "",
+    businessLocation: "",
     firstName: "",
     lastName: "",
     phone: "",
@@ -37,6 +38,7 @@ export default function Register() {
           email: formData.email,
           password: formData.password,
           businessName: formData.businessName,
+          businessLocation: formData.businessLocation,
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
@@ -96,6 +98,7 @@ export default function Register() {
             <div className="text-center text-sm text-slate-600 dark:text-slate-400">
               <p>Registered email: <span className="font-medium">{formData.email}</span></p>
               <p className="mt-1">Business: <span className="font-medium">{formData.businessName}</span></p>
+              <p className="mt-1">Location: <span className="font-medium">{formData.businessLocation}</span></p>
             </div>
             
             <div className="flex gap-3 pt-2">
@@ -206,6 +209,19 @@ export default function Register() {
                     placeholder="My Property or Hotel Name"
                     required
                     data-testid="input-businessname"
+                    className="border-slate-200 dark:border-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900 dark:text-white">Business Location</label>
+                  <Input
+                    name="businessLocation"
+                    value={formData.businessLocation}
+                    onChange={handleChange}
+                    placeholder="e.g., Shimla, Himachal Pradesh"
+                    required
+                    data-testid="input-businesslocation"
                     className="border-slate-200 dark:border-slate-800"
                   />
                 </div>
