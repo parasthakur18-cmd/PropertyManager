@@ -2,7 +2,7 @@ import { pgTable, serial, varchar, integer, text, timestamp, decimal, boolean, d
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Users table - matches actual database
+// Users table - matches actual database with multi-tenant support
 export const users = pgTable("users", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }).notNull(),
@@ -13,10 +13,18 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 50 }).notNull().default("staff"),
   assignedPropertyIds: varchar("assigned_property_ids", { length: 255 }).array().default([]),
   phone: varchar("phone", { length: 20 }),
-  status: varchar("status", { length: 20 }),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
   businessName: varchar("business_name", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // Multi-tenant authentication fields
+  verificationStatus: varchar("verification_status", { length: 20 }).notNull().default("pending"),
+  tenantType: varchar("tenant_type", { length: 30 }).notNull().default("property_owner"),
+  primaryPropertyId: integer("primary_property_id"),
+  rejectionReason: text("rejection_reason"),
+  approvedBy: varchar("approved_by", { length: 255 }),
+  approvedAt: timestamp("approved_at"),
+  signupMethod: varchar("signup_method", { length: 20 }).default("google"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -44,7 +52,40 @@ export type UpsertUser = {
   phone?: string | null;
   status?: string | null;
   businessName?: string | null;
+  verificationStatus?: string | null;
+  tenantType?: string | null;
+  primaryPropertyId?: number | null;
+  rejectionReason?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: Date | null;
+  signupMethod?: string | null;
 };
+
+// Verification status types for multi-tenant security
+export type VerificationStatus = 'pending' | 'verified' | 'rejected';
+export type TenantType = 'super_admin' | 'property_owner' | 'staff';
+export type SignupMethod = 'google' | 'email' | 'phone';
+
+// OTP Tokens table for mobile login
+export const otpTokens = pgTable("otp_tokens", {
+  id: serial("id").primaryKey(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  otp: varchar("otp", { length: 6 }).notNull(),
+  purpose: varchar("purpose", { length: 20 }).notNull().default("login"),
+  expiresAt: timestamp("expires_at").notNull(),
+  isUsed: boolean("is_used").default(false),
+  attempts: integer("attempts").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOtpTokenSchema = createInsertSchema(otpTokens).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertOtpToken = z.infer<typeof insertOtpTokenSchema>;
+export type OtpToken = typeof otpTokens.$inferSelect;
 
 // Properties table - matches actual database
 export const properties = pgTable("properties", {
