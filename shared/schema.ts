@@ -698,6 +698,56 @@ export const insertSalaryPaymentSchema = createInsertSchema(salaryPayments).omit
 });
 export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
 
+// Vendors table - for tracking vendor credits and payments
+export const vendors = pgTable("vendors", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  category: varchar("category", { length: 100 }), // grocery, supplies, maintenance, etc.
+  gstNumber: varchar("gst_number", { length: 50 }),
+  bankDetails: text("bank_details"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type Vendor = typeof vendors.$inferSelect;
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
+
+// Vendor Transactions table - for tracking credit purchases and payments
+export const vendorTransactions = pgTable("vendor_transactions", {
+  id: serial("id").primaryKey(),
+  vendorId: integer("vendor_id").notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  transactionType: varchar("transaction_type", { length: 20 }).notNull(), // 'credit' for purchases, 'payment' for payments made
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  transactionDate: timestamp("transaction_date").notNull(),
+  description: text("description"),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  paymentMethod: varchar("payment_method", { length: 50 }), // cash, bank_transfer, upi, cheque
+  referenceNumber: varchar("reference_number", { length: 100 }),
+  expenseCategoryId: integer("expense_category_id").references(() => expenseCategories.id),
+  createdBy: varchar("created_by", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type VendorTransaction = typeof vendorTransactions.$inferSelect;
+export const insertVendorTransactionSchema = createInsertSchema(vendorTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertVendorTransaction = z.infer<typeof insertVendorTransactionSchema>;
+
 // Attendance Records table - matches actual database
 export const attendanceRecords = pgTable("attendance_records", {
   id: serial("id").primaryKey(),
