@@ -28,6 +28,7 @@ import NewEnquiry from "@/pages/new-enquiry";
 import Enquiries from "@/pages/enquiries";
 import Leases from "@/pages/leases";
 import Expenses from "@/pages/expenses";
+import Vendors from "@/pages/vendors";
 import Financials from "@/pages/financials";
 import PnLStatement from "@/pages/pnl-statement";
 import AddOnServices from "@/pages/addons";
@@ -157,6 +158,7 @@ function Router() {
           <Route path="/pending-payments" component={PendingPayments} />
           <Route path="/leases" component={Leases} />
           <Route path="/expenses" component={Expenses} />
+          <Route path="/vendors" component={Vendors} />
           <Route path="/financials" component={Financials} />
           <Route path="/pnl-statement" component={PnLStatement} />
           <Route path="/addons" component={AddOnServices} />

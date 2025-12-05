@@ -36,6 +36,7 @@ import {
   Settings2,
   Globe,
   Bell,
+  Store,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -102,6 +103,7 @@ const adminFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Leases", url: "/leases", icon: IndianRupee },
   { title: "Expenses", url: "/expenses", icon: FileText },
+  { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Financials", url: "/financials", icon: TrendingUp },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
@@ -148,6 +150,7 @@ const managerAdminItems = [
 const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Expenses", url: "/expenses", icon: FileText },
+  { title: "Vendors", url: "/vendors", icon: Store },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
 ];
 
