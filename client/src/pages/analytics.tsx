@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, TrendingUp, Users, Hotel, IndianRupee, Building2, AlertCircle, Clock } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Hotel, IndianRupee, AlertCircle, Clock } from "lucide-react";
+import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -170,27 +171,13 @@ export default function Analytics() {
         </div>
         
         {/* Property Filter */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={selectedPropertyId === null ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedPropertyId(null)}
-            data-testid="button-analytics-all-properties"
-          >
-            All Properties
-          </Button>
-          {availableProperties.map((property) => (
-            <Button
-              key={property.id}
-              variant={selectedPropertyId === property.id ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedPropertyId(property.id)}
-              data-testid={`button-analytics-property-${property.id}`}
-            >
-              {property.name}
-            </Button>
-          ))}
-        </div>
+        {availableProperties.length > 1 && (
+          <PropertyScopePicker
+            availableProperties={availableProperties}
+            selectedPropertyId={selectedPropertyId}
+            onPropertyChange={setSelectedPropertyId}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

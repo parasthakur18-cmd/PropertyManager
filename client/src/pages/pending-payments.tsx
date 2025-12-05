@@ -30,7 +30,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, isAfter, parseISO, isBefore } from "date-fns";
-import { Clock, AlertTriangle, CheckCircle, User, Building2, Download } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, User, Download } from "lucide-react";
+import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { useAuth } from "@/hooks/useAuth";
 import type { Property } from "@shared/schema";
 
@@ -213,27 +214,15 @@ export default function PendingPayments() {
       </div>
 
       {/* Property Filter */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant={selectedPropertyId === null ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSelectedPropertyId(null)}
-          data-testid="button-pending-all-properties"
-        >
-          All Properties
-        </Button>
-        {availableProperties.map((property) => (
-          <Button
-            key={property.id}
-            variant={selectedPropertyId === property.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedPropertyId(property.id)}
-            data-testid={`button-pending-property-${property.id}`}
-          >
-            {property.name}
-          </Button>
-        ))}
-      </div>
+      {availableProperties.length > 1 && (
+        <div className="mb-4">
+          <PropertyScopePicker
+            availableProperties={availableProperties}
+            selectedPropertyId={selectedPropertyId}
+            onPropertyChange={setSelectedPropertyId}
+          />
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>

@@ -18,8 +18,8 @@ import {
   Search,
   FileText,
   MessageCircle,
-  Building2,
 } from "lucide-react";
+import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -626,29 +626,11 @@ export default function Enquiries() {
         
         {/* Property Filter */}
         {availableProperties.length > 1 && (
-          <div className="flex flex-wrap gap-2 items-center">
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground mr-2">Filter by property:</span>
-            <Button
-              variant={selectedPropertyId === null ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedPropertyId(null)}
-              data-testid="button-filter-all-properties"
-            >
-              All Properties
-            </Button>
-            {availableProperties.map((property) => (
-              <Button
-                key={property.id}
-                variant={selectedPropertyId === property.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedPropertyId(property.id)}
-                data-testid={`button-filter-property-${property.id}`}
-              >
-                {property.name}
-              </Button>
-            ))}
-          </div>
+          <PropertyScopePicker
+            availableProperties={availableProperties}
+            selectedPropertyId={selectedPropertyId}
+            onPropertyChange={setSelectedPropertyId}
+          />
         )}
       </div>
 

@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X } from "lucide-react";
+import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -402,27 +403,15 @@ export default function Kitchen() {
       </div>
 
       {/* Property Filter */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <Button
-          variant={selectedPropertyId === null ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSelectedPropertyId(null)}
-          data-testid="button-kitchen-all-properties"
-        >
-          All Properties
-        </Button>
-        {availableProperties.map((property) => (
-          <Button
-            key={property.id}
-            variant={selectedPropertyId === property.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedPropertyId(property.id)}
-            data-testid={`button-kitchen-property-${property.id}`}
-          >
-            {property.name}
-          </Button>
-        ))}
-      </div>
+      {availableProperties.length > 1 && (
+        <div className="mb-6">
+          <PropertyScopePicker
+            availableProperties={availableProperties}
+            selectedPropertyId={selectedPropertyId}
+            onPropertyChange={setSelectedPropertyId}
+          />
+        </div>
+      )}
 
       {showSettings && (
         <Card className="mb-6">

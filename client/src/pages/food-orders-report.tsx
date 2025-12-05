@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, Download, UtensilsCrossed, IndianRupee, Plus } from "lucide-react";
+import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -294,27 +295,15 @@ export default function FoodOrdersReport() {
       </div>
 
       {/* Property Filter */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <Button
-          variant={selectedPropertyId === null ? "default" : "outline"}
-          size="sm"
-          onClick={() => setSelectedPropertyId(null)}
-          data-testid="button-orders-all-properties"
-        >
-          All Properties
-        </Button>
-        {availableProperties.map((property) => (
-          <Button
-            key={property.id}
-            variant={selectedPropertyId === property.id ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSelectedPropertyId(property.id)}
-            data-testid={`button-orders-property-${property.id}`}
-          >
-            {property.name}
-          </Button>
-        ))}
-      </div>
+      {availableProperties.length > 1 && (
+        <div className="mb-6">
+          <PropertyScopePicker
+            availableProperties={availableProperties}
+            selectedPropertyId={selectedPropertyId}
+            onPropertyChange={setSelectedPropertyId}
+          />
+        </div>
+      )}
 
       <Card className="mb-6">
         <CardHeader>
