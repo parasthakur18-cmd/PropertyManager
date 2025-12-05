@@ -888,67 +888,55 @@ export default function Bookings() {
           </div>
         </div>
 
-        {/* Filter & Search Card */}
-        <Card className="border-none shadow-md hover-elevate transition-all duration-200 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-          <CardContent className="p-5">
-            <div className="flex flex-col md:flex-row gap-4 items-end">
-              {/* Search Input */}
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="search" className="text-sm font-medium text-muted-foreground">Search</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-primary/60" />
-                  <Input
-                    id="search"
-                    placeholder="Guest name, property, room, status..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 border-primary/20 focus:border-primary/50 focus:ring-primary/30"
-                    data-testid="input-search-bookings"
-                  />
-                </div>
-              </div>
-              
-              {/* Check-in Date Filter */}
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="checkin-date" className="text-sm font-medium text-muted-foreground">Check-in Date</Label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-primary/60" />
-                    <Input
-                      id="checkin-date"
-                      type="date"
-                      value={checkinDateFilter}
-                      onChange={(e) => setCheckinDateFilter(e.target.value)}
-                      className="pl-10 border-primary/20 focus:border-primary/50 focus:ring-primary/30"
-                      data-testid="input-checkin-date-filter"
-                    />
-                  </div>
-                  {checkinDateFilter && (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => setCheckinDateFilter("")}
-                      className="border-primary/20 hover:bg-destructive/10 hover:text-destructive"
-                      data-testid="button-clear-date-filter"
-                      title="Clear date filter"
-                    >
-                      <span className="text-lg">✕</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Filter Badge */}
-              {(searchQuery || checkinDateFilter) && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                  <span className="text-xs font-medium text-primary">
-                    {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) !== 1 ? 's' : ''} active
-                  </span>
-                </div>
-              )}
+        {/* Compact Filter Row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              id="search"
+              placeholder="Search guest, property, room..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 h-9"
+              data-testid="input-search-bookings"
+            />
+          </div>
+          
+          {/* Check-in Date Filter */}
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="checkin-date"
+                type="date"
+                value={checkinDateFilter}
+                onChange={(e) => setCheckinDateFilter(e.target.value)}
+                className="pl-9 h-9 w-[150px]"
+                data-testid="input-checkin-date-filter"
+              />
             </div>
-          </CardContent>
-        </Card>
+            {checkinDateFilter && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setCheckinDateFilter("")}
+                className="h-9 w-9"
+                data-testid="button-clear-date-filter"
+                title="Clear date filter"
+              >
+                <span className="text-sm">✕</span>
+              </Button>
+            )}
+          </div>
+
+          {/* Filter Badge */}
+          {(searchQuery || checkinDateFilter) && (
+            <Badge variant="secondary" className="h-7">
+              {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) !== 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Action Button */}
