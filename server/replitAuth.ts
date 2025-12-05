@@ -78,11 +78,12 @@ async function upsertUser(
     });
     
     // If admin user has no assigned properties, auto-assign all properties
-    if ((isAdmin || updatedUser.role === 'admin') && (!updatedUser.assignedPropertyIds || updatedUser.assignedPropertyIds.length === 0)) {
+    // Only for actual admin role, not for staff/manager
+    if (updatedUser.role === 'admin' && (!updatedUser.assignedPropertyIds || updatedUser.assignedPropertyIds.length === 0)) {
       const allProperties = await storage.getAllProperties();
       const propertyIds = allProperties.map((p: any) => p.id);
       if (propertyIds.length > 0) {
-        await storage.updateUserRole(claims["sub"], updatedUser.role, propertyIds);
+        await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
       }
     }
   } else {
