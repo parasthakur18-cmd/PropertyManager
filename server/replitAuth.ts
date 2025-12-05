@@ -68,7 +68,7 @@ async function upsertUser(
   
   if (existingUser) {
     // User exists - update profile info but preserve role unless they're an admin email
-    await storage.upsertUser({
+    const updatedUser = await storage.upsertUser({
       id: claims["sub"],
       email: claims["email"],
       firstName: claims["first_name"],
@@ -76,12 +76,21 @@ async function upsertUser(
       profileImageUrl: claims["profile_image_url"],
       role: isAdmin ? 'admin' : existingUser.role, // Preserve existing role unless admin email
     });
+    
+    // If admin user has no assigned properties, auto-assign all properties
+    if ((isAdmin || updatedUser.role === 'admin') && (!updatedUser.assignedPropertyIds || updatedUser.assignedPropertyIds.length === 0)) {
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = allProperties.map((p: any) => p.id);
+      if (propertyIds.length > 0) {
+        await storage.updateUserRole(claims["sub"], updatedUser.role, propertyIds);
+      }
+    }
   } else {
     // New user - check if first user
     const allUsers = await storage.getAllUsers();
     const isFirstUser = allUsers.length === 0;
     
-    await storage.upsertUser({
+    const newUser = await storage.upsertUser({
       id: claims["sub"],
       email: claims["email"],
       firstName: claims["first_name"],
@@ -89,6 +98,15 @@ async function upsertUser(
       profileImageUrl: claims["profile_image_url"],
       role: (isFirstUser || isAdmin) ? 'admin' : 'staff', // First user or admin emails get admin
     });
+    
+    // If new admin user, auto-assign all properties
+    if ((isFirstUser || isAdmin) && newUser.role === 'admin') {
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = allProperties.map((p: any) => p.id);
+      if (propertyIds.length > 0) {
+        await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
+      }
+    }
   }
 }
 

@@ -3,6 +3,9 @@
 ## Overview
 Hostezee is a comprehensive, multi-property management system designed for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and aims to be the easiest PMS globally to operate, targeting significant market share. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management.
 
+## Recent Fixes
+- **December 5, 2025**: Fixed property visibility issue - admin users now automatically get assigned to all properties on login. Mobile vendor form now scrollable for all screen sizes.
+
 ## User Preferences
 Preferred communication style: Simple, everyday language. Wants showcase of all features on website with pricing comparison and app screenshots.
 
@@ -64,7 +67,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
     - **Email/Password**: Local authentication with bcrypt password hashing
     - **Mobile OTP**: WhatsApp-based OTP login via Authkey.io (5-minute expiry, 60-second rate limit)
 -   **User Verification**: Super Admin approval workflow with pending/verified/rejected status. New users default to 'pending' and require approval before access.
--   **Tenant Isolation**: Property-based data filtering on core routes (properties, rooms, bookings) using assignedPropertyIds. Super Admin has unlimited access.
+-   **Tenant Isolation**: Property-based data filtering on core routes (properties, rooms, bookings) using assignedPropertyIds. Super Admin has unlimited access. **Auto-assignment**: Admin users automatically get assigned to all properties on first login.
 -   **Data Validation**: Client-side with Zod, server-side using shared Zod schemas.
 -   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection, and tenant access verification on mutations.
 
