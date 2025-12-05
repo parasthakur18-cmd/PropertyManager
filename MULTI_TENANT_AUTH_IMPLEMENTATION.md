@@ -448,7 +448,13 @@ POST /api/super-admin/reject-user/:userId
 - [x] Update bookings routes with tenant filtering
 - [x] Super Admin has unlimited access (hasUnlimitedAccess: true)
 
-## PHASE 6: TESTING 🔄 IN PROGRESS
+## PHASE 6: WHATSAPP INTEGRATION ✅ COMPLETED
+- [x] OTP sending via Authkey.io (send-otp endpoint)
+- [x] Approval notification via WhatsApp
+- [x] Rejection notification via WhatsApp
+- [x] Rate limiting on OTP requests (60 second cooldown)
+
+## PHASE 7: TESTING 🔄 IN PROGRESS
 - [ ] Test all login methods
 - [ ] Test approval workflow
 - [ ] Test data isolation
