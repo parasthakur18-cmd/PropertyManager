@@ -125,10 +125,10 @@ export default function Bookings() {
     return date;
   };
 
-  // Helper to get default checkout time (10:00 AM, 7 days from today)
+  // Helper to get default checkout time (10:00 AM, next day from today)
   const getDefaultCheckOut = () => {
     const date = new Date();
-    date.setDate(date.getDate() + 7);
+    date.setDate(date.getDate() + 1);
     date.setHours(10, 0, 0, 0); // 10:00 AM
     return date;
   };
