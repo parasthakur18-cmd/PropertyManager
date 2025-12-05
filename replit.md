@@ -59,9 +59,14 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **Frontend**: React 18, TypeScript, Vite, Wouter, TanStack Query, React Hook Form, Zod.
 -   **Backend**: Express.js, Node.js, TypeScript, RESTful API.
 -   **Database**: PostgreSQL (Neon serverless) with Drizzle ORM.
--   **Authentication**: Replit Auth, OpenID Connect, Passport.js, session-based via secure HTTP-only cookies, with auto-user creation and role-based authorization (admin, super-admin, manager, staff, kitchen).
+-   **Authentication**: Multi-method authentication supporting:
+    - **Google OAuth**: Replit Auth with OpenID Connect via Passport.js
+    - **Email/Password**: Local authentication with bcrypt password hashing
+    - **Mobile OTP**: WhatsApp-based OTP login via Authkey.io (5-minute expiry, 60-second rate limit)
+-   **User Verification**: Super Admin approval workflow with pending/verified/rejected status. New users default to 'pending' and require approval before access.
+-   **Tenant Isolation**: Property-based data filtering on core routes (properties, rooms, bookings) using assignedPropertyIds. Super Admin has unlimited access.
 -   **Data Validation**: Client-side with Zod, server-side using shared Zod schemas.
--   **Security**: HTTPS-only cookies, environment variable-secured session secrets, and CSRF protection.
+-   **Security**: HTTPS-only cookies, environment variable-secured session secrets, CSRF protection, and tenant access verification on mutations.
 
 ## External Dependencies
 
