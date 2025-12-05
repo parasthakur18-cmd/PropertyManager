@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
@@ -1316,6 +1316,29 @@ export default function Bookings() {
                   </TabsContent>
                 </Tabs>
 
+                {/* No Rooms Available Warning for New Booking */}
+                {(() => {
+                  const availableRooms = getRoomsForBookingType(bookingType, { isEditMode: false });
+                  const hasNoRooms = availableRooms.length === 0 && roomAvailability;
+                  
+                  if (hasNoRooms) {
+                    return (
+                      <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-2" data-testid="warning-new-booking-no-rooms">
+                        <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-destructive">No Rooms Available</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            All rooms are booked for the selected dates ({checkInDate ? format(checkInDate, "MMM dd") : ""} - {checkOutDate ? format(checkOutDate, "MMM dd") : ""}). 
+                            Please choose different dates or try a different room type.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  return null;
+                })()}
+
                 <FormField
                   control={form.control}
                   name="numberOfGuests"
@@ -1332,6 +1355,40 @@ export default function Bookings() {
                           data-testid="input-booking-guests"
                         />
                       </FormControl>
+                      {/* Guest Capacity Warning */}
+                      {(() => {
+                        const guestCount = field.value || 0;
+                        const roomId = form.watch("roomId");
+                        const room = rooms?.find(r => r.id === roomId);
+                        
+                        if (bookingType === "single" && room && guestCount > room.maxOccupancy) {
+                          return (
+                            <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md flex items-center gap-2 mt-2">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                              <p className="text-xs text-amber-700 dark:text-amber-300">
+                                Guest count ({guestCount}) exceeds room capacity ({room.maxOccupancy})
+                              </p>
+                            </div>
+                          );
+                        }
+                        
+                        if (bookingType === "group" && selectedRoomIds.length > 0) {
+                          const totalCapacity = rooms?.filter(r => selectedRoomIds.includes(r.id))
+                            .reduce((sum, r) => sum + (r.maxOccupancy || 2), 0) || 0;
+                          if (guestCount > totalCapacity) {
+                            return (
+                              <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md flex items-center gap-2 mt-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                  Guest count ({guestCount}) exceeds total capacity ({totalCapacity}) for selected rooms
+                                </p>
+                              </div>
+                            );
+                          }
+                        }
+                        
+                        return null;
+                      })()}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1512,7 +1569,15 @@ export default function Bookings() {
                   )}
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-booking">
+                  <Button 
+                    type="submit" 
+                    disabled={
+                      createMutation.isPending || 
+                      (getRoomsForBookingType(bookingType, { isEditMode: false }).length === 0 && roomAvailability) ||
+                      (bookingType === "group" && selectedRoomIds.length === 0)
+                    } 
+                    data-testid="button-submit-booking"
+                  >
                     {createMutation.isPending ? "Creating..." : "Create Booking"}
                   </Button>
                 </DialogFooter>
@@ -2277,6 +2342,45 @@ export default function Bookings() {
                   </div>
                 </TabsContent>
               </Tabs>
+
+              {/* No Rooms Available Warning */}
+              {(() => {
+                const availableRooms = getRoomsForBookingType(editBookingType, { isEditMode: true });
+                const hasNoRooms = availableRooms.length === 0 && editRoomAvailability;
+                const isCurrentRoomUnavailable = editingBooking?.roomId && 
+                  !availableRooms.find(r => r.id === editingBooking.roomId) &&
+                  editRoomAvailability;
+                
+                if (hasNoRooms) {
+                  return (
+                    <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-2" data-testid="warning-no-rooms">
+                      <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-destructive">No Rooms Available</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          All rooms are booked for the selected dates. Please change the check-in/check-out dates or try a different room type.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                if (isCurrentRoomUnavailable) {
+                  return (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2" data-testid="warning-room-conflict">
+                      <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Room Conflict Detected</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          The current room is not available for the new dates. Please select a different room from the list above.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                return null;
+              })()}
               
               <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
                 <h4 className="font-semibold text-sm mb-3">Booking Dates</h4>
@@ -2363,6 +2467,40 @@ export default function Bookings() {
                             data-testid="input-edit-booking-guests"
                           />
                         </FormControl>
+                        {/* Guest Capacity Warning for Edit Form */}
+                        {(() => {
+                          const guestCount = field.value || 0;
+                          const roomId = editForm.watch("roomId");
+                          const room = rooms?.find(r => r.id === roomId);
+                          
+                          if (editBookingType === "single" && room && guestCount > room.maxOccupancy) {
+                            return (
+                              <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md flex items-center gap-2 mt-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                  Guest count ({guestCount}) exceeds room capacity ({room.maxOccupancy})
+                                </p>
+                              </div>
+                            );
+                          }
+                          
+                          if (editBookingType === "group" && editSelectedRoomIds.length > 0) {
+                            const totalCapacity = rooms?.filter(r => editSelectedRoomIds.includes(r.id))
+                              .reduce((sum, r) => sum + (r.maxOccupancy || 2), 0) || 0;
+                            if (guestCount > totalCapacity) {
+                              return (
+                                <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md flex items-center gap-2 mt-2">
+                                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+                                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                                    Guest count ({guestCount}) exceeds total capacity ({totalCapacity}) for selected rooms
+                                  </p>
+                                </div>
+                              );
+                            }
+                          }
+                          
+                          return null;
+                        })()}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -2501,7 +2639,15 @@ export default function Bookings() {
                 )}
               />
               <DialogFooter>
-                <Button type="submit" disabled={updateBookingMutation.isPending} data-testid="button-submit-edit-booking">
+                <Button 
+                  type="submit" 
+                  disabled={
+                    updateBookingMutation.isPending ||
+                    (getRoomsForBookingType(editBookingType, { isEditMode: true }).length === 0 && editRoomAvailability) ||
+                    (editBookingType === "group" && editSelectedRoomIds.length === 0)
+                  } 
+                  data-testid="button-submit-edit-booking"
+                >
                   {updateBookingMutation.isPending ? "Updating..." : "Update Booking"}
                 </Button>
               </DialogFooter>
@@ -2877,6 +3023,48 @@ function CheckoutBillSummary({
           <span>{format(checkOutDate, "PPP")}</span>
         </div>
       </div>
+
+      {/* Checkout Warnings */}
+      {(() => {
+        const pendingOrders = bookingOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
+        const unpaidExtras = bookingExtras.filter(e => !e.isPaid);
+        const warnings = [];
+        
+        if (pendingOrders.length > 0) {
+          warnings.push(
+            <div key="pending-orders" className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Pending Food Orders</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {pendingOrders.length} order{pendingOrders.length > 1 ? 's are' : ' is'} still pending or being prepared. 
+                  Consider completing these before checkout.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        
+        if (unpaidExtras.length > 0) {
+          const unpaidTotal = unpaidExtras.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0);
+          warnings.push(
+            <div key="unpaid-extras" className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg flex items-start gap-2">
+              <Info className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Unpaid Extra Services</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  ₹{unpaidTotal.toFixed(2)} in extra services will be added to the final bill.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        
+        if (warnings.length > 0) {
+          return <div className="space-y-2">{warnings}</div>;
+        }
+        return null;
+      })()}
 
       {/* Bill Details */}
       <div className="border rounded-lg p-4 space-y-3">
