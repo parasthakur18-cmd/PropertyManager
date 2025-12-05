@@ -5732,6 +5732,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== VENDOR MANAGEMENT ENDPOINTS =====
+  // GET /api/vendors - Get all vendors for a property (with balances)
+  app.get("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { propertyId } = req.query;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const vendors = await storage.getVendorsWithBalance(parseInt(propertyId as string));
+      res.json(vendors);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/vendors/:id - Get a single vendor
+  app.get("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const vendor = await storage.getVendor(parseInt(req.params.id));
+      
+      if (!vendor) {
+        return res.status(404).json({ message: "Vendor not found" });
+      }
+      
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/vendors - Create a new vendor
+  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertVendorSchema } = await import("@shared/schema");
+      const validatedData = insertVendorSchema.parse(req.body);
+      const vendor = await storage.createVendor(validatedData);
+
+      res.status(201).json(vendor);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/vendors/:id - Update a vendor
+  app.patch("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const vendor = await storage.updateVendor(parseInt(req.params.id), req.body);
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/vendors/:id - Delete a vendor
+  app.delete("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteVendor(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== VENDOR TRANSACTION ENDPOINTS =====
+  // GET /api/vendors/:vendorId/transactions - Get transactions for a vendor
+  app.get("/api/vendors/:vendorId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const transactions = await storage.getVendorTransactions(parseInt(req.params.vendorId));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/vendors/:vendorId/transactions - Add a transaction (credit purchase or payment)
+  app.post("/api/vendors/:vendorId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertVendorTransactionSchema } = await import("@shared/schema");
+      const validatedData = insertVendorTransactionSchema.parse({
+        ...req.body,
+        vendorId: parseInt(req.params.vendorId),
+        createdBy: user.firstName || user.email || user.id,
+      });
+      
+      const transaction = await storage.createVendorTransaction(validatedData);
+      res.status(201).json(transaction);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/vendor-transactions/:id - Delete a transaction
+  app.delete("/api/vendor-transactions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteVendorTransaction(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Password Reset endpoints
   app.post("/api/auth/forgot-password", async (req, res) => {
     try {
