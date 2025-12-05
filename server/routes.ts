@@ -6157,6 +6157,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== SUPER ADMIN USER APPROVAL ENDPOINTS =====
 
+  // Approve user - NEW endpoint with body params (for frontend)
+  app.post("/api/super-admin/approve-user", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId, propertyName, propertyLocation } = req.body;
+
+      // Validate required fields
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      if (!propertyName || propertyName.trim() === "") {
+        return res.status(400).json({ message: "Property name is required" });
+      }
+      if (!propertyLocation || propertyLocation.trim() === "") {
+        return res.status(400).json({ message: "Property location is required" });
+      }
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'verified') {
+        return res.status(400).json({ message: "User is already verified" });
+      }
+
+      // Create property for the user
+      const newProperty = await storage.createProperty({
+        name: propertyName.trim(),
+        location: propertyLocation.trim(),
+        description: '',
+        contactEmail: targetUser.email,
+        contactPhone: targetUser.phone || '',
+        ownerUserId: userId,
+      });
+
+      console.log(`[SUPER-ADMIN] Created property "${newProperty.name}" (ID: ${newProperty.id}) for user ${targetUser.email}`);
+
+      // Update user: verify and assign admin role for their property
+      await db.update(users).set({
+        verificationStatus: 'verified',
+        role: 'admin',
+        primaryPropertyId: newProperty.id,
+        assignedPropertyIds: [String(newProperty.id)],
+        approvedBy: adminId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUPER-ADMIN] ✓ Approved user ${targetUser.email} with admin role for property ${newProperty.name}`);
+
+      // Send WhatsApp notification if phone available
+      if (targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Congratulations! Your Hostezee account has been approved. Property: ${newProperty.name}. Login at https://hostezee.in`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[APPROVAL] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} approved successfully`,
+        user: {
+          id: userId,
+          email: targetUser.email,
+          role: 'admin',
+          verificationStatus: 'verified',
+        },
+        property: {
+          id: newProperty.id,
+          name: newProperty.name,
+          location: newProperty.location,
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/APPROVE-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject user - NEW endpoint with body params (for frontend)
+  app.post("/api/super-admin/reject-user", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId, reason } = req.body;
+
+      // Validate required field
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'rejected') {
+        return res.status(400).json({ message: "User is already rejected" });
+      }
+
+      // Update user to rejected status
+      await db.update(users).set({
+        verificationStatus: 'rejected',
+        approvedBy: adminId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUPER-ADMIN] ✗ Rejected user ${targetUser.email}${reason ? ` - Reason: ${reason}` : ''}`);
+
+      // Send WhatsApp notification if phone available
+      if (targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = reason 
+              ? `Your Hostezee account application was not approved. Reason: ${reason}. Contact support for assistance.`
+              : `Your Hostezee account application was not approved at this time. Contact support for assistance.`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[REJECTION] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} rejected${reason ? ` - ${reason}` : ''}`,
+        user: {
+          id: userId,
+          email: targetUser.email,
+          verificationStatus: 'rejected',
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REJECT-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Get pending users waiting for approval
   app.get("/api/super-admin/pending-users", isAuthenticated, async (req, res) => {
     try {

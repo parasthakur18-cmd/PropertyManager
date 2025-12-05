@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
 import { format } from "date-fns";
 import { useLocation } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface ContactEnquiry {
   id: number;
@@ -29,9 +40,17 @@ export default function SuperAdmin() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [location, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState("users");
+  const [activeTab, setActiveTab] = useState("pending");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+  
+  // Pending user approval state
+  const [approvalDialog, setApprovalDialog] = useState(false);
+  const [rejectionDialog, setRejectionDialog] = useState(false);
+  const [selectedPendingUser, setSelectedPendingUser] = useState<User | null>(null);
+  const [approvalPropertyName, setApprovalPropertyName] = useState("");
+  const [approvalPropertyLocation, setApprovalPropertyLocation] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
 
   // Check if user is authenticated as super admin on mount
   useEffect(() => {
@@ -100,6 +119,67 @@ export default function SuperAdmin() {
   // Fetch all error crashes - MUST be before early returns
   const { data: errorCrashes = [] } = useQuery<ErrorCrash[]>({
     queryKey: ["/api/errors"],
+  });
+
+  // Fetch pending users for approval - MUST be before early returns
+  const { data: pendingUsers = [], isLoading: pendingUsersLoading } = useQuery<User[]>({
+    queryKey: ["/api/super-admin/pending-users"],
+  });
+
+  // Approve user mutation
+  const approveUser = useMutation({
+    mutationFn: async (data: {
+      userId: string;
+      propertyName: string;
+      propertyLocation: string;
+    }) => {
+      return apiRequest("/api/super-admin/approve-user", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/pending-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/properties"] });
+      toast({
+        title: "Success",
+        description: "User approved and property created successfully!",
+      });
+      setApprovalDialog(false);
+      setSelectedPendingUser(null);
+      setApprovalPropertyName("");
+      setApprovalPropertyLocation("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve user",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reject user mutation
+  const rejectUser = useMutation({
+    mutationFn: async (data: { userId: string; reason?: string }) => {
+      return apiRequest("/api/super-admin/reject-user", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/pending-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({
+        title: "User Rejected",
+        description: "The user has been notified of the rejection.",
+      });
+      setRejectionDialog(false);
+      setSelectedPendingUser(null);
+      setRejectionReason("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject user",
+        variant: "destructive",
+      });
+    },
   });
 
   // Mark error as resolved - MUST be before early returns
@@ -236,14 +316,15 @@ export default function SuperAdmin() {
       </div>
 
       <div className="space-y-4">
-        <div className="grid w-full grid-cols-5 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        <div className="grid w-full grid-cols-6 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
           {[
+            { value: "pending", label: `Pending (${pendingUsers.length})`, icon: Clock, highlight: pendingUsers.length > 0 },
             { value: "users", label: `Users (${users.length})`, icon: Users },
             { value: "properties", label: `Properties (${properties.length})`, icon: Building2 },
             { value: "reports", label: `Reports (${reports.length})`, icon: AlertCircle },
             { value: "enquiries", label: `Leads (${enquiries.length})`, icon: MessageSquare },
             { value: "errors", label: `Errors (${errorCrashes.length})`, icon: Bug },
-          ].map(({ value, label, icon: Icon }) => (
+          ].map(({ value, label, icon: Icon, highlight }) => (
             <button
               key={value}
               onClick={() => {
@@ -253,14 +334,282 @@ export default function SuperAdmin() {
               className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 activeTab === value
                   ? "bg-teal-600 dark:bg-teal-500 text-white"
-                  : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  : highlight
+                    ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800/40"
+                    : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
+              data-testid={`tab-${value}`}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className={`h-4 w-4 ${highlight && activeTab !== value ? "text-orange-600 dark:text-orange-400" : ""}`} />
               <span className="hidden sm:inline">{label}</span>
             </button>
           ))}
         </div>
+
+        {/* Pending Users Tab */}
+        {activeTab === "pending" && (
+          <div className="space-y-4">
+            {pendingUsersLoading ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  Loading pending users...
+                </CardContent>
+              </Card>
+            ) : pendingUsers.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                  <CheckCircle className="h-8 w-8 text-green-500" />
+                  <p>All caught up! No pending signups to review.</p>
+                  <p className="text-xs">New signups will appear here for approval</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+                    <Clock className="h-5 w-5" />
+                    <span className="font-medium">
+                      {pendingUsers.length} user{pendingUsers.length !== 1 ? "s" : ""} waiting for approval
+                    </span>
+                  </div>
+                  <p className="text-sm text-orange-600 dark:text-orange-400 mt-1">
+                    Review and approve new property owners to grant them access to the system.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  {pendingUsers.map((user) => (
+                    <Card key={user.id} className="hover-elevate border-orange-200 dark:border-orange-800">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-base flex items-center gap-2">
+                              {user.firstName || user.lastName
+                                ? `${user.firstName || ""} ${user.lastName || ""}`.trim()
+                                : "New User"}
+                              <Badge variant="outline" className="bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-300">
+                                Pending
+                              </Badge>
+                            </CardTitle>
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                <Mail className="h-4 w-4" />
+                                {user.email}
+                              </p>
+                              {user.phone && (
+                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                  <Phone className="h-4 w-4" />
+                                  {user.phone}
+                                </p>
+                              )}
+                              {user.businessName && (
+                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                  <Building2 className="h-4 w-4" />
+                                  {user.businessName}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="secondary" className="text-xs">
+                              {user.signupMethod === "email" ? "Email Signup" : 
+                               user.signupMethod === "phone" ? "Phone Signup" : 
+                               user.signupMethod === "google" ? "Google Signup" : "Unknown"}
+                            </Badge>
+                            {user.createdAt && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Signed up {format(new Date(user.createdAt), "MMM dd, yyyy HH:mm")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => {
+                              setSelectedPendingUser(user);
+                              setApprovalPropertyName(user.businessName || "");
+                              setApprovalDialog(true);
+                            }}
+                            data-testid={`button-approve-${user.id}`}
+                          >
+                            <UserCheck className="h-4 w-4 mr-1" />
+                            Approve & Create Property
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={() => {
+                              setSelectedPendingUser(user);
+                              setRejectionDialog(true);
+                            }}
+                            data-testid={`button-reject-${user.id}`}
+                          >
+                            <UserX className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Approval Dialog */}
+        <Dialog open={approvalDialog} onOpenChange={setApprovalDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-green-600" />
+                Approve User & Create Property
+              </DialogTitle>
+              <DialogDescription>
+                Approving this user will create a new property for them and grant admin access.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedPendingUser && (
+              <div className="space-y-4 py-4">
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-1">
+                  <p className="text-sm font-medium">
+                    {selectedPendingUser.firstName} {selectedPendingUser.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{selectedPendingUser.email}</p>
+                  {selectedPendingUser.phone && (
+                    <p className="text-sm text-muted-foreground">{selectedPendingUser.phone}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="propertyName">Property Name *</Label>
+                  <Input
+                    id="propertyName"
+                    value={approvalPropertyName}
+                    onChange={(e) => setApprovalPropertyName(e.target.value)}
+                    placeholder="e.g., Mountain View Resort"
+                    data-testid="input-property-name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="propertyLocation">Property Location *</Label>
+                  <Input
+                    id="propertyLocation"
+                    value={approvalPropertyLocation}
+                    onChange={(e) => setApprovalPropertyLocation(e.target.value)}
+                    placeholder="e.g., Shimla, Himachal Pradesh"
+                    data-testid="input-property-location"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setApprovalDialog(false);
+                  setSelectedPendingUser(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  if (selectedPendingUser && approvalPropertyName && approvalPropertyLocation) {
+                    approveUser.mutate({
+                      userId: selectedPendingUser.id,
+                      propertyName: approvalPropertyName,
+                      propertyLocation: approvalPropertyLocation,
+                    });
+                  }
+                }}
+                disabled={!approvalPropertyName || !approvalPropertyLocation || approveUser.isPending}
+                data-testid="button-confirm-approve"
+              >
+                {approveUser.isPending ? "Approving..." : "Approve User"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Rejection Dialog */}
+        <Dialog open={rejectionDialog} onOpenChange={setRejectionDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserX className="h-5 w-5 text-red-600" />
+                Reject User Application
+              </DialogTitle>
+              <DialogDescription>
+                This will block the user from accessing the system. They will be notified via WhatsApp if possible.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedPendingUser && (
+              <div className="space-y-4 py-4">
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-1">
+                  <p className="text-sm font-medium">
+                    {selectedPendingUser.firstName} {selectedPendingUser.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{selectedPendingUser.email}</p>
+                  {selectedPendingUser.phone && (
+                    <p className="text-sm text-muted-foreground">{selectedPendingUser.phone}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="rejectionReason">Reason for Rejection (Optional)</Label>
+                  <Textarea
+                    id="rejectionReason"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Provide a reason for rejection (optional)..."
+                    rows={3}
+                    data-testid="input-rejection-reason"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRejectionDialog(false);
+                  setSelectedPendingUser(null);
+                  setRejectionReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (selectedPendingUser) {
+                    rejectUser.mutate({
+                      userId: selectedPendingUser.id,
+                      reason: rejectionReason || undefined,
+                    });
+                  }
+                }}
+                disabled={rejectUser.isPending}
+                data-testid="button-confirm-reject"
+              >
+                {rejectUser.isPending ? "Rejecting..." : "Reject User"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Users Tab */}
         {activeTab === "users" && (
