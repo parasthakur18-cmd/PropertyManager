@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { AIPendingNotifications } from "@/components/ai-pending-notifications";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -105,7 +106,17 @@ export default function Dashboard() {
   const [cashReceived, setCashReceived] = useState<string>("0");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   
+  // Onboarding wizard state - show for new users who haven't completed onboarding
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  
   const { toast } = useToast();
+  
+  // Check if user needs onboarding on first load
+  useEffect(() => {
+    if (user && user.hasCompletedOnboarding === false) {
+      setShowOnboarding(true);
+    }
+  }, [user]);
   
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats", selectedPropertyId],
@@ -1769,6 +1780,14 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
       <AIPendingNotifications />
+      
+      {/* Onboarding wizard for new users */}
+      <OnboardingWizard
+        isOpen={showOnboarding}
+        onComplete={() => setShowOnboarding(false)}
+        userName={user?.firstName || user?.email?.split('@')[0]}
+        propertyName={properties?.[0]?.name}
+      />
     </div>
   );
 }

@@ -495,6 +495,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Complete onboarding - marks user as having completed the onboarding wizard
+  app.post("/api/users/complete-onboarding", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      // Update user's onboarding status in database
+      await db.update(users)
+        .set({ hasCompletedOnboarding: true })
+        .where(eq(users.id, userId));
+
+      console.log(`[ONBOARDING] User ${userId} completed onboarding`);
+      res.json({ success: true, message: "Onboarding completed" });
+    } catch (error: any) {
+      console.error("[ONBOARDING] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Properties
   app.get("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
@@ -7470,10 +7492,39 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         return res.status(404).json({ message: "User not found" });
       }
 
+      // TENANT ISOLATION: Only Super Admin sees all properties
+      // Other users see: their assignedPropertyIds + primaryPropertyId + properties they own
       const allProperties = await storage.getAllProperties();
-      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
-        ? user.assignedPropertyIds
-        : allProperties.map((p: any) => p.id);
+      let propertyIds: number[] = [];
+      
+      if (user.tenantType === 'super_admin') {
+        propertyIds = allProperties.map((p: any) => p.id);
+      } else {
+        // Collect all property IDs the user has access to
+        const accessibleIds = new Set<number>();
+        
+        // 1. Check assignedPropertyIds
+        if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+          user.assignedPropertyIds.forEach((id: any) => {
+            const numId = typeof id === 'string' ? parseInt(id) : id;
+            if (!isNaN(numId)) accessibleIds.add(numId);
+          });
+        }
+        
+        // 2. Check primaryPropertyId
+        if (user.primaryPropertyId) {
+          accessibleIds.add(user.primaryPropertyId);
+        }
+        
+        // 3. Check properties where user is the owner
+        allProperties.forEach((p: any) => {
+          if (p.ownerUserId === user.id) {
+            accessibleIds.add(p.id);
+          }
+        });
+        
+        propertyIds = Array.from(accessibleIds);
+      }
 
       if (propertyIds.length === 0) {
         return res.json({
@@ -7606,11 +7657,40 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Get all properties and filter by user's assigned properties if they're a manager
+      // TENANT ISOLATION: Only Super Admin sees all properties
+      // Other users see: their assignedPropertyIds + primaryPropertyId + properties they own
       const allProperties = await storage.getAllProperties();
-      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
-        ? user.assignedPropertyIds
-        : allProperties.map((p: any) => p.id);
+      let propertyIds: number[] = [];
+      
+      if (user.tenantType === 'super_admin') {
+        // Super Admin sees all
+        propertyIds = allProperties.map((p: any) => p.id);
+      } else {
+        // Collect all property IDs the user has access to
+        const accessibleIds = new Set<number>();
+        
+        // 1. Check assignedPropertyIds
+        if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+          user.assignedPropertyIds.forEach((id: any) => {
+            const numId = typeof id === 'string' ? parseInt(id) : id;
+            if (!isNaN(numId)) accessibleIds.add(numId);
+          });
+        }
+        
+        // 2. Check primaryPropertyId
+        if (user.primaryPropertyId) {
+          accessibleIds.add(user.primaryPropertyId);
+        }
+        
+        // 3. Check properties where user is the owner
+        allProperties.forEach((p: any) => {
+          if (p.ownerUserId === user.id) {
+            accessibleIds.add(p.id);
+          }
+        });
+        
+        propertyIds = Array.from(accessibleIds);
+      }
 
       if (propertyIds.length === 0) {
         return res.json({
