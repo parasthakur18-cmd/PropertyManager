@@ -712,10 +712,18 @@ export default function Bookings() {
     
     // Parse dates correctly without timezone shift - extract date part from ISO string directly
     const parseDateWithoutTimezone = (dateStr: string) => {
-      // Extract the date part from ISO string (YYYY-MM-DD) before any timezone conversion
-      const dateOnly = dateStr.split('T')[0]; // Gets "2025-12-05" from "2025-12-05T00:00:00.000Z"
-      const [year, month, day] = dateOnly.split('-').map(Number);
-      return new Date(year, month - 1, day); // month is 0-indexed in JS Date
+      if (!dateStr) return new Date();
+      try {
+        // Extract the date part from ISO string (YYYY-MM-DD) before any timezone conversion
+        const dateOnly = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.slice(0, 10);
+        const parts = dateOnly.split('-');
+        if (parts.length !== 3) return new Date(dateStr);
+        const [year, month, day] = parts.map(Number);
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return new Date(dateStr);
+        return new Date(year, month - 1, day); // month is 0-indexed in JS Date
+      } catch {
+        return new Date(dateStr);
+      }
     };
 
     // Return source value as-is (matching create form values)
@@ -2396,38 +2404,76 @@ export default function Bookings() {
                   <FormField
                     control={editForm.control}
                     name="checkInDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check-in Date</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="datetime-local"
-                            value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
-                            data-testid="input-edit-booking-checkin"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      // Safely format date for datetime-local input
+                      const formatDateForInput = (date: Date | string | null | undefined): string => {
+                        if (!date) return "";
+                        try {
+                          const d = date instanceof Date ? date : new Date(date);
+                          if (isNaN(d.getTime())) return "";
+                          // Format as local datetime (YYYY-MM-DDTHH:MM)
+                          const year = d.getFullYear();
+                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                          const day = String(d.getDate()).padStart(2, '0');
+                          const hours = String(d.getHours()).padStart(2, '0');
+                          const minutes = String(d.getMinutes()).padStart(2, '0');
+                          return `${year}-${month}-${day}T${hours}:${minutes}`;
+                        } catch {
+                          return "";
+                        }
+                      };
+                      return (
+                        <FormItem>
+                          <FormLabel>Check-in Date</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="datetime-local"
+                              value={formatDateForInput(field.value)}
+                              onChange={(e) => field.onChange(new Date(e.target.value))}
+                              data-testid="input-edit-booking-checkin"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                   <FormField
                     control={editForm.control}
                     name="checkOutDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Check-out Date</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="datetime-local"
-                            value={field.value ? new Date(field.value).toISOString().slice(0, 16) : ""}
-                            onChange={(e) => field.onChange(new Date(e.target.value))}
-                            data-testid="input-edit-booking-checkout"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                    render={({ field }) => {
+                      // Safely format date for datetime-local input
+                      const formatDateForInput = (date: Date | string | null | undefined): string => {
+                        if (!date) return "";
+                        try {
+                          const d = date instanceof Date ? date : new Date(date);
+                          if (isNaN(d.getTime())) return "";
+                          // Format as local datetime (YYYY-MM-DDTHH:MM)
+                          const year = d.getFullYear();
+                          const month = String(d.getMonth() + 1).padStart(2, '0');
+                          const day = String(d.getDate()).padStart(2, '0');
+                          const hours = String(d.getHours()).padStart(2, '0');
+                          const minutes = String(d.getMinutes()).padStart(2, '0');
+                          return `${year}-${month}-${day}T${hours}:${minutes}`;
+                        } catch {
+                          return "";
+                        }
+                      };
+                      return (
+                        <FormItem>
+                          <FormLabel>Check-out Date</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="datetime-local"
+                              value={formatDateForInput(field.value)}
+                              onChange={(e) => field.onChange(new Date(e.target.value))}
+                              data-testid="input-edit-booking-checkout"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      );
+                    }}
                   />
                 </div>
               </div>
