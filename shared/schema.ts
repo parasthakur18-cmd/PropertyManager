@@ -25,6 +25,7 @@ export const users = pgTable("users", {
   approvedBy: varchar("approved_by", { length: 255 }),
   approvedAt: timestamp("approved_at"),
   signupMethod: varchar("signup_method", { length: 20 }).default("google"),
+  hasCompletedOnboarding: boolean("has_completed_onboarding").default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
