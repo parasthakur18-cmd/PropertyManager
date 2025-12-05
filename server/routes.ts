@@ -53,6 +53,14 @@ import {
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
+import { 
+  getTenantContext, 
+  filterByPropertyAccess, 
+  filterPropertiesByAccess, 
+  requirePropertyAccess,
+  canAccessProperty,
+  TenantAccessError 
+} from "./tenantIsolation";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -497,33 +505,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found" });
       }
 
-      let properties = await storage.getAllProperties();
+      const tenant = getTenantContext(currentUser);
+      const allProperties = await storage.getAllProperties();
       
-      // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        properties = properties.filter(p => currentUser.assignedPropertyIds!.includes(p.id));
-      }
+      // Apply tenant-based property filtering
+      const properties = filterPropertiesByAccess(tenant, allProperties);
       
       res.json(properties);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.get("/api/properties/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
       const property = await storage.getProperty(parseInt(req.params.id));
       if (!property) {
         return res.status(404).json({ message: "Property not found" });
       }
+      
+      // Verify tenant access to this property
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, property.id)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
       res.json(property);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.post("/api/properties", isAuthenticated, async (req, res) => {
+  app.post("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Only Super Admin can create new properties
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) {
+        return res.status(403).json({ message: "Only Super Admin can create properties" });
+      }
+      
       const data = insertPropertySchema.parse(req.body);
       const property = await storage.createProperty(data);
       res.status(201).json(property);
@@ -531,24 +567,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.patch("/api/properties/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const property = await storage.updateProperty(parseInt(req.params.id), req.body);
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      const propertyId = parseInt(req.params.id);
+      const existingProperty = await storage.getProperty(propertyId);
+      if (!existingProperty) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      // Verify tenant access (property owner can update their property)
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
+      const property = await storage.updateProperty(propertyId, req.body);
       res.json(property);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.delete("/api/properties/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/properties/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Only Super Admin can delete properties
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) {
+        return res.status(403).json({ message: "Only Super Admin can delete properties" });
+      }
+      
       await storage.deleteProperty(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
@@ -556,45 +629,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Rooms
   app.get("/api/rooms", isAuthenticated, async (req: any, res) => {
     try {
-      // Get current user to check role and property assignment
       const currentUser = await storage.getUser(req.user.claims.sub);
       
-      // Security: If user not found in storage (deleted/stale session), deny access
       if (!currentUser) {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      console.log("[ROOMS ENDPOINT] User:", { 
-        id: currentUser.id, 
-        role: currentUser.role, 
-        assignedPropertyIds: currentUser.assignedPropertyIds 
+      const tenant = getTenantContext(currentUser);
+      const allRooms = await storage.getAllRooms();
+      
+      // Apply tenant-based room filtering
+      const rooms = filterByPropertyAccess(tenant, allRooms);
+      
+      console.log("[ROOMS ENDPOINT] Tenant filtering:", { 
+        userId: tenant.userId,
+        role: tenant.role,
+        isSuperAdmin: tenant.isSuperAdmin,
+        assignedPropertyIds: tenant.assignedPropertyIds,
+        allRoomsCount: allRooms.length,
+        filteredCount: rooms.length
       });
       
-      // If user is a manager, filter by assigned properties
-      if (currentUser.role === "manager") {
-        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-          // Manager with assigned properties sees rooms from all assigned properties
-          const allRooms = await storage.getAllRooms();
-          const filteredRooms = allRooms.filter(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
-          console.log("[ROOMS ENDPOINT] Manager filtering:", {
-            allRoomsCount: allRooms.length,
-            filteredCount: filteredRooms.length,
-            assignedPropertyIds: currentUser.assignedPropertyIds,
-            exampleRoom: allRooms[0],
-          });
-          res.json(filteredRooms);
-        } else {
-          // Manager without assigned property sees no rooms (return empty array)
-          console.log("[ROOMS ENDPOINT] Manager has no assigned properties");
-          res.json([]);
-        }
-      } else {
-        // Admin, staff, and kitchen see all rooms
-        console.log("[ROOMS ENDPOINT] Non-manager role, returning all rooms");
-        const rooms = await storage.getAllRooms();
-        res.json(rooms);
-      }
+      res.json(rooms);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
@@ -806,43 +866,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/rooms", isAuthenticated, async (req, res) => {
+  app.post("/api/rooms", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
       const data = insertRoomSchema.parse(req.body);
+      
+      // Verify user has access to the property they're creating a room for
+      if (!canAccessProperty(tenant, data.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
       const room = await storage.createRoom(data);
       res.status(201).json(room);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.patch("/api/rooms/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
       const room = await storage.updateRoom(parseInt(req.params.id), req.body);
       res.json(room);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.patch("/api/rooms/:id/status", isAuthenticated, async (req, res) => {
+  app.patch("/api/rooms/:id/status", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
       const { status } = req.body;
       const room = await storage.updateRoomStatus(parseInt(req.params.id), status);
       res.json(room);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.delete("/api/rooms/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const currentUser = await storage.getUser(req.user.claims.sub);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
       await storage.deleteRoom(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       // Return 400 for validation errors (room has associations), 500 for unexpected errors
       const status = error.message.includes("Cannot delete room") ? 400 : 500;
       res.status(status).json({ message: error.message });
@@ -1054,43 +1186,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found" });
       }
 
+      const tenant = getTenantContext(currentUser);
       let bookings = await storage.getAllBookings();
       
-      // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+      // Apply tenant-based property filtering (bookings reference rooms which have propertyId)
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
         const allRooms = await storage.getAllRooms();
         bookings = bookings.filter(booking => {
           // Handle single room bookings
           if (booking.roomId) {
             const room = allRooms.find(r => r.id === booking.roomId);
-            if (!room) {
-              console.warn(`Room ${booking.roomId} not found for booking ${booking.id}`);
-              return false;
-            }
-            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+            if (!room) return false;
+            return tenant.assignedPropertyIds.includes(room.propertyId);
           }
           // Handle group bookings (multiple rooms)
           if (booking.roomIds && booking.roomIds.length > 0) {
-            // Include group booking if ANY of its rooms belong to manager's properties
             const bookingRooms = booking.roomIds
               .map(roomId => allRooms.find(r => r.id === roomId))
-              .filter((room): room is NonNullable<typeof room> => {
-                if (!room) {
-                  console.warn(`Room not found in roomIds for booking ${booking.id}`);
-                  return false;
-                }
-                return true;
-              });
-            
-            // Show booking if at least one room belongs to manager's assigned properties
-            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+              .filter((room): room is NonNullable<typeof room> => !!room);
+            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
           }
           return false;
         });
+      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
+        // User has no assigned properties - return empty
+        bookings = [];
       }
       
       res.json(bookings);
     } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: error.message });
     }
   });
@@ -1105,6 +1232,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found" });
       }
 
+      const tenant = getTenantContext(currentUser);
+      
       // Get all checked-in bookings
       const allBookings = await storage.getAllBookings();
       let activeBookings = allBookings.filter(b => b.status === "checked-in");
@@ -1114,35 +1243,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allRooms = await storage.getAllRooms();
       const allProperties = await storage.getAllProperties();
       
-      // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        // Filter bookings by property through room relationship
+      // Apply tenant-based property filtering
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
         activeBookings = activeBookings.filter(booking => {
-          // Handle single room bookings
           if (booking.roomId) {
             const room = allRooms.find(r => r.id === booking.roomId);
-            if (!room) {
-              console.warn(`Room ${booking.roomId} not found for active booking ${booking.id}`);
-              return false;
-            }
-            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+            if (!room) return false;
+            return tenant.assignedPropertyIds.includes(room.propertyId);
           }
-          // Handle group bookings (multiple rooms)
           if (booking.roomIds && booking.roomIds.length > 0) {
             const bookingRooms = booking.roomIds
               .map(roomId => allRooms.find(r => r.id === roomId))
-              .filter((room): room is NonNullable<typeof room> => {
-                if (!room) {
-                  console.warn(`Room not found in roomIds for active booking ${booking.id}`);
-                  return false;
-                }
-                return true;
-              });
-            
-            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+              .filter((room): room is NonNullable<typeof room> => !!room);
+            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
           }
           return false;
         });
+      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
+        activeBookings = [];
       }
       
       if (activeBookings.length === 0) {
