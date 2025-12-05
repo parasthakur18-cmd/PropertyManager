@@ -1,14 +1,38 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, TrendingUp, Users, Hotel, IndianRupee, Building2, AlertCircle, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { AnalyticsResponse } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import type { AnalyticsResponse, Property } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Analytics() {
-  const { data: analytics, isLoading } = useQuery<AnalyticsResponse>({
-    queryKey: ["/api/analytics"],
+  const { user } = useAuth();
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
   });
+
+  const { data: analytics, isLoading } = useQuery<AnalyticsResponse>({
+    queryKey: ["/api/analytics", selectedPropertyId],
+    queryFn: async () => {
+      const url = selectedPropertyId 
+        ? `/api/analytics?propertyId=${selectedPropertyId}`
+        : "/api/analytics";
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch analytics");
+      return response.json();
+    },
+  });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = properties?.filter(p => {
+    if (user?.role === 'super_admin') return true;
+    return user?.assignedPropertyIds?.includes(p.id);
+  }) || [];
 
   if (isLoading) {
     return (
@@ -28,7 +52,7 @@ export default function Analytics() {
       title: "Total Revenue",
       value: `₹${analytics?.totalRevenue?.toLocaleString() || "0"}`,
       icon: IndianRupee,
-      description: "All-time revenue",
+      description: selectedPropertyId ? "Property revenue" : "All-time revenue",
       color: "text-chart-5",
       bgColor: "bg-chart-5/10",
     },
@@ -44,7 +68,7 @@ export default function Analytics() {
       title: "Total Bookings",
       value: analytics?.totalBookings || "0",
       icon: BarChart3,
-      description: "All-time bookings",
+      description: selectedPropertyId ? "Property bookings" : "All-time bookings",
       color: "text-chart-1",
       bgColor: "bg-chart-1/10",
     },
@@ -92,14 +116,39 @@ export default function Analytics() {
 
   return (
     <div className="p-6 md:p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
-          <BarChart3 className="h-8 w-8 text-primary" />
-          Analytics & Reports
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Performance insights and business metrics
-        </p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
+            <BarChart3 className="h-8 w-8 text-primary" />
+            Analytics & Reports
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Performance insights and business metrics
+          </p>
+        </div>
+        
+        {/* Property Filter */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={selectedPropertyId === null ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedPropertyId(null)}
+            data-testid="button-analytics-all-properties"
+          >
+            All Properties
+          </Button>
+          {availableProperties.map((property) => (
+            <Button
+              key={property.id}
+              variant={selectedPropertyId === property.id ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedPropertyId(property.id)}
+              data-testid={`button-analytics-property-${property.id}`}
+            >
+              {property.name}
+            </Button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

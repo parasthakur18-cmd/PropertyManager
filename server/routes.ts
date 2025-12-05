@@ -435,9 +435,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics
-  app.get("/api/analytics", isAuthenticated, async (req, res) => {
+  app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
     try {
-      const analytics = await storage.getAnalytics();
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const analytics = await storage.getAnalytics(propertyId);
       res.json(analytics);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -3933,16 +3934,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all pending bills with guest and agent details  
-  app.get("/api/bills/pending", isAuthenticated, async (req, res) => {
+  app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
     try {
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      
       // Use getAllBills and filter for pending status
       const allBills = await storage.getAllBills();
-      const pendingBills = allBills
+      let pendingBills = allBills
         .filter((bill: any) => bill.paymentStatus === 'pending')
         .map((bill: any) => ({
           ...bill,
           balanceAmount: bill.balanceAmount || bill.totalAmount || "0",
         }));
+      
+      // Filter by property if specified
+      if (propertyId) {
+        pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
+      }
+      
       res.json(pendingBills);
     } catch (error: any) {
       console.error("[/api/bills/pending] Error:", error.message);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, isAfter, parseISO, isBefore } from "date-fns";
 import { Clock, AlertTriangle, CheckCircle, User, Building2, Download } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import type { Property } from "@shared/schema";
 
 interface PendingBill {
   id: number;
@@ -45,17 +47,40 @@ interface PendingBill {
   dueDate: string | null;
   pendingReason: string | null;
   createdAt: string;
+  propertyId?: number;
 }
 
 export default function PendingPayments() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedBill, setSelectedBill] = useState<PendingBill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [filterAgent, setFilterAgent] = useState<string>("all");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
 
   const { data: pendingBills = [], isLoading } = useQuery<PendingBill[]>({
-    queryKey: ["/api/bills/pending"],
+    queryKey: ["/api/bills/pending", selectedPropertyId],
+    queryFn: async () => {
+      const url = selectedPropertyId 
+        ? `/api/bills/pending?propertyId=${selectedPropertyId}`
+        : "/api/bills/pending";
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch pending bills");
+      return response.json();
+    },
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter(p => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(p.id);
+    }) || [];
+  }, [properties, user]);
 
   const markAsPaidMutation = useMutation({
     mutationFn: async ({ billId, paymentMethod }: { billId: number; paymentMethod: string }) => {
@@ -185,6 +210,29 @@ export default function PendingPayments() {
           <Download className="h-4 w-4" />
           Export Ledger
         </Button>
+      </div>
+
+      {/* Property Filter */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant={selectedPropertyId === null ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSelectedPropertyId(null)}
+          data-testid="button-pending-all-properties"
+        >
+          All Properties
+        </Button>
+        {availableProperties.map((property) => (
+          <Button
+            key={property.id}
+            variant={selectedPropertyId === property.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedPropertyId(property.id)}
+            data-testid={`button-pending-property-${property.id}`}
+          >
+            {property.name}
+          </Button>
+        ))}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

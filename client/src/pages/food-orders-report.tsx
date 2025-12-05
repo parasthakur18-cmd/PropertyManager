@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,8 @@ import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/useAuth";
+import type { Property } from "@shared/schema";
 
 interface Order {
   id: number;
@@ -28,6 +30,7 @@ interface Order {
   specialInstructions: string | null;
   customerName?: string;
   customerPhone?: string;
+  propertyId?: number;
 }
 
 interface Guest {
@@ -53,6 +56,7 @@ interface ActiveBooking {
 
 export default function FoodOrdersReport() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const [dateRange, setDateRange] = useState<string>("last7days");
   const [customStartDate, setCustomStartDate] = useState<string>("");
@@ -62,6 +66,11 @@ export default function FoodOrdersReport() {
     order: null,
   });
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
@@ -81,6 +90,21 @@ export default function FoodOrdersReport() {
   const { data: activeBookings } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter(p => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(p.id);
+    }) || [];
+  }, [properties, user]);
+
+  // Filter orders by selected property
+  const filteredOrdersByProperty = useMemo(() => {
+    if (!orders) return [];
+    if (selectedPropertyId === null) return orders;
+    return orders.filter(order => order.propertyId === selectedPropertyId);
+  }, [orders, selectedPropertyId]);
 
   const mergeMutation = useMutation({
     mutationFn: async ({ orderIds, bookingId }: { orderIds: number[]; bookingId: number }) => {
@@ -169,7 +193,7 @@ export default function FoodOrdersReport() {
   const { startDate, endDate } = getDateRange();
   const filteredOrders = isCustomRangeIncomplete 
     ? [] 
-    : orders?.filter((order) => {
+    : filteredOrdersByProperty?.filter((order) => {
         const orderDate = new Date(order.createdAt);
         const isInDateRange = orderDate >= startDate && orderDate <= endDate;
         // Exclude rejected and cancelled orders from revenue calculations
@@ -267,6 +291,29 @@ export default function FoodOrdersReport() {
           <Download className="h-4 w-4 mr-2" />
           Export CSV
         </Button>
+      </div>
+
+      {/* Property Filter */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <Button
+          variant={selectedPropertyId === null ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSelectedPropertyId(null)}
+          data-testid="button-orders-all-properties"
+        >
+          All Properties
+        </Button>
+        {availableProperties.map((property) => (
+          <Button
+            key={property.id}
+            variant={selectedPropertyId === property.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedPropertyId(property.id)}
+            data-testid={`button-orders-property-${property.id}`}
+          >
+            {property.name}
+          </Button>
+        ))}
       </div>
 
       <Card className="mb-6">

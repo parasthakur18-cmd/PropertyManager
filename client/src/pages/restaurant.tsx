@@ -4,12 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type Order } from "@shared/schema";
+import { type Order, type Property } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Slider } from "@/components/ui/slider";
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { useAuth } from "@/hooks/useAuth";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -29,6 +30,7 @@ const statusColors = {
 
 export default function Kitchen() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { 
     playNotification, 
     isEnabled, 
@@ -48,6 +50,11 @@ export default function Kitchen() {
     order: null,
   });
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
 
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
@@ -59,6 +66,21 @@ export default function Kitchen() {
   const { data: menuItems } = useQuery<any[]>({
     queryKey: ["/api/menu-items"],
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter(p => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(p.id);
+    }) || [];
+  }, [properties, user]);
+
+  // Filter orders by selected property
+  const filteredOrdersByProperty = useMemo(() => {
+    if (!orders) return [];
+    if (selectedPropertyId === null) return orders;
+    return orders.filter(order => order.propertyId === selectedPropertyId);
+  }, [orders, selectedPropertyId]);
 
   // Play notification sound when new orders arrive
   useEffect(() => {
@@ -162,11 +184,11 @@ export default function Kitchen() {
     updateOrderMutation.mutate({ id: editDialog.order.id, items: editedItems });
   };
 
-  // Filter orders based on active tab
-  const allActiveOrders = orders?.filter((order) => order.status === "pending" || order.status === "preparing" || order.status === "ready") || [];
-  const pendingOrders = orders?.filter((order) => order.status === "pending") || [];
-  const completedOrders = orders?.filter((order) => order.status === "delivered") || [];
-  const rejectedOrders = orders?.filter((order) => order.status === "rejected") || [];
+  // Filter orders based on active tab (using filtered orders by property)
+  const allActiveOrders = filteredOrdersByProperty?.filter((order) => order.status === "pending" || order.status === "preparing" || order.status === "ready") || [];
+  const pendingOrders = filteredOrdersByProperty?.filter((order) => order.status === "pending") || [];
+  const completedOrders = filteredOrdersByProperty?.filter((order) => order.status === "delivered") || [];
+  const rejectedOrders = filteredOrdersByProperty?.filter((order) => order.status === "rejected") || [];
   
   // Calculate counts for badges
   const orderCounts = {
@@ -362,7 +384,7 @@ export default function Kitchen() {
             variant="outline"
             size="icon"
             onClick={() => setShowSettings(!showSettings)}
-            data-testid="button-alarm-settings"
+            data-testid="button-kitchen-settings"
             title="Alarm settings"
           >
             <Settings className="h-4 w-4" />
@@ -377,6 +399,29 @@ export default function Kitchen() {
             {isEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
           </Button>
         </div>
+      </div>
+
+      {/* Property Filter */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <Button
+          variant={selectedPropertyId === null ? "default" : "outline"}
+          size="sm"
+          onClick={() => setSelectedPropertyId(null)}
+          data-testid="button-kitchen-all-properties"
+        >
+          All Properties
+        </Button>
+        {availableProperties.map((property) => (
+          <Button
+            key={property.id}
+            variant={selectedPropertyId === property.id ? "default" : "outline"}
+            size="sm"
+            onClick={() => setSelectedPropertyId(property.id)}
+            data-testid={`button-kitchen-property-${property.id}`}
+          >
+            {property.name}
+          </Button>
+        ))}
       </div>
 
       {showSettings && (
