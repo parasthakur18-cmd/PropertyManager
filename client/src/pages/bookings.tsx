@@ -710,10 +710,18 @@ export default function Bookings() {
       setEditSelectedRoomIds([]);
     }
     
-    // Parse dates correctly without timezone shift - use the date part only
+    // Parse dates correctly without timezone shift - extract date part from ISO string directly
     const parseDateWithoutTimezone = (dateStr: string) => {
-      const date = new Date(dateStr);
-      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      // Extract the date part from ISO string (YYYY-MM-DD) before any timezone conversion
+      const dateOnly = dateStr.split('T')[0]; // Gets "2025-12-05" from "2025-12-05T00:00:00.000Z"
+      const [year, month, day] = dateOnly.split('-').map(Number);
+      return new Date(year, month - 1, day); // month is 0-indexed in JS Date
+    };
+
+    // Return source value as-is (matching create form values)
+    const normalizeSource = (source: string | null | undefined): string => {
+      if (!source) return "Walk-in";
+      return source;
     };
 
     editForm.reset({
@@ -726,7 +734,7 @@ export default function Bookings() {
       numberOfGuests: booking.numberOfGuests,
       customPrice: null,
       specialRequests: booking.specialRequests || "",
-      source: booking.source || "Walk-in",
+      source: normalizeSource(booking.source),
       travelAgentId: booking.travelAgentId || undefined,
       mealPlan: booking.mealPlan || "EP",
     });
@@ -2579,13 +2587,14 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="walk-in">Walk-in</SelectItem>
-                            <SelectItem value="phone">Phone</SelectItem>
-                            <SelectItem value="online">Online</SelectItem>
-                            <SelectItem value="self-generated">Self Generated</SelectItem>
-                            <SelectItem value="booking.com">Booking.com</SelectItem>
-                            <SelectItem value="airbnb">Airbnb</SelectItem>
-                            <SelectItem value="ota">OTA (Other)</SelectItem>
+                            <SelectItem value="Walk-in">Walk-in</SelectItem>
+                            <SelectItem value="Online">Online</SelectItem>
+                            <SelectItem value="Booking.com">Booking.com</SelectItem>
+                            <SelectItem value="MMT">MMT (MakeMyTrip)</SelectItem>
+                            <SelectItem value="Airbnb">Airbnb</SelectItem>
+                            <SelectItem value="OTA">OTA (Other)</SelectItem>
+                            <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                            <SelectItem value="Others">Others</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
