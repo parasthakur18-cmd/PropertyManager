@@ -701,18 +701,20 @@ export type InsertSalaryPayment = z.infer<typeof insertSalaryPaymentSchema>;
 // Attendance Records table - matches actual database
 export const attendanceRecords = pgTable("attendance_records", {
   id: serial("id").primaryKey(),
-  staffMemberId: integer("staff_member_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
-  date: date("date").notNull(),
+  staffId: integer("staff_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  attendanceDate: date("attendance_date").notNull(),
   status: varchar("status", { length: 20 }).notNull(),
-  hoursWorked: decimal("hours_worked", { precision: 4, scale: 2 }),
-  notes: text("notes"),
+  remarks: text("remarks"),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
 export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
 

@@ -2328,7 +2328,7 @@ export class DatabaseStorage implements IStorage {
 
   // Attendance operations
   async getAllAttendance(): Promise<AttendanceRecord[]> {
-    const results = await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.date));
+    const results = await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.attendanceDate));
     console.log(`[STORAGE] getAllAttendance returned ${results.length} records`);
     if (results.length > 0) {
       console.log('[STORAGE] First record:', JSON.stringify(results[0], null, 2));
@@ -2340,8 +2340,8 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(attendanceRecords)
-      .where(eq(attendanceRecords.staffMemberId, staffId))
-      .orderBy(desc(attendanceRecords.date));
+      .where(eq(attendanceRecords.staffId, staffId))
+      .orderBy(desc(attendanceRecords.attendanceDate));
   }
 
   async getAttendanceByProperty(propertyId: number): Promise<AttendanceRecord[]> {
@@ -2357,8 +2357,8 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(attendanceRecords)
-      .where(inArray(attendanceRecords.staffMemberId, staffIds))
-      .orderBy(desc(attendanceRecords.date));
+      .where(inArray(attendanceRecords.staffId, staffIds))
+      .orderBy(desc(attendanceRecords.attendanceDate));
   }
 
   async getAttendanceByDate(attendanceDate: Date): Promise<AttendanceRecord[]> {
@@ -2367,8 +2367,8 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(attendanceRecords)
-      .where(eq(attendanceRecords.date, dateStr))
-      .orderBy(desc(attendanceRecords.date));
+      .where(eq(attendanceRecords.attendanceDate, dateStr))
+      .orderBy(desc(attendanceRecords.attendanceDate));
   }
 
   async createAttendance(attendance: InsertAttendanceRecord): Promise<AttendanceRecord> {
@@ -2454,9 +2454,9 @@ export class DatabaseStorage implements IStorage {
           .from(attendanceRecords)
           .where(
             and(
-              eq(attendanceRecords.staffMemberId, staff.id),
-              gte(attendanceRecords.date, startDateStr),
-              lte(attendanceRecords.date, endDateStr)
+              eq(attendanceRecords.staffId, staff.id),
+              gte(attendanceRecords.attendanceDate, startDateStr),
+              lte(attendanceRecords.attendanceDate, endDateStr)
             )
           );
 
