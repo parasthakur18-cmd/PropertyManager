@@ -29,6 +29,7 @@ import {
   featureSettings,
   employeePerformanceMetrics,
   taskNotificationLogs,
+  otpTokens,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
@@ -5543,10 +5544,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Public Registration endpoint
+  // Public Registration endpoint - Multi-tenant aware
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, businessName, firstName, lastName } = req.body;
+      const { email, password, businessName, firstName, lastName, phone } = req.body;
 
       // Validate input
       if (!email || !password || !businessName) {
@@ -5558,38 +5559,268 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user already exists
-      const existingUser = await storage.getUser("");
       const allUsers = await storage.getAllUsers();
-      const userExists = allUsers.some((u) => u.email === email);
+      const userExists = allUsers.some((u) => u.email.toLowerCase() === email.toLowerCase());
 
       if (userExists) {
         return res.status(400).json({ message: "Email already registered" });
       }
 
-      // Create new user with admin role
-      const newUser = await storage.upsertUser({
-        email,
+      // Hash password before storing
+      const hashedPassword = await bcryptjs.hash(password, 10);
+
+      // Generate unique user ID
+      const newUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Create new user with PENDING verification status
+      // They cannot access the system until Super Admin approves
+      // Role stays as "staff" (default) until Super Admin promotes to "admin"
+      await db.insert(users).values({
+        id: newUserId,
+        email: email.toLowerCase(),
         firstName: firstName || "",
         lastName: lastName || "",
         businessName,
-        role: "admin",
+        phone: phone || null,
+        role: "staff", // Default role, will be promoted when approved
         status: "active",
+        password: hashedPassword,
+        verificationStatus: "pending", // Must be approved by Super Admin
+        tenantType: "property_owner", // Default for new signups
+        signupMethod: "email",
       });
+      
+      const [newUser] = await db.select().from(users).where(eq(users.id, newUserId));
 
       // Log the registration
-      console.log(`[REGISTRATION] New user registered: ${email} with business: ${businessName}`);
+      console.log(`[REGISTRATION] New user registered (PENDING): ${email} with business: ${businessName}`);
+
+      // TODO: Send WhatsApp notification to Super Admin about new signup
+      // TODO: Send WhatsApp notification to user confirming pending status
 
       res.status(201).json({
-        message: "Registration successful",
+        message: "Registration successful. Your account is pending approval by our team. You will be notified once approved.",
         user: {
           id: newUser.id,
           email: newUser.email,
           businessName: newUser.businessName,
+          verificationStatus: "pending",
         },
       });
     } catch (error: any) {
       console.error("[REGISTRATION ERROR]", error);
       res.status(500).json({ message: error.message || "Registration failed" });
+    }
+  });
+
+  // Mobile OTP Login - Send OTP via WhatsApp
+  app.post("/api/auth/send-otp", async (req, res) => {
+    try {
+      const { phone, purpose = "login" } = req.body;
+
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Normalize phone number
+      const normalizedPhone = phone.replace(/\D/g, '');
+      if (normalizedPhone.length < 10) {
+        return res.status(400).json({ message: "Invalid phone number" });
+      }
+
+      // Rate limiting: Check if OTP was sent in last 60 seconds
+      const recentOtp = await db.select().from(otpTokens)
+        .where(and(
+          eq(otpTokens.phone, normalizedPhone),
+          gt(otpTokens.createdAt, new Date(Date.now() - 60000))
+        ))
+        .limit(1);
+
+      if (recentOtp.length > 0) {
+        return res.status(429).json({ message: "Please wait 60 seconds before requesting another OTP" });
+      }
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+      // Store OTP in database
+      await db.insert(otpTokens).values({
+        phone: normalizedPhone,
+        otp,
+        purpose,
+        expiresAt,
+        isUsed: false,
+        attempts: 0,
+      });
+
+      // Send OTP via WhatsApp (Authkey.io)
+      try {
+        const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+        if (authkeyApiKey) {
+          const whatsappPayload = {
+            sms: [{
+              to: normalizedPhone.startsWith('91') ? normalizedPhone : `91${normalizedPhone}`,
+              sender: "HTZEEE",
+              templateid: "hostezee_otp", // Template for OTP
+              message: `Your Hostezee login OTP is: ${otp}. Valid for 5 minutes. Do not share this code.`,
+              entityid: "1101868410000052638"
+            }]
+          };
+          
+          await fetch('https://api.authkey.io/request', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'authkey': authkeyApiKey
+            },
+            body: JSON.stringify(whatsappPayload)
+          });
+        }
+      } catch (whatsappError) {
+        console.error("[OTP] WhatsApp send failed:", whatsappError);
+        // Continue even if WhatsApp fails - for testing
+      }
+
+      console.log(`[OTP] Sent OTP ${otp} to ${normalizedPhone} for ${purpose}`);
+
+      res.json({ 
+        success: true, 
+        message: "OTP sent to your WhatsApp",
+        // Only include OTP in development for testing
+        ...(process.env.NODE_ENV === 'development' && { otp })
+      });
+    } catch (error: any) {
+      console.error("[OTP SEND ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to send OTP" });
+    }
+  });
+
+  // Mobile OTP Login - Verify OTP
+  app.post("/api/auth/verify-mobile-otp", async (req, res) => {
+    try {
+      const { phone, otp } = req.body;
+
+      if (!phone || !otp) {
+        return res.status(400).json({ message: "Phone and OTP are required" });
+      }
+
+      const normalizedPhone = phone.replace(/\D/g, '');
+
+      // Find valid OTP
+      const [otpRecord] = await db.select().from(otpTokens)
+        .where(and(
+          eq(otpTokens.phone, normalizedPhone),
+          eq(otpTokens.otp, otp),
+          eq(otpTokens.isUsed, false),
+          gt(otpTokens.expiresAt, new Date())
+        ))
+        .orderBy(desc(otpTokens.createdAt))
+        .limit(1);
+
+      if (!otpRecord) {
+        // Increment attempt count for rate limiting
+        await db.update(otpTokens)
+          .set({ attempts: sql`attempts + 1` })
+          .where(eq(otpTokens.phone, normalizedPhone));
+        
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+      }
+
+      // Mark OTP as used
+      await db.update(otpTokens)
+        .set({ isUsed: true })
+        .where(eq(otpTokens.id, otpRecord.id));
+
+      // Find or create user by phone
+      let [user] = await db.select().from(users)
+        .where(eq(users.phone, normalizedPhone))
+        .limit(1);
+
+      if (!user) {
+        // Create new user with pending status
+        const newUserId = `phone-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await db.insert(users).values({
+          id: newUserId,
+          email: `${normalizedPhone}@phone.hostezee.in`, // Placeholder email
+          phone: normalizedPhone,
+          role: "staff", // Default role, will be promoted when approved
+          status: "active",
+          verificationStatus: "pending",
+          tenantType: "property_owner",
+          signupMethod: "phone",
+        });
+        [user] = await db.select().from(users).where(eq(users.id, newUserId));
+        console.log(`[OTP] Created new user via phone: ${normalizedPhone}`);
+        
+        // Return pending status for new users - they need to be approved first
+        return res.status(403).json({ 
+          message: "Account created! Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending",
+          isNewUser: true,
+          user: {
+            id: user.id,
+            phone: user.phone,
+          }
+        });
+      }
+
+      // Check verification status
+      if (user.verificationStatus === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          verificationStatus: "rejected"
+        });
+      }
+
+      if (user.verificationStatus === "pending") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending",
+          user: {
+            id: user.id,
+            phone: user.phone,
+            businessName: user.businessName,
+          }
+        });
+      }
+
+      // Create session for verified user
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("[OTP-LOGIN] Regenerate error:", regenerateErr);
+          return res.status(500).json({ message: "Login failed" });
+        }
+
+        (req.session as any).userId = user.id;
+        (req.session as any).isPhoneAuth = true;
+        
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[OTP-LOGIN] Save error:", saveErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          
+          console.log(`[OTP-LOGIN] ✓ SUCCESS - User ${user.phone} logged in`);
+          res.json({
+            success: true,
+            message: "Login successful",
+            user: {
+              id: user.id,
+              email: user.email,
+              phone: user.phone,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              role: user.role,
+              businessName: user.businessName,
+              verificationStatus: user.verificationStatus,
+            },
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("[OTP VERIFY ERROR]", error);
+      res.status(500).json({ message: error.message || "OTP verification failed" });
     }
   });
 
@@ -5920,6 +6151,209 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("[LOGIN-AS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SUPER ADMIN USER APPROVAL ENDPOINTS =====
+
+  // Get pending users waiting for approval
+  app.get("/api/super-admin/pending-users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get users with pending verification status
+      const pendingUsers = await db.select().from(users)
+        .where(eq(users.verificationStatus, 'pending'))
+        .orderBy(desc(users.createdAt));
+
+      console.log(`[SUPER-ADMIN] Found ${pendingUsers.length} pending users`);
+      res.json(pendingUsers);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PENDING-USERS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Approve a user and assign them to a property
+  app.post("/api/super-admin/approve-user/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { propertyId, createProperty, role = 'admin', sendNotification = true } = req.body;
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'verified') {
+        return res.status(400).json({ message: "User is already verified" });
+      }
+
+      let assignedPropertyId = propertyId;
+
+      // Create new property if requested
+      if (createProperty && createProperty.name) {
+        const newProperty = await storage.createProperty({
+          name: createProperty.name,
+          location: createProperty.location || '',
+          description: createProperty.description || '',
+          contactEmail: targetUser.email,
+          contactPhone: targetUser.phone || '',
+          ownerUserId: targetUserId,
+        });
+        assignedPropertyId = newProperty.id;
+        console.log(`[SUPER-ADMIN] Created property ${newProperty.name} for user ${targetUser.email}`);
+      }
+
+      // Update user: verify and assign role/property
+      await db.update(users).set({
+        verificationStatus: 'verified',
+        role: role,
+        primaryPropertyId: assignedPropertyId || null,
+        assignedPropertyIds: assignedPropertyId ? [String(assignedPropertyId)] : [],
+        approvedBy: userId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, targetUserId));
+
+      // Update property owner if assigning to existing property
+      if (assignedPropertyId && !createProperty) {
+        const { properties } = await import("@shared/schema");
+        await db.update(properties).set({
+          ownerUserId: targetUserId,
+        }).where(eq(properties.id, assignedPropertyId));
+      }
+
+      console.log(`[SUPER-ADMIN] ✓ Approved user ${targetUser.email} with role ${role} and property ${assignedPropertyId}`);
+
+      // Send WhatsApp notification if enabled
+      if (sendNotification && targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Great news! Your Hostezee account has been approved. You can now log in and manage your property. Visit: https://hostezee.in`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[APPROVAL] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} approved successfully`,
+        user: {
+          id: targetUserId,
+          email: targetUser.email,
+          role: role,
+          propertyId: assignedPropertyId,
+          verificationStatus: 'verified',
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/APPROVE-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject a user
+  app.post("/api/super-admin/reject-user/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { reason = '', sendNotification = true } = req.body;
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Update user: reject
+      await db.update(users).set({
+        verificationStatus: 'rejected',
+        rejectionReason: reason,
+        updatedAt: new Date(),
+      }).where(eq(users.id, targetUserId));
+
+      console.log(`[SUPER-ADMIN] ✗ Rejected user ${targetUser.email}: ${reason}`);
+
+      // Send WhatsApp notification if enabled
+      if (sendNotification && targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Your Hostezee account request was not approved. ${reason ? `Reason: ${reason}` : ''} Contact support for more information.`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[REJECTION] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} rejected`,
+        user: {
+          id: targetUserId,
+          email: targetUser.email,
+          verificationStatus: 'rejected',
+          rejectionReason: reason,
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REJECT-USER] Error:`, error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -6443,6 +6877,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
+      // Check verification status (multi-tenant security)
+      if (user[0].verificationStatus === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          verificationStatus: "rejected"
+        });
+      }
+
+      if (user[0].verificationStatus === "pending" && user[0].role !== "super-admin") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending"
+        });
+      }
+
       // Regenerate session ID to create a fresh session
       req.session.regenerate((regenerateErr) => {
         if (regenerateErr) {
@@ -6469,7 +6918,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               email: user[0].email, 
               role: user[0].role,
               firstName: user[0].firstName,
-              lastName: user[0].lastName 
+              lastName: user[0].lastName,
+              verificationStatus: user[0].verificationStatus,
             } 
           });
         });
