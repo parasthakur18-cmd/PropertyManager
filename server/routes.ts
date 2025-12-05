@@ -5621,24 +5621,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      const { insertSalaryAdvanceSchema } = await import("@shared/schema");
-      const validatedData = insertSalaryAdvanceSchema.parse({
+      // Prepare the data for insertion - amount must be a string for decimal type
+      const advanceData = {
         staffMemberId: parseInt(req.body.staffMemberId),
-        amount: req.body.amount,
+        amount: String(req.body.amount),
         advanceDate: new Date(req.body.advanceDate),
         reason: req.body.reason || null,
         repaymentStatus: 'pending',
         approvedBy: user.firstName || user.email || user.id,
         notes: req.body.notes || null,
-      });
+      };
 
-      const advance = await storage.createAdvance(validatedData);
+      const advance = await storage.createAdvance(advanceData as any);
 
       res.status(201).json(advance);
     } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid data", errors: error.errors });
-      }
+      console.error('[SALARY ADVANCE ERROR]:', error);
       res.status(500).json({ message: error.message });
     }
   });
