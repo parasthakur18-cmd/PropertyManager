@@ -19,7 +19,9 @@ import {
   Users,
   Home,
   Utensils,
-  Receipt
+  Receipt,
+  Store,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -37,6 +39,12 @@ interface PnLData {
   profitMargin: string;
 }
 
+interface VendorLiability {
+  name: string;
+  category: string;
+  outstanding: number;
+}
+
 interface PnLReport {
   propertyId: number;
   leaseId: number | null;
@@ -48,6 +56,8 @@ interface PnLReport {
   totalCosts: number;
   finalProfit: number;
   profitMargin: string;
+  vendorOutstanding?: number;
+  vendorDetails?: VendorLiability[];
   message?: string;
 }
 
@@ -364,6 +374,40 @@ export default function PnLStatement() {
                 </div>
 
                 <Separator />
+
+                {/* Vendor Liabilities Section */}
+                {pnlReport.vendorOutstanding && pnlReport.vendorOutstanding > 0 && (
+                  <>
+                    <div>
+                      <h3 className="font-semibold text-amber-600 mb-3 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        VENDOR LIABILITIES (Outstanding Credit)
+                      </h3>
+                      <div className="space-y-2 pl-6">
+                        {pnlReport.vendorDetails?.map((vendor, idx) => (
+                          <div key={idx} className="flex justify-between items-center py-2 border-b">
+                            <span className="flex items-center gap-2">
+                              <Store className="h-4 w-4 text-muted-foreground" />
+                              {vendor.name}
+                              <Badge variant="outline" className="text-xs">{vendor.category}</Badge>
+                            </span>
+                            <span className="font-mono font-medium text-amber-600">
+                              {formatCurrency(vendor.outstanding)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-between items-center py-3 mt-2 bg-amber-50 dark:bg-amber-950/20 px-4 rounded-lg">
+                        <span className="font-semibold">Total Vendor Outstanding</span>
+                        <span className="font-mono font-bold text-amber-600">{formatCurrency(pnlReport.vendorOutstanding)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2 pl-4">
+                        Note: Vendor credit purchases are tracked separately. These amounts are owed to vendors for supplies purchased on credit.
+                      </p>
+                    </div>
+                    <Separator />
+                  </>
+                )}
 
                 {/* Net Profit/Loss */}
                 <div className={`p-4 rounded-lg ${pnlReport.finalProfit >= 0 ? 'bg-green-100 dark:bg-green-950/30' : 'bg-red-100 dark:bg-red-950/30'}`}>

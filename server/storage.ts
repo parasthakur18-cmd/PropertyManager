@@ -1816,12 +1816,25 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    // Get vendor outstanding amounts (liabilities)
+    const vendorsWithBalance = await this.getVendorsWithBalance(propertyId);
+    const vendorOutstanding = vendorsWithBalance.reduce((sum, v) => sum + (v.outstandingBalance > 0 ? v.outstandingBalance : 0), 0);
+    const vendorDetails = vendorsWithBalance
+      .filter(v => v.outstandingBalance > 0)
+      .map(v => ({
+        name: v.name,
+        category: v.category || 'General',
+        outstanding: v.outstandingBalance,
+      }));
+
     // Summary across all leases
     const totalRevenue = pnlData.reduce((sum, p) => sum + p.totalRevenue, 0);
     const totalLeaseAmount = pnlData.reduce((sum, p) => sum + p.totalLeaseAmount, 0);
     const totalExpenses = pnlData.reduce((sum, p) => sum + p.totalExpenses, 0);
     const totalSalaries = pnlData.reduce((sum, p) => sum + p.totalSalaries, 0);
-    const totalCosts = totalLeaseAmount + totalExpenses + totalSalaries;
+    
+    // Include vendor outstanding as a liability in total costs
+    const totalCosts = totalLeaseAmount + totalExpenses + totalSalaries + vendorOutstanding;
     const finalProfit = totalRevenue - totalCosts;
 
     return {
@@ -1835,6 +1848,8 @@ export class DatabaseStorage implements IStorage {
       totalCosts,
       finalProfit,
       profitMargin: totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0',
+      vendorOutstanding,
+      vendorDetails,
     };
   }
 
