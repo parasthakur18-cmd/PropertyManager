@@ -30,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format, isAfter, parseISO, isBefore } from "date-fns";
-import { Clock, AlertTriangle, CheckCircle, User, Download } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, User, Download, Building2 } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { useAuth } from "@/hooks/useAuth";
 import type { Property } from "@shared/schema";

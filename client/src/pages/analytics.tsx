@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, TrendingUp, Users, Hotel, IndianRupee, AlertCircle, Clock } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Hotel, IndianRupee, AlertCircle, Clock, Building2 } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
