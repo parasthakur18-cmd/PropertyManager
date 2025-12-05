@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -7,14 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 
 export default function SalariesPage() {
   const [selectedMonth, setSelectedMonth] = useState(() => {
     return new Date().toISOString().split('T')[0].slice(0, 7); // YYYY-MM format
   });
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
+  const [advanceStaffId, setAdvanceStaffId] = useState<string>("");
+  const [advanceAmount, setAdvanceAmount] = useState<string>("");
+  const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
+  const [advanceReason, setAdvanceReason] = useState("");
   const { toast } = useToast();
 
   // Parse selected month to get start and end dates
@@ -49,6 +58,49 @@ export default function SalariesPage() {
     enabled: !!propertyId,
   });
 
+  // Mutation to add salary advance
+  const addAdvanceMutation = useMutation({
+    mutationFn: async (data: { staffMemberId: number; amount: number; advanceDate: string; reason: string }) => {
+      return await apiRequest("/api/salary-advances", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      setIsAdvanceDialogOpen(false);
+      setAdvanceStaffId("");
+      setAdvanceAmount("");
+      setAdvanceDate(new Date().toISOString().split('T')[0]);
+      setAdvanceReason("");
+      toast({
+        title: "Success",
+        description: "Salary advance recorded successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to record salary advance",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddAdvance = () => {
+    if (!advanceStaffId || !advanceAmount) {
+      toast({
+        title: "Error",
+        description: "Please select a staff member and enter an amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    addAdvanceMutation.mutate({
+      staffMemberId: parseInt(advanceStaffId),
+      amount: parseFloat(advanceAmount),
+      advanceDate: advanceDate,
+      reason: advanceReason,
+    });
+  };
+
   // Calculate totals
   const totals = {
     totalBaseSalary: salaries.reduce((sum, s) => sum + s.baseSalary, 0),
@@ -61,13 +113,86 @@ export default function SalariesPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-4xl font-bold" data-testid="text-page-title">
-            Staff Salary Management
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Complete salary breakdown with attendance deductions and advances
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-bold" data-testid="text-page-title">
+              Staff Salary Management
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Complete salary breakdown with attendance deductions and advances
+            </p>
+          </div>
+          
+          {/* Add Advance Button */}
+          <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-add-advance">
+                <Plus className="h-4 w-4 mr-2" />
+                Add Advance
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Record Salary Advance</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div>
+                  <Label htmlFor="advance-staff">Staff Member</Label>
+                  <Select value={advanceStaffId} onValueChange={setAdvanceStaffId}>
+                    <SelectTrigger data-testid="select-advance-staff">
+                      <SelectValue placeholder="Select staff member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {salaries.map((staff: any) => (
+                        <SelectItem key={staff.staffId} value={String(staff.staffId)}>
+                          {staff.staffName} - {staff.jobTitle}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="advance-amount">Amount (₹)</Label>
+                  <Input
+                    id="advance-amount"
+                    type="number"
+                    placeholder="Enter advance amount"
+                    value={advanceAmount}
+                    onChange={(e) => setAdvanceAmount(e.target.value)}
+                    data-testid="input-advance-amount"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="advance-date">Date</Label>
+                  <Input
+                    id="advance-date"
+                    type="date"
+                    value={advanceDate}
+                    onChange={(e) => setAdvanceDate(e.target.value)}
+                    data-testid="input-advance-date"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="advance-reason">Reason (Optional)</Label>
+                  <Textarea
+                    id="advance-reason"
+                    placeholder="Enter reason for advance"
+                    value={advanceReason}
+                    onChange={(e) => setAdvanceReason(e.target.value)}
+                    data-testid="input-advance-reason"
+                  />
+                </div>
+                <Button 
+                  onClick={handleAddAdvance} 
+                  disabled={addAdvanceMutation.isPending}
+                  className="w-full"
+                  data-testid="button-submit-advance"
+                >
+                  {addAdvanceMutation.isPending ? "Recording..." : "Record Advance"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Month & Property Selection */}

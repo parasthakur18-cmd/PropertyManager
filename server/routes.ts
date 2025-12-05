@@ -5595,6 +5595,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== SALARY ADVANCES ENDPOINTS =====
+  // GET /api/salary-advances - Get all salary advances
+  app.get("/api/salary-advances", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const advances = await storage.getAllAdvances();
+      res.json(advances);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/salary-advances - Create a salary advance
+  app.post("/api/salary-advances", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertSalaryAdvanceSchema } = await import("@shared/schema");
+      const validatedData = insertSalaryAdvanceSchema.parse({
+        staffMemberId: parseInt(req.body.staffMemberId),
+        amount: req.body.amount,
+        advanceDate: new Date(req.body.advanceDate),
+        reason: req.body.reason || null,
+        repaymentStatus: 'pending',
+        approvedBy: user.firstName || user.email || user.id,
+        notes: req.body.notes || null,
+      });
+
+      const advance = await storage.createAdvance(validatedData);
+
+      res.status(201).json(advance);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/salary-advances/:id - Delete a salary advance
+  app.delete("/api/salary-advances/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteAdvance(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Payment endpoints
   app.get("/api/salaries/:salaryId/payments", isAuthenticated, async (req, res) => {
     try {
