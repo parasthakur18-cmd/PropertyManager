@@ -5,8 +5,50 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import type { AnalyticsResponse, Property } from "@shared/schema";
+import type { Property } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
+
+interface AnalyticsResponse {
+  totalRevenue: number;
+  paidRevenue: number;
+  roomRevenue: number;
+  restaurantRevenue: number;
+  extraServicesRevenue: number;
+  totalBookings: number;
+  totalGuests: number;
+  totalRooms: number;
+  occupancyRate: number;
+  activeProperties: number;
+  repeatGuestRate: number;
+  avgRoomRate: number;
+  monthlyRevenue: number;
+  pendingReceivables?: {
+    totalPending: number;
+    overdueAmount: number;
+    collectionRate: number;
+    pendingCount: number;
+    agingBuckets: {
+      current: number;
+      days1to7: number;
+      days8to30: number;
+      over30: number;
+    };
+    propertyBreakdown: Array<{
+      id: number;
+      name: string;
+      pendingAmount: string;
+      overdueAmount: string;
+      count: number;
+    }>;
+    agentBreakdown: Array<{
+      id: number;
+      name: string;
+      pendingAmount: string;
+      overdueAmount: string;
+      count: number;
+    }>;
+  };
+}
 
 export default function Analytics() {
   const { user } = useAuth();

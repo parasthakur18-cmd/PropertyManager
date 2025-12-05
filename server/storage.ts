@@ -338,7 +338,7 @@ export interface IStorage {
 
   // Dashboard stats
   getDashboardStats(propertyId?: number): Promise<any>;
-  getAnalytics(): Promise<any>;
+  getAnalytics(propertyId?: number): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1913,86 +1913,161 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getAnalytics(): Promise<any> {
-    const [totalRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
-      .from(bills);
+  async getAnalytics(propertyId?: number): Promise<any> {
+    // Build property filter for bills (join with bookings to filter by property)
+    const billsWithProperty = propertyId 
+      ? db.select({ 
+          totalAmount: bills.totalAmount,
+          roomCharges: bills.roomCharges,
+          foodCharges: bills.foodCharges,
+          extraCharges: bills.extraCharges,
+          paymentStatus: bills.paymentStatus,
+          createdAt: bills.createdAt,
+          balanceAmount: bills.balanceAmount,
+          dueDate: bills.dueDate,
+        })
+        .from(bills)
+        .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+        .where(eq(bookings.propertyId, propertyId))
+        .as('filtered_bills')
+      : null;
 
-    const [paidRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
-      .from(bills)
-      .where(eq(bills.paymentStatus, "paid"));
+    const [totalRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+          .from(bills);
 
-    const [roomRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(room_charges), 0)` })
-      .from(bills);
+    const [paidRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(eq(bills.paymentStatus, "paid"), eq(bookings.propertyId, propertyId)))
+      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+          .from(bills)
+          .where(eq(bills.paymentStatus, "paid"));
 
-    const [restaurantRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(food_charges), 0)` })
-      .from(bills);
+    const [roomRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.room_charges), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ total: sql<string>`COALESCE(SUM(room_charges), 0)` })
+          .from(bills);
 
-    const [extraServicesRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(extra_charges), 0)` })
-      .from(bills);
+    const [restaurantRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.food_charges), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ total: sql<string>`COALESCE(SUM(food_charges), 0)` })
+          .from(bills);
 
-    const [bookingsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(bookings);
+    const [extraServicesRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.extra_charges), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ total: sql<string>`COALESCE(SUM(extra_charges), 0)` })
+          .from(bills);
+
+    const [bookingsCount] = propertyId 
+      ? await db.select({ count: sql<number>`count(*)::int` })
+          .from(bookings)
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(bookings);
 
     const [guestsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(guests);
 
-    const [roomsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(rooms);
+    const [roomsCount] = propertyId 
+      ? await db.select({ count: sql<number>`count(*)::int` })
+          .from(rooms)
+          .where(eq(rooms.propertyId, propertyId))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(rooms);
 
-    const [occupiedRoomsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(rooms)
-      .where(eq(rooms.status, "occupied"));
+    const [occupiedRoomsCount] = propertyId 
+      ? await db.select({ count: sql<number>`count(*)::int` })
+          .from(rooms)
+          .where(and(eq(rooms.status, "occupied"), eq(rooms.propertyId, propertyId)))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(rooms)
+          .where(eq(rooms.status, "occupied"));
 
-    const [propertiesCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(properties)
-      .where(eq(properties.isActive, true));
+    const [propertiesCount] = propertyId 
+      ? await db.select({ count: sql<number>`1` })
+          .from(properties)
+          .where(and(eq(properties.isActive, true), eq(properties.id, propertyId)))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(properties)
+          .where(eq(properties.isActive, true));
 
     const [repeatGuestsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(guests)
       .where(sql`total_stays > 1`);
 
-    const [avgRoomRateResult] = await db
-      .select({ avg: sql<string>`COALESCE(AVG(price_per_night), 0)` })
-      .from(rooms);
+    const [avgRoomRateResult] = propertyId 
+      ? await db.select({ avg: sql<string>`COALESCE(AVG(price_per_night), 0)` })
+          .from(rooms)
+          .where(eq(rooms.propertyId, propertyId))
+      : await db.select({ avg: sql<string>`COALESCE(AVG(price_per_night), 0)` })
+          .from(rooms);
 
     const currentMonth = new Date();
     currentMonth.setDate(1);
     currentMonth.setHours(0, 0, 0, 0);
 
-    const [monthlyRevenueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
-      .from(bills)
-      .where(gte(bills.createdAt, currentMonth));
+    const [monthlyRevenueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(gte(bills.createdAt, currentMonth), eq(bookings.propertyId, propertyId)))
+      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+          .from(bills)
+          .where(gte(bills.createdAt, currentMonth));
 
-    const [monthlyPaidResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
-      .from(bills)
-      .where(and(
-        gte(bills.createdAt, currentMonth),
-        eq(bills.paymentStatus, "paid")
-      ));
+    const [monthlyPaidResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            gte(bills.createdAt, currentMonth),
+            eq(bills.paymentStatus, "paid"),
+            eq(bookings.propertyId, propertyId)
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+          .from(bills)
+          .where(and(
+            gte(bills.createdAt, currentMonth),
+            eq(bills.paymentStatus, "paid")
+          ));
 
-    const popularRoomTypes = await db
-      .select({
-        type: rooms.roomType,
-        bookings: sql<number>`count(*)::int`,
-      })
-      .from(bookings)
-      .leftJoin(rooms, eq(bookings.roomId, rooms.id))
-      .groupBy(rooms.roomType)
-      .orderBy(sql`count(*) DESC`)
-      .limit(5);
+    const popularRoomTypes = propertyId 
+      ? await db.select({
+            type: rooms.roomType,
+            bookings: sql<number>`count(*)::int`,
+          })
+          .from(bookings)
+          .leftJoin(rooms, eq(bookings.roomId, rooms.id))
+          .where(eq(bookings.propertyId, propertyId))
+          .groupBy(rooms.roomType)
+          .orderBy(sql`count(*) DESC`)
+          .limit(5)
+      : await db.select({
+            type: rooms.roomType,
+            bookings: sql<number>`count(*)::int`,
+          })
+          .from(bookings)
+          .leftJoin(rooms, eq(bookings.roomId, rooms.id))
+          .groupBy(rooms.roomType)
+          .orderBy(sql`count(*) DESC`)
+          .limit(5);
 
     const occupancyRate = roomsCount.count > 0
       ? Math.round((occupiedRoomsCount.count / roomsCount.count) * 100)
@@ -2006,61 +2081,113 @@ export class DatabaseStorage implements IStorage {
     const now = new Date();
     
     // Total pending and total bills for collection rate
-    const [pendingResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)`, count: sql<number>`count(*)::int` })
-      .from(bills)
-      .where(eq(bills.paymentStatus, "pending"));
+    const [pendingResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)`, count: sql<number>`count(*)::int` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(eq(bills.paymentStatus, "pending"), eq(bookings.propertyId, propertyId)))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)`, count: sql<number>`count(*)::int` })
+          .from(bills)
+          .where(eq(bills.paymentStatus, "pending"));
 
-    const [totalBillsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(bills);
+    const [totalBillsCount] = propertyId 
+      ? await db.select({ count: sql<number>`count(*)::int` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(eq(bookings.propertyId, propertyId))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(bills);
 
-    const [paidBillsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(bills)
-      .where(eq(bills.paymentStatus, "paid"));
+    const [paidBillsCount] = propertyId 
+      ? await db.select({ count: sql<number>`count(*)::int` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(eq(bills.paymentStatus, "paid"), eq(bookings.propertyId, propertyId)))
+      : await db.select({ count: sql<number>`count(*)::int` })
+          .from(bills)
+          .where(eq(bills.paymentStatus, "paid"));
 
     // Calculate overdue amount (pending bills past their due date)
-    const [overdueResult] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
-      .from(bills)
-      .where(and(
-        eq(bills.paymentStatus, "pending"),
-        sql`due_date IS NOT NULL AND due_date < CURRENT_DATE`
-      ));
+    const [overdueResult] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            eq(bookings.propertyId, propertyId),
+            sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} < CURRENT_DATE`
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+          .from(bills)
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            sql`due_date IS NOT NULL AND due_date < CURRENT_DATE`
+          ));
 
     // Calculate aging buckets
-    const [currentBucket] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
-      .from(bills)
-      .where(and(
-        eq(bills.paymentStatus, "pending"),
-        sql`(due_date IS NULL OR due_date >= CURRENT_DATE)`
-      ));
+    const [currentBucket] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            eq(bookings.propertyId, propertyId),
+            sql`(${bills.dueDate} IS NULL OR ${bills.dueDate} >= CURRENT_DATE)`
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+          .from(bills)
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            sql`(due_date IS NULL OR due_date >= CURRENT_DATE)`
+          ));
 
-    const [day1to7Bucket] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
-      .from(bills)
-      .where(and(
-        eq(bills.paymentStatus, "pending"),
-        sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
-      ));
+    const [day1to7Bucket] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            eq(bookings.propertyId, propertyId),
+            sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+          .from(bills)
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
+          ));
 
-    const [day8to30Bucket] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
-      .from(bills)
-      .where(and(
-        eq(bills.paymentStatus, "pending"),
-        sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
-      ));
+    const [day8to30Bucket] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            eq(bookings.propertyId, propertyId),
+            sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+          .from(bills)
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
+          ));
 
-    const [over30Bucket] = await db
-      .select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
-      .from(bills)
-      .where(and(
-        eq(bills.paymentStatus, "pending"),
-        sql`due_date IS NOT NULL AND due_date < CURRENT_DATE - INTERVAL '30 days'`
-      ));
+    const [over30Bucket] = propertyId 
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
+          .from(bills)
+          .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            eq(bookings.propertyId, propertyId),
+            sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} < CURRENT_DATE - INTERVAL '30 days'`
+          ))
+      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+          .from(bills)
+          .where(and(
+            eq(bills.paymentStatus, "pending"),
+            sql`due_date IS NOT NULL AND due_date < CURRENT_DATE - INTERVAL '30 days'`
+          ));
 
     // Property breakdown
     const propertyBreakdown = await db
