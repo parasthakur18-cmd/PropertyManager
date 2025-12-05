@@ -106,6 +106,11 @@ export default function Dashboard() {
   const [cashReceived, setCashReceived] = useState<string>("0");
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   
+  // Same-day checkout warning
+  const [sameDayWarningOpen, setSameDayWarningOpen] = useState(false);
+  const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
+  const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
+  
   // Onboarding wizard state - show for new users who haven't completed onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
   
@@ -182,7 +187,21 @@ export default function Dashboard() {
       return;
     }
 
-    // If guest has ID proof, check-in directly
+    // Check if checkout is today or in the past (same-day or overdue checkout)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkoutDate = new Date(booking.checkOutDate);
+    checkoutDate.setHours(0, 0, 0, 0);
+    
+    if (checkoutDate <= today) {
+      // Same-day or overdue checkout - show warning
+      setSameDayBookingId(booking.id);
+      setExtendCheckoutDate(new Date(checkoutDate));
+      setSameDayWarningOpen(true);
+      return;
+    }
+
+    // Normal check-in flow
     if (guest.idProofImage) {
       updateStatusMutation.mutate({ id: booking.id, status: "checked-in" });
       return;
@@ -1781,6 +1800,78 @@ export default function Dashboard() {
       </Dialog>
       <AIPendingNotifications />
       
+      {/* Same-day checkout warning dialog */}
+      <Dialog open={sameDayWarningOpen} onOpenChange={setSameDayWarningOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Same-Day Checkout Warning
+            </DialogTitle>
+            <DialogDescription>
+              Guest is checking in on their checkout date. No additional nights will be charged.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                <strong>Checkout Date:</strong> {format(extendCheckoutDate || new Date(), 'MMM dd, yyyy')}
+              </p>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-2">
+                Booking will be checked in and guest must check out the same day.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <p className="text-sm font-medium">What would you like to do?</p>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start" 
+                onClick={() => {
+                  // Proceed with same-day checkout
+                  setSameDayWarningOpen(false);
+                  if (sameDayBookingId) {
+                    const booking = bookings?.find(b => b.id === sameDayBookingId);
+                    if (booking?.guestId) {
+                      const guest = guests?.find(g => g.id === booking.guestId);
+                      if (guest?.idProofImage) {
+                        updateStatusMutation.mutate({ id: sameDayBookingId, status: "checked-in" });
+                      } else {
+                        setCheckinBookingId(sameDayBookingId);
+                        setCheckinIdProof(null);
+                        setCheckinDialogOpen(true);
+                      }
+                    }
+                  }
+                }}
+                data-testid="button-proceed-same-day"
+              >
+                <Check className="w-4 h-4 mr-2" />
+                Proceed with Same-Day Checkout
+              </Button>
+              
+              <Button 
+                variant="default" 
+                className="w-full justify-start"
+                onClick={() => {
+                  // Extend checkout to tomorrow
+                  setSameDayWarningOpen(false);
+                  if (sameDayBookingId) {
+                    const tomorrow = addDays(extendCheckoutDate || new Date(), 1);
+                    setLocation(`/bookings?editId=${sameDayBookingId}&extendTo=${tomorrow.toISOString()}`);
+                  }
+                }}
+                data-testid="button-extend-checkout"
+              >
+                <ArrowRight className="w-4 h-4 mr-2" />
+                Extend Stay to Tomorrow
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Onboarding wizard for new users */}
       <OnboardingWizard
         isOpen={showOnboarding}
