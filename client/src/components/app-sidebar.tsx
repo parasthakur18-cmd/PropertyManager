@@ -103,6 +103,7 @@ const adminFinanceItems = [
   { title: "Leases", url: "/leases", icon: IndianRupee },
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Financials", url: "/financials", icon: TrendingUp },
+  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Performance", url: "/performance", icon: BarChart3 },
   { title: "Attendance", url: "/attendance", icon: Clock },
@@ -147,6 +148,7 @@ const managerAdminItems = [
 const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Expenses", url: "/expenses", icon: FileText },
+  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
 ];
 
 // Staff menu items

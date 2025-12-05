@@ -29,6 +29,7 @@ import Enquiries from "@/pages/enquiries";
 import Leases from "@/pages/leases";
 import Expenses from "@/pages/expenses";
 import Financials from "@/pages/financials";
+import PnLStatement from "@/pages/pnl-statement";
 import AddOnServices from "@/pages/addons";
 import UsersManagement from "@/pages/users";
 import ActiveBookings from "@/pages/active-bookings";
@@ -157,6 +158,7 @@ function Router() {
           <Route path="/leases" component={Leases} />
           <Route path="/expenses" component={Expenses} />
           <Route path="/financials" component={Financials} />
+          <Route path="/pnl-statement" component={PnLStatement} />
           <Route path="/addons" component={AddOnServices} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/analytics-chat" component={AnalyticsChat} />

@@ -1770,12 +1770,26 @@ export class DatabaseStorage implements IStorage {
         )
         .groupBy(propertyExpenses.category);
 
+      // Get salaries during lease period (using periodStart for date range)
+      const [salariesResult] = await db
+        .select({ total: sql<string>`COALESCE(SUM(${staffSalaries.netSalary}), 0)` })
+        .from(staffSalaries)
+        .where(
+          and(
+            eq(staffSalaries.propertyId, propertyId),
+            gte(staffSalaries.periodStart, leaseStartDate),
+            lte(staffSalaries.periodStart, leaseEndDate)
+          )
+        );
+
       const totalRevenue = parseFloat(revenueResult?.total || '0');
       const totalExpenses = parseFloat(expensesResult?.total || '0');
+      const totalSalaries = parseFloat(salariesResult?.total || '0');
       const totalLeaseAmount = parseFloat(lease.totalAmount.toString());
       
-      // P&L Calculation: Profit = Total Sales – (Total Lease Amount + Total Expenses)
-      const finalProfit = totalRevenue - (totalLeaseAmount + totalExpenses);
+      // P&L Calculation: Profit = Total Sales – (Total Lease Amount + Total Expenses + Salaries)
+      const totalCosts = totalLeaseAmount + totalExpenses + totalSalaries;
+      const finalProfit = totalRevenue - totalCosts;
       const profitMargin = totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0';
 
       pnlData.push({
@@ -1786,6 +1800,7 @@ export class DatabaseStorage implements IStorage {
         totalLeaseAmount,
         totalRevenue,
         totalExpenses,
+        totalSalaries,
         expensesByCategory: expensesByCategory.map(c => ({
           category: c.category,
           total: parseFloat(c.total),
@@ -1799,7 +1814,9 @@ export class DatabaseStorage implements IStorage {
     const totalRevenue = pnlData.reduce((sum, p) => sum + p.totalRevenue, 0);
     const totalLeaseAmount = pnlData.reduce((sum, p) => sum + p.totalLeaseAmount, 0);
     const totalExpenses = pnlData.reduce((sum, p) => sum + p.totalExpenses, 0);
-    const finalProfit = totalRevenue - (totalLeaseAmount + totalExpenses);
+    const totalSalaries = pnlData.reduce((sum, p) => sum + p.totalSalaries, 0);
+    const totalCosts = totalLeaseAmount + totalExpenses + totalSalaries;
+    const finalProfit = totalRevenue - totalCosts;
 
     return {
       propertyId,
@@ -1808,6 +1825,8 @@ export class DatabaseStorage implements IStorage {
       totalRevenue,
       totalLeaseAmount,
       totalExpenses,
+      totalSalaries,
+      totalCosts,
       finalProfit,
       profitMargin: totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0',
     };
