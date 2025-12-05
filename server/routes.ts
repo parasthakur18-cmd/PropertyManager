@@ -1686,18 +1686,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
       
-      // Audit log for booking update
+      // Audit log for booking update with proper before/after structure
+      const changedFields: Record<string, any> = {};
+      const beforeValues: Record<string, any> = {};
+      const afterValues: Record<string, any> = {};
+      
+      for (const key of Object.keys(validatedData)) {
+        const oldValue = (existingBooking as any)[key];
+        const newValue = (validatedData as any)[key];
+        if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+          beforeValues[key] = oldValue;
+          afterValues[key] = newValue;
+        }
+      }
+      
       await storage.createAuditLog({
         entityType: "booking",
         entityId: req.params.id,
         action: "update",
         userId: req.user?.id || "unknown",
         userRole: req.user?.role,
-        changeSet: validatedData,
+        changeSet: { 
+          before: beforeValues, 
+          after: afterValues 
+        },
         metadata: { 
           previousStatus: existingBooking.status,
           newStatus: booking.status,
-          updatedFields: Object.keys(validatedData),
+          updatedFields: Object.keys(afterValues),
         },
       });
       
@@ -2014,7 +2030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[CANCELLATION] Booking #${bookingId} - Cancellation income of ₹${cancellationCharges} recorded`);
       }
 
-      // Audit log for cancellation
+      // Audit log for cancellation with before/after structure
       await storage.createAuditLog({
         entityType: "booking",
         entityId: String(bookingId),
@@ -2022,11 +2038,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.user?.id || "unknown",
         userRole: req.user?.role,
         changeSet: {
-          cancellationType,
-          cancellationCharges,
-          refundAmount,
-          cancellationReason,
-          advanceAmount,
+          before: { 
+            status: booking.status,
+            advanceAmount: booking.advanceAmount,
+          },
+          after: { 
+            status: "cancelled",
+            cancellationType,
+            cancellationCharges,
+            refundAmount,
+            cancellationReason,
+          },
         },
         metadata: {
           guestId: booking.guestId,
