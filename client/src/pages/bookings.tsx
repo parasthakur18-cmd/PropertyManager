@@ -70,6 +70,9 @@ export default function Bookings() {
   const [cancellationCharges, setCancellationCharges] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
+  const [sameDayWarningOpen, setSameDayWarningOpen] = useState(false);
+  const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
+  const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
   const { toast} = useToast();
 
   // Auto-open dialog when coming from dashboard with ?new=true
@@ -370,6 +373,20 @@ export default function Bookings() {
           description: "Cannot check in without valid guest information",
           variant: "destructive",
         });
+        return;
+      }
+
+      // Check if checkout is today or in the past (same-day or overdue checkout)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const checkoutDate = new Date(booking.checkOutDate);
+      checkoutDate.setHours(0, 0, 0, 0);
+      
+      if (checkoutDate <= today) {
+        // Same-day or overdue checkout - show warning
+        setSameDayBookingId(booking.id);
+        setExtendCheckoutDate(new Date(checkoutDate));
+        setSameDayWarningOpen(true);
         return;
       }
 
@@ -2609,6 +2626,81 @@ export default function Bookings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Same-Day Checkout Warning Dialog */}
+      <AlertDialog open={sameDayWarningOpen} onOpenChange={setSameDayWarningOpen}>
+        <AlertDialogContent data-testid="dialog-same-day-warning">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+              <Calendar className="h-5 w-5" />
+              Same-Day Checkout Warning
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  This guest's checkout date is <span className="font-semibold">{extendCheckoutDate ? format(extendCheckoutDate, "MMM dd, yyyy") : "today"}</span>. 
+                  Checking in now means the guest must check out today.
+                </p>
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    No additional nights will be charged for this stay.
+                  </p>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-row">
+            <AlertDialogCancel onClick={() => {
+              setSameDayWarningOpen(false);
+              setSameDayBookingId(null);
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Proceed with same-day checkout
+                setSameDayWarningOpen(false);
+                if (sameDayBookingId) {
+                  const booking = bookings?.find(b => b.id === sameDayBookingId);
+                  if (booking?.guestId) {
+                    const guest = guests?.find(g => g.id === booking.guestId);
+                    if (guest?.idProofImage) {
+                      updateStatusMutation.mutate({ id: sameDayBookingId, status: "checked-in" });
+                    } else {
+                      setCheckinBookingId(sameDayBookingId);
+                      setCheckinIdProof(null);
+                      setCheckinDialogOpen(true);
+                    }
+                  }
+                }
+                setSameDayBookingId(null);
+              }}
+              data-testid="button-proceed-same-day"
+            >
+              Proceed with Same-Day Checkout
+            </Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                // Extend checkout to tomorrow
+                setSameDayWarningOpen(false);
+                if (sameDayBookingId) {
+                  const booking = bookings?.find(b => b.id === sameDayBookingId);
+                  if (booking) {
+                    setEditingBooking(booking);
+                    setIsEditDialogOpen(true);
+                  }
+                }
+                setSameDayBookingId(null);
+              }}
+              data-testid="button-extend-stay"
+            >
+              Extend Stay (Edit Booking)
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
