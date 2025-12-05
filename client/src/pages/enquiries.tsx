@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -18,7 +18,9 @@ import {
   Search,
   FileText,
   MessageCircle,
+  Building2,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -364,6 +366,7 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
 }
 
 export default function Enquiries() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
@@ -374,6 +377,11 @@ export default function Enquiries() {
   const [customMessage, setCustomMessage] = useState("");
   const [messageChannel, setMessageChannel] = useState<"sms" | "whatsapp">("sms");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
 
   const { data: enquiries, isLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
@@ -386,6 +394,14 @@ export default function Enquiries() {
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter(p => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(String(p.id));
+    }) || [];
+  }, [properties, user]);
 
   const confirmEnquiryMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -561,17 +577,25 @@ export default function Enquiries() {
     );
   };
 
-  // Filter enquiries based on search query
-  const filteredEnquiries = enquiries?.filter((enquiry) => {
-    if (!searchQuery.trim()) return true;
-    
-    const query = searchQuery.toLowerCase();
-    return (
-      enquiry.guestName.toLowerCase().includes(query) ||
-      enquiry.guestPhone.toLowerCase().includes(query) ||
-      (enquiry.guestEmail && enquiry.guestEmail.toLowerCase().includes(query))
-    );
-  }) || [];
+  // Filter enquiries based on search query and selected property
+  const filteredEnquiries = useMemo(() => {
+    return enquiries?.filter((enquiry) => {
+      // Filter by property
+      if (selectedPropertyId !== null && enquiry.propertyId !== selectedPropertyId) {
+        return false;
+      }
+      
+      // Filter by search query
+      if (!searchQuery.trim()) return true;
+      
+      const query = searchQuery.toLowerCase();
+      return (
+        enquiry.guestName.toLowerCase().includes(query) ||
+        enquiry.guestPhone.toLowerCase().includes(query) ||
+        (enquiry.guestEmail && enquiry.guestEmail.toLowerCase().includes(query))
+      );
+    }) || [];
+  }, [enquiries, selectedPropertyId, searchQuery]);
 
   if (isLoading) {
     return (
@@ -586,17 +610,46 @@ export default function Enquiries() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Enquiries</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage and track customer booking enquiries
-          </p>
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Enquiries</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage and track customer booking enquiries
+            </p>
+          </div>
+          <Button onClick={() => navigate("/new-enquiry")} data-testid="button-new-enquiry">
+            <MessageSquarePlus className="h-5 w-5 mr-2" />
+            New Enquiry
+          </Button>
         </div>
-        <Button onClick={() => navigate("/new-enquiry")} data-testid="button-new-enquiry">
-          <MessageSquarePlus className="h-5 w-5 mr-2" />
-          New Enquiry
-        </Button>
+        
+        {/* Property Filter */}
+        {availableProperties.length > 1 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-2">Filter by property:</span>
+            <Button
+              variant={selectedPropertyId === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedPropertyId(null)}
+              data-testid="button-filter-all-properties"
+            >
+              All Properties
+            </Button>
+            {availableProperties.map((property) => (
+              <Button
+                key={property.id}
+                variant={selectedPropertyId === property.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedPropertyId(property.id)}
+                data-testid={`button-filter-property-${property.id}`}
+              >
+                {property.name}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {!enquiries || enquiries.length === 0 ? (

@@ -78,7 +78,7 @@ export default function PendingPayments() {
   const availableProperties = useMemo(() => {
     return properties?.filter(p => {
       if (user?.role === 'super_admin') return true;
-      return user?.assignedPropertyIds?.includes(p.id);
+      return user?.assignedPropertyIds?.includes(String(p.id));
     }) || [];
   }, [properties, user]);
 

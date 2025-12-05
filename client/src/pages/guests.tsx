@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, UserPlus, Phone, Mail, MapPin, Camera, Upload, X, Download, Eye, FileText } from "lucide-react";
+import { Plus, UserPlus, Phone, Mail, MapPin, Camera, Upload, X, Download, Eye, FileText, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -11,23 +11,68 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertGuestSchema, type InsertGuest, type Guest } from "@shared/schema";
+import { insertGuestSchema, type InsertGuest, type Guest, type Property, type Booking } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Guests() {
+  const { user } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [idProofPreview, setIdProofPreview] = useState<string | null>(null);
   const [selectedGuestForId, setSelectedGuestForId] = useState<Guest | null>(null);
   const [isIdViewerOpen, setIsIdViewerOpen] = useState(false);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  const { data: properties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
+
+  const { data: bookings } = useQuery<Booking[]>({
+    queryKey: ["/api/bookings"],
+  });
+
   const { data: guests, isLoading } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter(p => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(String(p.id));
+    }) || [];
+  }, [properties, user]);
+
+  // Build a map of guestId -> propertyIds based on their bookings
+  const guestPropertyMap = useMemo(() => {
+    const map = new Map<number, Set<number>>();
+    if (bookings) {
+      bookings.forEach(booking => {
+        if (booking.guestId && booking.propertyId) {
+          if (!map.has(booking.guestId)) {
+            map.set(booking.guestId, new Set());
+          }
+          map.get(booking.guestId)!.add(booking.propertyId);
+        }
+      });
+    }
+    return map;
+  }, [bookings]);
+
+  // Filter guests based on selected property
+  const filteredGuests = useMemo(() => {
+    if (!guests) return [];
+    if (selectedPropertyId === null) return guests;
+    return guests.filter(guest => {
+      const propertyIds = guestPropertyMap.get(guest.id);
+      return propertyIds?.has(selectedPropertyId);
+    });
+  }, [guests, selectedPropertyId, guestPropertyMap]);
 
   const form = useForm<InsertGuest>({
     resolver: zodResolver(insertGuestSchema),
@@ -128,18 +173,48 @@ export default function Guests() {
 
   return (
     <div className="p-6 md:p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold font-serif">Guests</h1>
-          <p className="text-muted-foreground mt-1">Manage guest profiles and history</p>
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold font-serif">Guests</h1>
+            <p className="text-muted-foreground mt-1">Manage guest profiles and history</p>
+          </div>
+          <Button onClick={() => setIsDialogOpen(true)} data-testid="button-add-guest">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Guest
+          </Button>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-add-guest">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Guest
+        
+        {/* Property Filter */}
+        {availableProperties.length > 1 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-2">Filter by property:</span>
+            <Button
+              variant={selectedPropertyId === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedPropertyId(null)}
+              data-testid="button-filter-all-properties"
+            >
+              All Properties
             </Button>
-          </DialogTrigger>
+            {availableProperties.map((property) => (
+              <Button
+                key={property.id}
+                variant={selectedPropertyId === property.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedPropertyId(property.id)}
+                data-testid={`button-filter-property-${property.id}`}
+              >
+                {property.name}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add Guest Dialog */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Guest</DialogTitle>
@@ -325,7 +400,6 @@ export default function Guests() {
             </Form>
           </DialogContent>
         </Dialog>
-      </div>
 
       {/* ID Proof Viewer Modal */}
       <Dialog open={isIdViewerOpen} onOpenChange={setIsIdViewerOpen}>
@@ -387,21 +461,25 @@ export default function Guests() {
         </DialogContent>
       </Dialog>
 
-      {!guests || guests.length === 0 ? (
+      {filteredGuests.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <UserPlus className="h-10 w-10" />
             </div>
-            <h3 className="text-xl font-semibold">No guests yet</h3>
+            <h3 className="text-xl font-semibold">
+              {selectedPropertyId ? "No guests for this property" : "No guests yet"}
+            </h3>
             <p className="text-muted-foreground max-w-md">
-              Add your first guest to start managing bookings
+              {selectedPropertyId 
+                ? "No guests have bookings at this property. Select 'All Properties' to view all guests."
+                : "Add your first guest to start managing bookings"}
             </p>
           </div>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {guests.map((guest) => {
+          {filteredGuests.map((guest) => {
             const initials = guest.fullName
               .split(" ")
               .map((n) => n[0])

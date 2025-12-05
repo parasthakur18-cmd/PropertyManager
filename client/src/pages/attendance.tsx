@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,8 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
-import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus, Edit2 } from "lucide-react";
+import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus, Edit2, Building2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const attendanceFormSchema = z.object({
   staffMemberId: z.string().min(1, "Staff member is required"),
@@ -52,6 +53,7 @@ interface AttendanceStats {
 }
 
 export default function Attendance() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAddStaffDialogOpen, setIsAddStaffDialogOpen] = useState(false);
@@ -60,6 +62,7 @@ export default function Attendance() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [rosterDate, setRosterDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
 
   const { data: properties = [] } = useQuery<any[]>({
     queryKey: ["/api/properties"],
@@ -68,6 +71,20 @@ export default function Attendance() {
   const { data: staffMembers = [], refetch: refetchStaff } = useQuery<any[]>({
     queryKey: ["/api/staff-members"],
   });
+
+  // Filter properties based on user's assigned properties
+  const availableProperties = useMemo(() => {
+    return properties?.filter((p: any) => {
+      if (user?.role === 'super_admin') return true;
+      return user?.assignedPropertyIds?.includes(String(p.id));
+    }) || [];
+  }, [properties, user]);
+
+  // Filter staff members based on selected property
+  const filteredStaffMembers = useMemo(() => {
+    if (selectedPropertyId === null) return staffMembers;
+    return staffMembers.filter((staff: any) => staff.propertyId === selectedPropertyId);
+  }, [staffMembers, selectedPropertyId]);
 
   const monthString = selectedMonth.toISOString().slice(0, 7);
 
@@ -282,13 +299,42 @@ export default function Attendance() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold" data-testid="text-page-title">
-          Attendance & Salary Management
-        </h1>
-        <p className="text-muted-foreground">
-          Track attendance and automatic salary deductions
-        </p>
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">
+            Attendance & Salary Management
+          </h1>
+          <p className="text-muted-foreground">
+            Track attendance and automatic salary deductions
+          </p>
+        </div>
+        
+        {/* Property Filter */}
+        {availableProperties.length > 1 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-2">Filter by property:</span>
+            <Button
+              variant={selectedPropertyId === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedPropertyId(null)}
+              data-testid="button-filter-all-properties"
+            >
+              All Properties
+            </Button>
+            {availableProperties.map((property: any) => (
+              <Button
+                key={property.id}
+                variant={selectedPropertyId === property.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedPropertyId(property.id)}
+                data-testid={`button-filter-property-${property.id}`}
+              >
+                {property.name}
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       <Tabs defaultValue="roster" className="w-full">
@@ -315,9 +361,9 @@ export default function Attendance() {
                 />
               </div>
 
-              {staffMembers.length === 0 ? (
+              {filteredStaffMembers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>No staff members added yet. Click "Add Staff" to add your first staff member.</p>
+                  <p>{selectedPropertyId ? "No staff members at this property." : "No staff members added yet. Click \"Add Staff\" to add your first staff member."}</p>
                 </div>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">
@@ -332,7 +378,7 @@ export default function Attendance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {staffMembers.map((staff) => {
+                      {filteredStaffMembers.map((staff) => {
                         const dayAttendance = getAttendanceForDate(staff.id, new Date(rosterDate));
                         const currentStatus = dayAttendance?.status;
                         return (
@@ -543,7 +589,7 @@ export default function Attendance() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {staffMembers.map((staff) => (
+                            {filteredStaffMembers.map((staff) => (
                               <SelectItem key={staff.id} value={String(staff.id)}>
                                 {staff.name}
                               </SelectItem>
@@ -813,7 +859,7 @@ export default function Attendance() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6 overflow-x-auto">
-            {staffMembers.map((staff) => (
+            {filteredStaffMembers.map((staff) => (
               <div key={staff.id} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold">{staff.name} - {staff.jobTitle}</h3>
