@@ -635,14 +635,22 @@ export default function Bookings() {
       
       const totalAmount = (roomCharges * numberOfNights).toFixed(2);
       
+      // Format dates as YYYY-MM-DD to avoid timezone shifts
+      const formatDateForDB = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      
       // Build booking data - only include fields that exist in schema
       let bookingData: any = {
         propertyId: bookingType === "group" ? rooms?.find(r => r.id === selectedRoomIds[0])?.propertyId : data.propertyId,
         guestId: newGuest.id,
         roomId: bookingType === "group" ? null : data.roomId,
         roomIds: bookingType === "group" ? selectedRoomIds : null,
-        checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString() : data.checkInDate,
-        checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString() : data.checkOutDate,
+        checkInDate: formatDateForDB(data.checkInDate),
+        checkOutDate: formatDateForDB(data.checkOutDate),
         numberOfGuests: parseInt(data.numberOfGuests),
         customPrice: data.customPrice ? data.customPrice.toString() : null,
         advanceAmount: data.advanceAmount ? data.advanceAmount.toString() : "0",
@@ -685,12 +693,18 @@ export default function Bookings() {
       setEditSelectedRoomIds([]);
     }
     
+    // Parse dates correctly without timezone shift - use the date part only
+    const parseDateWithoutTimezone = (dateStr: string) => {
+      const date = new Date(dateStr);
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    };
+
     editForm.reset({
       propertyId: booking.propertyId,
       guestId: booking.guestId,
       roomId: booking.roomId || undefined,
-      checkInDate: new Date(booking.checkInDate),
-      checkOutDate: new Date(booking.checkOutDate),
+      checkInDate: parseDateWithoutTimezone(booking.checkInDate),
+      checkOutDate: parseDateWithoutTimezone(booking.checkOutDate),
       status: booking.status,
       numberOfGuests: booking.numberOfGuests,
       customPrice: null,
@@ -741,12 +755,20 @@ export default function Bookings() {
     
     const totalAmount = (roomCharges * numberOfNights).toFixed(2);
     
+    // Format dates as YYYY-MM-DD to avoid timezone shifts
+    const formatDateForDB = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
     // Build update payload - only include schema fields
     const payload: Partial<InsertBooking> = {
       roomId: roomId,
       roomIds: roomIds,
-      checkInDate: data.checkInDate instanceof Date ? data.checkInDate.toISOString() : data.checkInDate,
-      checkOutDate: data.checkOutDate instanceof Date ? data.checkOutDate.toISOString() : data.checkOutDate,
+      checkInDate: formatDateForDB(data.checkInDate),
+      checkOutDate: formatDateForDB(data.checkOutDate),
       numberOfGuests: parseInt(data.numberOfGuests),
       customPrice: data.customPrice ? data.customPrice.toString() : null,
       advanceAmount: data.advanceAmount ? data.advanceAmount.toString() : "0",

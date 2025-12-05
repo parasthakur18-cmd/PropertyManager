@@ -258,6 +258,22 @@ export default function CalendarView() {
         bookingSet.set(booking.id, booking);
       }
     });
+    
+    // Also include group bookings that contain this room
+    bookings.forEach(booking => {
+      if (booking.roomIds && booking.roomIds.includes(roomId)) {
+        // Check if this booking overlaps with our date range
+        const bookingStart = new Date(booking.checkInDate);
+        const bookingEnd = new Date(booking.checkOutDate);
+        const rangeStart = dates[0];
+        const rangeEnd = dates[dates.length - 1];
+        
+        if (bookingStart <= rangeEnd && bookingEnd >= rangeStart) {
+          bookingSet.set(booking.id, booking);
+        }
+      }
+    });
+    
     return Array.from(bookingSet.values());
   };
 
