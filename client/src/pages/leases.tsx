@@ -107,10 +107,12 @@ export default function Leases() {
   const createLeaseMutation = useMutation({
     mutationFn: async (data: z.infer<typeof leaseFormSchema>) => {
       const response = await apiRequest("/api/leases", "POST", {
-        ...data,
+        propertyId: data.propertyId,
         totalAmount: data.totalAmount,
-        startDate: data.startDate,
-        endDate: data.endDate || null,
+        startDate: new Date(data.startDate).toISOString(),
+        endDate: data.endDate ? new Date(data.endDate).toISOString() : null,
+        landlordName: data.landlordName,
+        notes: data.notes || null,
       });
       return response.json();
     },
