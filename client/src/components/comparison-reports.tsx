@@ -46,8 +46,8 @@ export function ComparisonReports({ expenses }: { expenses: any[] }) {
     const changePercent = lastYearTotal > 0 ? (change / lastYearTotal) * 100 : 0;
 
     return {
-      currentMonth: format(now, "MMMM YYYY"),
-      lastYearMonth: format(subYears(now, 1), "MMMM YYYY"),
+      currentMonth: format(now, "MMMM yyyy"),
+      lastYearMonth: format(subYears(now, 1), "MMMM yyyy"),
       currentTotal,
       lastYearTotal,
       change,
