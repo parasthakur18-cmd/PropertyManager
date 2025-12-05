@@ -4,19 +4,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ArrowRight, Sparkles } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { Building2, ArrowRight, Sparkles, Clock, CheckCircle } from "lucide-react";
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [showPending, setShowPending] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     businessName: "",
     firstName: "",
     lastName: "",
+    phone: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -29,26 +30,31 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await apiRequest("/api/auth/register", {
+      const response = await fetch("/api/auth/register", {
         method: "POST",
-        body: {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           email: formData.email,
           password: formData.password,
           businessName: formData.businessName,
           firstName: formData.firstName,
           lastName: formData.lastName,
-        },
+          phone: formData.phone,
+        }),
       });
 
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || "Registration failed");
+      }
+
+      // Show pending approval screen
+      setShowPending(true);
       toast({
         title: "Registration successful!",
-        description: "Your account has been created. Logging you in...",
+        description: "Your account is pending approval.",
       });
-
-      // Redirect to login
-      setTimeout(() => {
-        setLocation("/onboarding");
-      }, 1000);
     } catch (error: any) {
       toast({
         title: "Registration failed",
@@ -59,6 +65,61 @@ export default function Register() {
       setLoading(false);
     }
   };
+  
+  // Show pending approval screen after registration
+  if (showPending) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-teal-50 dark:from-slate-950 dark:to-teal-950/20 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full border-teal-200 dark:border-teal-800 shadow-lg">
+          <CardHeader className="text-center pb-4">
+            <div className="mx-auto w-16 h-16 bg-teal-100 dark:bg-teal-900/30 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle className="h-8 w-8 text-teal-600 dark:text-teal-400" />
+            </div>
+            <CardTitle className="text-2xl">Registration Successful!</CardTitle>
+            <CardDescription className="text-base">
+              Your account has been created and is pending approval.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 mb-2">
+                <Clock className="h-5 w-5" />
+                <h4 className="font-medium">What happens next?</h4>
+              </div>
+              <ul className="text-sm text-teal-700 dark:text-teal-400 space-y-2">
+                <li>1. Our team will review your application</li>
+                <li>2. You will receive a WhatsApp notification once approved</li>
+                <li>3. After approval, you can log in and manage your property</li>
+              </ul>
+            </div>
+            
+            <div className="text-center text-sm text-slate-600 dark:text-slate-400">
+              <p>Registered email: <span className="font-medium">{formData.email}</span></p>
+              <p className="mt-1">Business: <span className="font-medium">{formData.businessName}</span></p>
+            </div>
+            
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setLocation("/")}
+                className="flex-1"
+                data-testid="button-go-home"
+              >
+                Go to Homepage
+              </Button>
+              <Button
+                onClick={() => setLocation("/login")}
+                className="flex-1 bg-gradient-to-r from-teal-600 to-cyan-600"
+                data-testid="button-go-login"
+              >
+                Go to Login
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col">
@@ -161,6 +222,28 @@ export default function Register() {
                     data-testid="input-email"
                     className="border-slate-200 dark:border-slate-800"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-900 dark:text-white">Mobile Number (WhatsApp)</label>
+                  <div className="flex gap-2">
+                    <div className="flex items-center px-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm">
+                      +91
+                    </div>
+                    <Input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                      placeholder="10-digit mobile number"
+                      maxLength={10}
+                      data-testid="input-phone"
+                      className="border-slate-200 dark:border-slate-800 flex-1"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    We'll send approval notifications to your WhatsApp
+                  </p>
                 </div>
 
                 <div className="space-y-2">

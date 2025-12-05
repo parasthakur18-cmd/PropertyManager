@@ -66,6 +66,7 @@ import Terms from "@/pages/terms";
 import Privacy from "@/pages/privacy";
 import ContactEnquiries from "@/pages/contact-enquiries";
 import Register from "@/pages/register";
+import Login from "@/pages/login";
 import ReportIssue from "@/pages/report-issue";
 import OtaIntegrations from "@/pages/ota-integrations";
 import Notifications from "@/pages/notifications";
@@ -120,7 +121,7 @@ function Router() {
       <Route path="/faq" component={FAQ} />
       <Route path="/terms" component={Terms} />
       <Route path="/privacy" component={Privacy} />
-      <Route path="/login" component={Landing} />
+      <Route path="/login" component={Login} />
       <Route path="/signup" component={Register} />
       <Route path="/register" component={Register} />
       <Route path="/report-issue" component={ReportIssue} />
