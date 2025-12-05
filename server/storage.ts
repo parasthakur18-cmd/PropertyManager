@@ -24,6 +24,8 @@ import {
   staffSalaries,
   salaryAdvances,
   salaryPayments,
+  vendors,
+  vendorTransactions,
   attendanceRecords,
   featureSettings,
   otaIntegrations,
@@ -79,6 +81,10 @@ import {
   type InsertSalaryAdvance,
   type SalaryPayment,
   type InsertSalaryPayment,
+  type Vendor,
+  type InsertVendor,
+  type VendorTransaction,
+  type InsertVendorTransaction,
   issueReports,
   type IssueReport,
   contactEnquiries,
@@ -2829,6 +2835,102 @@ export class DatabaseStorage implements IStorage {
       console.warn("[Audit] Failed to fetch entity audit logs:", err);
       return [];
     }
+  }
+
+  // Vendor operations
+  async getAllVendors(): Promise<Vendor[]> {
+    return await db.select().from(vendors).orderBy(vendors.name);
+  }
+
+  async getVendorsByProperty(propertyId: number): Promise<Vendor[]> {
+    return await db.select().from(vendors).where(eq(vendors.propertyId, propertyId)).orderBy(vendors.name);
+  }
+
+  async getVendor(id: number): Promise<Vendor | undefined> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor;
+  }
+
+  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+    const [created] = await db.insert(vendors).values(vendor).returning();
+    eventBus.emit('vendor:created', created);
+    return created;
+  }
+
+  async updateVendor(id: number, vendor: Partial<InsertVendor>): Promise<Vendor> {
+    const [updated] = await db
+      .update(vendors)
+      .set({ ...vendor, updatedAt: new Date() })
+      .where(eq(vendors.id, id))
+      .returning();
+    eventBus.emit('vendor:updated', updated);
+    return updated;
+  }
+
+  async deleteVendor(id: number): Promise<void> {
+    await db.delete(vendors).where(eq(vendors.id, id));
+    eventBus.emit('vendor:deleted', { id });
+  }
+
+  // Vendor Transaction operations
+  async getVendorTransactions(vendorId: number): Promise<VendorTransaction[]> {
+    return await db
+      .select()
+      .from(vendorTransactions)
+      .where(eq(vendorTransactions.vendorId, vendorId))
+      .orderBy(desc(vendorTransactions.transactionDate));
+  }
+
+  async getVendorTransactionsByProperty(propertyId: number): Promise<VendorTransaction[]> {
+    return await db
+      .select()
+      .from(vendorTransactions)
+      .where(eq(vendorTransactions.propertyId, propertyId))
+      .orderBy(desc(vendorTransactions.transactionDate));
+  }
+
+  async createVendorTransaction(transaction: InsertVendorTransaction): Promise<VendorTransaction> {
+    const [created] = await db.insert(vendorTransactions).values(transaction).returning();
+    eventBus.emit('vendor-transaction:created', created);
+    return created;
+  }
+
+  async deleteVendorTransaction(id: number): Promise<void> {
+    await db.delete(vendorTransactions).where(eq(vendorTransactions.id, id));
+    eventBus.emit('vendor-transaction:deleted', { id });
+  }
+
+  // Get vendor with outstanding balance calculation
+  async getVendorsWithBalance(propertyId: number): Promise<any[]> {
+    const vendorList = await this.getVendorsByProperty(propertyId);
+    
+    const vendorsWithBalance = await Promise.all(
+      vendorList.map(async (vendor) => {
+        const transactions = await this.getVendorTransactions(vendor.id);
+        
+        let totalCredit = 0;  // What we owe (purchases on credit)
+        let totalPayment = 0; // What we've paid
+        
+        transactions.forEach((t) => {
+          const amount = parseFloat(t.amount.toString());
+          if (t.transactionType === 'credit') {
+            totalCredit += amount;
+          } else if (t.transactionType === 'payment') {
+            totalPayment += amount;
+          }
+        });
+        
+        return {
+          ...vendor,
+          totalCredit,
+          totalPayment,
+          outstandingBalance: totalCredit - totalPayment,
+          transactionCount: transactions.length,
+        };
+      })
+    );
+    
+    return vendorsWithBalance;
   }
 }
 
