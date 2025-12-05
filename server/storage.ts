@@ -2328,7 +2328,7 @@ export class DatabaseStorage implements IStorage {
 
   // Attendance operations
   async getAllAttendance(): Promise<AttendanceRecord[]> {
-    const results = await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.attendanceDate));
+    const results = await db.select().from(attendanceRecords).orderBy(desc(attendanceRecords.date));
     console.log(`[STORAGE] getAllAttendance returned ${results.length} records`);
     if (results.length > 0) {
       console.log('[STORAGE] First record:', JSON.stringify(results[0], null, 2));
@@ -2340,34 +2340,35 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(attendanceRecords)
-      .where(eq(attendanceRecords.staffId, staffId))
-      .orderBy(desc(attendanceRecords.attendanceDate));
+      .where(eq(attendanceRecords.staffMemberId, staffId))
+      .orderBy(desc(attendanceRecords.date));
   }
 
   async getAttendanceByProperty(propertyId: number): Promise<AttendanceRecord[]> {
-    return await db
-      .select()
-      .from(attendanceRecords)
-      .where(eq(attendanceRecords.propertyId, propertyId))
-      .orderBy(desc(attendanceRecords.attendanceDate));
-  }
-
-  async getAttendanceByDate(attendanceDate: Date): Promise<AttendanceRecord[]> {
-    const startOfDay = new Date(attendanceDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(attendanceDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Get staff members for this property first, then get their attendance
+    const staffForProperty = await db
+      .select({ id: staffMembers.id })
+      .from(staffMembers)
+      .where(eq(staffMembers.propertyId, propertyId));
+    
+    const staffIds = staffForProperty.map(s => s.id);
+    if (staffIds.length === 0) return [];
     
     return await db
       .select()
       .from(attendanceRecords)
-      .where(
-        and(
-          gte(attendanceRecords.attendanceDate, startOfDay),
-          lte(attendanceRecords.attendanceDate, endOfDay)
-        )
-      )
-      .orderBy(desc(attendanceRecords.attendanceDate));
+      .where(inArray(attendanceRecords.staffMemberId, staffIds))
+      .orderBy(desc(attendanceRecords.date));
+  }
+
+  async getAttendanceByDate(attendanceDate: Date): Promise<AttendanceRecord[]> {
+    const dateStr = attendanceDate.toISOString().split('T')[0];
+    
+    return await db
+      .select()
+      .from(attendanceRecords)
+      .where(eq(attendanceRecords.date, dateStr))
+      .orderBy(desc(attendanceRecords.date));
   }
 
   async createAttendance(attendance: InsertAttendanceRecord): Promise<AttendanceRecord> {
@@ -2442,17 +2443,20 @@ export class DatabaseStorage implements IStorage {
   async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]> {
     const staffList = await db.select().from(staffMembers).where(eq(staffMembers.propertyId, propertyId));
     
+    const startDateStr = startDate.toISOString().split('T')[0];
+    const endDateStr = endDate.toISOString().split('T')[0];
+    
     const detailedSalaries = await Promise.all(
       staffList.map(async (staff) => {
-        // Get attendance records for this period
+        // Get attendance records for this staff member in this period
         const attendanceList = await db
           .select()
           .from(attendanceRecords)
           .where(
             and(
-              eq(attendanceRecords.propertyId, propertyId),
-              gte(attendanceRecords.attendanceDate, startDate),
-              lte(attendanceRecords.attendanceDate, endDate)
+              eq(attendanceRecords.staffMemberId, staff.id),
+              gte(attendanceRecords.date, startDateStr),
+              lte(attendanceRecords.date, endDateStr)
             )
           );
 
