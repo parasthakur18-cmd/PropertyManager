@@ -527,13 +527,14 @@ export default function Vendors() {
       )}
 
       <Dialog open={isVendorDialogOpen} onOpenChange={setIsVendorDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingVendor ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
             <DialogDescription>
               {editingVendor ? "Update vendor details" : "Add a new vendor to track credit purchases"}
             </DialogDescription>
           </DialogHeader>
+          <ScrollArea className="flex-1 max-h-[60vh] pr-4">
           <Form {...vendorForm}>
             <form
               onSubmit={vendorForm.handleSubmit((data) => {
@@ -664,6 +665,7 @@ export default function Vendors() {
               </Button>
             </form>
           </Form>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
