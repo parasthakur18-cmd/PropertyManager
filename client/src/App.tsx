@@ -205,20 +205,6 @@ export default function App() {
   );
 }
 
-function TestPage() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold mb-4">Hostezee Loading...</h1>
-        <p className="text-gray-600 mb-4">If you see this, the server is working</p>
-        <button onClick={() => window.location.reload()} className="px-4 py-2 bg-blue-600 text-white rounded">
-          Refresh Page
-        </button>
-      </div>
-    </div>
-  );
-}
-
 function AuthWrapper({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
