@@ -391,16 +391,60 @@ export class DatabaseStorage implements IStorage {
     if (userData.profileImageUrl !== undefined) updateFields.profileImageUrl = userData.profileImageUrl;
     if (userData.role !== undefined) updateFields.role = userData.role;
 
-    // Use onConflictDoUpdate to handle both insert and update cases
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: updateFields,
-      })
-      .returning();
-    return user;
+    try {
+      // First try to find existing user by ID
+      const existingById = await db.select().from(users).where(eq(users.id, userData.id)).limit(1);
+      
+      if (existingById.length > 0) {
+        // User exists by ID, update them
+        const [updated] = await db
+          .update(users)
+          .set(updateFields)
+          .where(eq(users.id, userData.id))
+          .returning();
+        return updated;
+      }
+      
+      // Check if email already exists (different user ID with same email)
+      if (userData.email) {
+        const existingByEmail = await db.select().from(users).where(eq(users.email, userData.email)).limit(1);
+        if (existingByEmail.length > 0) {
+          // Email already taken by another user - update that user's ID to the new OIDC ID
+          // This handles the case where a user logged in via a different auth method before
+          const [updated] = await db
+            .update(users)
+            .set({ 
+              id: userData.id,
+              ...updateFields 
+            })
+            .where(eq(users.email, userData.email))
+            .returning();
+          return updated;
+        }
+      }
+      
+      // No existing user, insert new one
+      const [user] = await db
+        .insert(users)
+        .values(userData)
+        .returning();
+      return user;
+    } catch (error: any) {
+      // If still getting unique constraint error, try to find and return existing user
+      if (error.code === '23505') {
+        const existing = await db.select().from(users).where(eq(users.id, userData.id)).limit(1);
+        if (existing.length > 0) {
+          return existing[0];
+        }
+        if (userData.email) {
+          const existingByEmail = await db.select().from(users).where(eq(users.email, userData.email)).limit(1);
+          if (existingByEmail.length > 0) {
+            return existingByEmail[0];
+          }
+        }
+      }
+      throw error;
+    }
   }
 
   async deleteUser(id: string): Promise<void> {
