@@ -86,15 +86,9 @@ import { NotificationCenter } from "@/components/notification-center";
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
+  // Always show home page instead of loading spinner - auth check may hang
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <Route path="/" component={Home} />;
   }
 
   return (
