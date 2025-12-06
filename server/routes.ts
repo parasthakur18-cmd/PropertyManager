@@ -163,6 +163,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== TEST ROUTES (For development testing) =====
+  
+  // Test email and WhatsApp services
+  app.post("/api/test/notifications", async (req, res) => {
+    const { email, phone, type } = req.body;
+    const results: any = { email: null, whatsapp: null };
+    
+    try {
+      // Test Email
+      if (email) {
+        const { sendBookingConfirmationEmail } = await import("./email-service");
+        const emailResult = await sendBookingConfirmationEmail(
+          email,
+          "Test Guest",
+          "Test Property",
+          "Dec 10, 2025",
+          "Dec 11, 2025",
+          "Room 101",
+          99999
+        );
+        results.email = { success: true, result: emailResult };
+        console.log(`[TEST] Email test sent to ${email}`);
+      }
+      
+      // Test WhatsApp
+      if (phone) {
+        const { sendBookingConfirmation } = await import("./whatsapp");
+        const phoneStr = String(phone);
+        const waResult = await sendBookingConfirmation(
+          phoneStr,
+          "Test Guest",
+          "Test Property",
+          "Dec 10, 2025",
+          "Dec 11, 2025",
+          "Room 101"
+        );
+        results.whatsapp = { success: waResult.success, result: waResult };
+        console.log(`[TEST] WhatsApp test sent to ${phoneStr}`, waResult);
+      }
+      
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[TEST] Notification test error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // ===== PUBLIC ROUTES (No Authentication Required) =====
   
   // Public Menu - for guest ordering
