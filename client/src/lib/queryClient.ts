@@ -38,7 +38,7 @@ export async function apiRequest(
 type UnauthorizedBehavior = "returnNull" | "throw";
 
 // Fetch with timeout to prevent hanging requests
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 10000): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 3000): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -61,18 +61,18 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     try {
-      const res = await fetchWithTimeout(
-        queryKey.join("/") as string,
-        { credentials: "include" },
-        10000
-      );
+      const url = queryKey.join("/") as string;
+      // Use shorter timeout for auth endpoint
+      const timeout = url.includes("/auth/") ? 2000 : 3000;
+      
+      const res = await fetchWithTimeout(url, { credentials: "include" }, timeout);
 
       // Handle redirects (stale session cookies can cause redirects to login)
       if (res.redirected) {
         if (unauthorizedBehavior === "returnNull") {
           return null;
         }
-        throw new Error("Session expired - please log in again");
+        throw new Error("Session expired");
       }
 
       if (unauthorizedBehavior === "returnNull" && res.status === 401) {
@@ -85,6 +85,7 @@ export const getQueryFn: <T>(options: {
       // Handle timeout/abort errors - treat as unauthorized for auth queries
       if (error instanceof Error && error.name === "AbortError") {
         if (unauthorizedBehavior === "returnNull") {
+          console.log('[Auth] Request timeout - treating as unauthenticated');
           return null;
         }
         throw new Error("Request timed out");
