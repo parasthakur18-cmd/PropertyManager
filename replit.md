@@ -3,7 +3,8 @@
 ## Overview
 Hostezee is a comprehensive, multi-property management system designed for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and aims to be the easiest PMS globally to operate, targeting significant market share. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management.
 
-## Recent Fixes
+## Recent Updates
+- **December 6, 2025**: Integrated Agent Mail email service for transactional emails (bookings, payments, password resets, expense notifications, vendor payments). Database schema verified with all accounting tables (vendors, expenses, leases) now synced.
 - **December 5, 2025**: Fixed property visibility issue - admin users now automatically get assigned to all properties on login. Mobile vendor form now scrollable for all screen sizes.
 
 ## User Preferences
@@ -35,6 +36,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 
 #### Financial Management
 -   **Financial Tracking**: Manages property leases, payments, expenses, P&L reports, pending payments, detailed bill management, and Excel export.
+-   **Email Notifications**: Transactional emails for bookings, payment confirmations, expense tracking, and vendor payment alerts via Agent Mail.
 -   **RazorPay Payment Link Integration**: Facilitates direct payment collection via WhatsApp, with automatic payment confirmation and bill status updates.
 -   **Split Payment System**: Simplifies payment collection with single cash input and one-click payment link generation for remaining balances.
 -   **Dashboard Payment Notifications**: Real-time notifications for completed RazorPay payments.
@@ -79,3 +81,4 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **Authkey.io**: WhatsApp and SMS messaging.
 -   **OpenAI GPT-4o-mini**: Chatbot assistant via Replit AI.
 -   **RazorPay**: Payment processing and payment link generation with webhook support.
+-   **Agent Mail**: Transactional email service for booking confirmations, payment notifications, expense alerts, and password reset emails.

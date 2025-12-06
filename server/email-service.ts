@@ -1,7 +1,6 @@
 /**
  * Email Service for Hostezee PMS
- * Sends transactional emails for bookings, check-ins, and password resets
- * Currently logs emails to console (ready for SMTP integration)
+ * Sends transactional emails using Agent Mail API
  */
 
 interface EmailMessage {
@@ -18,21 +17,53 @@ interface EmailResponse {
 }
 
 /**
- * Send email using Node.js nodemailer
- * Falls back to console logging if email service is not configured
+ * Send email using Agent Mail API
  */
 export async function sendEmail(message: EmailMessage): Promise<EmailResponse> {
   try {
-    // Log email to console (for development/testing)
-    console.log(`[EMAIL] Sending to: ${message.to}`);
-    console.log(`[EMAIL] Subject: ${message.subject}`);
-    console.log(`[EMAIL] HTML:\n${message.html}`);
+    const apiKey = process.env.AGENTMAIL_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('[EMAIL] Agent Mail API key not configured. Logging email to console.');
+      console.log(`[EMAIL] To: ${message.to}`);
+      console.log(`[EMAIL] Subject: ${message.subject}`);
+      console.log(`[EMAIL] HTML:\n${message.html}`);
+      return {
+        success: true,
+        messageId: `email-${Date.now()}`,
+      };
+    }
 
-    // If in production with email service configured, send via SMTP
-    // For now, logging is sufficient
+    const response = await fetch('https://api.agentmail.com/v1/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        to: message.to,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+        from: 'noreply@hostezee.in',
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('[EMAIL] Agent Mail API error:', error);
+      return {
+        success: false,
+        error: `Agent Mail API error: ${response.status}`,
+      };
+    }
+
+    const data: any = await response.json();
+    console.log(`[EMAIL] Sent to ${message.to} - Message ID: ${data.messageId}`);
+    
     return {
       success: true,
-      messageId: `email-${Date.now()}`,
+      messageId: data.messageId,
     };
   } catch (error: any) {
     console.error('[EMAIL] Send error:', error);
@@ -134,7 +165,7 @@ export async function sendSelfCheckinConfirmationEmail(
       <body>
         <div class="container">
           <div class="header">
-            <h1>✓ Check-in Confirmed</h1>
+            <h1>Check-in Confirmed</h1>
           </div>
           <div class="content">
             <p>Hello ${guestName},</p>
@@ -272,7 +303,7 @@ export async function sendPasswordResetEmail(
               <p style="margin-top: 10px; color: #666;">Valid for 15 minutes</p>
             </div>
 
-            <p><span class="warning">⚠ Security Notice:</span> If you didn't request this, please ignore this email and your account will remain secure.</p>
+            <p><span class="warning">Security Notice:</span> If you didn't request this, please ignore this email and your account will remain secure.</p>
             
             <p>To reset your password:</p>
             <ol>
@@ -295,6 +326,190 @@ export async function sendPasswordResetEmail(
 
   return sendEmail({
     to: email,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send payment confirmation email
+ */
+export async function sendPaymentConfirmationEmail(
+  guestEmail: string,
+  guestName: string,
+  propertyName: string,
+  amount: number,
+  bookingId: number,
+  paymentDate: string
+): Promise<EmailResponse> {
+  const subject = `Payment Confirmation - ${propertyName} #${bookingId}`;
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .payment-details { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #28a745; }
+          .label { font-weight: bold; color: #555; }
+          .amount { font-size: 24px; color: #28a745; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Payment Confirmed</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${guestName},</p>
+            <p>Thank you! Your payment has been successfully received and confirmed.</p>
+            
+            <div class="payment-details">
+              <p><span class="label">Booking ID:</span> #${bookingId}</p>
+              <p><span class="label">Property:</span> ${propertyName}</p>
+              <p><span class="label">Amount Paid:</span> <span class="amount">₹${amount.toFixed(2)}</span></p>
+              <p><span class="label">Payment Date:</span> ${paymentDate}</p>
+            </div>
+
+            <p>Your booking is confirmed and you're all set for your stay!</p>
+            
+            <p>If you have any questions, please contact us.</p>
+            
+            <p>Thank you for your reservation!</p>
+            <p>Best regards,<br>The Team</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: guestEmail,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send expense notification email to admin
+ */
+export async function sendExpenseNotificationEmail(
+  adminEmail: string,
+  adminName: string,
+  propertyName: string,
+  categoryName: string,
+  amount: number,
+  description: string
+): Promise<EmailResponse> {
+  const subject = `New Expense Recorded - ${propertyName}`;
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #fd7e14; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .expense-details { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #fd7e14; }
+          .label { font-weight: bold; color: #555; }
+          .amount { font-size: 20px; color: #fd7e14; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>New Expense Recorded</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${adminName},</p>
+            <p>A new expense has been recorded in your system.</p>
+            
+            <div class="expense-details">
+              <p><span class="label">Property:</span> ${propertyName}</p>
+              <p><span class="label">Category:</span> ${categoryName}</p>
+              <p><span class="label">Amount:</span> <span class="amount">₹${amount.toFixed(2)}</span></p>
+              <p><span class="label">Description:</span> ${description}</p>
+            </div>
+
+            <p>You can view all expenses and manage your budget in the Expenses section of your dashboard.</p>
+            
+            <p>Best regards,<br>Hostezee PMS</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: adminEmail,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send vendor payment notification email
+ */
+export async function sendVendorPaymentNotificationEmail(
+  adminEmail: string,
+  adminName: string,
+  vendorName: string,
+  amount: number,
+  paymentDate: string
+): Promise<EmailResponse> {
+  const subject = `Vendor Payment Recorded - ${vendorName}`;
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #0dcaf0; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .payment-details { background: white; padding: 15px; margin: 10px 0; border-left: 4px solid #0dcaf0; }
+          .label { font-weight: bold; color: #555; }
+          .amount { font-size: 20px; color: #0dcaf0; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Vendor Payment Recorded</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${adminName},</p>
+            <p>A payment to a vendor has been recorded in your system.</p>
+            
+            <div class="payment-details">
+              <p><span class="label">Vendor:</span> ${vendorName}</p>
+              <p><span class="label">Amount Paid:</span> <span class="amount">₹${amount.toFixed(2)}</span></p>
+              <p><span class="label">Payment Date:</span> ${paymentDate}</p>
+            </div>
+
+            <p>You can view vendor transactions and manage payments in the Vendors section of your dashboard.</p>
+            
+            <p>Best regards,<br>Hostezee PMS</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: adminEmail,
     subject,
     html,
   });
