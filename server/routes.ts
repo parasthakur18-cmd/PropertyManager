@@ -1603,6 +1603,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error(`[NOTIFICATIONS] Failed to create booking notification:`, notifError.message);
       }
       
+      // Send booking confirmation email to guest
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        const room = await storage.getRoom(booking.roomId);
+        
+        if (guest && guest.email && property && room) {
+          const { sendBookingConfirmationEmail } = await import("./email-service");
+          const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
+          const checkOutDate = format(new Date(booking.checkOutDate), "MMM dd, yyyy");
+          
+          await sendBookingConfirmationEmail(
+            guest.email,
+            guest.fullName,
+            property.name,
+            checkInDate,
+            checkOutDate,
+            room.roomNumber,
+            booking.id
+          );
+          console.log(`[EMAIL] Booking confirmation sent to ${guest.email}`);
+        }
+      } catch (emailError: any) {
+        console.error(`[EMAIL] Failed to send booking confirmation email:`, emailError.message);
+      }
+      
       // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
       res.status(201).json(booking);
     } catch (error: any) {
