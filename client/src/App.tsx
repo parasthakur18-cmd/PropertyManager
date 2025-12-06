@@ -86,10 +86,8 @@ import { NotificationCenter } from "@/components/notification-center";
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Always show home page instead of loading spinner - auth check may hang
-  if (isLoading) {
-    return <Route path="/" component={Home} />;
-  }
+  // During loading, show Home page temporarily (auth will redirect if logged in)
+  const showDashboard = isAuthenticated && !isLoading;
 
   return (
     <Switch>
@@ -122,9 +120,7 @@ function Router() {
       <Route path="/register" component={Register} />
       <Route path="/report-issue" component={ReportIssue} />
       
-      {!isAuthenticated ? (
-        <Route path="/" component={Home} />
-      ) : (
+      {showDashboard ? (
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
@@ -236,17 +232,8 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen w-full">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Always show the Router - don't block on loading
+  // The Router will show Home page while auth checks
   if (!isAuthenticated) {
     return (
       <>
