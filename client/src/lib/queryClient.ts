@@ -36,21 +36,61 @@ export async function apiRequest(
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
+
+// Fetch with timeout to prevent hanging requests
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 10000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
-      credentials: "include",
-    });
+    try {
+      const res = await fetchWithTimeout(
+        queryKey.join("/") as string,
+        { credentials: "include" },
+        10000
+      );
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+      // Handle redirects (stale session cookies can cause redirects to login)
+      if (res.redirected) {
+        if (unauthorizedBehavior === "returnNull") {
+          return null;
+        }
+        throw new Error("Session expired - please log in again");
+      }
+
+      if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+        return null;
+      }
+
+      await throwIfResNotOk(res);
+      return await res.json();
+    } catch (error) {
+      // Handle timeout/abort errors - treat as unauthorized for auth queries
+      if (error instanceof Error && error.name === "AbortError") {
+        if (unauthorizedBehavior === "returnNull") {
+          return null;
+        }
+        throw new Error("Request timed out");
+      }
+      throw error;
     }
-
-    await throwIfResNotOk(res);
-    return await res.json();
   };
 
 export const queryClient = new QueryClient({
