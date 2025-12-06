@@ -47,10 +47,7 @@ export default function AnalyticsChat() {
     setIsLoading(true);
 
     try {
-      const response = await apiRequest(`/api/pms-analytics-chat`, {
-        method: "POST",
-        body: JSON.stringify({ query: input }),
-      });
+      const response = await apiRequest(`/api/pms-analytics-chat`, "POST", { query: input });
 
       if (response.ok) {
         const data = await response.json();
