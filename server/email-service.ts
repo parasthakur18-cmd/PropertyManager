@@ -34,18 +34,18 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResponse> {
     }
 
     // Attempt to send via Agent Mail API
-    // Using sendgrid-style endpoint as Agent Mail may be sendgrid-based
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    const response = await fetch('https://agentmail.com/api/v1/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: message.to }] }],
-        from: { email: 'noreply@hostezee.in' },
+        to: message.to,
         subject: message.subject,
-        content: [{ type: 'text/html', value: message.html }],
+        html: message.html,
+        text: message.text,
+        from: 'noreply@hostezee.in',
       }),
       timeout: 30000,
     });
