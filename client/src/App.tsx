@@ -166,6 +166,8 @@ function Router() {
           <Route path="/feature-settings" component={FeatureSettings} />
           <Route path="/whatsapp-settings" component={WhatsappSettings} />
         </>
+      ) : (
+        <Route path="/" component={Home} />
       )}
       <Route component={NotFound} />
     </Switch>
