@@ -83,12 +83,7 @@ import { Chatbot } from "@/components/chatbot";
 import { CompletionNotifications } from "@/components/completion-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 
-function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  // During loading, show Home page temporarily (auth will redirect if logged in)
-  const showDashboard = isAuthenticated && !isLoading;
-
+function Router({ showDashboard }: { showDashboard: boolean }) {
   return (
     <Switch>
       {/* Public Routes - No Auth Required */}
@@ -234,12 +229,14 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Always show the Router - don't block on loading
-  // The Router will show Home page while auth checks
+  // Calculate showDashboard once here to pass to Router
+  const showDashboard = isAuthenticated && !isLoading;
+
+  // When not authenticated, show public routes with Home page
   if (!isAuthenticated) {
     return (
       <>
-        <Router />
+        <Router showDashboard={false} />
         {children}
       </>
     );
@@ -266,7 +263,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto bg-background">
-          <Router />
+          <Router showDashboard={showDashboard} />
         </main>
       </div>
       {children}
