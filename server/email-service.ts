@@ -1,7 +1,10 @@
 /**
  * Email Service for Hostezee PMS
- * Sends transactional emails using Agent Mail API
+ * Sends transactional emails using AgentMail API via Replit Connector
+ * Integration: connection:conn_agentmail_01KBRYGARK83M8KS7F8DFKY8V5
  */
+
+import { AgentMailClient } from 'agentmail';
 
 interface EmailMessage {
   to: string;
@@ -16,67 +19,157 @@ interface EmailResponse {
   error?: string;
 }
 
+let connectionSettings: any;
+
 /**
- * Send email using Agent Mail API
+ * Get AgentMail credentials from Replit Connector
+ */
+async function getCredentials() {
+  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+  const xReplitToken = process.env.REPL_IDENTITY 
+    ? 'repl ' + process.env.REPL_IDENTITY 
+    : process.env.WEB_REPL_RENEWAL 
+    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
+    : null;
+
+  if (!xReplitToken || !hostname) {
+    return null;
+  }
+
+  try {
+    connectionSettings = await fetch(
+      'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=agentmail',
+      {
+        headers: {
+          'Accept': 'application/json',
+          'X_REPLIT_TOKEN': xReplitToken
+        }
+      }
+    ).then(res => res.json()).then(data => data.items?.[0]);
+
+    if (!connectionSettings || !connectionSettings.settings?.api_key) {
+      return null;
+    }
+    return { apiKey: connectionSettings.settings.api_key };
+  } catch (error) {
+    console.error('[EMAIL] Failed to get AgentMail credentials:', error);
+    return null;
+  }
+}
+
+/**
+ * Get fresh AgentMail client (never cached - tokens expire)
+ */
+async function getAgentMailClient() {
+  const credentials = await getCredentials();
+  if (!credentials) {
+    return null;
+  }
+  return new AgentMailClient({
+    apiKey: credentials.apiKey
+  });
+}
+
+// Store the inbox ID after creation (persisted for session)
+let cachedInboxId: string | null = null;
+
+/**
+ * Get or create an inbox for sending emails
+ */
+async function getOrCreateInbox(client: AgentMailClient): Promise<string | null> {
+  try {
+    // Check if we have a cached inbox
+    if (cachedInboxId) {
+      return cachedInboxId;
+    }
+
+    // List existing inboxes
+    console.log('[EMAIL] Listing existing inboxes...');
+    const inboxesResponse: any = await client.inboxes.list();
+    
+    // AgentMail response structure: { count, inboxes: [{ inboxId, displayName, ... }] }
+    const inboxes = inboxesResponse.inboxes || inboxesResponse.body?.inboxes || [];
+    
+    if (Array.isArray(inboxes) && inboxes.length > 0) {
+      // Use inboxId field (email address format like "name@agentmail.to")
+      cachedInboxId = inboxes[0].inboxId || inboxes[0].id;
+      console.log(`[EMAIL] Using existing inbox: ${cachedInboxId}`);
+      return cachedInboxId;
+    }
+
+    // Create new inbox
+    console.log('[EMAIL] Creating new inbox...');
+    const newInbox: any = await client.inboxes.create({
+      displayName: 'Hostezee Notifications'
+    });
+    
+    // Extract inboxId from response
+    cachedInboxId = newInbox.inboxId || newInbox.body?.inboxId || newInbox.id;
+    if (cachedInboxId) {
+      console.log(`[EMAIL] Created new inbox: ${cachedInboxId}`);
+      return cachedInboxId;
+    }
+    
+    console.error('[EMAIL] Could not extract inbox ID from response:', JSON.stringify(newInbox));
+    return null;
+  } catch (error: any) {
+    console.error('[EMAIL] Failed to get/create inbox:', error.message);
+    return null;
+  }
+}
+
+/**
+ * Send email using AgentMail API via Replit Connector
  */
 export async function sendEmail(message: EmailMessage): Promise<EmailResponse> {
   try {
-    const apiKey = process.env.AGENTMAIL_API_KEY;
+    const client = await getAgentMailClient();
     
-    if (!apiKey) {
-      console.warn('[EMAIL] Agent Mail API key not configured. Logging email to console.');
-      console.log(`[EMAIL] To: ${message.to}`);
-      console.log(`[EMAIL] Subject: ${message.subject}`);
+    if (!client) {
+      console.warn('[EMAIL] AgentMail not connected. Logging email to console.');
+      console.log(`[EMAIL CONSOLE] To: ${message.to}`);
+      console.log(`[EMAIL CONSOLE] Subject: ${message.subject}`);
       return {
         success: true,
-        messageId: `email-${Date.now()}`,
+        messageId: `email-console-${Date.now()}`,
       };
     }
 
-    // Attempt to send via Agent Mail API
-    const response = await fetch('https://agentmail.com/api/v1/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        to: message.to,
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-        from: 'noreply@hostezee.in',
-      }),
-      timeout: 30000,
+    // Get or create inbox
+    const inboxId = await getOrCreateInbox(client);
+    if (!inboxId) {
+      console.warn('[EMAIL] No inbox available. Logging email to console.');
+      console.log(`[EMAIL CONSOLE] To: ${message.to}`);
+      console.log(`[EMAIL CONSOLE] Subject: ${message.subject}`);
+      return {
+        success: true,
+        messageId: `email-console-${Date.now()}`,
+      };
+    }
+
+    // Send email via AgentMail
+    const sendResponse = await client.inboxes.messages.send(inboxId, {
+      to: [message.to],
+      subject: message.subject,
+      html: message.html,
+      text: message.text || message.subject,
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('[EMAIL] API error:', response.status, error);
-      // Fallback: log email to console
-      console.log(`[EMAIL FALLBACK] To: ${message.to}`);
-      console.log(`[EMAIL FALLBACK] Subject: ${message.subject}`);
-      return {
-        success: true,
-        messageId: `email-${Date.now()}`,
-      };
-    }
-
-    const data: any = await response.json();
-    console.log(`[EMAIL] Sent to ${message.to} - Message ID: ${data.messageId || data.id}`);
+    const messageId = sendResponse.body?.messageId || sendResponse.body?.id;
+    console.log(`[EMAIL] Sent to ${message.to} - Message ID: ${messageId}`);
     
     return {
       success: true,
-      messageId: data.messageId || data.id || `email-${Date.now()}`,
+      messageId: messageId || `email-${Date.now()}`,
     };
   } catch (error: any) {
-    console.error('[EMAIL] Connection error:', error.message);
+    console.error('[EMAIL] Error sending email:', error.message);
     // Fallback: log email to console when API unreachable
     console.log(`[EMAIL FALLBACK] To: ${message.to}`);
     console.log(`[EMAIL FALLBACK] Subject: ${message.subject}`);
     return {
       success: true,
-      messageId: `email-${Date.now()}`,
+      messageId: `email-error-${Date.now()}`,
     };
   }
 }
