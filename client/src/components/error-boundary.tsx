@@ -35,19 +35,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   reportError = async (error: Error, errorInfo: ErrorInfo) => {
     try {
-      await apiRequest('/api/errors', {
-        method: 'POST',
-        body: {
-          errorMessage: error.toString(),
-          errorStack: error.stack,
-          errorType: error.name,
-          componentStack: errorInfo.componentStack,
-          page: window.location.pathname,
-          browserInfo: {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-          },
+      await apiRequest('/api/errors', 'POST', {
+        errorMessage: error.toString(),
+        errorStack: error.stack,
+        errorType: error.name,
+        componentStack: errorInfo.componentStack,
+        page: window.location.pathname,
+        browserInfo: {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform,
+          language: navigator.language,
         },
       });
     } catch (err) {
