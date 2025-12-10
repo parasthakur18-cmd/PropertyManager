@@ -103,9 +103,11 @@ export default function Expenses() {
   const createExpenseMutation = useMutation({
     mutationFn: async (data: z.infer<typeof expenseFormSchema>) => {
       const response = await apiRequest("/api/expenses", "POST", {
-        ...data,
+        propertyId: data.propertyId,
+        categoryId: data.categoryId,
         amount: data.amount,
-        expenseDate: data.expenseDate,
+        expenseDate: new Date(data.expenseDate).toISOString(),
+        description: data.description || null,
       });
       return response.json();
     },
