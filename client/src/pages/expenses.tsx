@@ -108,6 +108,7 @@ export default function Expenses() {
         amount: data.amount,
         expenseDate: new Date(data.expenseDate).toISOString(),
         description: data.description || null,
+        isRecurring: false,
       });
       return response.json();
     },

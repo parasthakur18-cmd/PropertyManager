@@ -4924,12 +4924,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/expenses", isAuthenticated, async (req, res) => {
     try {
+      console.log("[EXPENSE CREATE] Received data:", JSON.stringify(req.body, null, 2));
       const { insertPropertyExpenseSchema } = await import("@shared/schema");
-      const validatedData = insertPropertyExpenseSchema.parse(req.body);
+      
+      // Transform the data to match schema expectations
+      const transformedData = {
+        ...req.body,
+        expenseDate: req.body.expenseDate ? new Date(req.body.expenseDate) : new Date(),
+      };
+      console.log("[EXPENSE CREATE] Transformed data:", JSON.stringify(transformedData, null, 2));
+      
+      const validatedData = insertPropertyExpenseSchema.parse(transformedData);
+      console.log("[EXPENSE CREATE] Validated data:", JSON.stringify(validatedData, null, 2));
+      
       const expense = await storage.createExpense(validatedData);
       res.status(201).json(expense);
     } catch (error: any) {
+      console.log("[EXPENSE CREATE] Error:", error);
       if (error instanceof z.ZodError) {
+        console.log("[EXPENSE CREATE] Zod errors:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: error.message });
