@@ -476,13 +476,14 @@ export default function Expenses() {
                   Add Expense
                 </Button>
               </DialogTrigger>
-              <DialogContent data-testid="dialog-expense-form">
+              <DialogContent className="max-h-[90vh] flex flex-col" data-testid="dialog-expense-form">
                 <DialogHeader>
                   <DialogTitle>Record Expense</DialogTitle>
                   <DialogDescription>
                     Add a new property expense to your tracking
                   </DialogDescription>
                 </DialogHeader>
+                <div className="overflow-y-auto flex-1">
                 <Form {...expenseForm}>
                   <form onSubmit={expenseForm.handleSubmit(handleCreateExpense)} className="space-y-4">
                     <FormField
@@ -596,6 +597,7 @@ export default function Expenses() {
                     </div>
                   </form>
                 </Form>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
