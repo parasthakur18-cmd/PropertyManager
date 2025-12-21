@@ -7096,25 +7096,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Create session for target user using req.login
-      req.login(targetUser, (err) => {
-        if (err) {
-          console.error("[LOGIN-AS] Failed to create session:", err);
-          return res.status(500).json({ message: "Failed to create session" });
+      // Set session for target user - mimicking email auth flow
+      // The isAuthenticated middleware checks for (userId && isEmailAuth)
+      (req.session as any).userId = targetUser.id;
+      (req.session as any).isEmailAuth = true;
+      
+      // Force save the session before responding
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error("[LOGIN-AS] Failed to save session:", saveErr);
+          return res.status(500).json({ message: "Failed to save session" });
         }
-        
-        // Also set the userId in session for compatibility with local auth
-        (req.session as any).userId = targetUser.id;
-        
-        // Force save the session before responding
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error("[LOGIN-AS] Failed to save session:", saveErr);
-            return res.status(500).json({ message: "Failed to save session" });
-          }
-          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id);
-          res.json({ message: "Login as successful", user: targetUser });
-        });
+        console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id);
+        res.json({ message: "Login as successful", user: targetUser });
       });
     } catch (error: any) {
       console.error("[LOGIN-AS] Error:", error);
