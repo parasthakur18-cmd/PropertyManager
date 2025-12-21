@@ -2526,31 +2526,173 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Send pre-bill via Authkey WhatsApp
+  // Send pre-bill via Authkey WhatsApp - saves full details and sends link
   app.post("/api/whatsapp/send-prebill", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, phoneNumber, guestName, billTotal } = req.body;
+      const { bookingId, phoneNumber, guestName, billTotal, roomCharges, foodCharges, extraCharges, gstAmount, discount, advancePayment } = req.body;
       
-      if (!phoneNumber || !guestName || !billTotal) {
+      if (!bookingId || !phoneNumber || !guestName) {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const orders = await storage.getOrdersByBooking(bookingId);
+      const foodItems = orders.filter(o => o.status !== 'cancelled').map(o => ({
+        name: o.itemName,
+        quantity: o.quantity,
+        price: o.price,
+        total: (o.quantity * parseFloat(o.price?.toString() || '0'))
+      }));
+
+      const nights = Math.max(1, Math.ceil(
+        (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24)
+      ));
+
+      const token = randomUUID().replace(/-/g, '').substring(0, 32);
+
+      const preBill = await db.insert(preBills).values({
+        bookingId: bookingId,
+        token,
+        totalAmount: (billTotal || 0).toString(),
+        balanceDue: ((billTotal || 0) - (advancePayment || 0)).toString(),
+        roomNumber: booking.roomNumber || '',
+        roomCharges: (roomCharges || 0).toString(),
+        foodCharges: (foodCharges || 0).toString(),
+        extraCharges: (extraCharges || 0).toString(),
+        gstAmount: (gstAmount || 0).toString(),
+        discount: (discount || 0).toString(),
+        advancePayment: (advancePayment || 0).toString(),
+        foodItems: foodItems,
+        guestName: guestName,
+        guestPhone: phoneNumber,
+        guestEmail: booking.guest?.email || '',
+        propertyId: booking.propertyId,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        nights: nights,
+        status: 'pending'
+      }).returning();
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      const preBillLink = `${baseUrl}/guest/prebill/${token}`;
+
+      const roomChargesNum = parseFloat(roomCharges || 0);
+      const foodChargesNum = parseFloat(foodCharges || 0);
+      
       const result = await sendPreBillNotification(
         phoneNumber,
         guestName,
-        "0.00",  // Room charges placeholder (template has ₹ already)
-        "0.00",  // Food charges placeholder (template has ₹ already)
-        billTotal.toFixed(2)  // Total amount (template has ₹ already)
+        roomChargesNum.toFixed(2),
+        foodChargesNum.toFixed(2),
+        parseFloat(billTotal || 0).toFixed(2)
       );
 
       if (result.success) {
-        res.json({ success: true, message: "Pre-bill sent successfully" });
+        await sendCustomWhatsAppMessage(
+          phoneNumber,
+          process.env.AUTHKEY_WA_CUSTOM || "19856",
+          [guestName, `View complete bill details here: ${preBillLink}`]
+        );
+        
+        res.json({ success: true, message: "Pre-bill sent successfully", preBillLink, token });
       } else {
         res.status(500).json({ message: result.error || "Failed to send pre-bill" });
       }
     } catch (error: any) {
       console.error("Send pre-bill error:", error);
       res.status(500).json({ message: error.message || "Failed to send pre-bill" });
+    }
+  });
+
+  // Public route: Get pre-bill by token
+  app.get("/api/public/prebill/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const result = await db.select().from(preBills).where(eq(preBills.token, token)).limit(1);
+      
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const preBill = result[0];
+      
+      let propertyName = '';
+      if (preBill.propertyId) {
+        const property = await storage.getProperty(preBill.propertyId);
+        propertyName = property?.name || '';
+      }
+
+      res.json({ ...preBill, propertyName });
+    } catch (error: any) {
+      console.error("Get pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to get pre-bill" });
+    }
+  });
+
+  // Public route: Confirm pre-bill and trigger payment link
+  app.post("/api/public/prebill/:token/confirm", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const result = await db.select().from(preBills).where(eq(preBills.token, token)).limit(1);
+      
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const preBill = result[0];
+
+      if (preBill.status === 'confirmed' || preBill.status === 'paid') {
+        return res.status(400).json({ message: "Pre-bill already confirmed" });
+      }
+
+      await db.update(preBills).set({ 
+        status: 'confirmed',
+        approvedAt: new Date()
+      }).where(eq(preBills.token, token));
+
+      const booking = await storage.getBooking(preBill.bookingId);
+      const guest = booking ? await storage.getGuest(booking.guestId) : null;
+
+      if (guest && guest.phone && guest.email && preBill.balanceDue) {
+        const balanceDue = parseFloat(preBill.balanceDue.toString());
+        
+        if (balanceDue > 0) {
+          const paymentLink = await createPaymentLink(
+            preBill.bookingId,
+            balanceDue,
+            preBill.guestName || guest.fullName || 'Guest',
+            preBill.guestEmail || guest.email || '',
+            preBill.guestPhone || guest.phone || ''
+          );
+
+          const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+
+          await sendCustomWhatsAppMessage(
+            preBill.guestPhone || guest.phone,
+            process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+            [preBill.guestName || guest.fullName, `₹${balanceDue.toFixed(2)}`, paymentLinkUrl]
+          );
+
+          return res.json({ 
+            success: true, 
+            message: "Thank you! Payment link sent to your WhatsApp", 
+            paymentLinkUrl 
+          });
+        }
+      }
+
+      res.json({ success: true, message: "Pre-bill confirmed successfully" });
+    } catch (error: any) {
+      console.error("Confirm pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm pre-bill" });
     }
   });
 

@@ -59,6 +59,7 @@ import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
 import GuestSelfCheckin from "@/pages/guest-self-checkin";
+import GuestPreBill from "@/pages/guest-prebill";
 import AdminPortalLogin from "@/pages/admin-portal-login";
 import AdminPortalDashboard from "@/pages/admin-portal-dashboard";
 import AdminPortalPropertyDetails from "@/pages/admin-portal-property-details";
@@ -91,6 +92,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
       <Route path="/customer-menu" component={CustomerMenu} />
       <Route path="/qr-codes" component={QRCodes} />
       <Route path="/guest-self-checkin" component={GuestSelfCheckin} />
+      <Route path="/guest/prebill/:token" component={GuestPreBill} />
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/verify-otp" component={VerifyOTP} />
       <Route path="/reset-password" component={ResetPassword} />
