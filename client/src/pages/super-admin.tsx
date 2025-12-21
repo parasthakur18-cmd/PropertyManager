@@ -9,8 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, Calendar } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
 import { format } from "date-fns";
@@ -55,8 +58,8 @@ export default function SuperAdmin() {
   
   // Report download state
   const [reportPropertyId, setReportPropertyId] = useState<string>("all");
-  const [reportStartDate, setReportStartDate] = useState<string>("");
-  const [reportEndDate, setReportEndDate] = useState<string>("");
+  const [reportStartDate, setReportStartDate] = useState<Date | undefined>(undefined);
+  const [reportEndDate, setReportEndDate] = useState<Date | undefined>(undefined);
   const [isDownloading, setIsDownloading] = useState(false);
 
   // Check if user is authenticated as super admin on mount
@@ -275,10 +278,12 @@ export default function SuperAdmin() {
 
     setIsDownloading(true);
     try {
+      const startDateStr = format(reportStartDate, "yyyy-MM-dd");
+      const endDateStr = format(reportEndDate, "yyyy-MM-dd");
       const params = new URLSearchParams({
         propertyId: reportPropertyId,
-        startDate: reportStartDate,
-        endDate: reportEndDate,
+        startDate: startDateStr,
+        endDate: endDateStr,
       });
       
       const response = await fetch(`/api/super-admin/report/download?${params}`);
@@ -293,7 +298,7 @@ export default function SuperAdmin() {
       const propertyName = reportPropertyId === "all" 
         ? "AllProperties" 
         : properties.find(p => p.id.toString() === reportPropertyId)?.name || "Property";
-      a.download = `${propertyName}_Report_${reportStartDate}_to_${reportEndDate}.csv`;
+      a.download = `${propertyName}_Report_${startDateStr}_to_${endDateStr}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -624,21 +629,55 @@ export default function SuperAdmin() {
                       </div>
                       <div className="space-y-2">
                         <Label>Start Date</Label>
-                        <Input
-                          type="date"
-                          value={reportStartDate}
-                          onChange={(e) => setReportStartDate(e.target.value)}
-                          data-testid="input-report-start-date"
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !reportStartDate && "text-muted-foreground"
+                              )}
+                              data-testid="input-report-start-date"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {reportStartDate ? format(reportStartDate, "dd MMM yyyy") : "Pick start date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={reportStartDate}
+                              onSelect={setReportStartDate}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <div className="space-y-2">
                         <Label>End Date</Label>
-                        <Input
-                          type="date"
-                          value={reportEndDate}
-                          onChange={(e) => setReportEndDate(e.target.value)}
-                          data-testid="input-report-end-date"
-                        />
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !reportEndDate && "text-muted-foreground"
+                              )}
+                              data-testid="input-report-end-date"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {reportEndDate ? format(reportEndDate, "dd MMM yyyy") : "Pick end date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={reportEndDate}
+                              onSelect={setReportEndDate}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <Button
                         onClick={handleDownloadReport}
