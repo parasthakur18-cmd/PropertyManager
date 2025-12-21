@@ -170,6 +170,7 @@ export default function CalendarView() {
   });
 
   // Sync vertical scroll between sidebar and calendar
+  // Re-run when rooms load to ensure refs are attached
   useEffect(() => {
     const calendar = calendarRef.current;
     const sidebar = sidebarRef.current;
@@ -188,7 +189,7 @@ export default function CalendarView() {
       calendar.removeEventListener('scroll', handleCalendarScroll);
       sidebar.removeEventListener('scroll', handleSidebarScroll);
     };
-  }, []);
+  }, [rooms.length, selectedPropertyId]);
 
   // Initialize all types as expanded
   useEffect(() => {
