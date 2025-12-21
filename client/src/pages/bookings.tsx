@@ -2394,19 +2394,15 @@ export default function Bookings() {
                     control={editForm.control}
                     name="checkInDate"
                     render={({ field }) => {
-                      // Safely format date for datetime-local input
                       const formatDateForInput = (date: Date | string | null | undefined): string => {
                         if (!date) return "";
                         try {
                           const d = date instanceof Date ? date : new Date(date);
                           if (isNaN(d.getTime())) return "";
-                          // Format as local datetime (YYYY-MM-DDTHH:MM)
                           const year = d.getFullYear();
                           const month = String(d.getMonth() + 1).padStart(2, '0');
                           const day = String(d.getDate()).padStart(2, '0');
-                          const hours = String(d.getHours()).padStart(2, '0');
-                          const minutes = String(d.getMinutes()).padStart(2, '0');
-                          return `${year}-${month}-${day}T${hours}:${minutes}`;
+                          return `${year}-${month}-${day}`;
                         } catch {
                           return "";
                         }
@@ -2416,9 +2412,9 @@ export default function Bookings() {
                           <FormLabel>Check-in Date</FormLabel>
                           <FormControl>
                             <Input
-                              type="datetime-local"
+                              type="date"
                               value={formatDateForInput(field.value)}
-                              onChange={(e) => field.onChange(new Date(e.target.value))}
+                              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value + 'T00:00:00') : null)}
                               data-testid="input-edit-booking-checkin"
                             />
                           </FormControl>
@@ -2431,19 +2427,15 @@ export default function Bookings() {
                     control={editForm.control}
                     name="checkOutDate"
                     render={({ field }) => {
-                      // Safely format date for datetime-local input
                       const formatDateForInput = (date: Date | string | null | undefined): string => {
                         if (!date) return "";
                         try {
                           const d = date instanceof Date ? date : new Date(date);
                           if (isNaN(d.getTime())) return "";
-                          // Format as local datetime (YYYY-MM-DDTHH:MM)
                           const year = d.getFullYear();
                           const month = String(d.getMonth() + 1).padStart(2, '0');
                           const day = String(d.getDate()).padStart(2, '0');
-                          const hours = String(d.getHours()).padStart(2, '0');
-                          const minutes = String(d.getMinutes()).padStart(2, '0');
-                          return `${year}-${month}-${day}T${hours}:${minutes}`;
+                          return `${year}-${month}-${day}`;
                         } catch {
                           return "";
                         }
@@ -2453,9 +2445,9 @@ export default function Bookings() {
                           <FormLabel>Check-out Date</FormLabel>
                           <FormControl>
                             <Input
-                              type="datetime-local"
+                              type="date"
                               value={formatDateForInput(field.value)}
-                              onChange={(e) => field.onChange(new Date(e.target.value))}
+                              onChange={(e) => field.onChange(e.target.value ? new Date(e.target.value + 'T00:00:00') : null)}
                               data-testid="input-edit-booking-checkout"
                             />
                           </FormControl>
@@ -2503,10 +2495,21 @@ export default function Bookings() {
                         <FormLabel>Number of Guests</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            min="1"
-                            value={field.value || 1}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d+$/.test(val)) {
+                                field.onChange(val === "" ? "" : parseInt(val));
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === "" || parseInt(e.target.value) < 1) {
+                                field.onChange(1);
+                              }
+                            }}
                             data-testid="input-edit-booking-guests"
                           />
                         </FormControl>
@@ -2561,12 +2564,16 @@ export default function Bookings() {
                         <FormLabel>Custom Price Per Night (Optional)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="Leave empty for room price"
-                            value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? e.target.value : null)}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                field.onChange(val === "" ? null : val);
+                              }
+                            }}
                             data-testid="input-edit-booking-custom-price"
                           />
                         </FormControl>
@@ -2585,12 +2592,21 @@ export default function Bookings() {
                         <FormLabel>Advance Payment</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
+                            inputMode="decimal"
                             placeholder="0"
-                            value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? e.target.value : "0")}
+                            value={field.value ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                field.onChange(val);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === "") {
+                                field.onChange("0");
+                              }
+                            }}
                             data-testid="input-edit-booking-advance"
                           />
                         </FormControl>
