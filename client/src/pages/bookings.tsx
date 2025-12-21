@@ -2194,9 +2194,9 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {/* Show available non-dormitory rooms plus the currently selected room */}
+                            {/* Show available non-dormitory rooms from the same property plus the currently selected room */}
                             {(() => {
-                              const availableRooms = getRoomsForBookingType("single", { isEditMode: true });
+                              const availableRooms = getRoomsForBookingType("single", { isEditMode: true, propertyId: editingBooking?.propertyId });
                               const currentRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
                               const roomsToShow = currentRoom && !availableRooms.find(r => r.id === currentRoom.id)
                                 ? [currentRoom, ...availableRooms]
@@ -2246,7 +2246,7 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {getRoomsForBookingType("dormitory", { isEditMode: true }).map((room) => {
+                            {getRoomsForBookingType("dormitory", { isEditMode: true, propertyId: editingBooking?.propertyId }).map((room) => {
                               const property = properties?.find(p => p.id === room.propertyId);
                               const isCurrentRoom = editingBooking?.roomId === room.id;
                               return (
@@ -2280,10 +2280,10 @@ export default function Bookings() {
                             <th className="p-2 text-left text-xs font-medium">
                               <input
                                 type="checkbox"
-                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true }).length && getRoomsForBookingType("group", { isEditMode: true }).length > 0}
+                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).length > 0}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true }).map(r => r.id));
+                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).map(r => r.id));
                                   } else {
                                     setEditSelectedRoomIds([]);
                                   }
@@ -2298,7 +2298,7 @@ export default function Bookings() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getRoomsForBookingType("group", { isEditMode: true }).map((room) => {
+                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).map((room) => {
                             const property = properties?.find(p => p.id === room.propertyId);
                             const isSelected = editSelectedRoomIds.includes(room.id);
                             const roomDescription = room.roomType || "Standard";
