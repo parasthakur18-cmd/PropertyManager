@@ -193,7 +193,8 @@ export default function App() {
 }
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, verificationStatus, pendingUser, message } = useAuth();
+  const { isAuthenticated, isLoading, verificationStatus, pendingUser, message, isViewingAsUser, user } = useAuth();
+  const [isReturningToAdmin, setIsReturningToAdmin] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const [, setForceUpdate] = useState(0);
   const [, setLocation] = useLocation();
@@ -341,10 +342,51 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isSuperAdminPage = currentPath.startsWith('/super-admin');
 
+  // Return to super admin function
+  const handleReturnToAdmin = async () => {
+    setIsReturningToAdmin(true);
+    try {
+      const response = await fetch("/api/super-admin/return-to-admin", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (response.ok) {
+        // Force full page refresh to clear all state
+        window.location.href = "/super-admin";
+      } else {
+        console.error("Failed to return to admin");
+        setIsReturningToAdmin(false);
+      }
+    } catch (error) {
+      console.error("Error returning to admin:", error);
+      setIsReturningToAdmin(false);
+    }
+  };
+
   return (
     <div className="flex h-screen w-full">
       {!isSuperAdminPage && <AppSidebar />}
       <div className="flex flex-col flex-1 overflow-hidden">
+        {/* Super Admin Viewing Banner */}
+        {isViewingAsUser && (
+          <div className="bg-orange-500 text-white px-4 py-2 flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              <span>Viewing as: <strong>{user?.email || "User"}</strong></span>
+            </div>
+            <button
+              onClick={handleReturnToAdmin}
+              disabled={isReturningToAdmin}
+              className="bg-white text-orange-600 px-3 py-1 rounded text-sm font-medium hover:bg-orange-50 disabled:opacity-50"
+              data-testid="button-return-to-admin"
+            >
+              {isReturningToAdmin ? "Returning..." : "Return to Super Admin"}
+            </button>
+          </div>
+        )}
         <header className="flex items-center justify-between p-2 border-b bg-background sticky top-0 z-40">
           <div className="flex items-center gap-1 min-w-max">
             {!isSuperAdminPage && (

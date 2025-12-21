@@ -65,5 +65,6 @@ export function useAuth() {
     verificationStatus: data?.verificationStatus,
     pendingUser: data?.pendingUser,
     message: data?.message,
+    isViewingAsUser: (data?.user as any)?.isViewingAsUser || false,
   };
 }
