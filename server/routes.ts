@@ -8143,7 +8143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
               : '';
           
-          const menuLink = `${baseUrl}/guest/menu/${property.id}?room=${room?.roomNumber || ''}`;
+          const menuLink = `${baseUrl}/menu?type=room&property=${property.id}&room=${room?.roomNumber || ''}`;
           
           // Parameters: phoneNumber, propertyName, guestName, menuLink
           await sendWelcomeWithMenuLink(
