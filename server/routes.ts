@@ -7096,6 +7096,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
+      // Store the original super admin ID before switching
+      const originalSuperAdminId = (req.session as any).userId;
+      
       // Regenerate session to clear old data and set new user
       req.session.regenerate((regenErr) => {
         if (regenErr) {
@@ -7106,6 +7109,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Set session for target user - mimicking email auth flow
         (req.session as any).userId = targetUser.id;
         (req.session as any).isEmailAuth = true;
+        // Store original super admin ID for returning later
+        (req.session as any).originalSuperAdminId = originalSuperAdminId;
+        (req.session as any).isViewingAsUser = true;
         
         // Force save the session before responding
         req.session.save((saveErr) => {
@@ -7113,12 +7119,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("[LOGIN-AS] Failed to save session:", saveErr);
             return res.status(500).json({ message: "Failed to save session" });
           }
-          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id, "- session regenerated");
+          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id, "- session regenerated, can return to:", originalSuperAdminId);
           res.json({ message: "Login as successful", user: targetUser });
         });
       });
     } catch (error: any) {
       console.error("[LOGIN-AS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Return to Super Admin from viewing as user
+  app.post("/api/super-admin/return-to-admin", isAuthenticated, async (req, res) => {
+    try {
+      const originalSuperAdminId = (req.session as any).originalSuperAdminId;
+      const isViewingAsUser = (req.session as any).isViewingAsUser;
+      
+      if (!originalSuperAdminId || !isViewingAsUser) {
+        return res.status(400).json({ message: "Not currently viewing as another user" });
+      }
+      
+      // Verify the original user is still a super admin
+      const [superAdmin] = await db.select().from(users).where(eq(users.id, originalSuperAdminId));
+      if (!superAdmin || superAdmin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Original user is no longer a super admin" });
+      }
+      
+      console.log("[RETURN-TO-ADMIN] Returning to super admin:", originalSuperAdminId);
+      
+      // Regenerate session and restore super admin
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[RETURN-TO-ADMIN] Failed to regenerate session:", regenErr);
+          return res.status(500).json({ message: "Failed to regenerate session" });
+        }
+        
+        // Restore super admin session
+        (req.session as any).userId = originalSuperAdminId;
+        (req.session as any).isEmailAuth = true;
+        // Clear the viewing flags
+        (req.session as any).originalSuperAdminId = null;
+        (req.session as any).isViewingAsUser = false;
+        
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[RETURN-TO-ADMIN] Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Failed to save session" });
+          }
+          console.log("[RETURN-TO-ADMIN] Successfully returned to super admin:", originalSuperAdminId);
+          res.json({ message: "Returned to super admin", user: superAdmin });
+        });
+      });
+    } catch (error: any) {
+      console.error("[RETURN-TO-ADMIN] Error:", error);
       res.status(500).json({ message: error.message });
     }
   });
