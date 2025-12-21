@@ -2289,10 +2289,10 @@ export default function Bookings() {
                             <th className="p-2 text-left text-xs font-medium">
                               <input
                                 type="checkbox"
-                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).length > 0}
+                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).length > 0}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).map(r => r.id));
+                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).map(r => r.id));
                                   } else {
                                     setEditSelectedRoomIds([]);
                                   }
@@ -2307,7 +2307,7 @@ export default function Bookings() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).map((room) => {
+                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).map((room) => {
                             const property = properties?.find(p => p.id === room.propertyId);
                             const isSelected = editSelectedRoomIds.includes(room.id);
                             const roomDescription = room.roomType || "Standard";
