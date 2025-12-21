@@ -376,7 +376,7 @@ export async function sendMenuLinkNotification(
   roomNumber: string,
   menuLink: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_MENU_LINK || "19900";
+  const templateId = process.env.AUTHKEY_WA_MENU_LINK || "21932";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
