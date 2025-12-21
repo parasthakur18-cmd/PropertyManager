@@ -4,13 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ArrowRight, Sparkles, Clock, CheckCircle } from "lucide-react";
+import { Building2, ArrowRight, Sparkles, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPending, setShowPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -29,6 +31,7 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMessage(null);
 
     try {
       const response = await fetch("/api/auth/register", {
@@ -58,9 +61,11 @@ export default function Register() {
         description: "Your account is pending approval.",
       });
     } catch (error: any) {
+      const message = error.message || "Please try again";
+      setErrorMessage(message);
       toast({
         title: "Registration failed",
-        description: error.message || "Please try again",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -174,6 +179,28 @@ export default function Register() {
 
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4" data-testid="form-register">
+                {/* Error Alert */}
+                {errorMessage && (
+                  <Alert variant="destructive" className="mb-4" data-testid="alert-error">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="ml-2">
+                      {errorMessage}
+                      {errorMessage.toLowerCase().includes("already registered") && (
+                        <span className="block mt-1">
+                          <button
+                            type="button"
+                            className="text-red-700 dark:text-red-300 underline hover:text-red-800 dark:hover:text-red-200 font-medium"
+                            onClick={() => setLocation("/login")}
+                            data-testid="link-go-to-login"
+                          >
+                            Go to Login instead
+                          </button>
+                        </span>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-900 dark:text-white">First Name</label>
