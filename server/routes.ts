@@ -6727,6 +6727,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Report Download - CSV with all property data
+  app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { propertyId, startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+
+      const start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+
+      // Get data based on property filter
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allGuests = await storage.getAllGuests();
+      const allBills = await storage.getAllBills();
+
+      // Filter by property if specified
+      let filteredBookings = allBookings;
+      if (propertyId && propertyId !== "all") {
+        const propId = parseInt(propertyId as string);
+        filteredBookings = allBookings.filter(b => b.propertyId === propId);
+      }
+
+      // Filter by date range (check-in date)
+      filteredBookings = filteredBookings.filter(b => {
+        const checkIn = new Date(b.checkInDate);
+        return checkIn >= start && checkIn <= end;
+      });
+
+      // Build CSV content
+      const csvRows: string[] = [];
+      
+      // Header
+      csvRows.push([
+        "Booking ID",
+        "Property Name",
+        "Room Number",
+        "Guest Name",
+        "Guest Phone",
+        "Guest Email",
+        "Check-In Date",
+        "Check-Out Date",
+        "Status",
+        "Booking Source",
+        "Meal Plan",
+        "Total Guests",
+        "Bill Amount",
+        "Paid Amount",
+        "Payment Status",
+        "Created At"
+      ].join(","));
+
+      // Data rows
+      for (const booking of filteredBookings) {
+        const property = allProperties.find(p => p.id === booking.propertyId);
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const bill = allBills.find(b => b.bookingId === booking.id);
+
+        const row = [
+          booking.id,
+          `"${property?.name || 'N/A'}"`,
+          booking.roomNumber || 'N/A',
+          `"${guest?.name || 'N/A'}"`,
+          guest?.phone || 'N/A',
+          guest?.email || 'N/A',
+          booking.checkInDate,
+          booking.checkOutDate,
+          booking.status,
+          booking.bookingSource || 'Direct',
+          booking.mealPlan || 'N/A',
+          booking.totalGuests || 1,
+          bill?.totalAmount || 0,
+          bill?.paidAmount || 0,
+          bill?.status || 'N/A',
+          booking.createdAt ? new Date(booking.createdAt).toISOString() : 'N/A'
+        ];
+        csvRows.push(row.join(","));
+      }
+
+      // Add summary row
+      csvRows.push("");
+      csvRows.push("SUMMARY");
+      csvRows.push(`Total Bookings,${filteredBookings.length}`);
+      
+      const totalRevenue = filteredBookings.reduce((sum, b) => {
+        const bill = allBills.find(bl => bl.bookingId === b.id);
+        return sum + (bill?.totalAmount || 0);
+      }, 0);
+      const totalPaid = filteredBookings.reduce((sum, b) => {
+        const bill = allBills.find(bl => bl.bookingId === b.id);
+        return sum + (bill?.paidAmount || 0);
+      }, 0);
+      
+      csvRows.push(`Total Revenue,${totalRevenue}`);
+      csvRows.push(`Total Collected,${totalPaid}`);
+      csvRows.push(`Pending Amount,${totalRevenue - totalPaid}`);
+
+      const csv = csvRows.join("\n");
+      
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="property_report.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REPORT] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;

@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, Calendar } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
 import { format } from "date-fns";
@@ -51,6 +52,12 @@ export default function SuperAdmin() {
   const [approvalPropertyName, setApprovalPropertyName] = useState("");
   const [approvalPropertyLocation, setApprovalPropertyLocation] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
+  
+  // Report download state
+  const [reportPropertyId, setReportPropertyId] = useState<string>("all");
+  const [reportStartDate, setReportStartDate] = useState<string>("");
+  const [reportEndDate, setReportEndDate] = useState<string>("");
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Check if user is authenticated as super admin on mount
   useEffect(() => {
@@ -254,6 +261,58 @@ export default function SuperAdmin() {
       });
     },
   });
+
+  // Download property report handler
+  const handleDownloadReport = async () => {
+    if (!reportStartDate || !reportEndDate) {
+      toast({
+        title: "Date Range Required",
+        description: "Please select both start and end dates",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const params = new URLSearchParams({
+        propertyId: reportPropertyId,
+        startDate: reportStartDate,
+        endDate: reportEndDate,
+      });
+      
+      const response = await fetch(`/api/super-admin/report/download?${params}`);
+      if (!response.ok) {
+        throw new Error("Failed to generate report");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const propertyName = reportPropertyId === "all" 
+        ? "AllProperties" 
+        : properties.find(p => p.id.toString() === reportPropertyId)?.name || "Property";
+      a.download = `${propertyName}_Report_${reportStartDate}_to_${reportEndDate}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      toast({
+        title: "Report Downloaded",
+        description: "Your property report has been downloaded successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Download Failed",
+        description: error.message || "Failed to download report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   // Suspend/unsuspend user - MUST be before early returns
   const toggleUserStatus = useMutation({
@@ -534,6 +593,72 @@ export default function SuperAdmin() {
                         </tbody>
                       </table>
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* Download Report Section */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="h-5 w-5" />
+                      Download Property Report
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div className="space-y-2">
+                        <Label>Select Property</Label>
+                        <Select value={reportPropertyId} onValueChange={setReportPropertyId}>
+                          <SelectTrigger data-testid="select-report-property">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Properties</SelectItem>
+                            {properties.map((prop) => (
+                              <SelectItem key={prop.id} value={prop.id.toString()}>
+                                {prop.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Start Date</Label>
+                        <Input
+                          type="date"
+                          value={reportStartDate}
+                          onChange={(e) => setReportStartDate(e.target.value)}
+                          data-testid="input-report-start-date"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End Date</Label>
+                        <Input
+                          type="date"
+                          value={reportEndDate}
+                          onChange={(e) => setReportEndDate(e.target.value)}
+                          data-testid="input-report-end-date"
+                        />
+                      </div>
+                      <Button
+                        onClick={handleDownloadReport}
+                        disabled={isDownloading || !reportStartDate || !reportEndDate}
+                        className="bg-teal-600 hover:bg-teal-700"
+                        data-testid="button-download-report"
+                      >
+                        {isDownloading ? (
+                          <>Generating...</>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Report
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-3">
+                      Download a CSV report with all bookings, guests, bills, and revenue data for the selected property and date range.
+                    </p>
                   </CardContent>
                 </Card>
               </>
