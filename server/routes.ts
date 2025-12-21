@@ -6650,7 +6650,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allBookings = await storage.getAllBookings();
       const allUsers = await storage.getAllUsers();
       const allIssues = await storage.getAllIssueReports();
-      const allErrors = await storage.getAllErrorCrashes();
+      
+      // Get error crashes safely (may not be implemented)
+      let allErrors: any[] = [];
+      try {
+        if (typeof storage.getAllErrorCrashes === 'function') {
+          allErrors = await storage.getAllErrorCrashes();
+        }
+      } catch (e) {
+        // Error crashes table may not exist
+      }
 
       // Calculate SaaS platform stats
       const today = new Date();
