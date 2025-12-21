@@ -360,6 +360,35 @@ export async function sendEnquiryConfirmation(
 }
 
 /**
+ * Send menu link notification WhatsApp message after check-in
+ * 
+ * This sends a follow-up message with the room-specific food ordering link
+ * so guests can order food directly from their phone and have it added to their bill.
+ * 
+ * Template variables (in order):
+ * 1. Guest Name (e.g., "Yogita")
+ * 2. Room Number (e.g., "102")
+ * 3. Menu Link (e.g., "https://yoursite.com/menu?type=room&property=1&room=102")
+ */
+export async function sendMenuLinkNotification(
+  phoneNumber: string,
+  guestName: string,
+  roomNumber: string,
+  menuLink: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_MENU_LINK || "19900";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, roomNumber, menuLink],
+  });
+}
+
+/**
  * Send custom WhatsApp message with custom template and variables
  * 
  * @param phoneNumber - Indian phone number (will be cleaned and formatted)

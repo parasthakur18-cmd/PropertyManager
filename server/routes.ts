@@ -48,7 +48,8 @@ import {
   sendPendingPaymentReminder,
   sendEnquiryConfirmation,
   sendPreBillNotification,
-  sendCustomWhatsAppMessage
+  sendCustomWhatsAppMessage,
+  sendMenuLinkNotification
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -2016,6 +2017,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (whatsappSettings?.checkInEnabled) {
                 await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName}`);
+                
+                // Send menu link notification for food ordering
+                // Get the first room number for the menu link (primary room for group bookings)
+                let primaryRoomNumber = roomNumbers.split(",")[0].trim();
+                const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                  : process.env.REPLIT_DOMAINS
+                    ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+                    : 'https://your-domain.com';
+                const menuLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${primaryRoomNumber}`;
+                
+                try {
+                  await sendMenuLinkNotification(guest.phone, guestName, primaryRoomNumber, menuLink);
+                  console.log(`[WhatsApp] Booking #${booking.id} - Menu link sent to ${guest.fullName}: ${menuLink}`);
+                } catch (menuLinkError: any) {
+                  console.error(`[WhatsApp] Booking #${booking.id} - Menu link notification failed (non-critical):`, menuLinkError.message);
+                }
               } else {
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled for this property`);
               }
