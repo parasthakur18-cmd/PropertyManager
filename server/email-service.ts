@@ -614,3 +614,134 @@ export async function sendVendorPaymentNotificationEmail(
     html,
   });
 }
+
+/**
+ * Send account suspension notification email
+ */
+export async function sendAccountSuspensionEmail(
+  userEmail: string,
+  userName: string,
+  propertyName?: string
+): Promise<EmailResponse> {
+  const subject = `Your Hostezee Account Has Been Suspended`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #dc3545; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .info-box { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #dc3545; }
+          .contact-info { background: #fff3cd; padding: 15px; margin: 15px 0; border-radius: 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Account Suspended</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${userName},</p>
+            <p>We regret to inform you that your Hostezee account has been suspended.</p>
+            
+            <div class="info-box">
+              <p><strong>Account:</strong> ${userEmail}</p>
+              ${propertyName ? `<p><strong>Property:</strong> ${propertyName}</p>` : ''}
+            </div>
+
+            <p>During the suspension period, you will not be able to:</p>
+            <ul>
+              <li>Log in to your dashboard</li>
+              <li>Manage bookings or guests</li>
+              <li>Access any property management features</li>
+            </ul>
+
+            <div class="contact-info">
+              <p><strong>Need help?</strong></p>
+              <p>If you believe this was a mistake or would like to discuss your account status, please contact our support team at <a href="mailto:support@hostezee.in">support@hostezee.in</a></p>
+            </div>
+            
+            <p>Best regards,<br>Hostezee Team</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: userEmail,
+    subject,
+    html,
+  });
+}
+
+/**
+ * Send account reactivation notification email
+ */
+export async function sendAccountReactivationEmail(
+  userEmail: string,
+  userName: string,
+  propertyName?: string
+): Promise<EmailResponse> {
+  const subject = `Welcome Back! Your Hostezee Account Has Been Reactivated`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <style>
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #28a745; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; background-color: #f9f9f9; }
+          .footer { text-align: center; padding: 10px; font-size: 12px; color: #666; }
+          .info-box { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #28a745; }
+          .btn { display: inline-block; background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 15px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Account Reactivated!</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${userName},</p>
+            <p>Great news! Your Hostezee account has been reactivated and you now have full access to all features.</p>
+            
+            <div class="info-box">
+              <p><strong>Account:</strong> ${userEmail}</p>
+              ${propertyName ? `<p><strong>Property:</strong> ${propertyName}</p>` : ''}
+            </div>
+
+            <p>You can now:</p>
+            <ul>
+              <li>Log in to your dashboard</li>
+              <li>Manage bookings and guests</li>
+              <li>Access all property management features</li>
+            </ul>
+
+            <p style="text-align: center;">
+              <a href="https://hostezee.replit.app/login" class="btn">Login to Your Dashboard</a>
+            </p>
+            
+            <p>Best regards,<br>Hostezee Team</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated email. Please do not reply to this message.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  return sendEmail({
+    to: userEmail,
+    subject,
+    html,
+  });
+}

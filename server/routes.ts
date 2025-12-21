@@ -7080,7 +7080,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid status" });
       }
 
+      // Get target user info before updating
+      const [targetUser] = await db.select().from(users).where(eq(users.id, req.params.id));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
       const updated = await storage.updateUserStatus(req.params.id, status);
+      
+      // Send email notification based on status change
+      const userName = `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || 'User';
+      let propertyName: string | undefined;
+      
+      // Get property name if user has assigned properties
+      if (targetUser.assignedPropertyIds && targetUser.assignedPropertyIds.length > 0) {
+        const property = await storage.getProperty(targetUser.assignedPropertyIds[0]);
+        propertyName = property?.name;
+      }
+      
+      if (status === 'suspended') {
+        const { sendAccountSuspensionEmail } = await import('./email-service');
+        sendAccountSuspensionEmail(targetUser.email, userName, propertyName)
+          .then(() => console.log(`[SUSPEND] Email sent to ${targetUser.email}`))
+          .catch(err => console.error(`[SUSPEND] Failed to send email:`, err));
+      } else if (status === 'active') {
+        const { sendAccountReactivationEmail } = await import('./email-service');
+        sendAccountReactivationEmail(targetUser.email, userName, propertyName)
+          .then(() => console.log(`[REACTIVATE] Email sent to ${targetUser.email}`))
+          .catch(err => console.error(`[REACTIVATE] Failed to send email:`, err));
+      }
+      
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
