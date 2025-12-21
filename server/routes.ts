@@ -7096,19 +7096,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Set session for target user - mimicking email auth flow
-      // The isAuthenticated middleware checks for (userId && isEmailAuth)
-      (req.session as any).userId = targetUser.id;
-      (req.session as any).isEmailAuth = true;
-      
-      // Force save the session before responding
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error("[LOGIN-AS] Failed to save session:", saveErr);
-          return res.status(500).json({ message: "Failed to save session" });
+      // Regenerate session to clear old data and set new user
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[LOGIN-AS] Failed to regenerate session:", regenErr);
+          return res.status(500).json({ message: "Failed to regenerate session" });
         }
-        console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id);
-        res.json({ message: "Login as successful", user: targetUser });
+        
+        // Set session for target user - mimicking email auth flow
+        (req.session as any).userId = targetUser.id;
+        (req.session as any).isEmailAuth = true;
+        
+        // Force save the session before responding
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[LOGIN-AS] Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Failed to save session" });
+          }
+          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id, "- session regenerated");
+          res.json({ message: "Login as successful", user: targetUser });
+        });
       });
     } catch (error: any) {
       console.error("[LOGIN-AS] Error:", error);
