@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown, FileSpreadsheet, Download, CheckCircle2, AlertCircle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -44,7 +44,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -67,6 +71,10 @@ export default function EnhancedMenu() {
   const [selectedCategory, setSelectedCategory] = useState<MenuCategory | null>(null);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [parsedItems, setParsedItems] = useState<any[]>([]);
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
   
   const { toast } = useToast();
 
@@ -190,6 +198,118 @@ export default function EnhancedMenu() {
     });
   };
 
+  // Bulk import functions
+  function parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  function parseCSV(csvText: string): { items: any[]; errors: string[] } {
+    const lines = csvText.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return { items: [], errors: ['CSV file must have headers and at least one data row'] };
+    const items: any[] = [];
+    const errors: string[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]);
+      if (values.length < 3) {
+        errors.push(`Row ${i + 1}: Missing required fields`);
+        continue;
+      }
+      const [name, category, price, description, isVeg, isAvailable, variants, addOns] = values;
+      if (!name || !category || !price) {
+        errors.push(`Row ${i + 1}: Name, category, and price are required`);
+        continue;
+      }
+      const parsedPrice = parseFloat(price);
+      if (isNaN(parsedPrice)) {
+        errors.push(`Row ${i + 1}: Invalid price "${price}"`);
+        continue;
+      }
+      items.push({
+        name, category, price: parsedPrice, description: description || '',
+        isVeg: isVeg?.toLowerCase() === 'true',
+        isAvailable: isAvailable?.toLowerCase() !== 'false',
+        variants: variants || '', addOns: addOns || ''
+      });
+    }
+    return { items, errors };
+  }
+
+  function generateCSVTemplate() {
+    const headers = ['name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+    const sampleRows = [
+      ['Butter Chicken', 'Main Course', '350', 'Creamy tomato curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
+      ['Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese', 'true', 'true', '', 'Extra Sauce:30']
+    ];
+    return [headers.join(','), ...sampleRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+  }
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const result = parseCSV(text);
+      setParsedItems(result.items);
+      setParseErrors(result.errors);
+      setImportResult(null);
+    };
+    reader.readAsText(file);
+  };
+
+  const downloadTemplate = () => {
+    const csvContent = generateCSVTemplate();
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'menu_items_template.csv';
+    link.click();
+  };
+
+  const resetBulkImport = () => {
+    setParsedItems([]);
+    setParseErrors([]);
+    setImportResult(null);
+  };
+
+  const bulkImportMutation = useMutation({
+    mutationFn: async (data: { items: any[]; propertyId: number }) => {
+      return await apiRequest("/api/menu-items/bulk-import", "POST", data);
+    },
+    onSuccess: (result: any) => {
+      setImportResult(result);
+      toast({ title: "Import Complete", description: `${result.created} items imported successfully` });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Import Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleBulkImport = () => {
+    if (parsedItems.length === 0) {
+      toast({ title: "No items to import", description: "Please upload a CSV file first", variant: "destructive" });
+      return;
+    }
+    bulkImportMutation.mutate({ items: parsedItems, propertyId: selectedProperty });
+  };
+
   // Handle category drag end
   const handleCategoryDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -226,13 +346,19 @@ export default function EnhancedMenu() {
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2" data-testid="heading-menu-management">
-          Menu Management
-        </h1>
-        <p className="text-muted-foreground">
-          Manage categories, items, variants, and add-ons for your restaurant menu
-        </p>
+      <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2" data-testid="heading-menu-management">
+            Menu Management
+          </h1>
+          <p className="text-muted-foreground">
+            Manage categories, items, variants, and add-ons for your restaurant menu
+          </p>
+        </div>
+        <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} data-testid="button-bulk-import">
+          <Upload className="h-4 w-4 mr-2" />
+          Bulk Import CSV
+        </Button>
       </div>
 
       {/* Filters Section */}
@@ -453,6 +579,139 @@ export default function EnhancedMenu() {
           }
         }}
       />
+
+      {/* Bulk Import Dialog */}
+      <Dialog open={isBulkImportOpen} onOpenChange={(open) => {
+        if (!open) resetBulkImport();
+        setIsBulkImportOpen(open);
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-primary" />
+              Bulk Import Menu Items
+            </DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to add multiple menu items at once
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="space-y-4">
+              {/* Property Selection */}
+              {properties && properties.length > 1 && (
+                <div>
+                  <Label>Select Property</Label>
+                  <Select
+                    value={selectedProperty.toString()}
+                    onValueChange={(val) => setSelectedProperty(parseInt(val))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">All Properties</SelectItem>
+                      {properties.map((prop) => (
+                        <SelectItem key={prop.id} value={prop.id.toString()}>
+                          {prop.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Download Template */}
+              <div className="flex items-center gap-4">
+                <Button variant="outline" onClick={downloadTemplate}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Download CSV Template
+                </Button>
+              </div>
+
+              {/* File Upload */}
+              <div>
+                <Label>Upload CSV File</Label>
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileUpload}
+                  data-testid="input-csv-file"
+                />
+              </div>
+
+              {/* Parse Errors */}
+              {parseErrors.length > 0 && !importResult && (
+                <Alert className="border-amber-500">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Some rows have errors</AlertTitle>
+                  <AlertDescription>
+                    <ul className="text-sm list-disc pl-4 mt-2">
+                      {parseErrors.slice(0, 5).map((error, i) => (
+                        <li key={i}>{error}</li>
+                      ))}
+                      {parseErrors.length > 5 && <li>...and {parseErrors.length - 5} more errors</li>}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Preview */}
+              {parsedItems.length > 0 && !importResult && (
+                <Alert className="border-green-500">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <AlertTitle>{parsedItems.length} items ready to import</AlertTitle>
+                  <AlertDescription>
+                    <ul className="text-sm mt-2">
+                      {parsedItems.slice(0, 5).map((item, i) => (
+                        <li key={i}>{item.name} - {item.category} - ₹{item.price}</li>
+                      ))}
+                      {parsedItems.length > 5 && <li>...and {parsedItems.length - 5} more items</li>}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Import Result */}
+              {importResult && (
+                <Alert className={importResult.failed > 0 ? "border-amber-500" : "border-green-500"}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <AlertTitle>Import Complete</AlertTitle>
+                  <AlertDescription>
+                    <p>{importResult.created} items imported successfully</p>
+                    {importResult.failed > 0 && <p className="text-amber-600">{importResult.failed} items failed</p>}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* CSV Format Help */}
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">CSV Format:</p>
+                <p>name, category, price, description, isVeg (true/false), isAvailable (true/false), variants, addOns</p>
+                <p className="text-xs mt-1">Variants format: Name:Price,Name:Price (e.g., Half:150,Full:250)</p>
+              </div>
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { resetBulkImport(); setIsBulkImportOpen(false); }}>
+              Cancel
+            </Button>
+            {importResult ? (
+              <Button onClick={() => { resetBulkImport(); setIsBulkImportOpen(false); }}>
+                Done
+              </Button>
+            ) : (
+              <Button
+                onClick={handleBulkImport}
+                disabled={parsedItems.length === 0 || bulkImportMutation.isPending}
+              >
+                {bulkImportMutation.isPending ? "Importing..." : `Import ${parsedItems.length} Items`}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
