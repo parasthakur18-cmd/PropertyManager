@@ -6634,6 +6634,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin - Send email to individual user
+  app.post("/api/super-admin/send-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { toEmail, toName, subject, message } = req.body;
+      if (!toEmail || !subject || !message) {
+        return res.status(400).json({ message: "Email, subject and message are required" });
+      }
+
+      const { sendEmail } = await import('./email-service');
+      const result = await sendEmail({
+        to: toEmail,
+        subject: subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #0d9488, #14b8a6); padding: 20px; text-align: center;">
+              <h1 style="color: white; margin: 0;">Hostezee</h1>
+            </div>
+            <div style="padding: 30px; background: #f9fafb;">
+              <p>Dear ${toName || 'User'},</p>
+              <div style="white-space: pre-wrap;">${message}</div>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+              <p style="color: #6b7280; font-size: 14px;">
+                Best regards,<br/>
+                Hostezee Team
+              </p>
+            </div>
+          </div>
+        `,
+        text: `Dear ${toName || 'User'},\n\n${message}\n\nBest regards,\nHostezee Team`
+      });
+
+      if (result.success) {
+        console.log(`[SUPER-ADMIN] Email sent to ${toEmail}`);
+        res.json({ success: true, message: "Email sent successfully" });
+      } else {
+        throw new Error(result.error || "Failed to send email");
+      }
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/SEND-EMAIL] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin - Broadcast email to all verified users
+  app.post("/api/super-admin/broadcast-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { subject, message } = req.body;
+      if (!subject || !message) {
+        return res.status(400).json({ message: "Subject and message are required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      const verifiedUsers = allUsers.filter(u => 
+        u.verificationStatus === 'verified' && 
+        u.email && 
+        u.role !== 'super-admin'
+      );
+
+      const { sendEmail } = await import('./email-service');
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const user of verifiedUsers) {
+        try {
+          const result = await sendEmail({
+            to: user.email!,
+            subject: subject,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: linear-gradient(135deg, #0d9488, #14b8a6); padding: 20px; text-align: center;">
+                  <h1 style="color: white; margin: 0;">Hostezee</h1>
+                  <p style="color: white; margin: 5px 0 0 0; opacity: 0.9;">Announcement</p>
+                </div>
+                <div style="padding: 30px; background: #f9fafb;">
+                  <p>Dear ${user.firstName || 'User'},</p>
+                  <div style="white-space: pre-wrap;">${message}</div>
+                  <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+                  <p style="color: #6b7280; font-size: 14px;">
+                    Best regards,<br/>
+                    Hostezee Team
+                  </p>
+                </div>
+              </div>
+            `,
+            text: `Dear ${user.firstName || 'User'},\n\n${message}\n\nBest regards,\nHostezee Team`
+          });
+          if (result.success) successCount++;
+          else failCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+
+      console.log(`[SUPER-ADMIN] Broadcast email sent: ${successCount} success, ${failCount} failed`);
+      res.json({ 
+        success: true, 
+        message: `Email broadcast completed: ${successCount} sent, ${failCount} failed`,
+        successCount,
+        failCount,
+        totalRecipients: verifiedUsers.length
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/BROADCAST-EMAIL] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin - Export users to CSV
+  app.get("/api/super-admin/export-users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      
+      // Create CSV
+      const headers = ['Name', 'Email', 'Phone', 'Business Name', 'Role', 'Status', 'Verification', 'Signup Method', 'Created At', 'Last Login'];
+      const rows = allUsers.map(u => [
+        `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+        u.email || '',
+        u.phone || '',
+        u.businessName || '',
+        u.role || '',
+        u.status || '',
+        u.verificationStatus || '',
+        u.signupMethod || '',
+        u.createdAt ? new Date(u.createdAt).toISOString() : '',
+        u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="hostezee_users_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvContent);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/EXPORT-USERS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Super Admin Dashboard - Combined data from ALL properties
   app.get("/api/super-admin/dashboard", isAuthenticated, async (req, res) => {
     try {

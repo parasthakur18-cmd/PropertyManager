@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -61,6 +61,15 @@ export default function SuperAdmin() {
   const [reportStartDate, setReportStartDate] = useState<Date | undefined>(undefined);
   const [reportEndDate, setReportEndDate] = useState<Date | undefined>(undefined);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Email features state
+  const [emailDialog, setEmailDialog] = useState(false);
+  const [broadcastDialog, setBroadcastDialog] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<User | null>(null);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isExportingUsers, setIsExportingUsers] = useState(false);
 
   // Check if user is authenticated as super admin on mount
   useEffect(() => {
@@ -316,6 +325,113 @@ export default function SuperAdmin() {
       });
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Send email to individual user
+  const handleSendEmail = async () => {
+    if (!emailRecipient || !emailSubject || !emailMessage) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in subject and message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await apiRequest("/api/super-admin/send-email", "POST", {
+        toEmail: emailRecipient.email,
+        toName: `${emailRecipient.firstName || ''} ${emailRecipient.lastName || ''}`.trim(),
+        subject: emailSubject,
+        message: emailMessage,
+      });
+
+      toast({
+        title: "Email Sent",
+        description: `Email successfully sent to ${emailRecipient.email}`,
+      });
+      setEmailDialog(false);
+      setEmailSubject("");
+      setEmailMessage("");
+      setEmailRecipient(null);
+    } catch (error: any) {
+      toast({
+        title: "Failed to Send",
+        description: error.message || "Failed to send email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Broadcast email to all verified users
+  const handleBroadcastEmail = async () => {
+    if (!emailSubject || !emailMessage) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in subject and message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await apiRequest("/api/super-admin/broadcast-email", "POST", {
+        subject: emailSubject,
+        message: emailMessage,
+      });
+
+      toast({
+        title: "Broadcast Sent",
+        description: response.message || "Email broadcast completed",
+      });
+      setBroadcastDialog(false);
+      setEmailSubject("");
+      setEmailMessage("");
+    } catch (error: any) {
+      toast({
+        title: "Broadcast Failed",
+        description: error.message || "Failed to send broadcast",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Export users to CSV
+  const handleExportUsers = async () => {
+    setIsExportingUsers(true);
+    try {
+      const response = await fetch("/api/super-admin/export-users");
+      if (!response.ok) throw new Error("Failed to export users");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `hostezee_users_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+
+      toast({
+        title: "Export Complete",
+        description: "Users exported to CSV successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Export Failed",
+        description: error.message || "Failed to export users",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingUsers(false);
     }
   };
 
@@ -984,13 +1100,40 @@ export default function SuperAdmin() {
         {/* Users Tab */}
         {activeTab === "users" && (
         <div className="space-y-4">
-          <div className="flex gap-2">
+          {/* Toolbar with search and actions */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
             <Input
               placeholder="Search by email or business name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="sm:max-w-sm"
               data-testid="input-search-users"
             />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEmailSubject("");
+                  setEmailMessage("");
+                  setBroadcastDialog(true);
+                }}
+                data-testid="button-broadcast-email"
+              >
+                <Megaphone className="h-4 w-4 mr-1" />
+                Broadcast
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportUsers}
+                disabled={isExportingUsers}
+                data-testid="button-export-users"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                {isExportingUsers ? "Exporting..." : "Export CSV"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4">
@@ -1038,6 +1181,20 @@ export default function SuperAdmin() {
                       >
                         <LogIn className="h-4 w-4 mr-1" />
                         Login As User
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEmailRecipient(user);
+                          setEmailSubject("");
+                          setEmailMessage("");
+                          setEmailDialog(true);
+                        }}
+                        data-testid={`button-email-${user.id}`}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        Email
                       </Button>
                       {user.status === "active" ? (
                         <Button
@@ -1317,6 +1474,129 @@ export default function SuperAdmin() {
           </div>
         </div>
         )}
+
+        {/* Send Email Dialog */}
+        <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-teal-600" />
+                Send Email to User
+              </DialogTitle>
+              <DialogDescription>
+                Send an email directly to {emailRecipient?.email}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              {emailRecipient && (
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                  <p className="text-sm font-medium">
+                    {emailRecipient.firstName} {emailRecipient.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{emailRecipient.email}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="emailSubject">Subject *</Label>
+                <Input
+                  id="emailSubject"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Enter email subject"
+                  data-testid="input-email-subject"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="emailMessage">Message *</Label>
+                <Textarea
+                  id="emailMessage"
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={6}
+                  data-testid="input-email-message"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEmailDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendEmail}
+                disabled={isSendingEmail || !emailSubject || !emailMessage}
+                className="bg-teal-600 hover:bg-teal-700"
+                data-testid="button-send-email-confirm"
+              >
+                {isSendingEmail ? "Sending..." : "Send Email"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Broadcast Email Dialog */}
+        <Dialog open={broadcastDialog} onOpenChange={setBroadcastDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Megaphone className="h-5 w-5 text-purple-600" />
+                Broadcast Email
+              </DialogTitle>
+              <DialogDescription>
+                Send an announcement email to all verified users on the platform
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+                <p className="text-sm text-purple-700 dark:text-purple-300">
+                  This will send an email to all verified users (excluding super admins).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="broadcastSubject">Subject *</Label>
+                <Input
+                  id="broadcastSubject"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="e.g., Important Update from Hostezee"
+                  data-testid="input-broadcast-subject"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="broadcastMessage">Message *</Label>
+                <Textarea
+                  id="broadcastMessage"
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  placeholder="Type your announcement here..."
+                  rows={6}
+                  data-testid="input-broadcast-message"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBroadcastDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBroadcastEmail}
+                disabled={isSendingEmail || !emailSubject || !emailMessage}
+                className="bg-purple-600 hover:bg-purple-700"
+                data-testid="button-broadcast-confirm"
+              >
+                {isSendingEmail ? "Broadcasting..." : "Send Broadcast"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
           </div>
         </div>
