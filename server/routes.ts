@@ -2528,9 +2528,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await sendPreBillNotification(
         phoneNumber,
         guestName,
-        "₹0.00",  // Room charges placeholder
-        "₹0.00",  // Food charges placeholder
-        `₹${billTotal.toFixed(2)}`  // Total amount
+        "0.00",  // Room charges placeholder (template has ₹ already)
+        "0.00",  // Food charges placeholder (template has ₹ already)
+        billTotal.toFixed(2)  // Total amount (template has ₹ already)
       );
 
       if (result.success) {
@@ -2781,11 +2781,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Guest phone number not found" });
       }
 
-      // Format bill details for WhatsApp
+      // Format bill details for WhatsApp (template already has ₹ symbol)
       const guestName = guest.fullName || "Guest";
-      const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
-      const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
-      const totalAmount = `₹${parseFloat(billDetails.totalAmount).toFixed(2)}`;
+      const roomCharges = parseFloat(billDetails.roomCharges || 0).toFixed(2);
+      const foodCharges = parseFloat(billDetails.foodCharges || 0).toFixed(2);
+      const totalAmount = parseFloat(billDetails.totalAmount).toFixed(2);
 
       // Create pre-bill record
       const preBillRecord = await storage.createPreBill({

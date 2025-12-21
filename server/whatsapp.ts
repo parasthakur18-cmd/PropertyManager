@@ -271,11 +271,11 @@ export async function sendCheckoutNotification(
  * Total Amount: ₹ {{4}}
  * If you have any questions, please let us know."
  * 
- * Template variables (in order):
+ * Template variables (in order) - DO NOT include ₹ symbol, template has it:
  * 1. Guest Name (e.g., "Yogita")
- * 2. Room Charges (e.g., "₹ 5000.00")
- * 3. Food Charges (e.g., "₹ 1500.00")
- * 4. Total Amount (e.g., "₹ 6500.00")
+ * 2. Room Charges (e.g., "5000.00") - no ₹ prefix
+ * 3. Food Charges (e.g., "1500.00") - no ₹ prefix
+ * 4. Total Amount (e.g., "6500.00") - no ₹ prefix
  */
 export async function sendPreBillNotification(
   phoneNumber: string,
