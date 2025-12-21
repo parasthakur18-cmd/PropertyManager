@@ -273,10 +273,17 @@ export default function Bookings() {
     }
   };
 
-  // Composed helper: get rooms filtered by both availability and booking type
-  const getRoomsForBookingType = (type: "single" | "group" | "dormitory", options: { isEditMode?: boolean } = {}) => {
+  // Composed helper: get rooms filtered by availability, booking type, and selected property
+  const getRoomsForBookingType = (type: "single" | "group" | "dormitory", options: { isEditMode?: boolean; propertyId?: number } = {}) => {
     const availableRooms = getAvailableRooms(options.isEditMode || false);
-    return filterRoomsByBookingType(availableRooms, type);
+    const byType = filterRoomsByBookingType(availableRooms, type);
+    
+    // Filter by selected property if provided
+    const propertyFilter = options.propertyId ?? selectedPropertyId;
+    if (propertyFilter) {
+      return byType.filter(room => room.propertyId === propertyFilter);
+    }
+    return byType;
   };
 
   // NEW: Fetch bed inventory for selected dormitory room
