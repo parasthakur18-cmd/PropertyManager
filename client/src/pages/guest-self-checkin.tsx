@@ -20,7 +20,6 @@ const selfCheckinSchema = z.object({
   phone: z.string().min(10, "Valid phone required"),
   email: z.string().email("Invalid email"),
   fullName: z.string().min(1, "Name is required"),
-  idProofUrl: z.string().optional(),
 });
 
 type FindBookingForm = z.infer<typeof findBookingSchema>;
@@ -77,11 +76,38 @@ export default function GuestSelfCheckin() {
 
   const selfCheckinMutation = useMutation({
     mutationFn: async (data: SelfCheckinForm) => {
+      const guestHasIdProof = bookingData?.guest?.idProofUrl;
+      
+      if (!guestHasIdProof && !fileUpload) {
+        throw new Error("Please upload your ID proof to complete check-in");
+      }
+
+      let idProofUrl = guestHasIdProof || null;
+      
+      if (fileUpload) {
+        const formData = new FormData();
+        formData.append("file", fileUpload);
+        formData.append("type", "id-proof");
+        
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (!uploadRes.ok) {
+          throw new Error("Failed to upload ID proof. Please try again.");
+        }
+        
+        const uploadData = await uploadRes.json();
+        idProofUrl = uploadData.url;
+      }
+
       const payload = {
         bookingId: bookingData.id,
         email: data.email,
         phone: data.phone,
         fullName: data.fullName,
+        idProofUrl: idProofUrl,
       };
 
       const response = await fetch("/api/guest-self-checkin", {
@@ -282,7 +308,30 @@ export default function GuestSelfCheckin() {
                 />
 
                 <FormItem>
-                  <FormLabel>ID Proof (Photo/Scan)</FormLabel>
+                  <FormLabel className="flex items-center gap-2">
+                    ID Proof (Photo/Scan)
+                    {!bookingData?.guest?.idProofUrl && (
+                      <span className="text-destructive text-xs font-normal">* Required</span>
+                    )}
+                  </FormLabel>
+                  {bookingData?.guest?.idProofUrl ? (
+                    <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                      <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+                        <Check className="h-4 w-4" />
+                        ID proof already on file
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        You can upload a new one to update if needed (optional)
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800 mb-2">
+                      <p className="text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        ID proof required to complete check-in
+                      </p>
+                    </div>
+                  )}
                   <FormControl>
                     <Input
                       type="file"
@@ -294,6 +343,11 @@ export default function GuestSelfCheckin() {
                   <p className="text-xs text-muted-foreground mt-2">
                     Upload a photo of your ID proof (Passport, Aadhar, Driving License, etc.)
                   </p>
+                  {fileUpload && (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
+                      <Check className="h-3 w-3" /> File selected: {fileUpload.name}
+                    </p>
+                  )}
                 </FormItem>
 
                 <div className="flex gap-2 pt-4">

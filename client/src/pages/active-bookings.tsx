@@ -121,12 +121,28 @@ export default function ActiveBookings() {
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id),
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/prebill/booking/${checkoutDialog.booking?.id}`, { credentials: "include" });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("Failed to fetch pre-bill");
+        return res.json();
+      } catch { return null; }
+    },
   });
 
   const { data: currentBill } = useQuery<{ paymentStatus: string; id: number } | null>({
     queryKey: ["/api/bills/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id && paymentLinkSent && !autoCompletingCheckout),
     refetchInterval: 5000,
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/bills/booking/${checkoutDialog.booking?.id}`, { credentials: "include" });
+        if (res.status === 404) return null;
+        if (!res.ok) throw new Error("Failed to fetch bill");
+        return res.json();
+      } catch { return null; }
+    },
   });
 
   useEffect(() => {

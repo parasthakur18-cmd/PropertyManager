@@ -7874,7 +7874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/guest-self-checkin", async (req, res) => {
     try {
-      const { bookingId, email, phone, fullName } = req.body;
+      const { bookingId, email, phone, fullName, idProofUrl } = req.body;
 
       // Validate booking ID
       if (!bookingId || isNaN(parseInt(bookingId))) {
@@ -7903,6 +7903,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Guest not found" });
       }
 
+      // Check if ID proof is required
+      if (!guest.idProofUrl && !idProofUrl) {
+        return res.status(400).json({ message: "ID proof is required for check-in. Please upload a photo of your ID." });
+      }
+
       // Use provided values or fall back to existing guest data
       const finalEmail = email || guest.email;
       const finalPhone = phone || guest.phone;
@@ -7917,6 +7922,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {};
       if (phone && phone !== guest.phone) updateData.phone = phone;
       if (fullName && fullName !== guest.fullName) updateData.fullName = fullName;
+      if (idProofUrl) updateData.idProofUrl = idProofUrl;
 
       if (Object.keys(updateData).length > 0) {
         await storage.updateGuest(booking.guestId, updateData);
