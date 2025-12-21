@@ -125,7 +125,11 @@ export default function GuestSelfCheckin() {
     },
     onSuccess: () => {
       setStep(3);
-      toast({ title: "Check-in successful!", description: "Welcome to our property!" });
+      toast({ 
+        title: "✅ Check-in Successful!", 
+        description: "Welcome! Please proceed to your room.",
+        duration: 10000,
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/active-bookings"] });
     },
     onError: (error: any) => {
@@ -386,19 +390,19 @@ export default function GuestSelfCheckin() {
   if (step === 3 && bookingData) {
     const checkOutDate = new Date(bookingData.checkOutDate);
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-blue-500/10 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
-          <CardHeader>
+      <div className="min-h-screen bg-gradient-to-br from-green-500/20 via-background to-green-500/10 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md text-center border-2 border-green-500/50 shadow-xl shadow-green-500/20">
+          <CardHeader className="pb-2">
             <div className="flex justify-center mb-4">
-              <div className="h-20 w-20 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
-                <Check className="h-10 w-10 text-green-600 dark:text-green-400" />
+              <div className="h-24 w-24 rounded-full bg-green-500 flex items-center justify-center animate-pulse">
+                <Check className="h-14 w-14 text-white" />
               </div>
             </div>
-            <CardTitle className="text-2xl">Welcome!</CardTitle>
+            <CardTitle className="text-3xl text-green-600 dark:text-green-400">Check-in Complete!</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-muted-foreground">
-              Your check-in has been completed successfully.
+            <p className="text-lg font-medium">
+              Welcome to your stay! 🎉
             </p>
             <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg space-y-2">
               <p className="text-sm">
