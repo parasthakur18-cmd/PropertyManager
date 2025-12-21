@@ -6634,6 +6634,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Dashboard - Combined data from ALL properties
+  app.get("/api/super-admin/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get ALL data without property filtering
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allGuests = await storage.getAllGuests();
+      const allBills = await storage.getAllBills();
+      const allUsers = await storage.getAllUsers();
+
+      // Calculate stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const checkedInBookings = allBookings.filter(b => b.status === 'checked_in');
+      const upcomingBookings = allBookings.filter(b => {
+        const checkIn = new Date(b.checkInDate);
+        return b.status === 'confirmed' && checkIn > today;
+      });
+      const todayCheckIns = allBookings.filter(b => {
+        const checkIn = new Date(b.checkInDate);
+        checkIn.setHours(0, 0, 0, 0);
+        return checkIn.getTime() === today.getTime() && (b.status === 'confirmed' || b.status === 'checked_in');
+      });
+      const todayCheckOuts = allBookings.filter(b => {
+        const checkOut = new Date(b.checkOutDate);
+        checkOut.setHours(0, 0, 0, 0);
+        return checkOut.getTime() === today.getTime() && b.status === 'checked_in';
+      });
+
+      // Calculate total revenue from bills
+      const totalRevenue = allBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
+      const paidAmount = allBills.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
+      const pendingAmount = totalRevenue - paidAmount;
+
+      // Property-wise breakdown
+      const propertyStats = allProperties.map(prop => {
+        const propBookings = allBookings.filter(b => b.propertyId === prop.id);
+        const propBills = allBills.filter(b => {
+          const booking = allBookings.find(bk => bk.id === b.bookingId);
+          return booking?.propertyId === prop.id;
+        });
+        const propRevenue = propBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
+        const propCheckedIn = propBookings.filter(b => b.status === 'checked_in').length;
+        const propUpcoming = propBookings.filter(b => {
+          const checkIn = new Date(b.checkInDate);
+          return b.status === 'confirmed' && checkIn > today;
+        }).length;
+
+        return {
+          id: prop.id,
+          name: prop.name,
+          location: prop.location,
+          checkedIn: propCheckedIn,
+          upcoming: propUpcoming,
+          totalBookings: propBookings.length,
+          revenue: propRevenue,
+        };
+      });
+
+      res.json({
+        summary: {
+          totalProperties: allProperties.length,
+          totalUsers: allUsers.length,
+          totalBookings: allBookings.length,
+          totalGuests: allGuests.length,
+          checkedIn: checkedInBookings.length,
+          upcoming: upcomingBookings.length,
+          todayCheckIns: todayCheckIns.length,
+          todayCheckOuts: todayCheckOuts.length,
+          totalRevenue,
+          paidAmount,
+          pendingAmount,
+        },
+        propertyStats,
+        recentBookings: allBookings
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          .slice(0, 10),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/DASHBOARD] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;

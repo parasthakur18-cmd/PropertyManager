@@ -121,6 +121,37 @@ export default function SuperAdmin() {
     queryKey: ["/api/errors"],
   });
 
+  // Fetch combined dashboard data - ALL properties stats
+  interface DashboardData {
+    summary: {
+      totalProperties: number;
+      totalUsers: number;
+      totalBookings: number;
+      totalGuests: number;
+      checkedIn: number;
+      upcoming: number;
+      todayCheckIns: number;
+      todayCheckOuts: number;
+      totalRevenue: number;
+      paidAmount: number;
+      pendingAmount: number;
+    };
+    propertyStats: Array<{
+      id: number;
+      name: string;
+      location: string;
+      checkedIn: number;
+      upcoming: number;
+      totalBookings: number;
+      revenue: number;
+    }>;
+    recentBookings: Array<any>;
+  }
+  
+  const { data: dashboardData, isLoading: dashboardLoading } = useQuery<DashboardData>({
+    queryKey: ["/api/super-admin/dashboard"],
+  });
+
   // Fetch pending users for approval - MUST be before early returns
   const { data: pendingUsers = [], isLoading: pendingUsersLoading } = useQuery<User[]>({
     queryKey: ["/api/super-admin/pending-users"],
@@ -324,8 +355,9 @@ export default function SuperAdmin() {
       </div>
 
       <div className="space-y-4">
-        <div className="grid w-full grid-cols-6 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+        <div className="grid w-full grid-cols-7 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
           {[
+            { value: "dashboard", label: "Dashboard", icon: Home },
             { value: "pending", label: `Pending (${pendingUsers.length})`, icon: Clock, highlight: pendingUsers.length > 0 },
             { value: "users", label: `Users (${users.length})`, icon: Users },
             { value: "properties", label: `Properties (${properties.length})`, icon: Building2 },
@@ -353,6 +385,167 @@ export default function SuperAdmin() {
             </button>
           ))}
         </div>
+
+        {/* Dashboard Tab - Combined Data from ALL Properties */}
+        {activeTab === "dashboard" && (
+          <div className="space-y-6">
+            {dashboardLoading ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  Loading dashboard data...
+                </CardContent>
+              </Card>
+            ) : dashboardData ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Properties</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-teal-600">{dashboardData.summary.totalProperties}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-blue-600">{dashboardData.summary.totalUsers}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">{dashboardData.summary.totalBookings}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Guests</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-orange-600">{dashboardData.summary.totalGuests}</div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Live Status */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400">Checked In Now</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{dashboardData.summary.checkedIn}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400">Upcoming Bookings</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">{dashboardData.summary.upcoming}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-orange-200 dark:border-orange-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400">Today's Check-ins</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-orange-600">{dashboardData.summary.todayCheckIns}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-red-200 dark:border-red-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400">Today's Check-outs</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">{dashboardData.summary.todayCheckOuts}</div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Revenue Overview */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <span>Revenue Overview (All Properties)</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Total Revenue</div>
+                        <div className="text-2xl font-bold text-green-600">₹{dashboardData.summary.totalRevenue.toLocaleString()}</div>
+                      </div>
+                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Collected</div>
+                        <div className="text-2xl font-bold text-blue-600">₹{dashboardData.summary.paidAmount.toLocaleString()}</div>
+                      </div>
+                      <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Pending</div>
+                        <div className="text-2xl font-bold text-orange-600">₹{dashboardData.summary.pendingAmount.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Property-wise Breakdown */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Property-wise Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-2 font-medium">Property</th>
+                            <th className="text-left py-3 px-2 font-medium">Location</th>
+                            <th className="text-center py-3 px-2 font-medium">Checked In</th>
+                            <th className="text-center py-3 px-2 font-medium">Upcoming</th>
+                            <th className="text-center py-3 px-2 font-medium">Total Bookings</th>
+                            <th className="text-right py-3 px-2 font-medium">Revenue</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dashboardData.propertyStats.map((prop) => (
+                            <tr key={prop.id} className="border-b hover:bg-slate-50 dark:hover:bg-slate-800">
+                              <td className="py-3 px-2 font-medium">{prop.name}</td>
+                              <td className="py-3 px-2 text-muted-foreground">{prop.location}</td>
+                              <td className="py-3 px-2 text-center">
+                                <Badge variant="outline" className="bg-green-50 dark:bg-green-900/30 text-green-700">
+                                  {prop.checkedIn}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-2 text-center">
+                                <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/30 text-blue-700">
+                                  {prop.upcoming}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-2 text-center">{prop.totalBookings}</td>
+                              <td className="py-3 px-2 text-right font-medium">₹{prop.revenue.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  No dashboard data available
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* Pending Users Tab */}
         {activeTab === "pending" && (
