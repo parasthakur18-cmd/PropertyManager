@@ -125,11 +125,18 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 flex flex-col">
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-teal-50/30 to-cyan-50/30 dark:from-slate-950 dark:via-teal-950/20 dark:to-cyan-950/20 flex flex-col">
+      {/* Background Gradient Decorations */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-teal-400/20 to-cyan-400/20 rounded-full blur-3xl translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-gradient-to-tr from-cyan-400/15 to-teal-400/15 rounded-full blur-3xl -translate-x-1/2 translate-y-1/2"></div>
+        <div className="absolute top-1/2 left-1/2 w-[400px] h-[400px] bg-gradient-to-br from-teal-300/10 to-cyan-300/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+      </div>
+
       {/* Navigation Header */}
-      <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
+      <header className="fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setLocation("/")}>
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-lg">
               <Building2 className="h-6 w-6" />
             </div>
@@ -141,7 +148,7 @@ export default function Register() {
             <Button
               variant="ghost"
               onClick={() => setLocation("/")}
-              className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="text-slate-700 dark:text-slate-300"
               data-testid="button-back-home"
             >
               Home
@@ -150,16 +157,10 @@ export default function Register() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center pt-24 pb-12 px-4">
-        <div className="w-full max-w-md">
-          {/* Animated Background Gradient */}
-          <div className="absolute inset-0 overflow-hidden -z-10">
-            <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-teal-400/20 to-cyan-400/20 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-tr from-cyan-400/10 to-teal-400/10 rounded-full blur-3xl"></div>
-          </div>
-
-          <Card className="border-slate-200 dark:border-slate-800 shadow-lg">
+      {/* Main Content - Centered */}
+      <div className="flex-1 flex items-center justify-center pt-24 pb-12 px-4 w-full">
+        <div className="w-full max-w-md mx-auto">
+          <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
             <CardHeader className="space-y-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-teal-600 dark:text-teal-400" />
