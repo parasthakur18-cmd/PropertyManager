@@ -6645,79 +6645,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
-      // Get ALL data without property filtering
+      // Get ALL data for SaaS platform metrics
       const allProperties = await storage.getAllProperties();
       const allBookings = await storage.getAllBookings();
-      const allGuests = await storage.getAllGuests();
-      const allBills = await storage.getAllBills();
       const allUsers = await storage.getAllUsers();
+      const allIssues = await storage.getAllIssueReports();
+      const allErrors = await storage.getAllErrorCrashes();
 
-      // Calculate stats
+      // Calculate SaaS platform stats
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
-      const checkedInBookings = allBookings.filter(b => b.status === 'checked_in');
-      const upcomingBookings = allBookings.filter(b => {
-        const checkIn = new Date(b.checkInDate);
-        return b.status === 'confirmed' && checkIn > today;
-      });
-      const todayCheckIns = allBookings.filter(b => {
-        const checkIn = new Date(b.checkInDate);
-        checkIn.setHours(0, 0, 0, 0);
-        return checkIn.getTime() === today.getTime() && (b.status === 'confirmed' || b.status === 'checked_in');
-      });
-      const todayCheckOuts = allBookings.filter(b => {
-        const checkOut = new Date(b.checkOutDate);
-        checkOut.setHours(0, 0, 0, 0);
-        return checkOut.getTime() === today.getTime() && b.status === 'checked_in';
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      oneWeekAgo.setHours(0, 0, 0, 0);
+
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      oneMonthAgo.setHours(0, 0, 0, 0);
+
+      // User stats
+      const pendingUsers = allUsers.filter(u => u.verificationStatus === 'pending');
+      const verifiedUsers = allUsers.filter(u => u.verificationStatus === 'verified');
+      const rejectedUsers = allUsers.filter(u => u.verificationStatus === 'rejected');
+      
+      // Active users today (logged in today)
+      const activeUsersToday = allUsers.filter(u => {
+        if (!u.lastLoginAt) return false;
+        const loginDate = new Date(u.lastLoginAt);
+        loginDate.setHours(0, 0, 0, 0);
+        return loginDate.getTime() >= today.getTime();
       });
 
-      // Calculate total revenue from bills
-      const totalRevenue = allBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
-      const paidAmount = allBills.reduce((sum, bill) => sum + (bill.paidAmount || 0), 0);
-      const pendingAmount = totalRevenue - paidAmount;
+      // New signups this week
+      const newSignupsThisWeek = allUsers.filter(u => {
+        if (!u.createdAt) return false;
+        const createdDate = new Date(u.createdAt);
+        return createdDate >= oneWeekAgo;
+      });
 
-      // Property-wise breakdown
+      // New signups this month
+      const newSignupsThisMonth = allUsers.filter(u => {
+        if (!u.createdAt) return false;
+        const createdDate = new Date(u.createdAt);
+        return createdDate >= oneMonthAgo;
+      });
+
+      // New properties this week
+      const newPropertiesThisWeek = allProperties.filter(p => {
+        if (!p.createdAt) return false;
+        const createdDate = new Date(p.createdAt);
+        return createdDate >= oneWeekAgo;
+      });
+
+      // New properties this month
+      const newPropertiesThisMonth = allProperties.filter(p => {
+        if (!p.createdAt) return false;
+        const createdDate = new Date(p.createdAt);
+        return createdDate >= oneMonthAgo;
+      });
+
+      // Issues stats
+      const openIssues = allIssues.filter(i => i.status === 'open' || i.status === 'in_progress');
+      const resolvedIssues = allIssues.filter(i => i.status === 'resolved');
+
+      // Errors stats
+      const unresolvedErrors = allErrors.filter(e => e.status !== 'resolved');
+
+      // Property breakdown for management
       const propertyStats = allProperties.map(prop => {
+        const propUsers = allUsers.filter(u => 
+          u.assignedPropertyIds && u.assignedPropertyIds.includes(prop.id)
+        );
         const propBookings = allBookings.filter(b => b.propertyId === prop.id);
-        const propBills = allBills.filter(b => {
-          const booking = allBookings.find(bk => bk.id === b.bookingId);
-          return booking?.propertyId === prop.id;
-        });
-        const propRevenue = propBills.reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
-        const propCheckedIn = propBookings.filter(b => b.status === 'checked_in').length;
-        const propUpcoming = propBookings.filter(b => {
-          const checkIn = new Date(b.checkInDate);
-          return b.status === 'confirmed' && checkIn > today;
-        }).length;
 
         return {
           id: prop.id,
           name: prop.name,
           location: prop.location,
-          checkedIn: propCheckedIn,
-          upcoming: propUpcoming,
+          totalUsers: propUsers.length,
           totalBookings: propBookings.length,
-          revenue: propRevenue,
+          createdAt: prop.createdAt,
         };
       });
 
       res.json({
         summary: {
+          // Platform overview
           totalProperties: allProperties.length,
           totalUsers: allUsers.length,
           totalBookings: allBookings.length,
-          totalGuests: allGuests.length,
-          checkedIn: checkedInBookings.length,
-          upcoming: upcomingBookings.length,
-          todayCheckIns: todayCheckIns.length,
-          todayCheckOuts: todayCheckOuts.length,
-          totalRevenue,
-          paidAmount,
-          pendingAmount,
+          
+          // User management
+          pendingApprovals: pendingUsers.length,
+          verifiedUsers: verifiedUsers.length,
+          rejectedUsers: rejectedUsers.length,
+          activeUsersToday: activeUsersToday.length,
+          
+          // Growth metrics
+          newSignupsThisWeek: newSignupsThisWeek.length,
+          newSignupsThisMonth: newSignupsThisMonth.length,
+          newPropertiesThisWeek: newPropertiesThisWeek.length,
+          newPropertiesThisMonth: newPropertiesThisMonth.length,
+          
+          // Support metrics
+          openIssues: openIssues.length,
+          resolvedIssues: resolvedIssues.length,
+          totalIssues: allIssues.length,
+          unresolvedErrors: unresolvedErrors.length,
+          totalErrors: allErrors.length,
         },
         propertyStats,
-        recentBookings: allBookings
+        recentSignups: allUsers
           .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
           .slice(0, 10),
       });
