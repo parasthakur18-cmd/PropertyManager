@@ -79,7 +79,7 @@ export default function GuestSelfCheckin() {
       const guestHasIdProof = bookingData?.guest?.idProofUrl;
       
       if (!guestHasIdProof && !fileUpload) {
-        throw new Error("Please upload your ID proof to complete check-in");
+        return Promise.reject(new Error("Please upload your ID proof to complete check-in"));
       }
 
       let idProofUrl = guestHasIdProof || null;
