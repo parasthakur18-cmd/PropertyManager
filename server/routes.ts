@@ -8145,11 +8145,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           const menuLink = `${baseUrl}/guest/menu/${property.id}?room=${room?.roomNumber || ''}`;
           
+          // Parameters: phoneNumber, propertyName, guestName, menuLink
           await sendWelcomeWithMenuLink(
             guestPhone,
-            finalFullName || "Guest",
             property.name || "Our Property",
-            room?.roomNumber || "your room",
+            finalFullName || "Guest",
             menuLink
           );
           console.log(`[WHATSAPP] Welcome message sent to ${guestPhone} with menu link`);
