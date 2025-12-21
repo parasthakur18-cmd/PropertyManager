@@ -137,6 +137,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ uploadURL });
   });
 
+  // Public upload endpoint for guest self-checkin (no auth required)
+  app.post("/api/guest/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      console.error("[Guest Upload] Error:", error);
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
   // Set ACL policy for uploaded guest ID proof
   app.put("/api/guest-id-proofs", isAuthenticated, async (req, res) => {
     if (!req.body.idProofUrl) {

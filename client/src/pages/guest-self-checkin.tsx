@@ -85,21 +85,33 @@ export default function GuestSelfCheckin() {
       let idProofUrl = guestHasIdProof || null;
       
       if (fileUpload) {
-        const formData = new FormData();
-        formData.append("file", fileUpload);
-        formData.append("type", "id-proof");
-        
-        const uploadRes = await fetch("/api/upload", {
+        // Step 1: Get presigned upload URL from server
+        const urlRes = await fetch("/api/guest/upload", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+        });
+        
+        if (!urlRes.ok) {
+          throw new Error("Failed to get upload URL. Please try again.");
+        }
+        
+        const { uploadURL } = await urlRes.json();
+        
+        // Step 2: Upload file to the presigned URL
+        const uploadRes = await fetch(uploadURL, {
+          method: "PUT",
+          body: fileUpload,
+          headers: {
+            "Content-Type": fileUpload.type || "image/jpeg",
+          },
         });
         
         if (!uploadRes.ok) {
           throw new Error("Failed to upload ID proof. Please try again.");
         }
         
-        const uploadData = await uploadRes.json();
-        idProofUrl = uploadData.url;
+        // Extract the object URL (remove query params from presigned URL)
+        idProofUrl = uploadURL.split("?")[0];
       }
 
       const payload = {
