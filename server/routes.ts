@@ -2541,7 +2541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Send pre-bill via Authkey WhatsApp - saves full details and sends link
   app.post("/api/whatsapp/send-prebill", isAuthenticated, async (req, res) => {
     try {
-      const { bookingId, phoneNumber, guestName, billTotal, roomCharges, foodCharges, extraCharges, gstAmount, discount, advancePayment } = req.body;
+      const { bookingId, phoneNumber, guestName, billTotal, roomCharges, foodCharges, extraCharges, gstAmount, discount, advancePayment, balanceDue } = req.body;
       
       if (!bookingId || !phoneNumber || !guestName) {
         return res.status(400).json({ message: "Missing required fields" });
@@ -2565,12 +2565,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ));
 
       const token = randomUUID().replace(/-/g, '').substring(0, 32);
+      
+      // Calculate balance due - use provided value or calculate from billTotal - advancePayment
+      const calculatedBalanceDue = balanceDue !== undefined ? balanceDue : ((billTotal || 0) - (advancePayment || 0));
 
       const preBill = await db.insert(preBills).values({
         bookingId: bookingId,
         token,
         totalAmount: (billTotal || 0).toString(),
-        balanceDue: ((billTotal || 0) - (advancePayment || 0)).toString(),
+        balanceDue: Math.max(0, calculatedBalanceDue).toString(),
         roomNumber: booking.roomNumber || '',
         roomCharges: (roomCharges || 0).toString(),
         foodCharges: (foodCharges || 0).toString(),
@@ -2596,13 +2599,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const roomChargesNum = parseFloat(roomCharges || 0);
       const foodChargesNum = parseFloat(foodCharges || 0);
+      const advancePaymentNum = parseFloat(advancePayment || 0);
+      const balanceDueNum = Math.max(0, calculatedBalanceDue);
       
+      // Send pre-bill with balance due (after advance payment deduction)
       const result = await sendPreBillNotification(
         phoneNumber,
         guestName,
         roomChargesNum.toFixed(2),
         foodChargesNum.toFixed(2),
-        parseFloat(billTotal || 0).toFixed(2)
+        advancePaymentNum.toFixed(2),
+        balanceDueNum.toFixed(2)
       );
 
       if (result.success) {

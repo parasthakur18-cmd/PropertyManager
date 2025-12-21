@@ -275,19 +275,23 @@ export async function sendCheckoutNotification(
  * 1. Guest Name (e.g., "Yogita")
  * 2. Room Charges (e.g., "5000.00") - no ₹ prefix
  * 3. Food Charges (e.g., "1500.00") - no ₹ prefix
- * 4. Total Amount (e.g., "6500.00") - no ₹ prefix
+ * 4. Balance Due (amount guest needs to pay after advance deduction)
+ * 
+ * NOTE: Parameter 4 now sends balance due (not total) so guest sees correct payable amount
  */
 export async function sendPreBillNotification(
   phoneNumber: string,
   guestName: string,
   roomCharges: string,
   foodCharges: string,
-  totalAmount: string
+  advancePaid: string,
+  balanceDue: string
 ): Promise<WhatsAppResponse> {
   const templateId = process.env.AUTHKEY_WA_PREBILL || "19852";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
+  // Send balance due as the "Total Amount" parameter so guest sees correct payable amount
   return sendWhatsAppMessage({
     countryCode,
     mobile: cleanedPhone,
@@ -296,7 +300,7 @@ export async function sendPreBillNotification(
       guestName,      // 1. Guest Name
       roomCharges,    // 2. Room Charges
       foodCharges,    // 3. Food Charges
-      totalAmount,    // 4. Total Amount
+      balanceDue,     // 4. Balance Due (what guest actually needs to pay)
     ],
   });
 }

@@ -1349,7 +1349,9 @@ export default function ActiveBookings() {
                               roomCharges, foodCharges, extraCharges,
                               gstAmount: totalGst,
                               serviceCharge,
-                              discount
+                              discount,
+                              advancePayment: advancePaid + cashPaid,
+                              balanceDue: Math.max(0, remainingBalance)
                             })
                           });
                           if (!res.ok) {
