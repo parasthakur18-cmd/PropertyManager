@@ -7102,7 +7102,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("[LOGIN-AS] Failed to create session:", err);
           return res.status(500).json({ message: "Failed to create session" });
         }
-        res.json({ message: "Login as successful", user: targetUser });
+        
+        // Also set the userId in session for compatibility with local auth
+        (req.session as any).userId = targetUser.id;
+        
+        // Force save the session before responding
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[LOGIN-AS] Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Failed to save session" });
+          }
+          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id);
+          res.json({ message: "Login as successful", user: targetUser });
+        });
       });
     } catch (error: any) {
       console.error("[LOGIN-AS] Error:", error);
