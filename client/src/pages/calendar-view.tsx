@@ -243,12 +243,16 @@ export default function CalendarView() {
 
   const getBookingForDate = (roomId: number, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
-    return bookings.find(b => 
-      b.roomId === roomId &&
-      format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
-      format(new Date(b.checkOutDate), "yyyy-MM-dd") > dateStr &&
-      b.status !== "cancelled"
-    );
+    return bookings.find(b => {
+      // Check if room matches (either roomId or in roomIds array for group bookings)
+      const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
+      if (!roomMatches) return false;
+      
+      // Check date range and status
+      return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
+        format(new Date(b.checkOutDate), "yyyy-MM-dd") > dateStr &&
+        b.status !== "cancelled";
+    });
   };
 
   const getBookingsForRoom = (roomId: number) => {
