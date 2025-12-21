@@ -251,6 +251,30 @@ export default function EnhancedMenu() {
 
   function generateCSVTemplate() {
     const headers = ['name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+    
+    // If we have existing menu items, export them as template examples
+    if (menuItems && menuItems.length > 0 && categories && categories.length > 0) {
+      const rows = menuItems.map(item => {
+        const category = categories.find(c => c.id === item.categoryId);
+        return [
+          item.name || '',
+          category?.name || 'Uncategorized',
+          item.price?.toString() || '0',
+          item.description || '',
+          item.isVeg ? 'true' : 'false',
+          item.isAvailable !== false ? 'true' : 'false',
+          '', // Variants would need separate fetch
+          ''  // Add-ons would need separate fetch
+        ];
+      });
+      
+      // Sort by category for easy understanding
+      rows.sort((a, b) => a[1].localeCompare(b[1]));
+      
+      return [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+    }
+    
+    // Fallback: Sample rows if no items exist
     const sampleRows = [
       ['Butter Chicken', 'Main Course', '350', 'Creamy tomato curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
       ['Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese', 'true', 'true', '', 'Extra Sauce:30']
