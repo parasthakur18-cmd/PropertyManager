@@ -8110,10 +8110,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedBooking = await storage.updateBookingStatus(booking.id, "checked-in");
 
       // Send self check-in confirmation email
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+      const property = room ? await storage.getProperty(room.propertyId) : null;
+      
       try {
         const { sendSelfCheckinConfirmationEmail } = await import("./email-service");
-        const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
-        const property = room ? await storage.getProperty(room.propertyId) : null;
         
         if (finalEmail) {
           await sendSelfCheckinConfirmationEmail(
@@ -8127,6 +8128,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } catch (emailError) {
         console.warn(`[EMAIL] Failed to send check-in confirmation:`, emailError);
+      }
+
+      // Send WhatsApp welcome message with menu link
+      try {
+        const { sendWelcomeWithMenuLink } = await import("./whatsapp");
+        const guestPhone = finalPhone || guest.phone;
+        
+        if (guestPhone && property?.id) {
+          // Generate menu link for the property
+          const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+            ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+            : process.env.REPLIT_DOMAINS?.split(',')[0] 
+              ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+              : '';
+          
+          const menuLink = `${baseUrl}/guest/menu/${property.id}?room=${room?.roomNumber || ''}`;
+          
+          await sendWelcomeWithMenuLink(
+            guestPhone,
+            finalFullName || "Guest",
+            property.name || "Our Property",
+            room?.roomNumber || "your room",
+            menuLink
+          );
+          console.log(`[WHATSAPP] Welcome message sent to ${guestPhone} with menu link`);
+        }
+      } catch (whatsappError) {
+        console.warn(`[WHATSAPP] Failed to send welcome message:`, whatsappError);
       }
 
       res.json({ message: "Check-in successful", booking: updatedBooking });
