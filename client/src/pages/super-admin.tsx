@@ -480,15 +480,15 @@ export default function SuperAdmin() {
                     <div className="grid grid-cols-3 gap-4">
                       <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
                         <div className="text-sm text-muted-foreground mb-1">Total Revenue</div>
-                        <div className="text-2xl font-bold text-green-600">₹{dashboardData.summary.totalRevenue.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-green-600">₹{(dashboardData.summary.totalRevenue || 0).toLocaleString()}</div>
                       </div>
                       <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                         <div className="text-sm text-muted-foreground mb-1">Collected</div>
-                        <div className="text-2xl font-bold text-blue-600">₹{dashboardData.summary.paidAmount.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-blue-600">₹{(dashboardData.summary.paidAmount || 0).toLocaleString()}</div>
                       </div>
                       <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
                         <div className="text-sm text-muted-foreground mb-1">Pending</div>
-                        <div className="text-2xl font-bold text-orange-600">₹{dashboardData.summary.pendingAmount.toLocaleString()}</div>
+                        <div className="text-2xl font-bold text-orange-600">₹{(dashboardData.summary.pendingAmount || 0).toLocaleString()}</div>
                       </div>
                     </div>
                   </CardContent>
@@ -528,7 +528,7 @@ export default function SuperAdmin() {
                                 </Badge>
                               </td>
                               <td className="py-3 px-2 text-center">{prop.totalBookings}</td>
-                              <td className="py-3 px-2 text-right font-medium">₹{prop.revenue.toLocaleString()}</td>
+                              <td className="py-3 px-2 text-right font-medium">₹{(prop.revenue || 0).toLocaleString()}</td>
                             </tr>
                           ))}
                         </tbody>
