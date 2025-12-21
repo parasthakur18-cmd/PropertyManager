@@ -894,9 +894,11 @@ export type InsertContactEnquiry = z.infer<typeof insertContactEnquirySchema>;
 export const preBills = pgTable("pre_bills", {
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
-  guestId: integer("guest_id").notNull().references(() => guests.id, { onDelete: 'cascade' }),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  balanceDue: decimal("balance_due", { precision: 10, scale: 2 }),
+  roomNumber: varchar("room_number", { length: 50 }),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
-  preBillAmount: decimal("pre_bill_amount", { precision: 10, scale: 2 }).notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
   approvedAt: timestamp("approved_at"),
   approvedBy: varchar("approved_by", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
@@ -906,6 +908,7 @@ export const preBills = pgTable("pre_bills", {
 export type PreBill = typeof preBills.$inferSelect;
 export const insertPreBillSchema = createInsertSchema(preBills).omit({
   id: true,
+  sentAt: true,
   createdAt: true,
   updatedAt: true,
 });
