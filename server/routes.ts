@@ -411,6 +411,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .map(p => p!.name);
       }
       
+      // Include viewing-as-user flag for super admin banner
+      if ((req.session as any).isViewingAsUser && (req.session as any).originalSuperAdminId) {
+        userWithProperty.isViewingAsUser = true;
+        userWithProperty.originalSuperAdminId = (req.session as any).originalSuperAdminId;
+      }
+      
       res.json(userWithProperty);
     } catch (error) {
       console.error("Error fetching user:", error);
