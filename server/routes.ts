@@ -381,6 +381,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // CHECK VERIFICATION STATUS - Block pending/rejected users (except super-admin)
+      if (user.role !== 'super-admin') {
+        if (user.verificationStatus === 'rejected') {
+          return res.status(403).json({ 
+            message: "Your account has been rejected. Please contact support.",
+            verificationStatus: "rejected",
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+        
+        if (user.verificationStatus === 'pending') {
+          return res.status(403).json({ 
+            message: "Your account is pending approval. You will be notified once approved.",
+            verificationStatus: "pending",
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+      }
+      
       // Include assigned property information if user has any
       let userWithProperty: any = { ...user };
       if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {

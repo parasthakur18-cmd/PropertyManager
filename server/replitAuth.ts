@@ -87,21 +87,33 @@ async function upsertUser(
       }
     }
   } else {
-    // New user - check if first user
+    // New user via Google OAuth - requires Super Admin approval
     const allUsers = await storage.getAllUsers();
     const isFirstUser = allUsers.length === 0;
     
-    const newUser = await storage.upsertUser({
+    // Import db for direct insert with verificationStatus
+    const { db } = await import("./db");
+    const { users } = await import("@shared/schema");
+    
+    // New users get "pending" status unless they're the first user or admin email
+    const shouldAutoApprove = isFirstUser || isAdmin;
+    
+    const [newUser] = await db.insert(users).values({
       id: claims["sub"],
       email: claims["email"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
+      firstName: claims["first_name"] || "",
+      lastName: claims["last_name"] || "",
       profileImageUrl: claims["profile_image_url"],
-      role: (isFirstUser || isAdmin) ? 'admin' : 'staff', // First user or admin emails get admin
-    });
+      role: shouldAutoApprove ? 'admin' : 'staff',
+      status: 'active',
+      verificationStatus: shouldAutoApprove ? 'verified' : 'pending', // KEY: Pending unless auto-approved
+      signupMethod: 'google',
+    }).returning();
+    
+    console.log(`[GOOGLE-AUTH] New user created: ${claims["email"]} - Status: ${shouldAutoApprove ? 'auto-approved' : 'pending approval'}`);
     
     // If new admin user, auto-assign all properties
-    if ((isFirstUser || isAdmin) && newUser.role === 'admin') {
+    if (shouldAutoApprove && newUser.role === 'admin') {
       const allProperties = await storage.getAllProperties();
       const propertyIds = allProperties.map((p: any) => p.id);
       if (propertyIds.length > 0) {

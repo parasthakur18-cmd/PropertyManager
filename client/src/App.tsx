@@ -193,9 +193,10 @@ export default function App() {
 }
 
 function AuthWrapper({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, verificationStatus, pendingUser, message } = useAuth();
   const eventSourceRef = useRef<EventSource | null>(null);
   const [, setForceUpdate] = useState(0);
+  const [, setLocation] = useLocation();
 
   // Development: Auto-login disabled - use normal login flow
   // To enable, uncomment and the app will auto-login in dev mode
@@ -231,6 +232,99 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
 
   // Calculate showDashboard once here to pass to Router
   const showDashboard = isAuthenticated && !isLoading;
+
+  // Show pending approval screen for users awaiting verification
+  if (verificationStatus === "pending" && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-orange-50 dark:from-slate-950 dark:to-orange-950/20 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-800 rounded-lg shadow-lg">
+          <div className="p-6 text-center">
+            <div className="mx-auto w-16 h-16 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Account Pending Approval</h2>
+            <p className="text-slate-600 dark:text-slate-400 mb-4">
+              {message || "Your account is waiting for Super Admin approval."}
+            </p>
+            {pendingUser && (
+              <p className="text-sm text-slate-500 dark:text-slate-500 mb-4">
+                Logged in as: <span className="font-medium">{pendingUser.email}</span>
+              </p>
+            )}
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 mb-4">
+              <h4 className="font-medium text-orange-800 dark:text-orange-300 mb-2">What happens next?</h4>
+              <ul className="text-sm text-orange-700 dark:text-orange-400 space-y-1 text-left">
+                <li>1. Our team will review your application</li>
+                <li>2. You will receive a WhatsApp notification once approved</li>
+                <li>3. Once approved, you can login and manage your property</li>
+              </ul>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  fetch("/api/logout", { method: "POST", credentials: "include" })
+                    .then(() => setLocation("/"));
+                }}
+                className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Sign Out
+              </button>
+              <button
+                onClick={() => setLocation("/")}
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:from-teal-700 hover:to-cyan-700"
+              >
+                Go to Homepage
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show rejected screen
+  if (verificationStatus === "rejected" && !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-red-50 dark:from-slate-950 dark:to-red-950/20 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 rounded-lg shadow-lg">
+          <div className="p-6 text-center">
+            <div className="mx-auto w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mb-4">
+              <svg className="h-8 w-8 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Account Not Approved</h2>
+            <p className="text-slate-600 dark:text-slate-400 mb-4">
+              {message || "Your account application was not approved."}
+            </p>
+            {pendingUser && (
+              <p className="text-sm text-slate-500 dark:text-slate-500 mb-4">
+                Email: <span className="font-medium">{pendingUser.email}</span>
+              </p>
+            )}
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+              <h4 className="font-medium text-red-800 dark:text-red-300 mb-2">Need Help?</h4>
+              <p className="text-sm text-red-700 dark:text-red-400">
+                If you believe this was a mistake, please contact our support team at{" "}
+                <a href="mailto:support@hostezee.in" className="underline">support@hostezee.in</a>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                fetch("/api/logout", { method: "POST", credentials: "include" })
+                  .then(() => setLocation("/"));
+              }}
+              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              Go to Homepage
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // When not authenticated, show public routes with Home page
   if (!isAuthenticated) {
