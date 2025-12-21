@@ -3648,56 +3648,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const item of items) {
         try {
+          // Parse variants from CSV string format: "Name:Price,Name:Price"
+          const parsedVariants: { name: string; priceModifier: string }[] = [];
+          if (item.variants && typeof item.variants === 'string' && item.variants.trim()) {
+            const variantParts = item.variants.split(',');
+            for (const part of variantParts) {
+              const [vName, vPrice] = part.split(':').map((s: string) => s.trim());
+              if (vName && vPrice) {
+                parsedVariants.push({ name: vName, priceModifier: vPrice });
+              }
+            }
+          }
+
+          // Parse add-ons from CSV string format: "Name:Price,Name:Price"
+          const parsedAddOns: { name: string; price: string }[] = [];
+          if (item.addOns && typeof item.addOns === 'string' && item.addOns.trim()) {
+            const addOnParts = item.addOns.split(',');
+            for (const part of addOnParts) {
+              const [aName, aPrice] = part.split(':').map((s: string) => s.trim());
+              if (aName && aPrice) {
+                parsedAddOns.push({ name: aName, price: aPrice });
+              }
+            }
+          }
+
           // Create the menu item
           const menuItemData = {
             propertyId: propertyId || item.propertyId || null,
+            categoryId: item.categoryId || null,
             name: item.name,
             description: item.description || null,
             category: item.category || null,
             price: item.price?.toString() || "0",
+            isVeg: item.isVeg === true,
             isAvailable: item.isAvailable !== false,
             preparationTime: item.preparationTime ? parseInt(item.preparationTime) : null,
-            foodType: item.foodType || null,
-            hasVariants: !!(item.variants && item.variants.length > 0),
-            hasAddOns: !!(item.addOns && item.addOns.length > 0),
+            foodType: item.isVeg ? 'veg' : 'non-veg',
+            hasVariants: parsedVariants.length > 0,
+            hasAddOns: parsedAddOns.length > 0,
             displayOrder: item.displayOrder || 0,
           };
 
           const createdItem = await storage.createMenuItem(menuItemData);
 
-          // Create variants if provided (with validation)
-          if (item.variants && Array.isArray(item.variants)) {
-            for (const variant of item.variants) {
-              if (variant.name) {
-                // Validate variant price modifier is a valid number
-                const priceModifier = parseFloat(variant.priceModifier);
-                if (isNaN(priceModifier)) {
-                  throw new Error(`Invalid price modifier for variant "${variant.name}"`);
-                }
-                await storage.createMenuItemVariant({
-                  menuItemId: createdItem.id,
-                  name: variant.name,
-                  priceModifier: priceModifier.toString(),
-                });
-              }
+          // Create variants if provided
+          for (const variant of parsedVariants) {
+            const priceModifier = parseFloat(variant.priceModifier);
+            if (!isNaN(priceModifier)) {
+              await storage.createMenuItemVariant({
+                menuItemId: createdItem.id,
+                name: variant.name,
+                priceModifier: priceModifier.toString(),
+              });
             }
           }
 
-          // Create add-ons if provided (with validation)
-          if (item.addOns && Array.isArray(item.addOns)) {
-            for (const addOn of item.addOns) {
-              if (addOn.name) {
-                // Validate add-on price is a valid number
-                const price = parseFloat(addOn.price);
-                if (isNaN(price) || price < 0) {
-                  throw new Error(`Invalid price for add-on "${addOn.name}"`);
-                }
-                await storage.createMenuItemAddOn({
-                  menuItemId: createdItem.id,
-                  name: addOn.name,
-                  price: price.toString(),
-                });
-              }
+          // Create add-ons if provided
+          for (const addOn of parsedAddOns) {
+            const price = parseFloat(addOn.price);
+            if (!isNaN(price) && price >= 0) {
+              await storage.createMenuItemAddOn({
+                menuItemId: createdItem.id,
+                name: addOn.name,
+                price: price.toString(),
+              });
             }
           }
 

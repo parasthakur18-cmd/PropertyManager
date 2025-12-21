@@ -229,8 +229,8 @@ export default function EnhancedMenu() {
         errors.push(`Row ${i + 1}: Missing required fields`);
         continue;
       }
-      const [name, category, price, description, isVeg, isAvailable, variants, addOns] = values;
-      if (!name || !category || !price) {
+      const [name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
+      if (!name || !categoryName || !price) {
         errors.push(`Row ${i + 1}: Name, category, and price are required`);
         continue;
       }
@@ -239,11 +239,24 @@ export default function EnhancedMenu() {
         errors.push(`Row ${i + 1}: Invalid price "${price}"`);
         continue;
       }
+      // Find categoryId by matching category name (case-insensitive)
+      const matchedCategory = categories?.find(c => 
+        c.name.toLowerCase().trim() === categoryName.toLowerCase().trim()
+      );
+      if (!matchedCategory) {
+        errors.push(`Row ${i + 1}: Category "${categoryName}" not found. Available: ${categories?.map(c => c.name).join(', ')}`);
+        continue;
+      }
       items.push({
-        name, category, price: parsedPrice, description: description || '',
+        name, 
+        category: categoryName,
+        categoryId: matchedCategory.id,
+        price: parsedPrice, 
+        description: description || '',
         isVeg: isVeg?.toLowerCase() === 'true',
         isAvailable: isAvailable?.toLowerCase() !== 'false',
-        variants: variants || '', addOns: addOns || ''
+        variants: variants || '', 
+        addOns: addOns || ''
       });
     }
     return { items, errors };
