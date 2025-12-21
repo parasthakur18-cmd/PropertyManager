@@ -763,10 +763,14 @@ export default function Menu() {
           </SheetHeader>
           
           <div className="mt-6 space-y-6">
-            {/* Base Item Price */}
+            {/* Base Item Price - shows variant price when selected, otherwise item base price */}
             <div className="flex items-center justify-between pb-4 border-b">
-              <span className="font-medium">Base Price</span>
-              <span className="font-mono text-lg">₹{selectedItem?.price}</span>
+              <span className="font-medium">{selectedVariant ? `Price (${selectedVariant.variantName})` : 'Base Price'}</span>
+              <span className="font-mono text-lg">
+                ₹{selectedVariant 
+                  ? (selectedVariant.discountedPrice || selectedVariant.actualPrice) 
+                  : selectedItem?.price}
+              </span>
             </div>
 
             {/* Variants Selection */}
@@ -874,8 +878,12 @@ export default function Menu() {
             {/* Total Price Preview */}
             <div className="pt-4 border-t">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm">Base Price</span>
-                <span className="font-mono">₹{selectedItem?.price || "0"}</span>
+                <span className="text-sm">{selectedVariant ? `${selectedVariant.variantName}` : 'Base Price'}</span>
+                <span className="font-mono">
+                  ₹{selectedVariant 
+                    ? (selectedVariant.discountedPrice || selectedVariant.actualPrice) 
+                    : (selectedItem?.price || "0")}
+                </span>
               </div>
               {selectedAddOns.length > 0 && (
                 <>
@@ -890,10 +898,13 @@ export default function Menu() {
               <div className="flex items-center justify-between mt-3 pt-3 border-t">
                 <span className="font-semibold">Total</span>
                 <span className="font-mono text-lg font-semibold">
-                  ₹{selectedItem ? (
-                    parseFloat(selectedItem.price as string) + 
-                    selectedAddOns.reduce((sum, a) => sum + (parseFloat(a.price) * a.quantity), 0)
-                  ).toFixed(2) : "0.00"}
+                  ₹{(() => {
+                    const basePrice = selectedVariant 
+                      ? parseFloat(selectedVariant.discountedPrice || selectedVariant.actualPrice)
+                      : parseFloat(selectedItem?.price as string || "0");
+                    const addOnsTotal = selectedAddOns.reduce((sum, a) => sum + (parseFloat(a.price) * a.quantity), 0);
+                    return (basePrice + addOnsTotal).toFixed(2);
+                  })()}
                 </span>
               </div>
             </div>
