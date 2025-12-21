@@ -274,16 +274,25 @@ export default function Bookings() {
   };
 
   // Composed helper: get rooms filtered by availability, booking type, and selected property
-  const getRoomsForBookingType = (type: "single" | "group" | "dormitory", options: { isEditMode?: boolean; propertyId?: number } = {}) => {
+  const getRoomsForBookingType = (type: "single" | "group" | "dormitory", options: { isEditMode?: boolean; propertyId?: number; includeRoomIds?: number[] } = {}) => {
     const availableRooms = getAvailableRooms(options.isEditMode || false);
     const byType = filterRoomsByBookingType(availableRooms, type);
     
     // Filter by selected property if provided
     const propertyFilter = options.propertyId ?? selectedPropertyId;
-    if (propertyFilter) {
-      return byType.filter(room => room.propertyId === propertyFilter);
+    let filtered = propertyFilter ? byType.filter(room => room.propertyId === propertyFilter) : byType;
+    
+    // In edit mode, also include currently selected rooms that might not be in the available list
+    if (options.includeRoomIds && options.includeRoomIds.length > 0 && rooms) {
+      const additionalRooms = rooms.filter(r => 
+        options.includeRoomIds!.includes(r.id) && 
+        !filtered.find(f => f.id === r.id) &&
+        (!propertyFilter || r.propertyId === propertyFilter)
+      );
+      filtered = [...filtered, ...additionalRooms];
     }
-    return byType;
+    
+    return filtered;
   };
 
   // NEW: Fetch bed inventory for selected dormitory room
@@ -2280,10 +2289,10 @@ export default function Bookings() {
                             <th className="p-2 text-left text-xs font-medium">
                               <input
                                 type="checkbox"
-                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).length > 0}
+                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).length > 0}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).map(r => r.id));
+                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).map(r => r.id));
                                   } else {
                                     setEditSelectedRoomIds([]);
                                   }
@@ -2298,7 +2307,7 @@ export default function Bookings() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId }).map((room) => {
+                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editSelectedRoomIds }).map((room) => {
                             const property = properties?.find(p => p.id === room.propertyId);
                             const isSelected = editSelectedRoomIds.includes(room.id);
                             const roomDescription = room.roomType || "Standard";
