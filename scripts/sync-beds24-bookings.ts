@@ -1,7 +1,7 @@
 import { format, addDays, subDays } from "date-fns";
 import { db } from "../server/db";
 import { bookings, guests, rooms } from "../shared/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, sql, ne, or, gte, lte, lt, gt } from "drizzle-orm";
 
 const BEDS24_API_URL = "https://beds24.com/api/json";
 
@@ -30,6 +30,60 @@ interface Beds24Booking {
   apiReference: string;
 }
 
+interface RoomMapping {
+  beds24_room_id: string;
+  room_type: string;
+}
+
+async function getRoomMappings(propertyId: number): Promise<RoomMapping[]> {
+  const result = await db.execute(sql`
+    SELECT beds24_room_id, room_type 
+    FROM beds24_room_mappings 
+    WHERE property_id = ${propertyId}
+  `);
+  return result.rows as RoomMapping[];
+}
+
+async function findAvailableRoom(
+  propertyId: number,
+  roomType: string,
+  checkInDate: string,
+  checkOutDate: string,
+  propertyRooms: any[]
+): Promise<number | null> {
+  // Get rooms of this type
+  const roomsOfType = propertyRooms.filter(r => r.roomType === roomType);
+  
+  if (roomsOfType.length === 0) {
+    console.log(`[SYNC] No rooms found for type: ${roomType}`);
+    return propertyRooms.length > 0 ? propertyRooms[0].id : null;
+  }
+
+  // Check each room for availability
+  for (const room of roomsOfType) {
+    const conflictingBookings = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          eq(bookings.roomId, room.id),
+          // Check for date overlap
+          lt(bookings.checkInDate, checkOutDate),
+          gt(bookings.checkOutDate, checkInDate)
+        )
+      )
+      .limit(1);
+
+    if (conflictingBookings.length === 0) {
+      return room.id;
+    }
+  }
+
+  // No available room of this type, return first room of type anyway
+  console.log(`[SYNC] All ${roomType} rooms occupied for ${checkInDate}-${checkOutDate}, using first available`);
+  return roomsOfType[0].id;
+}
+
 async function syncBeds24Bookings() {
   const apiKey = process.env.BEDS24_API_KEY;
   const propKey = "propertykey123456789987654321";
@@ -41,6 +95,10 @@ async function syncBeds24Bookings() {
   }
 
   console.log("[SYNC] Starting Beds24 sync for property", propertyId);
+
+  // Get room mappings
+  const roomMappings = await getRoomMappings(propertyId);
+  console.log(`[SYNC] Loaded ${roomMappings.length} room mappings`);
 
   const today = new Date();
   const thirtyDaysAgo = subDays(today, 30);
@@ -115,13 +173,24 @@ async function syncBeds24Bookings() {
         }
       }
 
-      const roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+      // Find room type from mapping
+      const mapping = roomMappings.find(m => m.beds24_room_id === b24Booking.roomId);
+      const roomType = mapping?.room_type || null;
 
       const checkInDate = b24Booking.firstNight;
       const checkOutDate = format(addDays(new Date(b24Booking.lastNight), 1), "yyyy-MM-dd");
 
-      const numGuests = parseInt(b24Booking.numAdult || "1") + parseInt(b24Booking.numChild || "0");
+      // Find available room of the correct type
+      let roomId: number | null = null;
+      if (roomType) {
+        roomId = await findAvailableRoom(propertyId, roomType, checkInDate, checkOutDate, propertyRooms);
+        console.log(`[SYNC] Mapped Beds24 room ${b24Booking.roomId} → ${roomType} → Room ID ${roomId}`);
+      } else {
+        roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+        console.log(`[SYNC] No mapping for Beds24 room ${b24Booking.roomId}, using default`);
+      }
 
+      const numGuests = parseInt(b24Booking.numAdult || "1") + parseInt(b24Booking.numChild || "0");
       const source = b24Booking.referer || "Beds24";
 
       await db.insert(bookings).values({
@@ -141,7 +210,7 @@ async function syncBeds24Bookings() {
 
       synced++;
       console.log(
-        `[SYNC] Imported: ${guestName} | ${checkInDate} - ${checkOutDate} | ${source} | ₹${b24Booking.price}`
+        `[SYNC] Imported: ${guestName} | ${checkInDate} - ${checkOutDate} | ${roomType || 'Unknown'} | ₹${b24Booking.price}`
       );
     } catch (err: any) {
       console.error(`[SYNC] Error syncing booking ${b24Booking.bookId}:`, err.message);
