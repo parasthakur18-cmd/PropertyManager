@@ -398,6 +398,97 @@ export async function sendWelcomeWithMenuLink(
 }
 
 /**
+ * Send advance payment request WhatsApp message
+ * Template ID: 22226 (pending_payment)
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Check-in Date
+ * 3. Check-out Date
+ * 4. Property Name
+ * 5. Advance Amount
+ * 6. Payment Link
+ */
+export async function sendAdvancePaymentRequest(
+  phoneNumber: string,
+  guestName: string,
+  checkInDate: string,
+  checkOutDate: string,
+  propertyName: string,
+  advanceAmount: string,
+  paymentLink: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_ADVANCE_PAYMENT || "22226";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, checkInDate, checkOutDate, propertyName, advanceAmount, paymentLink],
+  });
+}
+
+/**
+ * Send advance payment confirmation WhatsApp message
+ * Template ID: 18649 (payment_confirmation)
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Amount Paid
+ * 3. Property Name
+ */
+export async function sendAdvancePaymentConfirmation(
+  phoneNumber: string,
+  guestName: string,
+  amountPaid: string,
+  propertyName: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_ADVANCE_CONFIRMATION || "18649";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, amountPaid, propertyName],
+  });
+}
+
+/**
+ * Send payment reminder WhatsApp message
+ * Template ID: 18489 (payment_reminder)
+ * 
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Advance Amount
+ * 3. Property Name
+ * 4. Check-in Date
+ * 5. Check-out Date
+ */
+export async function sendPaymentReminder(
+  phoneNumber: string,
+  guestName: string,
+  advanceAmount: string,
+  propertyName: string,
+  checkInDate: string,
+  checkOutDate: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_PAYMENT_REMINDER || "18489";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, advanceAmount, propertyName, checkInDate, checkOutDate],
+  });
+}
+
+/**
  * Send custom WhatsApp message with custom template and variables
  * 
  * @param phoneNumber - Indian phone number (will be cleaned and formatted)
