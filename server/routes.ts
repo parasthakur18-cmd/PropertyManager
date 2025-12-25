@@ -519,8 +519,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Check if user has unlimited access (super-admin or admin)
-      const hasUnlimitedAccess = currentUser.role === 'super-admin' || currentUser.role === 'admin';
+      // Check if user has unlimited access (only super-admin)
+      const hasUnlimitedAccess = currentUser.role === 'super-admin';
       
       // Security: Non-admin users with no assigned properties should see empty data
       if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
@@ -575,9 +575,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
       }
       
-      const hasUnlimitedAccess = currentUser.role === 'super-admin' || currentUser.role === 'admin';
+      const hasUnlimitedAccess = currentUser.role === 'super-admin';
       
-      // Security: Non-admin with no properties sees empty data
+      // Security: Non-super-admin with no properties sees empty data
       if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
         return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
       }
