@@ -339,10 +339,12 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Hide main sidebar on super admin pages (they have their own sidebar)
+  // Hide main sidebar on super admin pages (they have their own sidebar) and public pages
   // Use window.location.pathname instead of wouter location to get real-time updates
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isSuperAdminPage = currentPath.startsWith('/super-admin');
+  const isPublicGuestPage = currentPath === '/menu' || currentPath === '/customer-menu' || 
+    currentPath.startsWith('/guest-self-checkin') || currentPath.startsWith('/guest/prebill');
 
   // Return to super admin function
   const handleReturnToAdmin = async () => {
@@ -364,6 +366,16 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       setIsReturningToAdmin(false);
     }
   };
+
+  // For public guest pages, render without sidebar/header
+  if (isPublicGuestPage) {
+    return (
+      <>
+        <Router showDashboard={showDashboard} />
+        {children}
+      </>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full">
