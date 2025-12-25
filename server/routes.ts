@@ -9100,9 +9100,11 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         propertyIds.includes(issue.propertyId) && !issue.isResolved
       ).length;
 
-      // Count pending bills
+      // Count pending bills (filtered by property access)
       const allBills = await storage.getAllBills();
-      const pendingBills = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+      const pendingBills = allBills.filter((b: any) => 
+        propertyIds.includes(b.propertyId) && b.paymentStatus === "pending"
+      ).length;
 
       res.json({
         cleaningRooms,
