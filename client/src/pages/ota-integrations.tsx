@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const OTA_LIST = [
+  { value: "beds24", label: "Beds24 Channel Manager" },
   { value: "booking.com", label: "Booking.com" },
   { value: "mmt", label: "MMT (Make My Trip)" },
   { value: "airbnb", label: "Airbnb" },
@@ -102,7 +103,10 @@ export default function OtaIntegrations() {
   });
 
   const syncMutation = useMutation({
-    mutationFn: async (integrationId: number) => {
+    mutationFn: async ({ integrationId, otaName }: { integrationId: number; otaName: string }) => {
+      if (otaName === "beds24") {
+        return await apiRequest(`/api/beds24/sync/${integrationId}`, "POST", {});
+      }
       return await apiRequest(`/api/ota/sync/${integrationId}`, "POST", {});
     },
     onSuccess: (data: any) => {
@@ -200,15 +204,22 @@ export default function OtaIntegrations() {
                       </div>
 
                       <div>
-                        <Label htmlFor="api-key">API Key</Label>
+                        <Label htmlFor="api-key">
+                          {selectedOta === "beds24" ? "Property Key (propKey)" : "API Key"}
+                        </Label>
                         <Input
                           id="api-key"
                           type={showKeys ? "text" : "password"}
-                          placeholder="Your API Key"
+                          placeholder={selectedOta === "beds24" ? "Your Beds24 Property Key" : "Your API Key"}
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
                           data-testid="input-api-key-ota"
                         />
+                        {selectedOta === "beds24" && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Find in Beds24: Settings &gt; Properties &gt; Access &gt; Property Key
+                          </p>
+                        )}
                       </div>
 
                       <div>
@@ -266,8 +277,14 @@ export default function OtaIntegrations() {
                               </Badge>
                             </div>
                             <p className="text-sm text-muted-foreground mb-2">
-                              ID: {integration.propertyId_external}
+                              ID: {integration.propertyId_external || integration.apiKey?.substring(0, 8) + "..."}
                             </p>
+                            {integration.otaName === "beds24" && (
+                              <div className="mt-2 p-2 bg-muted rounded text-xs">
+                                <p className="font-medium">Webhook URL (for Beds24):</p>
+                                <code className="text-xs break-all">{window.location.origin}/api/beds24/webhook</code>
+                              </div>
+                            )}
                             {integration.lastSyncAt && (
                               <p className="text-xs text-muted-foreground">
                                 Last sync: {new Date(integration.lastSyncAt).toLocaleString()}
@@ -284,11 +301,11 @@ export default function OtaIntegrations() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => syncMutation.mutate(integration.id)}
+                              onClick={() => syncMutation.mutate({ integrationId: integration.id, otaName: integration.otaName })}
                               disabled={syncMutation.isPending}
                               data-testid={`button-sync-${integration.id}`}
                             >
-                              Sync Now
+                              {integration.otaName === "beds24" ? "Sync Beds24" : "Sync Now"}
                             </Button>
                             <Button
                               size="sm"
