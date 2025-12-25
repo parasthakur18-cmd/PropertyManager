@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -529,6 +529,27 @@ export default function ActiveBookings() {
     },
   });
 
+  const confirmAdvancePaymentMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/confirm-advance-payment`, "POST", { sendWhatsApp: true });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      toast({
+        title: "Payment Confirmed",
+        description: `Advance payment of ₹${data.advanceAmount?.toLocaleString('en-IN') || ''} confirmed. Booking is now active.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Confirm Payment",
+        description: error.message || "Unable to confirm advance payment",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleMergeSingleOrder = (orderId: number) => {
     if (!checkoutDialog.booking) return;
     mergeCafeOrdersMutation.mutate({
@@ -979,26 +1000,39 @@ export default function ActiveBookings() {
                 )}
 
                 {booking.status === "pending_advance" && (
-                  <div className="pt-3 border-t flex gap-2">
+                  <div className="pt-3 border-t space-y-2">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                        disabled={sendAdvancePaymentMutation.isPending}
+                        data-testid={`button-resend-payment-${booking.id}`}
+                      >
+                        <Phone className="h-4 w-4 mr-2" />
+                        {sendAdvancePaymentMutation.isPending ? "Sending..." : "Resend Link"}
+                      </Button>
+                      <Button
+                        variant="default"
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                        disabled={confirmAdvancePaymentMutation.isPending}
+                        data-testid={`button-confirm-payment-${booking.id}`}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        {confirmAdvancePaymentMutation.isPending ? "Confirming..." : "Payment Received"}
+                      </Button>
+                    </div>
                     <Button
-                      variant="outline"
-                      className="flex-1"
-                      onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                      disabled={sendAdvancePaymentMutation.isPending}
-                      data-testid={`button-resend-payment-${booking.id}`}
-                    >
-                      <Phone className="h-4 w-4 mr-2" />
-                      {sendAdvancePaymentMutation.isPending ? "Sending..." : "Resend Payment Link"}
-                    </Button>
-                    <Button
-                      variant="default"
-                      className="flex-1"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-muted-foreground"
                       onClick={() => confirmBookingMutation.mutate({ bookingId: booking.id })}
                       disabled={confirmBookingMutation.isPending}
-                      data-testid={`button-confirm-booking-${booking.id}`}
+                      data-testid={`button-skip-advance-${booking.id}`}
                     >
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      {confirmBookingMutation.isPending ? "Confirming..." : "Confirm Booking"}
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {confirmBookingMutation.isPending ? "..." : "Skip Advance (Walk-in)"}
                     </Button>
                   </div>
                 )}

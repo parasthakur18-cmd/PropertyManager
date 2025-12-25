@@ -2968,6 +2968,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manually confirm advance payment received (for testing when webhook not working)
+  // This triggers the same confirmation flow as the webhook
+  app.post("/api/bookings/:id/confirm-advance-payment", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { sendWhatsApp = true } = req.body;
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      if (booking.status !== "pending_advance") {
+        return res.status(400).json({ message: "Booking is not pending advance payment" });
+      }
+      
+      const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0");
+      
+      // Update booking status to confirmed and mark advance as paid
+      await db.update(bookings).set({
+        status: "confirmed",
+        advancePaymentStatus: "paid",
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      console.log(`[ADVANCE PAYMENT] Booking #${bookingId} manually confirmed - advance payment marked as received`);
+      
+      // Send WhatsApp confirmation to guest (same as webhook flow)
+      if (sendWhatsApp) {
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        if (guest && guest.phone) {
+          try {
+            await sendAdvancePaymentConfirmation(
+              guest.phone,
+              guest.fullName || "Guest",
+              `₹${advanceAmount.toLocaleString('en-IN')}`,
+              property?.name || "Hotel"
+            );
+            console.log(`[ADVANCE PAYMENT] Confirmation WhatsApp sent to ${guest.fullName}`);
+          } catch (whatsappError: any) {
+            console.error(`[ADVANCE PAYMENT] WhatsApp failed:`, whatsappError.message);
+          }
+        }
+      }
+      
+      // Create notification for admins
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "payment_received",
+            title: "Advance Payment Confirmed",
+            message: `Booking #${bookingId} confirmed! Advance of ₹${advanceAmount.toLocaleString('en-IN')} received from ${guest?.fullName || 'Guest'}`,
+            soundType: "payment",
+            relatedId: bookingId,
+            relatedType: "booking",
+          });
+        }
+      } catch (notifError: any) {
+        console.error(`[ADVANCE PAYMENT] Notification error:`, notifError.message);
+      }
+      
+      res.json({
+        success: true,
+        message: "Advance payment confirmed - booking is now confirmed",
+        bookingId,
+        advanceAmount,
+        newStatus: "confirmed"
+      });
+    } catch (error: any) {
+      console.error("Confirm advance payment error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm advance payment" });
+    }
+  });
+
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
@@ -9879,8 +9959,17 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       
       let remindersCount = 0;
       let cancelledCount = 0;
+      let skippedCount = 0;
       
       for (const booking of pendingBookings) {
+        // Check if payment reminders are enabled for this property
+        const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
+        const settings = settingsResult[0];
+        
+        if (settings && settings.paymentReminders === false) {
+          skippedCount++;
+          continue; // Skip reminders if disabled for this property
+        }
         const createdAt = booking.createdAt ? new Date(booking.createdAt) : now;
         const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
         const reminderCount = booking.reminderCount || 0;
