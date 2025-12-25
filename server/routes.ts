@@ -8826,12 +8826,8 @@ Be helpful, professional, and concise. If a user asks about something outside yo
     try {
       const { propertyId, otaName, propertyId_external, apiKey, apiSecret, credentials } = req.body;
       
-      if (!propertyId || !otaName || !propertyId_external) {
-        return res.status(400).json({ message: "Property ID, OTA Name, and External Property ID required" });
-      }
-
-      if (!apiKey && !apiSecret && !credentials) {
-        return res.status(400).json({ message: "At least one credential field is required" });
+      if (!propertyId || !otaName) {
+        return res.status(400).json({ message: "Property ID and OTA Name required" });
       }
 
       const property = await storage.getProperty(propertyId);
@@ -8841,10 +8837,12 @@ Be helpful, professional, and concise. If a user asks about something outside yo
 
       const integration = await storage.createOtaIntegration({
         propertyId,
-        otaPlatform: otaName,
+        otaName: otaName,
+        propertyIdExternal: propertyId_external || apiKey,
         apiKey,
         apiSecret,
-        isActive: true,
+        credentials,
+        enabled: true,
       });
 
       res.json({ success: true, message: `${otaName} integration saved`, integration });
@@ -9560,29 +9558,6 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     }
   });
 
-  app.post("/api/ota/integrations", isAuthenticated, async (req: any, res) => {
-    try {
-      const { propertyId, otaName, propertyId_external, apiKey, apiSecret } = req.body;
-      
-      if (!propertyId || !otaName || !propertyId_external) {
-        return res.status(400).json({ message: "Property ID, OTA name, and external property ID required" });
-      }
-
-      const integration = await storage.createOtaIntegration({
-        propertyId: parseInt(propertyId),
-        otaName,
-        propertyId_external,
-        apiKey: apiKey || null,
-        apiSecret: apiSecret || null,
-        enabled: true,
-      });
-
-      res.json(integration);
-    } catch (error: any) {
-      console.error("[OTA] POST integration error:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
 
   app.delete("/api/ota/integrations/:id", isAuthenticated, async (req: any, res) => {
     try {
