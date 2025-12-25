@@ -4,6 +4,7 @@
 Hostezee is a comprehensive, multi-property management system designed for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and aims to be the easiest PMS globally to operate, targeting significant market share. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management.
 
 ## Recent Updates
+- **December 25, 2025**: Implemented Beds24 Channel Manager integration with two-way booking sync. Features include: pull bookings from Beds24 API, webhook endpoint for real-time booking notifications, automatic guest creation, external booking ID tracking, and integration UI in OTA Integrations page with Property Key configuration and webhook URL display.
 - **December 25, 2025**: Implemented complete advance payment booking confirmation system. Features include: configurable advance payment percentage (default 30%) and expiry hours (default 24h) per property, Razorpay payment link generation with auto-expiry, background job to auto-expire pending bookings every 15 minutes, WhatsApp notifications for payment requests, webhook auto-confirmation on payment, and admin UI with color-coded status badges (Awaiting Payment, Confirmed, Expired) plus manual actions (Resend Payment Link, Confirm Booking).
 - **December 6, 2025**: Integrated Agent Mail email service for transactional emails (bookings, payments, password resets, expense notifications, vendor payments). Database schema verified with all accounting tables (vendors, expenses, leases) now synced.
 - **December 5, 2025**: Fixed property visibility issue - admin users now automatically get assigned to all properties on login. Mobile vendor form now scrollable for all screen sizes.
@@ -83,3 +84,4 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **OpenAI GPT-4o-mini**: Chatbot assistant via Replit AI.
 -   **RazorPay**: Payment processing and payment link generation with webhook support.
 -   **Agent Mail**: Transactional email service for booking confirmations, payment notifications, expense alerts, and password reset emails.
+-   **Beds24**: Channel Manager API for OTA booking synchronization. Uses API v1 (JSON) with apiKey + propKey authentication. Webhook endpoint: `/api/beds24/webhook`.
