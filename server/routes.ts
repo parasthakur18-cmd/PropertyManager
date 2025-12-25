@@ -59,6 +59,14 @@ import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
+  fetchBeds24Bookings, 
+  getBeds24Properties, 
+  getBeds24Rooms, 
+  testBeds24Connection, 
+  convertBeds24ToHostezee,
+  parseBeds24WebhookPayload 
+} from "./beds24";
+import { 
   getTenantContext, 
   filterByPropertyAccess, 
   filterPropertiesByAccess, 
@@ -9614,6 +9622,234 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     } catch (error: any) {
       console.error("[OTA] POST sync error:", error);
       await storage.updateOtaIntegrationSyncStatus(parseInt(req.params.id), new Date(), error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== BEDS24 CHANNEL MANAGER ROUTES =====
+
+  // Beds24 webhook endpoint (public - no auth required)
+  app.post("/api/beds24/webhook", async (req, res) => {
+    try {
+      console.log("[BEDS24-WEBHOOK] Received webhook:", JSON.stringify(req.body));
+      
+      const parsed = parseBeds24WebhookPayload(req.body);
+      if (!parsed) {
+        console.log("[BEDS24-WEBHOOK] Invalid payload");
+        return res.status(400).json({ message: "Invalid payload" });
+      }
+
+      console.log(`[BEDS24-WEBHOOK] Action: ${parsed.action}, BookingId: ${parsed.bookingId}`);
+
+      // Find the integration by property ID
+      const allIntegrations = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.otaPlatform, "beds24"));
+      
+      if (allIntegrations.length === 0) {
+        console.log("[BEDS24-WEBHOOK] No Beds24 integrations found");
+        return res.status(200).json({ message: "No integration found" });
+      }
+
+      // Check if booking already exists
+      const existingBooking = await db.select().from(bookings)
+        .where(and(
+          eq(bookings.externalBookingId, parsed.bookingId),
+          eq(bookings.externalSource, "beds24")
+        ))
+        .limit(1);
+
+      if (existingBooking.length > 0) {
+        console.log(`[BEDS24-WEBHOOK] Booking ${parsed.bookingId} already exists, skipping`);
+        return res.status(200).json({ message: "Booking already exists" });
+      }
+
+      // For new bookings, we'll need to fetch full details via API
+      // Store webhook event for manual sync
+      console.log(`[BEDS24-WEBHOOK] New booking notification received for ${parsed.bookingId}`);
+      
+      res.status(200).json({ 
+        message: "Webhook received",
+        bookingId: parsed.bookingId,
+        action: parsed.action 
+      });
+    } catch (error: any) {
+      console.error("[BEDS24-WEBHOOK] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Test Beds24 connection
+  app.post("/api/beds24/test-connection", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propKey } = req.body;
+      
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key (propKey) is required" });
+      }
+
+      const result = await testBeds24Connection(propKey);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[BEDS24] Test connection error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Sync bookings from Beds24
+  app.post("/api/beds24/sync/:integrationId", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
+      const { dateFrom, dateTo } = req.body;
+      
+      // Get integration details
+      const integration = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.id, integrationId))
+        .limit(1);
+      
+      if (integration.length === 0) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      const { propertyId, apiKey } = integration[0] as any;
+      const propKey = apiKey; // The apiKey field stores the propKey for Beds24
+
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key not configured for this integration" });
+      }
+
+      console.log(`[BEDS24] Syncing bookings for property ${propertyId}`);
+
+      // Fetch bookings from Beds24
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const ninetyDaysAhead = new Date(today);
+      ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
+
+      const beds24Bookings = await fetchBeds24Bookings(propKey, {
+        arrivalFrom: dateFrom || format(thirtyDaysAgo, "yyyy-MM-dd"),
+        arrivalTo: dateTo || format(ninetyDaysAhead, "yyyy-MM-dd"),
+      });
+
+      let synced = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const b24Booking of beds24Bookings) {
+        try {
+          // Check if already exists
+          const existing = await db.select().from(bookings)
+            .where(and(
+              eq(bookings.externalBookingId, b24Booking.bookId),
+              eq(bookings.externalSource, "beds24")
+            ))
+            .limit(1);
+
+          if (existing.length > 0) {
+            skipped++;
+            continue;
+          }
+
+          // Convert and create booking
+          const converted = convertBeds24ToHostezee(b24Booking);
+          
+          // Create or find guest
+          let guestId: number | null = null;
+          if (converted.guestData.phone || converted.guestData.email) {
+            const existingGuest = await db.select().from(guests)
+              .where(and(
+                eq(guests.propertyId, propertyId),
+                or(
+                  converted.guestData.phone ? eq(guests.phone, converted.guestData.phone) : sql`false`,
+                  converted.guestData.email ? eq(guests.email, converted.guestData.email) : sql`false`
+                )
+              ))
+              .limit(1);
+
+            if (existingGuest.length > 0) {
+              guestId = existingGuest[0].id;
+            } else {
+              const newGuest = await db.insert(guests).values({
+                propertyId,
+                fullName: converted.guestData.fullName,
+                email: converted.guestData.email || null,
+                phone: converted.guestData.phone || null,
+                address: converted.guestData.address || null,
+                nationality: converted.guestData.country || null,
+              }).returning();
+              guestId = newGuest[0].id;
+            }
+          }
+
+          // Get first room for property (can be mapped later)
+          const propertyRooms = await db.select().from(rooms)
+            .where(eq(rooms.propertyId, propertyId))
+            .limit(1);
+          
+          const roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+
+          // Create the booking
+          await db.insert(bookings).values({
+            propertyId,
+            roomId,
+            guestId,
+            checkInDate: format(converted.bookingData.checkInDate, "yyyy-MM-dd"),
+            checkOutDate: format(converted.bookingData.checkOutDate, "yyyy-MM-dd"),
+            numberOfGuests: converted.bookingData.numberOfGuests,
+            status: "confirmed",
+            totalAmount: converted.bookingData.totalAmount,
+            source: converted.bookingData.source,
+            externalBookingId: converted.bookingData.externalBookingId,
+            externalSource: "beds24",
+          });
+
+          synced++;
+          console.log(`[BEDS24] Synced booking ${b24Booking.bookId}`);
+        } catch (err: any) {
+          console.error(`[BEDS24] Error syncing booking ${b24Booking.bookId}:`, err.message);
+          errors++;
+        }
+      }
+
+      // Update sync status
+      await storage.updateOtaIntegrationSyncStatus(integrationId, new Date());
+
+      res.json({
+        success: true,
+        message: `Sync completed`,
+        bookingsFound: beds24Bookings.length,
+        synced,
+        skipped,
+        errors,
+      });
+    } catch (error: any) {
+      console.error("[BEDS24] Sync error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get Beds24 rooms for mapping
+  app.get("/api/beds24/rooms/:integrationId", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
+      
+      const integration = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.id, integrationId))
+        .limit(1);
+      
+      if (integration.length === 0) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      const propKey = (integration[0] as any).apiKey;
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key not configured" });
+      }
+
+      const rooms = await getBeds24Rooms(propKey);
+      res.json(rooms);
+    } catch (error: any) {
+      console.error("[BEDS24] Get rooms error:", error);
       res.status(500).json({ message: error.message });
     }
   });

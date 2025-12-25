@@ -228,6 +228,9 @@ export const bookings = pgTable("bookings", {
   // Payment reminder tracking
   reminderCount: integer("reminder_count").default(0),
   lastReminderAt: timestamp("last_reminder_at"),
+  // External booking integration (Beds24, etc.)
+  externalBookingId: varchar("external_booking_id", { length: 100 }),
+  externalSource: varchar("external_source", { length: 50 }),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
