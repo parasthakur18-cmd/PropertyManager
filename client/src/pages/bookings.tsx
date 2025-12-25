@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
@@ -579,6 +579,26 @@ export default function Bookings() {
       toast({
         title: "Error",
         description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const sendAdvancePaymentMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/send-advance-payment`, "POST");
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      toast({
+        title: "Payment Link Sent",
+        description: data.message || "Advance payment link sent via WhatsApp",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Send Payment Link",
+        description: error.message || "Unable to send payment link",
         variant: "destructive",
       });
     },
@@ -1754,6 +1774,19 @@ export default function Bookings() {
                                 <SelectItem value="cancelled">Cancelled</SelectItem>
                               </SelectContent>
                             </Select>
+                            {(booking.status === "pending" || booking.status === "confirmed") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                disabled={sendAdvancePaymentMutation.isPending}
+                                title="Send payment link via WhatsApp"
+                                data-testid={`button-send-payment-${booking.id}`}
+                              >
+                                <CreditCard className="h-4 w-4 mr-1" />
+                                {sendAdvancePaymentMutation.isPending ? "..." : "Pay Link"}
+                              </Button>
+                            )}
                             <Button
                               size="icon"
                               variant="ghost"
