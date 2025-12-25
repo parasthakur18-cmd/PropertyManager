@@ -2850,6 +2850,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send advance payment request for a booking
+  app.post("/api/bookings/:id/send-advance-payment", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { customAmount } = req.body; // Optional custom advance amount
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number is required to send payment link" });
+      }
+      
+      // Get feature settings for advance payment configuration
+      const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
+      const settings = settingsResult[0];
+      
+      // Calculate advance amount
+      let advanceAmount = customAmount;
+      if (!advanceAmount) {
+        const percentage = settings?.advancePaymentPercentage ? parseFloat(settings.advancePaymentPercentage) : 30;
+        const totalAmount = parseFloat(booking.totalAmount || "0");
+        advanceAmount = (totalAmount * percentage) / 100;
+      }
+      
+      if (advanceAmount <= 0) {
+        return res.status(400).json({ message: "Invalid advance amount. Total booking amount must be greater than zero." });
+      }
+      
+      // Get expiry hours from settings
+      const expiryHours = settings?.advancePaymentExpiryHours || 24;
+      
+      // Import and create advance payment link
+      const { createAdvancePaymentLink } = await import("./razorpay");
+      const paymentLink = await createAdvancePaymentLink(
+        bookingId,
+        advanceAmount,
+        guest.fullName || "Guest",
+        guest.email || "",
+        guest.phone,
+        expiryHours
+      );
+      
+      // Update booking with payment link info
+      await db.update(bookings).set({
+        status: "pending_advance",
+        advancePaymentStatus: "pending",
+        paymentLinkId: paymentLink.linkId,
+        paymentLinkUrl: paymentLink.shortUrl,
+        paymentLinkExpiry: paymentLink.expiryTimestamp,
+        advanceAmount: advanceAmount.toString(),
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      // Send WhatsApp message with payment link
+      const property = await storage.getProperty(booking.propertyId);
+      const templateId = "19892"; // Payment link template
+      await sendCustomWhatsAppMessage(
+        guest.phone,
+        templateId,
+        [guest.fullName || "Guest", `₹${advanceAmount.toFixed(2)}`, paymentLink.shortUrl]
+      );
+      
+      console.log(`[ADVANCE PAYMENT] Payment link sent to ${guest.fullName} for booking #${bookingId}, amount: ₹${advanceAmount}`);
+      
+      res.json({
+        success: true,
+        message: "Advance payment request sent via WhatsApp",
+        paymentLinkUrl: paymentLink.shortUrl,
+        advanceAmount: advanceAmount,
+        expiryHours: expiryHours,
+        bookingStatus: "pending_advance"
+      });
+    } catch (error: any) {
+      console.error("Send advance payment error:", error);
+      res.status(500).json({ message: error.message || "Failed to send advance payment request" });
+    }
+  });
+
+  // Manually confirm a booking (skip advance payment)
+  app.post("/api/bookings/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Update booking status to confirmed
+      await db.update(bookings).set({
+        status: "confirmed",
+        advancePaymentStatus: "not_required",
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      console.log(`[BOOKING] Booking #${bookingId} manually confirmed`);
+      
+      res.json({
+        success: true,
+        message: "Booking confirmed successfully"
+      });
+    } catch (error: any) {
+      console.error("Confirm booking error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm booking" });
+    }
+  });
+
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
@@ -3320,50 +3431,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if ((eventType === "payment_link.paid" || status === "paid") && reference_id) {
         console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
         
-        // Extract booking ID from reference_id format: booking_{id}_{timestamp}
-        const bookingIdMatch = reference_id.match(/booking_(\d+)_/);
-        const bookingId = bookingIdMatch ? parseInt(bookingIdMatch[1]) : parseInt(reference_id);
-        console.log(`[RazorPay Webhook] Extracted booking ID: ${bookingId}`);
+        // Check if this is an advance payment (reference_id starts with "advance_")
+        const isAdvancePayment = reference_id.startsWith("advance_");
+        
+        // Extract booking ID from reference_id format: booking_{id}_{timestamp} or advance_{id}_{timestamp}
+        const bookingIdMatch = reference_id.match(/(booking|advance)_(\d+)_/);
+        const bookingId = bookingIdMatch ? parseInt(bookingIdMatch[2]) : parseInt(reference_id);
+        console.log(`[RazorPay Webhook] Extracted booking ID: ${bookingId}, isAdvancePayment: ${isAdvancePayment}`);
         
         const booking = await storage.getBooking(bookingId);
         console.log(`[RazorPay Webhook] Booking found: ${booking ? 'YES' : 'NO'}`);
         
         if (booking) {
-          // Get existing bill for this booking
-          const billsResult = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
-          console.log(`[RazorPay Webhook] Bills found for booking: ${billsResult.length}`);
+          const amountInRupees = amount ? (amount / 100) : 0;
           
-          if (billsResult.length > 0) {
-            const bill = billsResult[0];
-            console.log(`[RazorPay Webhook] Updating bill #${bill.id} status to PAID`);
+          // Handle advance payment confirmation - update booking status to confirmed
+          if (isAdvancePayment) {
+            console.log(`[RazorPay Webhook] Processing ADVANCE payment for booking #${bookingId}`);
             
-            // Update bill payment status to paid
-            await db.update(bills).set({
-              paymentStatus: "paid",
-              paymentMethod: "razorpay_online",
-              paidAt: new Date(),
+            // Update booking status to confirmed and record advance payment
+            await db.update(bookings).set({
+              status: "confirmed",
+              advancePaymentStatus: "paid",
+              advanceAmount: amountInRupees.toString(),
               updatedAt: new Date(),
-            }).where(eq(bills.id, bill.id));
-
-            console.log(`[RazorPay] ✅ Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
-
-            // Send confirmation to guest via WhatsApp
+            }).where(eq(bookings.id, bookingId));
+            
+            console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
+            
+            // Send WhatsApp confirmation to guest
             const guest = await storage.getGuest(booking.guestId);
+            const property = await storage.getProperty(booking.propertyId);
             if (guest && guest.phone) {
-              console.log(`[RazorPay Webhook] Sending confirmation to guest: ${guest.fullName} (${guest.phone})`);
-              const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
-              const amountInRupees = amount ? (amount / 100).toFixed(2) : "0.00";
+              console.log(`[RazorPay Webhook] Sending booking confirmation to guest: ${guest.fullName} (${guest.phone})`);
+              const templateId = "21932"; // Welcome/Booking confirmation template
+              const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
               await sendCustomWhatsAppMessage(
                 guest.phone,
                 templateId,
-                [guest.fullName || "Guest", `₹${amountInRupees}`]
+                [guest.fullName || "Guest", property?.name || "Hotel", checkInDate]
               );
-              console.log(`[RazorPay Webhook] Confirmation sent successfully`);
-            } else {
-              console.warn(`[RazorPay Webhook] Guest not found or no phone number`);
+              console.log(`[RazorPay Webhook] Booking confirmation sent successfully`);
+            }
+            
+            // Create notification for admins
+            try {
+              const allUsers = await storage.getAllUsers();
+              const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+              
+              for (const admin of adminUsers) {
+                await db.insert(notifications).values({
+                  userId: admin.id,
+                  type: "payment_received",
+                  title: "Advance Payment Received",
+                  message: `Booking #${bookingId} confirmed! Advance of ₹${amountInRupees} received from ${guest?.fullName || 'Guest'}`,
+                  soundType: "payment",
+                  relatedId: bookingId,
+                  relatedType: "booking",
+                });
+              }
+              console.log(`[RazorPay Webhook] Admin notifications created for advance payment`);
+            } catch (notifError: any) {
+              console.error(`[RazorPay Webhook] Failed to create notification:`, notifError.message);
             }
           } else {
-            console.warn(`[RazorPay Webhook] No bill found for booking #${bookingId}`);
+            // Regular bill payment flow (existing logic)
+            const billsResult = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+            console.log(`[RazorPay Webhook] Bills found for booking: ${billsResult.length}`);
+            
+            if (billsResult.length > 0) {
+              const bill = billsResult[0];
+              console.log(`[RazorPay Webhook] Updating bill #${bill.id} status to PAID`);
+              
+              // Update bill payment status to paid
+              await db.update(bills).set({
+                paymentStatus: "paid",
+                paymentMethod: "razorpay_online",
+                paidAt: new Date(),
+                updatedAt: new Date(),
+              }).where(eq(bills.id, bill.id));
+
+              console.log(`[RazorPay] ✅ Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
+
+              // Send confirmation to guest via WhatsApp
+              const guest = await storage.getGuest(booking.guestId);
+              if (guest && guest.phone) {
+                console.log(`[RazorPay Webhook] Sending confirmation to guest: ${guest.fullName} (${guest.phone})`);
+                const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
+                await sendCustomWhatsAppMessage(
+                  guest.phone,
+                  templateId,
+                  [guest.fullName || "Guest", `₹${amountInRupees.toFixed(2)}`]
+                );
+                console.log(`[RazorPay Webhook] Confirmation sent successfully`);
+              } else {
+                console.warn(`[RazorPay Webhook] Guest not found or no phone number`);
+              }
+            } else {
+              console.warn(`[RazorPay Webhook] No bill found for booking #${bookingId}`);
+            }
           }
         } else {
           console.warn(`[RazorPay Webhook] Booking #${bookingId} not found`);
@@ -9681,6 +9847,76 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       res.status(500).json({ message: error.message });
     }
   });
+
+  // ==========================================
+  // BACKGROUND JOB: Auto-expire pending_advance bookings
+  // Runs every 15 minutes to check for expired advance payment requests
+  // ==========================================
+  const EXPIRY_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+  
+  async function expirePendingAdvanceBookings() {
+    try {
+      const now = new Date();
+      console.log(`[AUTO-EXPIRY] Checking for expired pending_advance bookings at ${now.toISOString()}`);
+      
+      // Get all bookings with pending_advance status
+      const pendingBookings = await db.select().from(bookings).where(eq(bookings.status, "pending_advance"));
+      
+      let expiredCount = 0;
+      for (const booking of pendingBookings) {
+        // Check if payment link has expired
+        if (booking.paymentLinkExpiry && new Date(booking.paymentLinkExpiry) < now) {
+          // Mark booking as expired
+          await db.update(bookings).set({
+            status: "expired",
+            advancePaymentStatus: "expired",
+            updatedAt: now,
+          }).where(eq(bookings.id, booking.id));
+          
+          expiredCount++;
+          console.log(`[AUTO-EXPIRY] Booking #${booking.id} expired - payment link expired at ${booking.paymentLinkExpiry}`);
+          
+          // Create notification for admins
+          try {
+            const allUsers = await storage.getAllUsers();
+            const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+            const guest = await storage.getGuest(booking.guestId);
+            
+            for (const admin of adminUsers) {
+              await db.insert(notifications).values({
+                userId: admin.id,
+                type: "booking_expired",
+                title: "Booking Expired",
+                message: `Booking #${booking.id} for ${guest?.fullName || 'Guest'} expired - advance payment not received`,
+                soundType: "warning",
+                relatedId: booking.id,
+                relatedType: "booking",
+              });
+            }
+          } catch (notifError: any) {
+            console.error(`[AUTO-EXPIRY] Failed to create expiry notification:`, notifError.message);
+          }
+        }
+      }
+      
+      if (expiredCount > 0) {
+        console.log(`[AUTO-EXPIRY] Expired ${expiredCount} pending_advance bookings`);
+      }
+    } catch (error: any) {
+      console.error("[AUTO-EXPIRY] Error in expiry check:", error.message);
+    }
+  }
+  
+  // Run expiry check on startup and then every 15 minutes
+  setTimeout(() => {
+    expirePendingAdvanceBookings();
+  }, 5000); // Wait 5 seconds after startup
+  
+  setInterval(() => {
+    expirePendingAdvanceBookings();
+  }, EXPIRY_CHECK_INTERVAL);
+  
+  console.log(`[AUTO-EXPIRY] Background job started - checking every ${EXPIRY_CHECK_INTERVAL / 60000} minutes`);
 
   const httpServer = createServer(app);
   return httpServer;

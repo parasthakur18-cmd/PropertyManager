@@ -10,8 +10,10 @@ import { useLocation } from "wouter";
 import { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2 
+  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface FeatureSettings {
   id: number;
@@ -26,6 +28,10 @@ interface FeatureSettings {
   expenseForecasting: boolean;
   budgetAlerts: boolean;
   paymentReminders: boolean;
+  // Advance Payment Settings
+  advancePaymentEnabled: boolean;
+  advancePaymentPercentage: string;
+  advancePaymentExpiryHours: number;
 }
 
 const features = [
@@ -264,6 +270,77 @@ export default function FeatureSettings() {
           );
         })}
       </div>
+
+      {/* Advance Payment Configuration */}
+      <Card className="overflow-hidden border-primary/20">
+        <CardHeader className="bg-primary/5 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-lg">Advance Payment Settings</CardTitle>
+              <CardDescription>Configure automatic booking confirmation with advance payment</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-6">
+          {/* Enable/Disable Toggle */}
+          <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
+            <div className="flex-1">
+              <p className="font-medium">Enable Advance Payment</p>
+              <p className="text-sm text-muted-foreground">
+                Require advance payment for online bookings (Walk-in bookings are always confirmed immediately)
+              </p>
+            </div>
+            <Switch
+              checked={settings.advancePaymentEnabled || false}
+              onCheckedChange={(value) => handleToggle("advancePaymentEnabled", value)}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-advancePaymentEnabled"
+            />
+          </div>
+
+          {settings.advancePaymentEnabled && (
+            <div className="grid gap-4 md:grid-cols-2 p-3 rounded-lg bg-muted/30">
+              <div className="space-y-2">
+                <Label htmlFor="advancePercentage">Default Advance Percentage (%)</Label>
+                <Input
+                  id="advancePercentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={settings.advancePaymentPercentage || "30"}
+                  onChange={(e) => {
+                    updateMutation.mutate({ advancePaymentPercentage: e.target.value } as any);
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-advancePaymentPercentage"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Percentage of total booking amount required as advance
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="expiryHours">Booking Expiry (Hours)</Label>
+                <Input
+                  id="expiryHours"
+                  type="number"
+                  min="1"
+                  max="168"
+                  value={settings.advancePaymentExpiryHours || 24}
+                  onChange={(e) => {
+                    updateMutation.mutate({ advancePaymentExpiryHours: parseInt(e.target.value) } as any);
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-advancePaymentExpiryHours"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Booking will automatically expire if payment not received within this time
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950">
         <CardHeader>
