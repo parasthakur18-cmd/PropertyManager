@@ -2913,15 +2913,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Send WhatsApp message with payment link using new pending_payment template (22226)
       const property = await storage.getProperty(booking.propertyId);
-      await sendAdvancePaymentRequest(
-        guest.phone,
-        guest.fullName || "Guest",
-        format(new Date(booking.checkInDate), "dd MMM yyyy"),
-        format(new Date(booking.checkOutDate), "dd MMM yyyy"),
-        property?.name || "Property",
-        `₹${advanceAmount.toLocaleString('en-IN')}`,
-        paymentLink.shortUrl
-      );
+      try {
+        const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+        const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+        
+        console.log(`[WhatsApp] Attempting to send advance payment request for booking #${bookingId} to ${guest.phone}`);
+        const waResult = await sendAdvancePaymentRequest(
+          guest.phone,
+          guest.fullName || "Guest",
+          checkInFormatted,
+          checkOutFormatted,
+          property?.name || "Property",
+          `₹${advanceAmount.toLocaleString('en-IN')}`,
+          paymentLink.shortUrl
+        );
+        console.log(`[WhatsApp] Result for booking #${bookingId}:`, waResult);
+      } catch (waError: any) {
+        console.error("[WhatsApp] Error sending advance payment request:", waError.message);
+      }
       
       console.log(`[ADVANCE PAYMENT] Payment link sent to ${guest.fullName} for booking #${bookingId}, amount: ₹${advanceAmount}`);
       
