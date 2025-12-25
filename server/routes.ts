@@ -23,6 +23,7 @@ import {
   users,
   orders,
   bills,
+  bookings,
   extraServices,
   enquiries,
   notifications,
