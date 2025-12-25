@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import { format } from "date-fns";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
+  pending_advance: "bg-orange-500 text-white",
   confirmed: "bg-chart-2 text-white",
   "checked-in": "bg-chart-5 text-white",
   "checked-out": "bg-muted text-muted-foreground",
@@ -599,6 +600,26 @@ export default function Bookings() {
       toast({
         title: "Failed to Send Payment Link",
         description: error.message || "Unable to send payment link",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const confirmAdvancePaymentMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/confirm-advance-payment`, "POST");
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      toast({
+        title: "Booking Confirmed",
+        description: "Advance payment received and booking confirmed",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Confirmation Failed",
+        description: error.message || "Unable to confirm booking",
         variant: "destructive",
       });
     },
@@ -1760,32 +1781,61 @@ export default function Bookings() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <Select
-                              value={booking.status}
-                              onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
-                            >
-                              <SelectTrigger className="w-[140px]" data-testid={`select-status-${booking.id}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="confirmed">Confirmed</SelectItem>
-                                <SelectItem value="checked-in">Checked In</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            {(booking.status === "pending" || booking.status === "confirmed") && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                disabled={sendAdvancePaymentMutation.isPending}
-                                title="Send payment link via WhatsApp"
-                                data-testid={`button-send-payment-${booking.id}`}
-                              >
-                                <CreditCard className="h-4 w-4 mr-1" />
-                                {sendAdvancePaymentMutation.isPending ? "..." : "Pay Link"}
-                              </Button>
+                            {booking.status === "pending_advance" ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                  disabled={sendAdvancePaymentMutation.isPending}
+                                  title="Resend payment link via WhatsApp"
+                                  data-testid={`button-resend-payment-${booking.id}`}
+                                >
+                                  <CreditCard className="h-4 w-4 mr-1" />
+                                  {sendAdvancePaymentMutation.isPending ? "..." : "Resend"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                  disabled={confirmAdvancePaymentMutation.isPending}
+                                  title="Confirm advance payment received"
+                                  data-testid={`button-confirm-payment-${booking.id}`}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  {confirmAdvancePaymentMutation.isPending ? "..." : "Confirm"}
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Select
+                                  value={booking.status}
+                                  onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
+                                >
+                                  <SelectTrigger className="w-[140px]" data-testid={`select-status-${booking.id}`}>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="confirmed">Confirmed</SelectItem>
+                                    <SelectItem value="checked-in">Checked In</SelectItem>
+                                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                {(booking.status === "pending" || booking.status === "confirmed") && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                    disabled={sendAdvancePaymentMutation.isPending}
+                                    title="Send payment link via WhatsApp"
+                                    data-testid={`button-send-payment-${booking.id}`}
+                                  >
+                                    <CreditCard className="h-4 w-4 mr-1" />
+                                    {sendAdvancePaymentMutation.isPending ? "..." : "Pay Link"}
+                                  </Button>
+                                )}
+                              </>
                             )}
                             <Button
                               size="icon"
