@@ -55,7 +55,7 @@ import {
   sendAdvancePaymentConfirmation,
   sendPaymentReminder
 } from "./whatsapp";
-import { preBills } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -9844,10 +9844,97 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         return res.status(400).json({ message: "Property key not configured" });
       }
 
-      const rooms = await getBeds24Rooms(propKey);
-      res.json(rooms);
+      const beds24Rooms = await getBeds24Rooms(propKey);
+      res.json(beds24Rooms);
     } catch (error: any) {
       console.error("[BEDS24] Get rooms error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get room mappings for a property
+  app.get("/api/beds24/room-mappings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const mappings = await db.select()
+        .from(beds24RoomMappings)
+        .where(eq(beds24RoomMappings.propertyId, propertyId));
+      
+      res.json(mappings);
+    } catch (error: any) {
+      console.error("[BEDS24] Get mappings error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Add or update room mapping
+  app.post("/api/beds24/room-mappings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, beds24RoomId, beds24RoomName, roomType } = req.body;
+      
+      if (!propertyId || !beds24RoomId || !roomType) {
+        return res.status(400).json({ message: "propertyId, beds24RoomId, and roomType are required" });
+      }
+
+      // Check if mapping already exists
+      const existing = await db.select()
+        .from(beds24RoomMappings)
+        .where(and(
+          eq(beds24RoomMappings.propertyId, propertyId),
+          eq(beds24RoomMappings.beds24RoomId, beds24RoomId)
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing mapping
+        await db.update(beds24RoomMappings)
+          .set({ roomType, beds24RoomName })
+          .where(eq(beds24RoomMappings.id, existing[0].id));
+        
+        res.json({ message: "Room mapping updated", id: existing[0].id });
+      } else {
+        // Create new mapping
+        const newMapping = await db.insert(beds24RoomMappings)
+          .values({ propertyId, beds24RoomId, beds24RoomName, roomType })
+          .returning();
+        
+        res.json({ message: "Room mapping created", id: newMapping[0].id });
+      }
+    } catch (error: any) {
+      console.error("[BEDS24] Create mapping error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete room mapping
+  app.delete("/api/beds24/room-mappings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      await db.delete(beds24RoomMappings).where(eq(beds24RoomMappings.id, id));
+      
+      res.json({ message: "Room mapping deleted" });
+    } catch (error: any) {
+      console.error("[BEDS24] Delete mapping error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get unique room types for a property
+  app.get("/api/rooms/types/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const propertyRooms = await db.select()
+        .from(rooms)
+        .where(eq(rooms.propertyId, propertyId));
+      
+      const uniqueTypes = [...new Set(propertyRooms.map(r => r.roomType).filter(Boolean))];
+      
+      res.json(uniqueTypes);
+    } catch (error: any) {
+      console.error("[ROOMS] Get types error:", error);
       res.status(500).json({ message: error.message });
     }
   });

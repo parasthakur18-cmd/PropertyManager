@@ -866,6 +866,24 @@ export const otaIntegrations = pgTable("ota_integrations", {
 
 export type OtaIntegration = typeof otaIntegrations.$inferSelect;
 
+// Beds24 Room Mappings table - maps Beds24 room IDs to Hostezee room types
+export const beds24RoomMappings = pgTable("beds24_room_mappings", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  beds24RoomId: varchar("beds24_room_id", { length: 50 }).notNull(),
+  beds24RoomName: varchar("beds24_room_name", { length: 255 }),
+  roomType: varchar("room_type", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBeds24RoomMappingSchema = createInsertSchema(beds24RoomMappings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type Beds24RoomMapping = typeof beds24RoomMappings.$inferSelect;
+export type InsertBeds24RoomMapping = z.infer<typeof insertBeds24RoomMappingSchema>;
+
 // Notifications table - matches actual database
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
