@@ -502,13 +502,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // Priority: Use query parameter if provided (user selection), otherwise use manager's assigned property
+      // Security: Pending users should see empty dashboard
+      if (currentUser.verificationStatus === 'pending') {
+        return res.json({
+          totalProperties: 0,
+          totalRooms: 0,
+          totalBookings: 0,
+          activeBookings: 0,
+          todayCheckIns: 0,
+          todayCheckOuts: 0,
+          occupancyRate: 0,
+          revenue: 0,
+          pendingPayments: 0,
+          recentBookings: [],
+          upcomingBookings: []
+        });
+      }
+      
+      // Check if user has unlimited access (super-admin or admin)
+      const hasUnlimitedAccess = currentUser.role === 'super-admin' || currentUser.role === 'admin';
+      
+      // Security: Non-admin users with no assigned properties should see empty data
+      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+        return res.json({
+          totalProperties: 0,
+          totalRooms: 0,
+          totalBookings: 0,
+          activeBookings: 0,
+          todayCheckIns: 0,
+          todayCheckOuts: 0,
+          occupancyRate: 0,
+          revenue: 0,
+          pendingPayments: 0,
+          recentBookings: [],
+          upcomingBookings: []
+        });
+      }
+      
+      // Priority: Use query parameter if provided (user selection), otherwise use assigned property
       let propertyId: number | undefined = undefined;
       
       if (req.query.propertyId) {
         propertyId = parseInt(req.query.propertyId);
-      } else if (currentUser.role === "manager" && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        // If user is a manager and no property selected, use first assigned property
+        // Security: Non-admin users can only view their assigned properties
+        if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+          return res.status(403).json({ message: "Access denied to this property" });
+        }
+      } else if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        // Non-admin users default to first assigned property
         propertyId = currentUser.assignedPropertyIds[0];
       }
       
@@ -522,7 +563,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics
   app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
     try {
-      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Security: Pending users see empty analytics
+      if (currentUser.verificationStatus === 'pending') {
+        return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
+      }
+      
+      const hasUnlimitedAccess = currentUser.role === 'super-admin' || currentUser.role === 'admin';
+      
+      // Security: Non-admin with no properties sees empty data
+      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+        return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
+      }
+      
+      let propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      
+      // Security: Non-admin can only see their assigned properties
+      if (propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      
+      if (!propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        propertyId = currentUser.assignedPropertyIds[0];
+      }
+      
       const analytics = await storage.getAnalytics(propertyId);
       res.json(analytics);
     } catch (error: any) {
