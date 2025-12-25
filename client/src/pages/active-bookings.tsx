@@ -1037,6 +1037,21 @@ export default function ActiveBookings() {
                   </div>
                 )}
 
+                {booking.status === "confirmed" && (
+                  <div className="pt-3 border-t">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                      disabled={sendAdvancePaymentMutation.isPending}
+                      data-testid={`button-send-payment-${booking.id}`}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      {sendAdvancePaymentMutation.isPending ? "Sending..." : "Send Payment Link"}
+                    </Button>
+                  </div>
+                )}
+
                 <div className="mt-auto pt-3 flex gap-2">
                   <Button
                     variant="outline"
