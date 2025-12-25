@@ -50,7 +50,10 @@ import {
   sendEnquiryConfirmation,
   sendPreBillNotification,
   sendCustomWhatsAppMessage,
-  sendWelcomeWithMenuLink
+  sendWelcomeWithMenuLink,
+  sendAdvancePaymentRequest,
+  sendAdvancePaymentConfirmation,
+  sendPaymentReminder
 } from "./whatsapp";
 import { preBills } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -2908,13 +2911,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: new Date(),
       }).where(eq(bookings.id, bookingId));
       
-      // Send WhatsApp message with payment link
+      // Send WhatsApp message with payment link using new pending_payment template (22226)
       const property = await storage.getProperty(booking.propertyId);
-      const templateId = "19892"; // Payment link template
-      await sendCustomWhatsAppMessage(
+      await sendAdvancePaymentRequest(
         guest.phone,
-        templateId,
-        [guest.fullName || "Guest", `₹${advanceAmount.toFixed(2)}`, paymentLink.shortUrl]
+        guest.fullName || "Guest",
+        format(new Date(booking.checkInDate), "dd MMM yyyy"),
+        format(new Date(booking.checkOutDate), "dd MMM yyyy"),
+        property?.name || "Property",
+        `₹${advanceAmount.toLocaleString('en-IN')}`,
+        paymentLink.shortUrl
       );
       
       console.log(`[ADVANCE PAYMENT] Payment link sent to ${guest.fullName} for booking #${bookingId}, amount: ₹${advanceAmount}`);
@@ -3460,19 +3466,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
             
-            // Send WhatsApp confirmation to guest
+            // Send WhatsApp confirmation to guest using payment_confirmation template (18649)
             const guest = await storage.getGuest(booking.guestId);
             const property = await storage.getProperty(booking.propertyId);
             if (guest && guest.phone) {
-              console.log(`[RazorPay Webhook] Sending booking confirmation to guest: ${guest.fullName} (${guest.phone})`);
-              const templateId = "21932"; // Welcome/Booking confirmation template
-              const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
-              await sendCustomWhatsAppMessage(
+              console.log(`[RazorPay Webhook] Sending payment confirmation to guest: ${guest.fullName} (${guest.phone})`);
+              await sendAdvancePaymentConfirmation(
                 guest.phone,
-                templateId,
-                [guest.fullName || "Guest", property?.name || "Hotel", checkInDate]
+                guest.fullName || "Guest",
+                `₹${amountInRupees.toLocaleString('en-IN')}`,
+                property?.name || "Hotel"
               );
-              console.log(`[RazorPay Webhook] Booking confirmation sent successfully`);
+              console.log(`[RazorPay Webhook] Payment confirmation sent successfully`);
             }
             
             // Create notification for admins
@@ -9854,74 +9859,151 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   });
 
   // ==========================================
-  // BACKGROUND JOB: Auto-expire pending_advance bookings
-  // Runs every 15 minutes to check for expired advance payment requests
+  // BACKGROUND JOB: Payment Reminders & Auto-Cancellation
+  // - First reminder: 8 hours after booking creation
+  // - Second reminder: 16 hours after booking creation (8 hours after first)
+  // - Auto-cancel: 48 hours after booking creation
   // ==========================================
-  const EXPIRY_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+  const PAYMENT_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+  const FIRST_REMINDER_HOURS = 8;
+  const SECOND_REMINDER_HOURS = 16;
+  const AUTO_CANCEL_HOURS = 48;
   
-  async function expirePendingAdvanceBookings() {
+  async function processPaymentRemindersAndCancellations() {
     try {
       const now = new Date();
-      console.log(`[AUTO-EXPIRY] Checking for expired pending_advance bookings at ${now.toISOString()}`);
+      console.log(`[PAYMENT-JOB] Processing pending_advance bookings at ${now.toISOString()}`);
       
       // Get all bookings with pending_advance status
       const pendingBookings = await db.select().from(bookings).where(eq(bookings.status, "pending_advance"));
       
-      let expiredCount = 0;
+      let remindersCount = 0;
+      let cancelledCount = 0;
+      
       for (const booking of pendingBookings) {
-        // Check if payment link has expired
-        if (booking.paymentLinkExpiry && new Date(booking.paymentLinkExpiry) < now) {
-          // Mark booking as expired
+        const createdAt = booking.createdAt ? new Date(booking.createdAt) : now;
+        const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        const reminderCount = booking.reminderCount || 0;
+        
+        // Get guest and property info for WhatsApp messages
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        
+        if (!guest || !property) {
+          console.log(`[PAYMENT-JOB] Skipping booking #${booking.id} - missing guest or property data`);
+          continue;
+        }
+        
+        // Calculate advance amount
+        const totalAmount = parseFloat(booking.totalAmount?.toString() || "0");
+        const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0") || 
+                              totalAmount * 0.3; // Default 30%
+        
+        // Check for 48-hour auto-cancellation
+        if (hoursSinceCreation >= AUTO_CANCEL_HOURS) {
           await db.update(bookings).set({
-            status: "expired",
-            advancePaymentStatus: "expired",
+            status: "cancelled",
+            advancePaymentStatus: "cancelled",
+            cancellationReason: "Auto-cancelled: Advance payment not received within 48 hours",
+            cancellationDate: now,
             updatedAt: now,
           }).where(eq(bookings.id, booking.id));
           
-          expiredCount++;
-          console.log(`[AUTO-EXPIRY] Booking #${booking.id} expired - payment link expired at ${booking.paymentLinkExpiry}`);
+          cancelledCount++;
+          console.log(`[PAYMENT-JOB] Booking #${booking.id} auto-cancelled after ${AUTO_CANCEL_HOURS} hours`);
           
-          // Create notification for admins
+          // Notify admins about cancellation
           try {
             const allUsers = await storage.getAllUsers();
             const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
-            const guest = await storage.getGuest(booking.guestId);
             
             for (const admin of adminUsers) {
               await db.insert(notifications).values({
                 userId: admin.id,
-                type: "booking_expired",
-                title: "Booking Expired",
-                message: `Booking #${booking.id} for ${guest?.fullName || 'Guest'} expired - advance payment not received`,
+                type: "booking_cancelled",
+                title: "Booking Auto-Cancelled",
+                message: `Booking #${booking.id} for ${guest.fullName} was auto-cancelled - advance payment not received within 48 hours`,
                 soundType: "warning",
                 relatedId: booking.id,
                 relatedType: "booking",
               });
             }
           } catch (notifError: any) {
-            console.error(`[AUTO-EXPIRY] Failed to create expiry notification:`, notifError.message);
+            console.error(`[PAYMENT-JOB] Failed to create cancellation notification:`, notifError.message);
+          }
+          continue;
+        }
+        
+        // Check for second reminder (16 hours)
+        if (hoursSinceCreation >= SECOND_REMINDER_HOURS && reminderCount === 1) {
+          try {
+            await sendPaymentReminder(
+              guest.phone || "",
+              guest.fullName || "Guest",
+              `₹${advanceAmount.toLocaleString('en-IN')}`,
+              property.name,
+              format(new Date(booking.checkInDate), "dd MMM yyyy"),
+              format(new Date(booking.checkOutDate), "dd MMM yyyy")
+            );
+            
+            await db.update(bookings).set({
+              reminderCount: 2,
+              lastReminderAt: now,
+              updatedAt: now,
+            }).where(eq(bookings.id, booking.id));
+            
+            remindersCount++;
+            console.log(`[PAYMENT-JOB] Sent second reminder for booking #${booking.id}`);
+          } catch (reminderError: any) {
+            console.error(`[PAYMENT-JOB] Failed to send second reminder:`, reminderError.message);
+          }
+          continue;
+        }
+        
+        // Check for first reminder (8 hours)
+        if (hoursSinceCreation >= FIRST_REMINDER_HOURS && reminderCount === 0) {
+          try {
+            await sendPaymentReminder(
+              guest.phone || "",
+              guest.fullName || "Guest",
+              `₹${advanceAmount.toLocaleString('en-IN')}`,
+              property.name,
+              format(new Date(booking.checkInDate), "dd MMM yyyy"),
+              format(new Date(booking.checkOutDate), "dd MMM yyyy")
+            );
+            
+            await db.update(bookings).set({
+              reminderCount: 1,
+              lastReminderAt: now,
+              updatedAt: now,
+            }).where(eq(bookings.id, booking.id));
+            
+            remindersCount++;
+            console.log(`[PAYMENT-JOB] Sent first reminder for booking #${booking.id}`);
+          } catch (reminderError: any) {
+            console.error(`[PAYMENT-JOB] Failed to send first reminder:`, reminderError.message);
           }
         }
       }
       
-      if (expiredCount > 0) {
-        console.log(`[AUTO-EXPIRY] Expired ${expiredCount} pending_advance bookings`);
+      if (remindersCount > 0 || cancelledCount > 0) {
+        console.log(`[PAYMENT-JOB] Sent ${remindersCount} reminders, cancelled ${cancelledCount} bookings`);
       }
     } catch (error: any) {
-      console.error("[AUTO-EXPIRY] Error in expiry check:", error.message);
+      console.error("[PAYMENT-JOB] Error:", error.message);
     }
   }
   
-  // Run expiry check on startup and then every 15 minutes
+  // Run payment check on startup and then every 15 minutes
   setTimeout(() => {
-    expirePendingAdvanceBookings();
-  }, 5000); // Wait 5 seconds after startup
+    processPaymentRemindersAndCancellations();
+  }, 5000);
   
   setInterval(() => {
-    expirePendingAdvanceBookings();
-  }, EXPIRY_CHECK_INTERVAL);
+    processPaymentRemindersAndCancellations();
+  }, PAYMENT_CHECK_INTERVAL);
   
-  console.log(`[AUTO-EXPIRY] Background job started - checking every ${EXPIRY_CHECK_INTERVAL / 60000} minutes`);
+  console.log(`[PAYMENT-JOB] Background job started - checking every ${PAYMENT_CHECK_INTERVAL / 60000} minutes`);
 
   const httpServer = createServer(app);
   return httpServer;
