@@ -9779,12 +9779,62 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
             }
           }
 
-          // Get first room for property (can be mapped later)
-          const propertyRooms = await db.select().from(rooms)
-            .where(eq(rooms.propertyId, propertyId))
+          // Get room using room mappings
+          let roomId: number | null = null;
+          const beds24RoomId = b24Booking.roomId;
+          
+          // Get room mapping for this Beds24 room
+          const roomMapping = await db.select()
+            .from(beds24RoomMappings)
+            .where(and(
+              eq(beds24RoomMappings.propertyId, propertyId),
+              eq(beds24RoomMappings.beds24RoomId, beds24RoomId)
+            ))
             .limit(1);
           
-          const roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+          if (roomMapping.length > 0) {
+            // Find an available room of the mapped type
+            const roomType = roomMapping[0].roomType;
+            const checkIn = format(converted.bookingData.checkInDate, "yyyy-MM-dd");
+            const checkOut = format(converted.bookingData.checkOutDate, "yyyy-MM-dd");
+            
+            // Get all rooms of this type
+            const roomsOfType = await db.select().from(rooms)
+              .where(and(
+                eq(rooms.propertyId, propertyId),
+                eq(rooms.roomType, roomType)
+              ));
+            
+            // Find one that's available for these dates
+            for (const room of roomsOfType) {
+              const conflicting = await db.select().from(bookings)
+                .where(and(
+                  eq(bookings.roomId, room.id),
+                  lt(bookings.checkInDate, checkOut),
+                  gt(bookings.checkOutDate, checkIn)
+                ))
+                .limit(1);
+              
+              if (conflicting.length === 0) {
+                roomId = room.id;
+                break;
+              }
+            }
+            
+            // If all rooms occupied, use first room of type
+            if (!roomId && roomsOfType.length > 0) {
+              roomId = roomsOfType[0].id;
+            }
+            
+            console.log(`[BEDS24] Mapped room ${beds24RoomId} -> ${roomType} -> Room ID ${roomId}`);
+          } else {
+            // No mapping found, use first available room
+            const propertyRooms = await db.select().from(rooms)
+              .where(eq(rooms.propertyId, propertyId))
+              .limit(1);
+            roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+            console.log(`[BEDS24] No mapping for room ${beds24RoomId}, using default room ${roomId}`);
+          }
 
           // Create the booking
           await db.insert(bookings).values({
