@@ -8921,7 +8921,9 @@ Be helpful, professional, and concise. If a user asks about something outside yo
       ).length;
 
       const allBills = await storage.getAllBills();
-      const billsCount = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+      const billsCount = allBills.filter((b: any) => 
+        propertyIds.includes(b.propertyId) && b.paymentStatus === "pending"
+      ).length;
 
       // Determine urgency: if no pending items, don't notify
       const totalPending = cleaningCount + enquiriesCount + billsCount;
