@@ -85,3 +85,29 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **RazorPay**: Payment processing and payment link generation with webhook support.
 -   **Agent Mail**: Transactional email service for booking confirmations, payment notifications, expense alerts, and password reset emails.
 -   **Beds24**: Channel Manager API for OTA booking synchronization. Uses API v1 (JSON) with apiKey + propKey authentication. Webhook endpoint: `/api/beds24/webhook`.
+
+## Beds24 Integration Setup Guide
+
+### 4-Step Setup Process
+1. **Select Property**: Choose the property you want to connect in OTA Integrations
+2. **Connect Beds24**: Enter your Beds24 Property Key (found in Beds24: Settings → Properties → Access → Property Key)
+3. **Map Room Types**: Go to "Room Mapping" tab and connect Beds24 room IDs to your Hostezee room types
+4. **Sync Bookings**: Click "Sync Now" to import bookings. Set up Beds24 webhook for real-time updates
+
+### Room Mapping System
+- **Database Table**: `beds24_room_mappings` stores propertyId, beds24RoomId, beds24RoomName, roomType
+- **Automatic Assignment**: When syncing, system finds available room of mapped type for booking dates
+- **Fallback**: If no mapping exists or all rooms occupied, uses first available room of property
+- **Example**: Beds24 room 637602 (Deluxe Double) → Hostezee "Deluxe Double" room type → assigns to room 101, 102
+
+### Webhook Setup (Real-time Sync)
+1. Copy webhook URL from integration card: `{domain}/api/beds24/webhook`
+2. In Beds24: Settings → Notifications → Webhooks
+3. Paste URL and enable for booking notifications
+
+### API Endpoints
+- `POST /api/beds24/sync/:integrationId` - Sync bookings from Beds24
+- `GET /api/beds24/room-mappings/:propertyId` - Get room mappings
+- `POST /api/beds24/room-mappings` - Create/update room mapping
+- `DELETE /api/beds24/room-mappings/:id` - Delete room mapping
+- `GET /api/rooms/types/:propertyId` - Get unique room types
