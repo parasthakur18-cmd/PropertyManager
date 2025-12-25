@@ -8807,7 +8807,7 @@ Be helpful, professional, and concise. If a user asks about something outside yo
   app.get("/api/ota/integrations/:propertyId", isAuthenticated, async (req, res) => {
     try {
       const propertyId = parseInt(req.params.propertyId);
-      const integrations = await storage.getAllOtaIntegrations(propertyId);
+      const integrations = await storage.getOtaIntegrationsByProperty(propertyId);
       
       // Mask API keys for security
       const safe = integrations.map((i: any) => ({
@@ -8839,14 +8839,12 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         return res.status(404).json({ message: "Property not found" });
       }
 
-      const integration = await storage.saveOtaIntegration({
+      const integration = await storage.createOtaIntegration({
         propertyId,
-        otaName,
-        propertyId_external,
+        otaPlatform: otaName,
         apiKey,
         apiSecret,
-        credentials,
-        enabled: true,
+        isActive: true,
       });
 
       res.json({ success: true, message: `${otaName} integration saved`, integration });
