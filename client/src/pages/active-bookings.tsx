@@ -118,6 +118,25 @@ export default function ActiveBookings() {
   const [showUpiLink, setShowUpiLink] = useState(false);
   const [autoCompletingCheckout, setAutoCompletingCheckout] = useState(false);
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending_advance":
+        return { label: "Awaiting Payment", className: "bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700" };
+      case "confirmed":
+        return { label: "Confirmed", className: "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700" };
+      case "checked-in":
+        return { label: "Checked In", className: "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-700" };
+      case "checked-out":
+        return { label: "Checked Out", className: "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-900/30 dark:text-gray-400 dark:border-gray-700" };
+      case "expired":
+        return { label: "Expired", className: "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700" };
+      case "cancelled":
+        return { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700" };
+      default:
+        return { label: status, className: "" };
+    }
+  };
+
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
     enabled: !!(checkoutDialog.open && checkoutDialog.booking?.id),
@@ -463,6 +482,48 @@ export default function ActiveBookings() {
       toast({
         title: "Merge Failed",
         description: error.message || "Failed to merge café order",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const sendAdvancePaymentMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/send-advance-payment`, "POST");
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      toast({
+        title: "Payment Link Sent",
+        description: data.message || "Advance payment link sent via WhatsApp",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Send Payment Link",
+        description: error.message || "Unable to send payment link",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const confirmBookingMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/confirm`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      toast({
+        title: "Booking Confirmed",
+        description: "Booking has been manually confirmed",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Confirm",
+        description: error.message || "Unable to confirm booking",
         variant: "destructive",
       });
     },
@@ -838,8 +899,8 @@ export default function ActiveBookings() {
                         View ID Proof
                       </a>
                     )}
-                    <Badge variant="outline" className="block text-right">
-                      {booking.status}
+                    <Badge variant="outline" className={`block text-right ${getStatusBadge(booking.status).className}`}>
+                      {getStatusBadge(booking.status).label}
                     </Badge>
                   </div>
                 </div>
@@ -914,6 +975,31 @@ export default function ActiveBookings() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {booking.status === "pending_advance" && (
+                  <div className="pt-3 border-t flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                      disabled={sendAdvancePaymentMutation.isPending}
+                      data-testid={`button-resend-payment-${booking.id}`}
+                    >
+                      <Phone className="h-4 w-4 mr-2" />
+                      {sendAdvancePaymentMutation.isPending ? "Sending..." : "Resend Payment Link"}
+                    </Button>
+                    <Button
+                      variant="default"
+                      className="flex-1"
+                      onClick={() => confirmBookingMutation.mutate({ bookingId: booking.id })}
+                      disabled={confirmBookingMutation.isPending}
+                      data-testid={`button-confirm-booking-${booking.id}`}
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      {confirmBookingMutation.isPending ? "Confirming..." : "Confirm Booking"}
+                    </Button>
                   </div>
                 )}
 
