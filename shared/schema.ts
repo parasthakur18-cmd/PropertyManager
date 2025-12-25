@@ -225,6 +225,9 @@ export const bookings = pgTable("bookings", {
   paymentLinkUrl: text("payment_link_url"),
   paymentLinkExpiry: timestamp("payment_link_expiry"),
   advancePaymentStatus: varchar("advance_payment_status", { length: 20 }).default("not_required"),
+  // Payment reminder tracking
+  reminderCount: integer("reminder_count").default(0),
+  lastReminderAt: timestamp("last_reminder_at"),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
