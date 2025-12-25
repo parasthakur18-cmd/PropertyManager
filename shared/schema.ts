@@ -220,6 +220,11 @@ export const bookings = pgTable("bookings", {
   cancelledBy: varchar("cancelled_by", { length: 255 }),
   // Actual check-in time (when guest actually checked in, vs scheduled checkInDate)
   actualCheckInTime: timestamp("actual_check_in_time"),
+  // Razorpay Payment Link fields for advance payment
+  paymentLinkId: varchar("payment_link_id", { length: 100 }),
+  paymentLinkUrl: text("payment_link_url"),
+  paymentLinkExpiry: timestamp("payment_link_expiry"),
+  advancePaymentStatus: varchar("advance_payment_status", { length: 20 }).default("not_required"),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({
@@ -782,6 +787,10 @@ export const featureSettings = pgTable("feature_settings", {
   performanceAnalytics: boolean("performance_analytics").notNull().default(true),
   expenseForecasting: boolean("expense_forecasting").notNull().default(true),
   budgetAlerts: boolean("budget_alerts").notNull().default(true),
+  // Advance Payment Settings
+  advancePaymentEnabled: boolean("advance_payment_enabled").notNull().default(true),
+  advancePaymentPercentage: decimal("advance_payment_percentage", { precision: 5, scale: 2 }).default("30"),
+  advancePaymentExpiryHours: integer("advance_payment_expiry_hours").default(24),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
