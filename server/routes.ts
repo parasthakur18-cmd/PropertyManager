@@ -2776,10 +2776,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
 
+          // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+          const roomChargesFormatted = preBill.roomCharges ? `₹${parseFloat(preBill.roomCharges.toString()).toFixed(2)}` : "₹0.00";
+          const foodChargesFormatted = preBill.foodCharges ? `₹${parseFloat(preBill.foodCharges.toString()).toFixed(2)}` : "₹0.00";
+          const advancePaidFormatted = preBill.advancePayment ? `₹${parseFloat(preBill.advancePayment.toString()).toFixed(2)}` : "₹0.00";
+          const balanceFormatted = `₹${balanceDue.toFixed(2)}`;
+          
           await sendCustomWhatsAppMessage(
             preBill.guestPhone || guest.phone,
             process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
-            [preBill.guestName || guest.fullName, `₹${balanceDue.toFixed(2)}`, paymentLinkUrl]
+            [preBill.guestName || guest.fullName, roomChargesFormatted, foodChargesFormatted, advancePaidFormatted, balanceFormatted, paymentLinkUrl]
           );
 
           return res.json({ 
@@ -2800,7 +2806,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Send payment link via Authkey WhatsApp
   app.post("/api/whatsapp/send-payment-link", isAuthenticated, async (req, res) => {
     try {
-      const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
+      const { amount, guestName, guestPhone, guestEmail, bookingId, roomCharges, foodCharges, cashReceived } = req.body;
       
       // guestEmail is optional - many guests don't have email addresses
       if (!amount || !guestName || !guestPhone || !bookingId) {
@@ -2816,12 +2822,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
-      const message = `Hi ${guestName}, please complete your remaining payment of ₹${amount.toFixed(2)} here: ${paymentLinkUrl}`;
+      
+      // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+      const roomChargesFormatted = roomCharges ? `₹${parseFloat(roomCharges).toFixed(2)}` : "₹0.00";
+      const foodChargesFormatted = foodCharges ? `₹${parseFloat(foodCharges).toFixed(2)}` : "₹0.00";
+      const cashReceivedFormatted = cashReceived ? `₹${parseFloat(cashReceived).toFixed(2)}` : "₹0.00";
+      const balanceFormatted = `₹${parseFloat(amount).toFixed(2)}`;
 
       const result = await sendCustomWhatsAppMessage(
         guestPhone,
         process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
-        [guestName, `₹${amount.toFixed(2)}`, paymentLinkUrl]
+        [guestName, roomChargesFormatted, foodChargesFormatted, cashReceivedFormatted, balanceFormatted, paymentLinkUrl]
       );
 
       if (result.success) {

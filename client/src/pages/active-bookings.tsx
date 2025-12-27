@@ -1516,7 +1516,10 @@ export default function ActiveBookings() {
                                 guestName: booking.guest.fullName,
                                 guestPhone: booking.guest.phone,
                                 guestEmail: booking.guest.email,
-                                bookingId: booking.id
+                                bookingId: booking.id,
+                                roomCharges: roomCharges,
+                                foodCharges: foodCharges,
+                                cashReceived: advancePaid + cashPaid
                               })
                             });
                             if (!res.ok) {
