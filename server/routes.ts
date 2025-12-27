@@ -2802,7 +2802,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
       
-      if (!amount || !guestName || !guestPhone || !guestEmail || !bookingId) {
+      // guestEmail is optional - many guests don't have email addresses
+      if (!amount || !guestName || !guestPhone || !bookingId) {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
@@ -2810,7 +2811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bookingId,
         amount,
         guestName,
-        guestEmail,
+        guestEmail || `guest${bookingId}@hostezee.com`,
         guestPhone
       );
 
@@ -2839,7 +2840,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
       
-      if (!amount || !guestName || !guestPhone || !guestEmail || !bookingId) {
+      // guestEmail is optional - many guests don't have email addresses
+      if (!amount || !guestName || !guestPhone || !bookingId) {
         return res.status(400).json({ message: "Missing required fields" });
       }
 
@@ -2847,7 +2849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bookingId,
         amount,
         guestName,
-        guestEmail,
+        guestEmail || `guest${bookingId}@hostezee.com`,
         guestPhone
       );
 
