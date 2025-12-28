@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
@@ -650,6 +650,25 @@ export default function Bookings() {
       toast({
         title: "Confirmation Failed",
         description: error.message || "Unable to confirm booking",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const sendCheckinLinkMutation = useMutation({
+    mutationFn: async ({ bookingId }: { bookingId: number }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/send-checkin-link`, "POST");
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Check-in Link Sent",
+        description: "Self check-in link sent via WhatsApp",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Send Link",
+        description: error.message || "Unable to send check-in link",
         variant: "destructive",
       });
     },
@@ -1908,14 +1927,12 @@ export default function Bookings() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8"
-                                onClick={() => {
-                                  setQrBookingId(booking.id);
-                                  setQrModalOpen(true);
-                                }}
-                                title="View QR Code"
-                                data-testid={`button-qr-${booking.id}`}
+                                onClick={() => sendCheckinLinkMutation.mutate({ bookingId: booking.id })}
+                                disabled={sendCheckinLinkMutation.isPending}
+                                title="Send self check-in link via WhatsApp"
+                                data-testid={`button-checkin-link-${booking.id}`}
                               >
-                                <QrCode className="h-4 w-4" />
+                                <Send className="h-4 w-4" />
                               </Button>
                               <Button
                                 size="icon"
