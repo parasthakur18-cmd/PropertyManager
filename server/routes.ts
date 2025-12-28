@@ -10104,55 +10104,6 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     }
   });
 
-  // ===== WHATSAPP NOTIFICATION SETTINGS ROUTES =====
-
-  app.get("/api/whatsapp-settings", isAuthenticated, async (req: any, res) => {
-    try {
-      let propertyId = req.query.propertyId;
-      
-      if (!propertyId) {
-        propertyId = req.user?.assignedPropertyIds?.[0];
-      }
-      
-      if (!propertyId) {
-        return res.status(400).json({ message: "Property ID required" });
-      }
-
-      const settings = await storage.getWhatsappSettingsByProperty(parseInt(propertyId));
-      res.json(settings);
-    } catch (error: any) {
-      console.error("[WHATSAPP-SETTINGS] GET error:", error);
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/whatsapp-settings", isAuthenticated, async (req: any, res) => {
-    try {
-      const propertyId = req.body.propertyId || req.user?.assignedPropertyIds?.[0];
-      
-      if (!propertyId) {
-        return res.status(400).json({ message: "Property ID required" });
-      }
-
-      // Admin and super-admin can update settings
-      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
-      if (!isAdmin) {
-        return res.status(403).json({ message: "Only admin can update WhatsApp notification settings" });
-      }
-
-      // Verify admin has access to this property
-      const assignedProps = req.user?.assignedPropertyIds || [];
-      if (!assignedProps.includes(parseInt(propertyId))) {
-        return res.status(403).json({ message: "You don't have access to this property" });
-      }
-
-      const settings = await storage.updateWhatsappSettings(parseInt(propertyId), req.body);
-      res.json(settings);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   // ===== WHATSAPP TEMPLATE SETTINGS ROUTES =====
   // Get all template settings for a property
   app.get("/api/whatsapp-template-settings/:propertyId", isAuthenticated, async (req: any, res) => {
