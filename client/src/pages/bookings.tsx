@@ -1844,7 +1844,7 @@ export default function Bookings() {
                               value={booking.status}
                               onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
                             >
-                              <SelectTrigger className="w-[120px] h-8 text-xs" data-testid={`select-status-${booking.id}`}>
+                              <SelectTrigger className="w-[110px] h-8 text-xs" data-testid={`select-status-${booking.id}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -1855,53 +1855,55 @@ export default function Bookings() {
                               </SelectContent>
                             </Select>
                             
-                            {/* Payment Actions */}
-                            {booking.status === "pending_advance" && (
-                              <>
+                            {/* Payment Actions - Fixed width container for consistent layout */}
+                            <div className="flex items-center gap-1 min-w-[160px] justify-end">
+                              {booking.status === "pending_advance" && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 px-2 text-xs"
+                                    onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                    disabled={sendAdvancePaymentMutation.isPending}
+                                    title="Resend payment link"
+                                    data-testid={`button-resend-payment-${booking.id}`}
+                                  >
+                                    <CreditCard className="h-3.5 w-3.5 mr-1" />
+                                    Resend
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="h-8 px-2 text-xs"
+                                    onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                    disabled={confirmAdvancePaymentMutation.isPending}
+                                    title="Confirm payment received"
+                                    data-testid={`button-confirm-payment-${booking.id}`}
+                                  >
+                                    <Check className="h-3.5 w-3.5 mr-1" />
+                                    Confirm
+                                  </Button>
+                                </>
+                              )}
+                              
+                              {(booking.status === "pending" || booking.status === "confirmed") && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   className="h-8 px-2 text-xs"
                                   onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
                                   disabled={sendAdvancePaymentMutation.isPending}
-                                  title="Resend payment link"
-                                  data-testid={`button-resend-payment-${booking.id}`}
+                                  title="Send payment link"
+                                  data-testid={`button-send-payment-${booking.id}`}
                                 >
                                   <CreditCard className="h-3.5 w-3.5 mr-1" />
-                                  Resend
+                                  Pay Link
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="default"
-                                  className="h-8 px-2 text-xs"
-                                  onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                  disabled={confirmAdvancePaymentMutation.isPending}
-                                  title="Confirm payment received"
-                                  data-testid={`button-confirm-payment-${booking.id}`}
-                                >
-                                  <Check className="h-3.5 w-3.5 mr-1" />
-                                  Confirm
-                                </Button>
-                              </>
-                            )}
-                            
-                            {(booking.status === "pending" || booking.status === "confirmed") && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 px-2 text-xs"
-                                onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                disabled={sendAdvancePaymentMutation.isPending}
-                                title="Send payment link"
-                                data-testid={`button-send-payment-${booking.id}`}
-                              >
-                                <CreditCard className="h-3.5 w-3.5 mr-1" />
-                                Pay Link
-                              </Button>
-                            )}
+                              )}
+                            </div>
                             
                             {/* Icon Actions - Consistent for all */}
-                            <div className="flex items-center border-l ml-1 pl-1">
+                            <div className="flex items-center border-l pl-1">
                               <Button
                                 size="icon"
                                 variant="ghost"
