@@ -10429,14 +10429,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   // ==========================================
   // BACKGROUND JOB: Payment Reminders & Auto-Cancellation
-  // - First reminder: 8 hours after booking creation
-  // - Second reminder: 16 hours after booking creation (8 hours after first)
-  // - Auto-cancel: 48 hours after booking creation
+  // - Reminder intervals: Configurable per property (default 6 hours)
+  // - Max reminders: Configurable per property (default 3)
+  // - Auto-cancel: After payment link expiry hours (from advance payment settings)
   // ==========================================
   const PAYMENT_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
-  const FIRST_REMINDER_HOURS = 8;
-  const SECOND_REMINDER_HOURS = 16;
-  const AUTO_CANCEL_HOURS = 48;
+  const DEFAULT_REMINDER_HOURS = 6; // Default hours between reminders
+  const DEFAULT_MAX_REMINDERS = 3; // Default max number of reminders
+  const DEFAULT_AUTO_CANCEL_HOURS = 48; // Default auto-cancel after 48 hours
   
   async function processPaymentRemindersAndCancellations() {
     try {
@@ -10451,17 +10451,31 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       let skippedCount = 0;
       
       for (const booking of pendingBookings) {
-        // Check if payment reminders are enabled for this property
+        // Get feature settings for this property (includes reminder settings)
         const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
         const settings = settingsResult[0];
         
-        if (settings && settings.paymentReminders === false) {
+        // Check if payment reminders are enabled (use paymentReminderEnabled if available, fallback to paymentReminders)
+        const isReminderEnabled = settings?.paymentReminderEnabled !== false && settings?.paymentReminders !== false;
+        if (!isReminderEnabled) {
           skippedCount++;
           continue; // Skip reminders if disabled for this property
         }
+        
+        // Get configurable values from settings or use defaults
+        const reminderHours = settings?.paymentReminderHours || DEFAULT_REMINDER_HOURS;
+        const maxReminders = settings?.maxPaymentReminders || DEFAULT_MAX_REMINDERS;
+        const autoCancelHours = (settings?.advancePaymentExpiryHours || DEFAULT_AUTO_CANCEL_HOURS) * 2; // Double expiry hours for auto-cancel
+        
         const createdAt = booking.createdAt ? new Date(booking.createdAt) : now;
         const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
         const reminderCount = booking.reminderCount || 0;
+        
+        // Check time since last reminder
+        const lastReminderAt = booking.lastReminderAt ? new Date(booking.lastReminderAt) : null;
+        const hoursSinceLastReminder = lastReminderAt 
+          ? (now.getTime() - lastReminderAt.getTime()) / (1000 * 60 * 60)
+          : hoursSinceCreation; // If no reminder sent, use hours since creation
         
         // Get guest and property info for WhatsApp messages
         const guest = await storage.getGuest(booking.guestId);
@@ -10477,18 +10491,18 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0") || 
                               totalAmount * 0.3; // Default 30%
         
-        // Check for 48-hour auto-cancellation
-        if (hoursSinceCreation >= AUTO_CANCEL_HOURS) {
+        // Check for auto-cancellation (after configured hours)
+        if (hoursSinceCreation >= autoCancelHours) {
           await db.update(bookings).set({
             status: "cancelled",
             advancePaymentStatus: "cancelled",
-            cancellationReason: "Auto-cancelled: Advance payment not received within 48 hours",
+            cancellationReason: `Auto-cancelled: Advance payment not received within ${autoCancelHours} hours`,
             cancellationDate: now,
             updatedAt: now,
           }).where(eq(bookings.id, booking.id));
           
           cancelledCount++;
-          console.log(`[PAYMENT-JOB] Booking #${booking.id} auto-cancelled after ${AUTO_CANCEL_HOURS} hours`);
+          console.log(`[PAYMENT-JOB] Booking #${booking.id} auto-cancelled after ${autoCancelHours} hours`);
           
           // Notify admins about cancellation
           try {
@@ -10500,7 +10514,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
                 userId: admin.id,
                 type: "booking_cancelled",
                 title: "Booking Auto-Cancelled",
-                message: `Booking #${booking.id} for ${guest.fullName} was auto-cancelled - advance payment not received within 48 hours`,
+                message: `Booking #${booking.id} for ${guest.fullName} was auto-cancelled - advance payment not received within ${autoCancelHours} hours`,
                 soundType: "warning",
                 relatedId: booking.id,
                 relatedType: "booking",
@@ -10512,34 +10526,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           continue;
         }
         
-        // Check for second reminder (16 hours)
-        if (hoursSinceCreation >= SECOND_REMINDER_HOURS && reminderCount === 1) {
-          try {
-            await sendPaymentReminder(
-              guest.phone || "",
-              guest.fullName || "Guest",
-              `₹${advanceAmount.toLocaleString('en-IN')}`,
-              property.name,
-              format(new Date(booking.checkInDate), "dd MMM yyyy"),
-              format(new Date(booking.checkOutDate), "dd MMM yyyy")
-            );
-            
-            await db.update(bookings).set({
-              reminderCount: 2,
-              lastReminderAt: now,
-              updatedAt: now,
-            }).where(eq(bookings.id, booking.id));
-            
-            remindersCount++;
-            console.log(`[PAYMENT-JOB] Sent second reminder for booking #${booking.id}`);
-          } catch (reminderError: any) {
-            console.error(`[PAYMENT-JOB] Failed to send second reminder:`, reminderError.message);
-          }
-          continue;
-        }
+        // Check if we can send another reminder
+        // Conditions: not exceeded max reminders AND enough time has passed since last reminder
+        const canSendReminder = reminderCount < maxReminders && hoursSinceLastReminder >= reminderHours;
         
-        // Check for first reminder (8 hours)
-        if (hoursSinceCreation >= FIRST_REMINDER_HOURS && reminderCount === 0) {
+        if (canSendReminder) {
           try {
             await sendPaymentReminder(
               guest.phone || "",
@@ -10551,15 +10542,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             );
             
             await db.update(bookings).set({
-              reminderCount: 1,
+              reminderCount: reminderCount + 1,
               lastReminderAt: now,
               updatedAt: now,
             }).where(eq(bookings.id, booking.id));
             
             remindersCount++;
-            console.log(`[PAYMENT-JOB] Sent first reminder for booking #${booking.id}`);
+            console.log(`[PAYMENT-JOB] Sent reminder #${reminderCount + 1} for booking #${booking.id} (interval: ${reminderHours}h, max: ${maxReminders})`);
           } catch (reminderError: any) {
-            console.error(`[PAYMENT-JOB] Failed to send first reminder:`, reminderError.message);
+            console.error(`[PAYMENT-JOB] Failed to send reminder:`, reminderError.message);
           }
         }
       }
