@@ -1838,107 +1838,107 @@ export default function Bookings() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {booking.status === "pending_advance" ? (
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Status Change Dropdown - Always visible */}
+                            <Select
+                              value={booking.status}
+                              onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
+                            >
+                              <SelectTrigger className="w-[120px] h-8 text-xs" data-testid={`select-status-${booking.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="confirmed">Confirmed</SelectItem>
+                                <SelectItem value="checked-in">Checked In</SelectItem>
+                                <SelectItem value="cancelled">Cancelled</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            
+                            {/* Payment Actions */}
+                            {booking.status === "pending_advance" && (
                               <>
                                 <Button
                                   size="sm"
                                   variant="outline"
+                                  className="h-8 px-2 text-xs"
                                   onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
                                   disabled={sendAdvancePaymentMutation.isPending}
-                                  title="Resend payment link via WhatsApp"
+                                  title="Resend payment link"
                                   data-testid={`button-resend-payment-${booking.id}`}
                                 >
-                                  <CreditCard className="h-4 w-4 mr-1" />
-                                  {sendAdvancePaymentMutation.isPending ? "..." : "Resend"}
+                                  <CreditCard className="h-3.5 w-3.5 mr-1" />
+                                  Resend
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="default"
+                                  className="h-8 px-2 text-xs"
                                   onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
                                   disabled={confirmAdvancePaymentMutation.isPending}
-                                  title="Confirm advance payment received"
+                                  title="Confirm payment received"
                                   data-testid={`button-confirm-payment-${booking.id}`}
                                 >
-                                  <Check className="h-4 w-4 mr-1" />
-                                  {confirmAdvancePaymentMutation.isPending ? "..." : "Confirm"}
+                                  <Check className="h-3.5 w-3.5 mr-1" />
+                                  Confirm
                                 </Button>
                               </>
-                            ) : (
-                              <>
-                                <Select
-                                  value={booking.status}
-                                  onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
-                                >
-                                  <SelectTrigger className="w-[140px]" data-testid={`select-status-${booking.id}`}>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="confirmed">Confirmed</SelectItem>
-                                    <SelectItem value="checked-in">Checked In</SelectItem>
-                                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                {(booking.status === "pending" || booking.status === "confirmed") && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                    disabled={sendAdvancePaymentMutation.isPending}
-                                    title="Send payment link via WhatsApp"
-                                    data-testid={`button-send-payment-${booking.id}`}
-                                  >
-                                    <CreditCard className="h-4 w-4 mr-1" />
-                                    {sendAdvancePaymentMutation.isPending ? "..." : "Pay Link"}
-                                  </Button>
-                                )}
-                              </>
                             )}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setQrBookingId(booking.id);
-                                setQrModalOpen(true);
-                              }}
-                              title="View Check-in QR Code"
-                              data-testid={`button-qr-${booking.id}`}
-                            >
-                              <QrCode className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => handleEditBooking(booking)}
-                              data-testid={`button-edit-booking-${booking.id}`}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            {booking.status === "checked-in" && (
+                            
+                            {(booking.status === "pending" || booking.status === "confirmed") && (
                               <Button
                                 size="sm"
-                                onClick={() => {
-                                  setCheckoutBookingId(booking.id);
-                                  setCheckoutDialogOpen(true);
-                                }}
-                                data-testid={`button-checkout-${booking.id}`}
+                                variant="outline"
+                                className="h-8 px-2 text-xs"
+                                onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                disabled={sendAdvancePaymentMutation.isPending}
+                                title="Send payment link"
+                                data-testid={`button-send-payment-${booking.id}`}
                               >
-                                <Receipt className="h-4 w-4 mr-1" />
-                                Checkout
+                                <CreditCard className="h-3.5 w-3.5 mr-1" />
+                                Pay Link
                               </Button>
                             )}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => {
-                                setDeleteBookingId(booking.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                              data-testid={`button-delete-booking-${booking.id}`}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
+                            
+                            {/* Icon Actions - Consistent for all */}
+                            <div className="flex items-center border-l ml-1 pl-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  setQrBookingId(booking.id);
+                                  setQrModalOpen(true);
+                                }}
+                                title="View QR Code"
+                                data-testid={`button-qr-${booking.id}`}
+                              >
+                                <QrCode className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => handleEditBooking(booking)}
+                                title="Edit Booking"
+                                data-testid={`button-edit-booking-${booking.id}`}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  setDeleteBookingId(booking.id);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                title="Delete Booking"
+                                data-testid={`button-delete-booking-${booking.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
