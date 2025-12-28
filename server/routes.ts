@@ -3103,19 +3103,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`[ADVANCE PAYMENT] Booking #${bookingId} manually confirmed - advance payment marked as received`);
       
-      // Send WhatsApp confirmation to guest (same as webhook flow)
+      // Send WhatsApp confirmation to guest (same as webhook flow) - check template controls
       if (sendWhatsApp) {
         const guest = await storage.getGuest(booking.guestId);
         const property = await storage.getProperty(booking.propertyId);
         if (guest && guest.phone) {
           try {
-            await sendAdvancePaymentConfirmation(
-              guest.phone,
-              guest.fullName || "Guest",
-              `₹${advanceAmount.toLocaleString('en-IN')}`,
-              property?.name || "Hotel"
-            );
-            console.log(`[ADVANCE PAYMENT] Confirmation WhatsApp sent to ${guest.fullName}`);
+            // Check if payment_confirmation template is enabled
+            const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_confirmation');
+            const isTemplateEnabled = templateSetting?.isEnabled !== false;
+            
+            if (isTemplateEnabled) {
+              await sendAdvancePaymentConfirmation(
+                guest.phone,
+                guest.fullName || "Guest",
+                `₹${advanceAmount.toLocaleString('en-IN')}`,
+                property?.name || "Hotel"
+              );
+              console.log(`[ADVANCE PAYMENT] Confirmation WhatsApp sent to ${guest.fullName}`);
+            } else {
+              console.log(`[ADVANCE PAYMENT] Payment confirmation WhatsApp disabled for property ${booking.propertyId}`);
+            }
           } catch (whatsappError: any) {
             console.error(`[ADVANCE PAYMENT] WhatsApp failed:`, whatsappError.message);
           }
@@ -3654,18 +3662,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
             
-            // Send WhatsApp confirmation to guest using payment_confirmation template (18649)
+            // Send WhatsApp confirmation to guest - check template controls first
             const guest = await storage.getGuest(booking.guestId);
             const property = await storage.getProperty(booking.propertyId);
             if (guest && guest.phone) {
-              console.log(`[RazorPay Webhook] Sending payment confirmation to guest: ${guest.fullName} (${guest.phone})`);
-              await sendAdvancePaymentConfirmation(
-                guest.phone,
-                guest.fullName || "Guest",
-                `₹${amountInRupees.toLocaleString('en-IN')}`,
-                property?.name || "Hotel"
-              );
-              console.log(`[RazorPay Webhook] Payment confirmation sent successfully`);
+              // Check if payment_confirmation template is enabled
+              const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_confirmation');
+              const isTemplateEnabled = templateSetting?.isEnabled !== false;
+              
+              if (isTemplateEnabled) {
+                console.log(`[RazorPay Webhook] Sending payment confirmation to guest: ${guest.fullName} (${guest.phone})`);
+                await sendAdvancePaymentConfirmation(
+                  guest.phone,
+                  guest.fullName || "Guest",
+                  `₹${amountInRupees.toLocaleString('en-IN')}`,
+                  property?.name || "Hotel"
+                );
+                console.log(`[RazorPay Webhook] Payment confirmation sent successfully`);
+              } else {
+                console.log(`[RazorPay Webhook] Payment confirmation WhatsApp disabled for property ${booking.propertyId}`);
+              }
             }
             
             // Create notification for admins
