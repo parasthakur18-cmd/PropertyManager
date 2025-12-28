@@ -10149,6 +10149,53 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     }
   });
 
+  // ===== WHATSAPP TEMPLATE SETTINGS ROUTES =====
+  // Get all template settings for a property
+  app.get("/api/whatsapp-template-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      // Initialize settings if not exist (for new properties)
+      await storage.initializePropertyWhatsappSettings(propertyId);
+      
+      const settings = await storage.getWhatsappTemplateSettings(propertyId);
+      res.json(settings);
+    } catch (error: any) {
+      console.error("[WHATSAPP-TEMPLATE-SETTINGS] GET error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update a specific template setting
+  app.put("/api/whatsapp-template-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, templateType, isEnabled, sendTiming, delayHours } = req.body;
+      
+      if (!propertyId || !templateType) {
+        return res.status(400).json({ message: "Property ID and template type required" });
+      }
+
+      // Admin and super-admin can update settings
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admin can update WhatsApp template settings" });
+      }
+
+      const setting = await storage.upsertWhatsappTemplateSetting({
+        propertyId: parseInt(propertyId),
+        templateType,
+        isEnabled: isEnabled ?? true,
+        sendTiming: sendTiming ?? 'immediate',
+        delayHours: delayHours ?? 0
+      });
+      
+      res.json(setting);
+    } catch (error: any) {
+      console.error("[WHATSAPP-TEMPLATE-SETTINGS] PUT error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Generate AI-powered expense insights using OpenAI
   app.post("/api/ai/insights", isAuthenticated, async (req: any, res) => {
     try {

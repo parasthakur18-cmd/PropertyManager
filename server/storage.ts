@@ -97,6 +97,9 @@ import {
   type InsertFeatureSettings,
   type WhatsappNotificationSettings,
   type InsertWhatsappNotificationSettings,
+  whatsappTemplateSettings,
+  type WhatsappTemplateSetting,
+  type InsertWhatsappTemplateSetting,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -345,6 +348,12 @@ export interface IStorage {
   // Dashboard stats
   getDashboardStats(propertyId?: number): Promise<any>;
   getAnalytics(propertyId?: number): Promise<any>;
+
+  // WhatsApp Template Settings operations
+  getWhatsappTemplateSettings(propertyId: number): Promise<WhatsappTemplateSetting[]>;
+  getWhatsappTemplateSetting(propertyId: number, templateType: string): Promise<WhatsappTemplateSetting | undefined>;
+  upsertWhatsappTemplateSetting(setting: InsertWhatsappTemplateSetting): Promise<WhatsappTemplateSetting>;
+  initializePropertyWhatsappSettings(propertyId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2990,6 +2999,78 @@ export class DatabaseStorage implements IStorage {
     );
     
     return vendorsWithBalance;
+  }
+
+  // WhatsApp Template Settings operations
+  async getWhatsappTemplateSettings(propertyId: number): Promise<WhatsappTemplateSetting[]> {
+    return await db
+      .select()
+      .from(whatsappTemplateSettings)
+      .where(eq(whatsappTemplateSettings.propertyId, propertyId));
+  }
+
+  async getWhatsappTemplateSetting(propertyId: number, templateType: string): Promise<WhatsappTemplateSetting | undefined> {
+    const [setting] = await db
+      .select()
+      .from(whatsappTemplateSettings)
+      .where(
+        and(
+          eq(whatsappTemplateSettings.propertyId, propertyId),
+          eq(whatsappTemplateSettings.templateType, templateType)
+        )
+      );
+    return setting;
+  }
+
+  async upsertWhatsappTemplateSetting(setting: InsertWhatsappTemplateSetting): Promise<WhatsappTemplateSetting> {
+    // Check if setting exists
+    const existing = await this.getWhatsappTemplateSetting(setting.propertyId, setting.templateType);
+    
+    if (existing) {
+      // Update
+      const [updated] = await db
+        .update(whatsappTemplateSettings)
+        .set({ 
+          isEnabled: setting.isEnabled, 
+          sendTiming: setting.sendTiming, 
+          delayHours: setting.delayHours,
+          updatedAt: new Date() 
+        })
+        .where(eq(whatsappTemplateSettings.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      // Insert
+      const [created] = await db.insert(whatsappTemplateSettings).values(setting).returning();
+      return created;
+    }
+  }
+
+  async initializePropertyWhatsappSettings(propertyId: number): Promise<void> {
+    const templateTypes = [
+      'pending_payment',
+      'payment_confirmation', 
+      'checkin_message',
+      'addon_service',
+      'checkout_message'
+    ];
+
+    // Check existing settings for this property
+    const existing = await this.getWhatsappTemplateSettings(propertyId);
+    const existingTypes = existing.map(s => s.templateType);
+
+    // Create any missing settings with defaults (enabled, immediate)
+    for (const templateType of templateTypes) {
+      if (!existingTypes.includes(templateType)) {
+        await db.insert(whatsappTemplateSettings).values({
+          propertyId,
+          templateType,
+          isEnabled: true,
+          sendTiming: 'immediate',
+          delayHours: 0
+        });
+      }
+    }
   }
 }
 
