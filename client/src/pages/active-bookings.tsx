@@ -1155,10 +1155,9 @@ export default function ActiveBookings() {
             const actualNights = Math.max(1, Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
             const extraNights = Math.max(0, actualNights - bookedNights);
             
-            // Calculate room rate per night (average if group booking)
-            const roomRate = booking.isGroupBooking && booking.rooms 
-              ? booking.rooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight || "0"), 0)
-              : parseFloat(booking.room?.pricePerNight || "0");
+            // Calculate room rate per night from actual booking charges (accounts for custom pricing)
+            const baseRoomChargesForRate = parseFloat(booking.charges.roomCharges) || 0;
+            const roomRate = bookedNights > 0 ? baseRoomChargesForRate / bookedNights : 0;
             
             const calculatedExtendedAmount = extraNights * roomRate;
             
