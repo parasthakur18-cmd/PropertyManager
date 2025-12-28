@@ -53,7 +53,8 @@ import {
   sendWelcomeWithMenuLink,
   sendAdvancePaymentRequest,
   sendAdvancePaymentConfirmation,
-  sendPaymentReminder
+  sendPaymentReminder,
+  sendSelfCheckinLink
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -3044,6 +3045,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Send advance payment error:", error);
       res.status(500).json({ message: error.message || "Failed to send advance payment request" });
+    }
+  });
+
+  // Send self check-in link to guest via WhatsApp
+  app.post("/api/bookings/:id/send-checkin-link", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number is required to send check-in link" });
+      }
+      
+      const property = await storage.getProperty(booking.propertyId);
+      
+      // Generate the self check-in link
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+          : 'https://hostezee.replit.app';
+      
+      const checkinLink = `${baseUrl}/guest-self-checkin?bookingId=${bookingId}`;
+      const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+      
+      try {
+        await sendSelfCheckinLink(
+          guest.phone,
+          guest.fullName || "Guest",
+          property?.name || "Property",
+          checkinLink,
+          checkInFormatted
+        );
+        
+        console.log(`[SELF CHECKIN] Check-in link sent to ${guest.fullName} for booking #${bookingId}`);
+        
+        res.json({
+          success: true,
+          message: "Self check-in link sent via WhatsApp",
+          checkinLink
+        });
+      } catch (waError: any) {
+        console.error("[SELF CHECKIN] WhatsApp error:", waError.message);
+        res.status(500).json({ message: "Failed to send WhatsApp message" });
+      }
+    } catch (error: any) {
+      console.error("Send check-in link error:", error);
+      res.status(500).json({ message: error.message || "Failed to send check-in link" });
     }
   });
 

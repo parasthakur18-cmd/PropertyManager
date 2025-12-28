@@ -511,6 +511,29 @@ export async function sendCustomWhatsAppMessage(
   });
 }
 
+/**
+ * Send self check-in link to guest via WhatsApp
+ * Uses a simple text message with the check-in link
+ */
+export async function sendSelfCheckinLink(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  checkinLink: string,
+  checkInDate: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_SELF_CHECKIN || "22226";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, checkInDate, checkinLink],
+  });
+}
+
 // Template type mapping for WhatsApp template settings
 export type TemplateType = 'pending_payment' | 'payment_confirmation' | 'checkin_message' | 'addon_service' | 'checkout_message';
 
