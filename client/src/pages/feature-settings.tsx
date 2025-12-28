@@ -98,7 +98,7 @@ export default function FeatureSettings() {
     return null;
   }
 
-  const { data: properties = [] } = useQuery({
+  const { data: properties = [] } = useQuery<{ id: number; name: string }[]>({
     queryKey: ["/api/properties"],
   });
 
