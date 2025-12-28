@@ -1161,6 +1161,29 @@ export default function ActiveBookings() {
             
             const calculatedExtendedAmount = extraNights * roomRate;
             
+            // Check for booking conflicts during extended stay period
+            const currentRoomIds = booking.isGroupBooking && booking.roomIds 
+              ? booking.roomIds 
+              : booking.room ? [booking.room.id] : [];
+            
+            const conflictingBookings = activeBookings?.filter(otherBooking => {
+              if (otherBooking.id === booking.id) return false;
+              
+              const otherRoomIds = otherBooking.isGroupBooking && otherBooking.roomIds
+                ? otherBooking.roomIds
+                : otherBooking.room ? [otherBooking.room.id] : [];
+              
+              // Check if any room overlaps
+              const hasRoomOverlap = currentRoomIds.some(roomId => otherRoomIds.includes(roomId));
+              if (!hasRoomOverlap) return false;
+              
+              // Check if the other booking's check-in is during our extended period
+              const otherCheckIn = new Date(otherBooking.checkInDate);
+              const extendedPeriodStart = new Date(booking.checkOutDate);
+              
+              return otherCheckIn >= extendedPeriodStart && otherCheckIn <= today;
+            }) || [];
+            
             // Determine extended stay charges to add
             let extendedStayCharges = 0;
             if (extraNights > 0 && extendedStayHandled) {
@@ -1204,6 +1227,33 @@ export default function ActiveBookings() {
 
             return (
               <div className="space-y-4">
+                {/* Room Conflict Warning */}
+                {extraNights > 0 && conflictingBookings.length > 0 && (
+                  <Alert className="border-red-400 bg-red-50 dark:bg-red-900/20" data-testid="alert-booking-conflict">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <AlertDescription className="text-red-800 dark:text-red-300">
+                      <div className="font-semibold mb-2">Booking Conflict Detected!</div>
+                      <div className="text-sm space-y-2">
+                        <p>The following booking(s) overlap with this guest's extended stay:</p>
+                        {conflictingBookings.map(conflict => (
+                          <div key={conflict.id} className="bg-red-100 dark:bg-red-900/40 p-2 rounded-md">
+                            <div className="font-medium">{conflict.guest.fullName}</div>
+                            <div className="text-xs">
+                              Room: {conflict.isGroupBooking && conflict.rooms 
+                                ? conflict.rooms.map(r => r.roomNumber).join(", ") 
+                                : conflict.room?.roomNumber}
+                            </div>
+                            <div className="text-xs">
+                              Check-in: {format(new Date(conflict.checkInDate), "dd MMM yyyy")}
+                            </div>
+                          </div>
+                        ))}
+                        <p className="mt-2 font-medium">Please arrange alternative accommodation for the conflicting guest(s).</p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Extended Stay Alert */}
                 {extraNights > 0 && !extendedStayHandled && (
                   <Alert className="border-orange-300 bg-orange-50 dark:bg-orange-900/20" data-testid="alert-extended-stay">
