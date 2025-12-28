@@ -31,6 +31,9 @@ interface FeatureSettings {
   advancePaymentEnabled: boolean;
   advancePaymentPercentage: string;
   advancePaymentExpiryHours: number;
+  paymentReminderEnabled: boolean;
+  paymentReminderHours: number;
+  maxPaymentReminders: number;
 }
 
 interface TemplateSetting {
@@ -475,6 +478,83 @@ export default function FeatureSettings() {
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="overflow-hidden border-primary/20">
+        <CardHeader className="bg-primary/5 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-lg">Payment Reminder Settings</CardTitle>
+              <CardDescription>Configure automatic payment reminders for pending advance payments</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-6">
+          <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
+            <div className="flex-1">
+              <p className="font-medium">Enable Automatic Reminders</p>
+              <p className="text-sm text-muted-foreground">
+                Automatically send WhatsApp reminders to guests who haven't paid their advance
+              </p>
+            </div>
+            <Switch
+              checked={settings.paymentReminderEnabled !== false}
+              onCheckedChange={(value) => {
+                updateMutation.mutate({ paymentReminderEnabled: value } as any);
+              }}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-paymentReminderEnabled"
+            />
+          </div>
+
+          {settings.paymentReminderEnabled !== false && (
+            <div className="grid gap-4 md:grid-cols-2 p-3 rounded-lg bg-muted/30">
+              <div className="space-y-2">
+                <Label htmlFor="reminderHours">Reminder Interval (Hours)</Label>
+                <Input
+                  id="reminderHours"
+                  type="number"
+                  min="1"
+                  max="72"
+                  value={settings.paymentReminderHours || 6}
+                  onChange={(e) => {
+                    updateMutation.mutate({ paymentReminderHours: parseInt(e.target.value) || 6 } as any);
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-paymentReminderHours"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Hours to wait before sending each reminder
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="maxReminders">Maximum Reminders</Label>
+                <Input
+                  id="maxReminders"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={settings.maxPaymentReminders || 3}
+                  onChange={(e) => {
+                    updateMutation.mutate({ maxPaymentReminders: parseInt(e.target.value) || 3 } as any);
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-maxPaymentReminders"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Maximum number of reminders to send per booking
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg">
+            <p><strong>How it works:</strong> After a guest creates a booking with pending advance payment, 
+            the system will automatically send WhatsApp reminders at the configured interval until 
+            the payment is received or the maximum number of reminders is reached.</p>
+          </div>
         </CardContent>
       </Card>
 
