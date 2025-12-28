@@ -77,7 +77,6 @@ import AuditLogs from "@/pages/audit-logs";
 import Architecture from "@/pages/architecture";
 import AdvancedFeatures from "@/pages/advanced-features";
 import FeatureSettings from "@/pages/feature-settings";
-import WhatsappSettings from "@/pages/whatsapp-settings";
 import AnalyticsChat from "@/pages/analytics-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Chatbot } from "@/components/chatbot";
@@ -161,7 +160,6 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/users" component={UsersManagement} />
           <Route path="/settings" component={Settings} />
           <Route path="/feature-settings" component={FeatureSettings} />
-          <Route path="/whatsapp-settings" component={WhatsappSettings} />
         </>
       ) : (
         <Route path="/" component={Home} />
