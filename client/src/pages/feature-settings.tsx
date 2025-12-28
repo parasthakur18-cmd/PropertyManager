@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 import { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard
+  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,10 +28,18 @@ interface FeatureSettings {
   expenseForecasting: boolean;
   budgetAlerts: boolean;
   paymentReminders: boolean;
-  // Advance Payment Settings
   advancePaymentEnabled: boolean;
   advancePaymentPercentage: string;
   advancePaymentExpiryHours: number;
+}
+
+interface TemplateSetting {
+  id: number;
+  propertyId: number;
+  templateType: string;
+  isEnabled: boolean;
+  sendTiming: string;
+  delayHours: number;
 }
 
 const features = [
@@ -40,7 +48,7 @@ const features = [
     icon: Bell,
     items: [
       { key: "foodOrderNotifications", label: "Food Order Alerts", description: "Browser + WhatsApp alerts when new orders arrive" },
-      { key: "whatsappNotifications", label: "WhatsApp Messaging", description: "Send notifications via WhatsApp to staff" },
+      { key: "whatsappNotifications", label: "WhatsApp Messaging", description: "Master toggle for all WhatsApp notifications" },
       { key: "emailNotifications", label: "Email Notifications", description: "Send alerts via email" },
       { key: "paymentReminders", label: "Payment Reminders", description: "Remind guests about pending payments" },
     ]
@@ -71,24 +79,29 @@ const features = [
   },
 ];
 
+const WHATSAPP_TEMPLATES = [
+  { type: 'pending_payment', name: 'Pending Payment', description: 'Send payment request for booking enquiries', icon: '💳' },
+  { type: 'payment_confirmation', name: 'Payment Confirmation', description: 'Send when payment is received', icon: '✅' },
+  { type: 'checkin_message', name: 'Check-in Message', description: 'Send when guest checks in', icon: '🏨' },
+  { type: 'addon_service', name: 'Add-on Service', description: 'Send for additional services (future)', icon: '🛎️' },
+  { type: 'checkout_message', name: 'Checkout Message', description: 'Send when guest checks out', icon: '👋' }
+];
+
 export default function FeatureSettings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedProperty, setSelectedProperty] = useState<string>("");
 
-  // Redirect if not admin or super-admin
   if (user?.role !== "admin" && user?.role !== "super-admin") {
     navigate("/");
     return null;
   }
 
-  // Get all properties for selection
   const { data: properties = [] } = useQuery({
     queryKey: ["/api/properties"],
   });
 
-  // Use selected property or first assigned property
   const propertyId = selectedProperty || user?.assignedPropertyIds?.[0];
 
   const { data: settings, isLoading, error } = useQuery<FeatureSettings>({
@@ -101,33 +114,81 @@ export default function FeatureSettings() {
     },
   });
 
+  const { data: templateSettings, isLoading: templatesLoading } = useQuery<TemplateSetting[]>({
+    queryKey: ["/api/whatsapp-template-settings", propertyId],
+    enabled: !!propertyId,
+    queryFn: async () => {
+      const response = await fetch(`/api/whatsapp-template-settings/${propertyId}`);
+      if (!response.ok) throw new Error("Failed to fetch template settings");
+      return response.json();
+    }
+  });
+
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<FeatureSettings>) => {
       return await apiRequest("/api/feature-settings", "PATCH", { ...updates, propertyId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feature-settings", propertyId] });
-      toast({
-        title: "Success",
-        description: "Feature settings updated",
-      });
+      toast({ title: "Success", description: "Settings updated" });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (data: { templateType: string; isEnabled?: boolean; sendTiming?: string; delayHours?: number }) => {
+      if (!propertyId) throw new Error("Property not selected");
+      return await apiRequest("/api/whatsapp-template-settings", "PUT", { propertyId, ...data });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-template-settings", propertyId] });
+      toast({ title: "Success", description: "Template settings updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update", variant: "destructive" });
     },
   });
 
   const handleToggle = async (key: string, value: boolean) => {
-    await updateMutation.mutateAsync({
-      [key]: value,
-    } as any);
+    await updateMutation.mutateAsync({ [key]: value } as any);
   };
 
-  // Show property selector if no property assigned
+  const getTemplateSetting = (templateType: string): TemplateSetting | undefined => {
+    return templateSettings?.find(s => s.templateType === templateType);
+  };
+
+  const handleTemplateToggle = async (templateType: string, isEnabled: boolean) => {
+    const current = getTemplateSetting(templateType);
+    await updateTemplateMutation.mutateAsync({
+      templateType,
+      isEnabled,
+      sendTiming: current?.sendTiming || 'immediate',
+      delayHours: current?.delayHours || 0
+    });
+  };
+
+  const handleTimingChange = async (templateType: string, sendTiming: string) => {
+    const current = getTemplateSetting(templateType);
+    await updateTemplateMutation.mutateAsync({
+      templateType,
+      isEnabled: current?.isEnabled ?? true,
+      sendTiming,
+      delayHours: sendTiming === 'immediate' ? 0 : (current?.delayHours || 1)
+    });
+  };
+
+  const handleDelayChange = async (templateType: string, delayHours: number) => {
+    const current = getTemplateSetting(templateType);
+    await updateTemplateMutation.mutateAsync({
+      templateType,
+      isEnabled: current?.isEnabled ?? true,
+      sendTiming: 'delayed',
+      delayHours
+    });
+  };
+
   if (!selectedProperty && !user?.assignedPropertyIds?.[0]) {
     return (
       <div className="p-6 max-w-6xl mx-auto space-y-8">
@@ -136,9 +197,7 @@ export default function FeatureSettings() {
             <Settings2 className="h-8 w-8" />
             Feature Settings
           </h1>
-          <p className="text-muted-foreground">
-            Select a property to configure its features
-          </p>
+          <p className="text-muted-foreground">Select a property to configure its features</p>
         </div>
         <Card>
           <CardHeader>
@@ -152,9 +211,7 @@ export default function FeatureSettings() {
               <SelectContent>
                 {properties && properties.length > 0 ? (
                   properties.map((prop: any) => (
-                    <SelectItem key={prop.id} value={prop.id.toString()}>
-                      {prop.name}
-                    </SelectItem>
+                    <SelectItem key={prop.id} value={prop.id.toString()}>{prop.name}</SelectItem>
                   ))
                 ) : (
                   <div className="p-2 text-sm text-muted-foreground">No properties available</div>
@@ -167,7 +224,6 @@ export default function FeatureSettings() {
     );
   }
 
-  // Show loading while fetching settings
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
@@ -182,7 +238,6 @@ export default function FeatureSettings() {
     );
   }
 
-  // Show error if fetch failed
   if (error) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
@@ -198,7 +253,6 @@ export default function FeatureSettings() {
     );
   }
 
-  // Show message if no settings found
   if (!settings) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
@@ -242,9 +296,7 @@ export default function FeatureSettings() {
               <CardHeader className="bg-muted/50 border-b pb-3">
                 <div className="flex items-center gap-2">
                   <Icon className="h-5 w-5 text-primary" />
-                  <div>
-                    <CardTitle className="text-lg">{category.category}</CardTitle>
-                  </div>
+                  <CardTitle className="text-lg">{category.category}</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
@@ -271,7 +323,92 @@ export default function FeatureSettings() {
         })}
       </div>
 
-      {/* Advance Payment Configuration */}
+      <Card className="overflow-hidden border-green-200 dark:border-green-800">
+        <CardHeader className="bg-green-50 dark:bg-green-950 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-green-600" />
+            <div>
+              <CardTitle className="text-lg">WhatsApp Message Templates</CardTitle>
+              <CardDescription>Configure timing and enable/disable each message type</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          {templatesLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600" />
+            </div>
+          ) : (
+            WHATSAPP_TEMPLATES.map((template) => {
+              const setting = getTemplateSetting(template.type);
+              const isEnabled = setting?.isEnabled ?? true;
+              const sendTiming = setting?.sendTiming || 'immediate';
+              const delayHours = setting?.delayHours || 0;
+
+              return (
+                <div
+                  key={template.type}
+                  className={`p-4 rounded-lg border ${!isEnabled ? "opacity-60 bg-muted/30" : "hover:bg-muted/50"} transition-colors`}
+                >
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl">{template.icon}</span>
+                      <div>
+                        <p className="font-medium">{template.name}</p>
+                        <p className="text-sm text-muted-foreground">{template.description}</p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={isEnabled}
+                      onCheckedChange={(value) => handleTemplateToggle(template.type, value)}
+                      disabled={updateTemplateMutation.isPending}
+                      data-testid={`toggle-template-${template.type}`}
+                    />
+                  </div>
+                  
+                  {isEnabled && (
+                    <div className="flex flex-wrap items-center gap-4 pl-9 pt-2 border-t">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm">Send:</Label>
+                      </div>
+                      <Select
+                        value={sendTiming}
+                        onValueChange={(value) => handleTimingChange(template.type, value)}
+                      >
+                        <SelectTrigger className="w-32" data-testid={`timing-${template.type}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="immediate">Immediate</SelectItem>
+                          <SelectItem value="delayed">Delayed</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {sendTiming === 'delayed' && (
+                        <div className="flex items-center gap-2">
+                          <Label className="text-sm">After</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={72}
+                            value={delayHours}
+                            onChange={(e) => handleDelayChange(template.type, parseInt(e.target.value) || 1)}
+                            className="w-16"
+                            data-testid={`delay-${template.type}`}
+                          />
+                          <span className="text-sm text-muted-foreground">hours</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="overflow-hidden border-primary/20">
         <CardHeader className="bg-primary/5 border-b pb-3">
           <div className="flex items-center gap-2">
@@ -283,7 +420,6 @@ export default function FeatureSettings() {
           </div>
         </CardHeader>
         <CardContent className="pt-4 space-y-6">
-          {/* Enable/Disable Toggle */}
           <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
             <div className="flex-1">
               <p className="font-medium">Enable Advance Payment</p>
