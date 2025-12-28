@@ -1028,3 +1028,31 @@ export const insertTaskNotificationLogSchema = createInsertSchema(taskNotificati
   updatedAt: true,
 });
 export type InsertTaskNotificationLog = z.infer<typeof insertTaskNotificationLogSchema>;
+
+// WhatsApp Template Settings table - per property configuration
+export const whatsappTemplateSettings = pgTable("whatsapp_template_settings", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  templateType: varchar("template_type", { length: 50 }).notNull(),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  sendTiming: varchar("send_timing", { length: 20 }).notNull().default("immediate"),
+  delayHours: integer("delay_hours").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WhatsappTemplateSetting = typeof whatsappTemplateSettings.$inferSelect;
+export const insertWhatsappTemplateSettingSchema = createInsertSchema(whatsappTemplateSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWhatsappTemplateSetting = z.infer<typeof insertWhatsappTemplateSettingSchema>;
+
+// WhatsApp template types
+export type WhatsappTemplateType = 
+  | 'pending_payment'
+  | 'payment_confirmation'
+  | 'checkin_message'
+  | 'addon_service'
+  | 'checkout_message';
