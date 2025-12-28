@@ -2179,17 +2179,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
             const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
             
-            // Check if check-in notifications are enabled (both old settings and new template controls)
+            // Check if check-in notifications are enabled via template controls
             if (booking.propertyId) {
-              const whatsappSettings = await storage.getWhatsappSettingsByProperty(booking.propertyId);
               const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
               
               // Template must be enabled (defaults to true if no setting exists)
               const isTemplateEnabled = templateSetting?.isEnabled !== false;
-              // Old setting must also be enabled
-              const isOldSettingEnabled = whatsappSettings?.checkInEnabled !== false;
               
-              if (isTemplateEnabled && isOldSettingEnabled) {
+              if (isTemplateEnabled) {
                 // Send comprehensive welcome message with menu link (single message)
                 let primaryRoomNumber = roomNumbers.split(",")[0].trim();
                 const baseUrl = process.env.REPLIT_DEV_DOMAIN 
@@ -2202,7 +2199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 await sendWelcomeWithMenuLink(guest.phone, propertyName, guestName, menuLink);
                 console.log(`[WhatsApp] Booking #${booking.id} - Welcome message with menu link sent to ${guest.fullName}: ${menuLink}`);
               } else {
-                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled (template: ${isTemplateEnabled}, old setting: ${isOldSettingEnabled})`);
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled (template: ${isTemplateEnabled})`);
               }
             }
           }
