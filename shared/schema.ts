@@ -797,6 +797,10 @@ export const featureSettings = pgTable("feature_settings", {
   advancePaymentEnabled: boolean("advance_payment_enabled").notNull().default(true),
   advancePaymentPercentage: decimal("advance_payment_percentage", { precision: 5, scale: 2 }).default("30"),
   advancePaymentExpiryHours: integer("advance_payment_expiry_hours").default(24),
+  // Payment Reminder Settings
+  paymentReminderEnabled: boolean("payment_reminder_enabled").notNull().default(true),
+  paymentReminderHours: integer("payment_reminder_hours").default(6),
+  maxPaymentReminders: integer("max_payment_reminders").default(3),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
