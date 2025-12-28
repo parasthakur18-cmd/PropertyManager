@@ -1035,7 +1035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get all checked-in bookings (active guests)
       const allBookings = await storage.getAllBookings();
-      const checkedInBookings = allBookings.filter(b => b.status === "checked_in");
+      const checkedInBookings = allBookings.filter(b => b.status === "checked-in");
       
       const conflicts: any[] = [];
       
