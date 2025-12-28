@@ -4,6 +4,7 @@
 Hostezee is a comprehensive, multi-property management system designed for hotels, resorts, and accommodations. Built natively on Replit, it offers instant deployment and aims to be the easiest PMS globally to operate, targeting significant market share. Key capabilities include an intelligent booking engine, guest management, dynamic pricing, advance payments, restaurant operations, financial tracking, complete checkout with bill generation, and attendance/salary management.
 
 ## Recent Updates
+- **December 28, 2025**: Implemented extended stay detection at checkout. System automatically detects when guests stay beyond their original checkout date and offers three options: add calculated charges (room rate × extra nights), enter a custom amount, or mark as complimentary. Extended charges are added to room charges in the final bill.
 - **December 25, 2025**: Implemented Beds24 Channel Manager integration with two-way booking sync. Features include: pull bookings from Beds24 API, webhook endpoint for real-time booking notifications, automatic guest creation, external booking ID tracking, and integration UI in OTA Integrations page with Property Key configuration and webhook URL display.
 - **December 25, 2025**: Implemented complete advance payment booking confirmation system. Features include: configurable advance payment percentage (default 30%) and expiry hours (default 24h) per property, Razorpay payment link generation with auto-expiry, background job to auto-expire pending bookings every 15 minutes, WhatsApp notifications for payment requests, webhook auto-confirmation on payment, and admin UI with color-coded status badges (Awaiting Payment, Confirmed, Expired) plus manual actions (Resend Payment Link, Confirm Booking).
 - **December 6, 2025**: Integrated Agent Mail email service for transactional emails (bookings, payments, password resets, expense notifications, vendor payments). Database schema verified with all accounting tables (vendors, expenses, leases) now synced.
@@ -24,7 +25,7 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 
 #### Core Management
 -   **Multi-Property Management**: Supports unlimited resort properties.
--   **Booking & Guest Management**: Intelligent booking engine, guest tracking, advanced pricing, booking source, meal plan tracking, group bookings, and dormitory bed-level tracking. Includes an Airbnb-style visual room calendar with color-coded availability and direct booking.
+-   **Booking & Guest Management**: Intelligent booking engine, guest tracking, advanced pricing, booking source, meal plan tracking, group bookings, and dormitory bed-level tracking. Includes an Airbnb-style visual room calendar with color-coded availability and direct booking. Extended stay detection at checkout automatically calculates overstay charges with options for calculated amount, custom amount, or complimentary.
 -   **User & Enquiry Management**: Manages user roles, property assignments, and deletions with role-based access control. Handles the full lifecycle of individual and group enquiries.
 
 #### AI & Intelligent Features
