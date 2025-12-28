@@ -510,3 +510,74 @@ export async function sendCustomWhatsAppMessage(
     variables,
   });
 }
+
+// Template type mapping for WhatsApp template settings
+export type TemplateType = 'pending_payment' | 'payment_confirmation' | 'checkin_message' | 'addon_service' | 'checkout_message';
+
+interface TemplateSetting {
+  templateType: string;
+  isEnabled: boolean;
+  sendTiming: string;
+  delayHours: number;
+}
+
+/**
+ * Check if a template should be sent immediately or delayed
+ * Returns: { send: boolean, delayMs: number }
+ * - If disabled: send = false
+ * - If immediate: send = true, delayMs = 0
+ * - If delayed: send = true, delayMs = delay in milliseconds
+ */
+export async function checkTemplateSetting(
+  propertyId: number,
+  templateType: TemplateType,
+  storage: any
+): Promise<{ send: boolean; delayMs: number }> {
+  try {
+    const settings = await storage.getWhatsappTemplateSettings(propertyId);
+    const setting = settings?.find((s: TemplateSetting) => s.templateType === templateType);
+    
+    if (!setting) {
+      // No setting found - default to enabled and immediate
+      console.log(`[WhatsApp] No template setting found for ${templateType} on property ${propertyId}, defaulting to immediate`);
+      return { send: true, delayMs: 0 };
+    }
+    
+    if (!setting.isEnabled) {
+      console.log(`[WhatsApp] Template ${templateType} is disabled for property ${propertyId}`);
+      return { send: false, delayMs: 0 };
+    }
+    
+    if (setting.sendTiming === 'delayed' && setting.delayHours > 0) {
+      const delayMs = setting.delayHours * 60 * 60 * 1000; // Convert hours to ms
+      console.log(`[WhatsApp] Template ${templateType} set to delay ${setting.delayHours} hours for property ${propertyId}`);
+      return { send: true, delayMs };
+    }
+    
+    console.log(`[WhatsApp] Template ${templateType} enabled for immediate send on property ${propertyId}`);
+    return { send: true, delayMs: 0 };
+  } catch (error) {
+    console.error(`[WhatsApp] Error checking template setting for ${templateType}:`, error);
+    // Default to enabled and immediate on error
+    return { send: true, delayMs: 0 };
+  }
+}
+
+/**
+ * Schedule a delayed WhatsApp message
+ * This sets a timeout to send the message after the specified delay
+ */
+export function scheduleDelayedMessage(
+  delayMs: number,
+  sendFn: () => Promise<WhatsAppResponse>
+): void {
+  console.log(`[WhatsApp] Scheduling message to be sent in ${delayMs / 1000 / 60 / 60} hours`);
+  setTimeout(async () => {
+    try {
+      const result = await sendFn();
+      console.log(`[WhatsApp] Delayed message sent:`, result);
+    } catch (error) {
+      console.error(`[WhatsApp] Failed to send delayed message:`, error);
+    }
+  }, delayMs);
+}
