@@ -225,6 +225,36 @@ export default function Bookings() {
     },
   });
 
+  // Check for extended stay conflicts (guest still in room past checkout)
+  const watchedRoomIdForConflicts = form.watch("roomId");
+  const { data: extendedStayConflicts } = useQuery({
+    queryKey: ["/api/rooms/extended-stay-conflicts", watchedRoomIdForConflicts, selectedRoomIds, checkInDate],
+    enabled: !!(checkInDate && (watchedRoomIdForConflicts || selectedRoomIds.length > 0)),
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append("checkInDate", checkInDate.toISOString());
+      
+      if (bookingType === "group" && selectedRoomIds.length > 0) {
+        params.append("roomIds", JSON.stringify(selectedRoomIds));
+      } else if (watchedRoomIdForConflicts) {
+        params.append("roomId", watchedRoomIdForConflicts.toString());
+      }
+      
+      const response = await fetch(`/api/rooms/extended-stay-conflicts?${params}`);
+      if (!response.ok) throw new Error("Failed to check conflicts");
+      return response.json() as Promise<{
+        hasConflict: boolean;
+        conflicts: Array<{
+          bookingId: number;
+          guestName: string;
+          roomNumber: string;
+          originalCheckout: string;
+          daysExtended: number;
+        }>;
+      }>;
+    },
+  });
+
   // Helper function to get available rooms based on date-range availability
   const getAvailableRooms = (isEditMode: boolean = false) => {
     const availability = isEditMode ? editRoomAvailability : roomAvailability;
@@ -1377,6 +1407,34 @@ export default function Bookings() {
                     </div>
                   </TabsContent>
                 </Tabs>
+
+                {/* Extended Stay Conflict Warning */}
+                {extendedStayConflicts?.hasConflict && (
+                  <div className="p-3 bg-orange-100 dark:bg-orange-900/30 border border-orange-400 rounded-lg flex items-start gap-2" data-testid="warning-extended-stay-conflict">
+                    <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Extended Stay Conflict</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        The following guest(s) are still in this room past their checkout date:
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {extendedStayConflicts.conflicts.map(conflict => (
+                          <li key={conflict.bookingId} className="text-xs bg-orange-50 dark:bg-orange-900/50 p-2 rounded">
+                            <span className="font-medium">{conflict.guestName}</span> - Room {conflict.roomNumber}
+                            <br />
+                            <span className="text-muted-foreground">
+                              Original checkout: {format(new Date(conflict.originalCheckout), "MMM dd")} 
+                              ({conflict.daysExtended} day(s) extended)
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs font-medium text-orange-700 dark:text-orange-400 mt-2">
+                        Please check out the current guest before confirming this booking.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* No Rooms Available Warning for New Booking */}
                 {(() => {

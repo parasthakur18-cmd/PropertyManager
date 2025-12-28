@@ -1004,6 +1004,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Check for extended stay conflicts when creating a new booking
+  app.get("/api/rooms/extended-stay-conflicts", isAuthenticated, async (req, res) => {
+    try {
+      const { roomId, roomIds, checkInDate } = req.query;
+      
+      if (!checkInDate) {
+        return res.json({ hasConflict: false, conflicts: [] });
+      }
+      
+      const requestedCheckIn = new Date(checkInDate as string);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Parse room IDs
+      let targetRoomIds: number[] = [];
+      if (roomId) {
+        targetRoomIds = [parseInt(roomId as string)];
+      } else if (roomIds) {
+        try {
+          targetRoomIds = JSON.parse(roomIds as string);
+        } catch {
+          targetRoomIds = (roomIds as string).split(',').map(id => parseInt(id.trim()));
+        }
+      }
+      
+      if (targetRoomIds.length === 0) {
+        return res.json({ hasConflict: false, conflicts: [] });
+      }
+      
+      // Get all checked-in bookings (active guests)
+      const allBookings = await storage.getAllBookings();
+      const checkedInBookings = allBookings.filter(b => b.status === "checked_in");
+      
+      const conflicts: any[] = [];
+      
+      for (const booking of checkedInBookings) {
+        // Check if this booking is for any of the target rooms
+        const bookingRoomIds = booking.roomIds || (booking.roomId ? [booking.roomId] : []);
+        const hasRoomOverlap = targetRoomIds.some(rid => bookingRoomIds.includes(rid));
+        
+        if (!hasRoomOverlap) continue;
+        
+        // Check if this is an extended stay (checkout date has passed)
+        const bookingCheckout = new Date(booking.checkOutDate);
+        bookingCheckout.setHours(0, 0, 0, 0);
+        
+        // Extended stay: guest is still checked in but their checkout date has passed
+        if (today > bookingCheckout) {
+          // And the new booking's check-in is today or after the original checkout
+          if (requestedCheckIn >= bookingCheckout) {
+            const guest = await storage.getGuest(booking.guestId);
+            const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+            
+            conflicts.push({
+              bookingId: booking.id,
+              guestName: guest?.fullName || "Unknown Guest",
+              roomNumber: room?.roomNumber || "N/A",
+              originalCheckout: booking.checkOutDate,
+              daysExtended: Math.ceil((today.getTime() - bookingCheckout.getTime()) / (1000 * 60 * 60 * 24))
+            });
+          }
+        }
+      }
+      
+      res.json({
+        hasConflict: conflicts.length > 0,
+        conflicts
+      });
+    } catch (error: any) {
+      console.error('[EXTENDED-STAY-CONFLICTS] Error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/rooms/:id", isAuthenticated, async (req, res) => {
     try {
       const room = await storage.getRoom(parseInt(req.params.id));
