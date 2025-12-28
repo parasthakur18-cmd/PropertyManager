@@ -117,6 +117,9 @@ export default function ActiveBookings() {
   const [upiPaymentLink, setUpiPaymentLink] = useState<string | null>(null);
   const [showUpiLink, setShowUpiLink] = useState(false);
   const [autoCompletingCheckout, setAutoCompletingCheckout] = useState(false);
+  const [extendedStayHandled, setExtendedStayHandled] = useState(false);
+  const [extendedStayChoice, setExtendedStayChoice] = useState<"calculated" | "custom" | "skip" | null>(null);
+  const [customExtendedAmount, setCustomExtendedAmount] = useState<string>("");
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -1129,6 +1132,9 @@ export default function ActiveBookings() {
           setDiscountType("none");
           setDiscountValue("");
           setPaymentMethod("cash");
+          setExtendedStayHandled(false);
+          setExtendedStayChoice(null);
+          setCustomExtendedAmount("");
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-checkout">
@@ -1138,7 +1144,37 @@ export default function ActiveBookings() {
 
           {checkoutDialog.booking && (() => {
             const booking = checkoutDialog.booking;
-            const roomCharges = parseFloat(booking.charges.roomCharges) || 0;
+            
+            // Extended stay detection
+            const checkInDate = new Date(booking.checkInDate);
+            const originalCheckOutDate = new Date(booking.checkOutDate);
+            const today = new Date();
+            today.setHours(12, 0, 0, 0); // Normalize to noon for comparison
+            
+            const bookedNights = booking.nightsStayed;
+            const actualNights = Math.max(1, Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+            const extraNights = Math.max(0, actualNights - bookedNights);
+            
+            // Calculate room rate per night (average if group booking)
+            const roomRate = booking.isGroupBooking && booking.rooms 
+              ? booking.rooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight || "0"), 0)
+              : parseFloat(booking.room?.pricePerNight || "0");
+            
+            const calculatedExtendedAmount = extraNights * roomRate;
+            
+            // Determine extended stay charges to add
+            let extendedStayCharges = 0;
+            if (extraNights > 0 && extendedStayHandled) {
+              if (extendedStayChoice === "calculated") {
+                extendedStayCharges = calculatedExtendedAmount;
+              } else if (extendedStayChoice === "custom") {
+                extendedStayCharges = parseFloat(customExtendedAmount) || 0;
+              }
+              // "skip" means 0
+            }
+            
+            const baseRoomCharges = parseFloat(booking.charges.roomCharges) || 0;
+            const roomCharges = baseRoomCharges + extendedStayCharges;
             const foodCharges = parseFloat(booking.charges.foodCharges) || 0;
             const extraCharges = parseFloat(booking.charges.extraCharges) || 0;
             
@@ -1169,10 +1205,90 @@ export default function ActiveBookings() {
 
             return (
               <div className="space-y-4">
+                {/* Extended Stay Alert */}
+                {extraNights > 0 && !extendedStayHandled && (
+                  <Alert className="border-orange-300 bg-orange-50 dark:bg-orange-900/20" data-testid="alert-extended-stay">
+                    <AlertCircle className="h-4 w-4 text-orange-600" />
+                    <AlertDescription className="text-orange-800 dark:text-orange-300">
+                      <div className="font-semibold mb-2">Extended Stay Detected</div>
+                      <div className="text-sm space-y-1 mb-3">
+                        <div>Original Booking: {bookedNights} night(s)</div>
+                        <div>Actual Stay: {actualNights} night(s)</div>
+                        <div className="font-semibold">Extra Nights: {extraNights} night(s)</div>
+                        <div className="mt-2">Room Rate: ₹{roomRate.toFixed(2)}/night</div>
+                        <div className="font-bold text-lg">Calculated Amount: ₹{calculatedExtendedAmount.toFixed(2)}</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            setExtendedStayChoice("calculated");
+                            setExtendedStayHandled(true);
+                          }}
+                          data-testid="button-accept-extended"
+                        >
+                          <Check className="h-4 w-4 mr-2" />
+                          Add ₹{calculatedExtendedAmount.toFixed(2)} for Extended Stay
+                        </Button>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Custom amount"
+                            value={customExtendedAmount}
+                            onChange={(e) => setCustomExtendedAmount(e.target.value)}
+                            className="flex-1"
+                            data-testid="input-custom-extended"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (customExtendedAmount) {
+                                setExtendedStayChoice("custom");
+                                setExtendedStayHandled(true);
+                              }
+                            }}
+                            disabled={!customExtendedAmount}
+                            data-testid="button-custom-extended"
+                          >
+                            Add Custom
+                          </Button>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="w-full text-muted-foreground"
+                          onClick={() => {
+                            setExtendedStayChoice("skip");
+                            setExtendedStayHandled(true);
+                          }}
+                          data-testid="button-skip-extended"
+                        >
+                          No Extra Charge (Complimentary)
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Extended Stay Applied Badge */}
+                {extraNights > 0 && extendedStayHandled && extendedStayChoice !== "skip" && extendedStayCharges > 0 && (
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-300 p-3 rounded-md flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="font-medium">Extended Stay: +{extraNights} nights added</span>
+                    </div>
+                    <span className="font-bold text-green-700 dark:text-green-400">+₹{extendedStayCharges.toFixed(2)}</span>
+                  </div>
+                )}
+
                 <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
                   <div className="font-semibold text-base mb-2">Bill Breakdown</div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Room Charges ({booking.nightsStayed} nights):</span>
+                    <span className="text-muted-foreground">
+                      Room Charges ({bookedNights}{extraNights > 0 && extendedStayHandled && extendedStayChoice !== "skip" ? ` + ${extraNights} extended` : ""} nights):
+                    </span>
                     <span className="font-mono">₹{roomCharges.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between">
