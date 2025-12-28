@@ -1886,7 +1886,7 @@ export default function Bookings() {
                                 </>
                               )}
                               
-                              {(booking.status === "pending" || booking.status === "confirmed") && (
+                              {booking.status === "pending" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
