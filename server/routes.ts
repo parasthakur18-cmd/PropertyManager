@@ -5794,9 +5794,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       const propertyId = parseInt(req.params.propertyId);
-      const { leaseId } = req.query;
+      const { leaseId, month } = req.query;
 
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -5806,6 +5806,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!propertyIds.includes(propertyId)) {
           return res.status(403).json({ message: "You don't have access to this property" });
         }
+      }
+
+      // If month filter provided (format: YYYY-MM), use monthly P&L
+      if (month) {
+        const pnlReport = await storage.getMonthlyPnLReport(propertyId, month as string);
+        return res.json(pnlReport);
       }
 
       const pnlReport = await storage.getPropertyPnLReport(

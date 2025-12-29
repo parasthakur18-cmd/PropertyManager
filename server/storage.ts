@@ -1906,6 +1906,136 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
+  // Monthly P&L Report - filter by specific month (format: YYYY-MM)
+  async getMonthlyPnLReport(propertyId: number, month: string): Promise<any> {
+    // Parse month string (YYYY-MM) to get start and end dates
+    const [year, monthNum] = month.split('-').map(Number);
+    const startDate = new Date(year, monthNum - 1, 1); // First day of month
+    const endDate = new Date(year, monthNum, 0, 23, 59, 59); // Last day of month
+
+    // Get revenue during the month (from bills)
+    const [revenueResult] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
+      .from(bills)
+      .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+      .where(
+        and(
+          eq(bookings.propertyId, propertyId),
+          gte(bills.createdAt, startDate),
+          lte(bills.createdAt, endDate)
+        )
+      );
+
+    // Get expenses during the month
+    const [expensesResult] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${propertyExpenses.amount}), 0)` })
+      .from(propertyExpenses)
+      .where(
+        and(
+          eq(propertyExpenses.propertyId, propertyId),
+          gte(propertyExpenses.expenseDate, startDate),
+          lte(propertyExpenses.expenseDate, endDate)
+        )
+      );
+
+    // Get expenses by category for the month
+    const expensesByCategory = await db
+      .select({
+        category: propertyExpenses.category,
+        total: sql<string>`SUM(${propertyExpenses.amount})`,
+      })
+      .from(propertyExpenses)
+      .where(
+        and(
+          eq(propertyExpenses.propertyId, propertyId),
+          gte(propertyExpenses.expenseDate, startDate),
+          lte(propertyExpenses.expenseDate, endDate)
+        )
+      )
+      .groupBy(propertyExpenses.category);
+
+    // Get salaries for the month
+    const [salariesResult] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${staffSalaries.netSalary}), 0)` })
+      .from(staffSalaries)
+      .where(
+        and(
+          eq(staffSalaries.propertyId, propertyId),
+          gte(staffSalaries.periodStart, startDate),
+          lte(staffSalaries.periodStart, endDate)
+        )
+      );
+
+    // Get pro-rated lease amount for the month
+    const allLeases = await this.getLeasesByProperty(propertyId);
+    let monthlyLeaseAmount = 0;
+    
+    for (const lease of allLeases) {
+      const leaseStart = new Date(lease.startDate);
+      const leaseEnd = lease.endDate ? new Date(lease.endDate) : new Date(2099, 11, 31);
+      
+      // Check if lease overlaps with the selected month
+      if (leaseStart <= endDate && leaseEnd >= startDate) {
+        // Calculate monthly amount (total / months in lease period)
+        const leaseMonths = Math.max(1, Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (30 * 24 * 60 * 60 * 1000)));
+        const monthlyRate = parseFloat(lease.totalAmount.toString()) / leaseMonths;
+        monthlyLeaseAmount += monthlyRate;
+      }
+    }
+
+    const totalRevenue = parseFloat(revenueResult?.total || '0');
+    const totalExpenses = parseFloat(expensesResult?.total || '0');
+    const totalSalaries = parseFloat(salariesResult?.total || '0');
+    
+    // P&L Calculation: Profit = Revenue - (Lease + Expenses + Salaries)
+    const totalCosts = monthlyLeaseAmount + totalExpenses + totalSalaries;
+    const finalProfit = totalRevenue - totalCosts;
+    const profitMargin = totalRevenue > 0 ? ((finalProfit / totalRevenue) * 100).toFixed(2) : '0';
+
+    // Get vendor outstanding amounts
+    const vendorsWithBalance = await this.getVendorsWithBalance(propertyId);
+    const vendorOutstanding = vendorsWithBalance.reduce((sum, v) => sum + (v.outstandingBalance > 0 ? v.outstandingBalance : 0), 0);
+    const vendorDetails = vendorsWithBalance
+      .filter(v => v.outstandingBalance > 0)
+      .map(v => ({
+        name: v.name,
+        category: v.category || 'General',
+        outstanding: v.outstandingBalance,
+      }));
+
+    return {
+      propertyId,
+      month,
+      isMonthlyReport: true,
+      periodStart: startDate,
+      periodEnd: endDate,
+      pnlData: [{
+        month,
+        periodStart: startDate,
+        periodEnd: endDate,
+        totalLeaseAmount: monthlyLeaseAmount,
+        totalRevenue,
+        totalExpenses,
+        totalSalaries,
+        expensesByCategory: expensesByCategory.map(c => ({
+          category: c.category,
+          total: parseFloat(c.total),
+        })),
+        finalProfit,
+        profitMargin,
+      }],
+      totalRevenue,
+      totalLeaseAmount: monthlyLeaseAmount,
+      totalExpenses,
+      totalSalaries,
+      totalCosts,
+      finalProfit,
+      profitMargin,
+      vendorOutstanding,
+      vendorDetails,
+    };
+  }
+
   // Dashboard stats - Premium KPI metrics
   async getDashboardStats(propertyId?: number): Promise<any> {
     const propertyFilter = propertyId ? eq(properties.id, propertyId) : undefined;
