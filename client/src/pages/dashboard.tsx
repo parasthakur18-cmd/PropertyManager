@@ -188,6 +188,10 @@ export default function Dashboard() {
     queryKey: ["/api/expense-categories"],
   });
 
+  const { data: vendors } = useQuery<any[]>({
+    queryKey: ["/api/vendors"],
+  });
+
   const createExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
       return await apiRequest("/api/expenses", "POST", data);
@@ -1990,15 +1994,28 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Vendor Name (Optional)</label>
-              <input
-                type="text"
+              <label className="text-sm font-medium">Vendor</label>
+              <select
                 value={expenseVendor}
                 onChange={(e) => setExpenseVendor(e.target.value)}
-                placeholder="e.g., Local Grocery Store"
                 className="w-full px-3 py-2 border rounded-md bg-background"
-                data-testid="input-quick-expense-vendor"
-              />
+                data-testid="select-quick-expense-vendor"
+              >
+                <option value="">Miscellaneous (No specific vendor)</option>
+                {vendors
+                  ?.filter((v: any) => 
+                    v.propertyId === selectedPropertyId && 
+                    v.isActive !== false &&
+                    (!expenseCategory || v.category?.toLowerCase() === expenseCategory?.toLowerCase())
+                  )
+                  .map((v: any) => (
+                    <option key={v.id} value={v.name}>{v.name}</option>
+                  ))
+                }
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {expenseCategory ? `Showing vendors for "${expenseCategory}"` : "Select category first to filter vendors"}
+              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Description (Optional)</label>
@@ -2030,7 +2047,7 @@ export default function Dashboard() {
                   propertyId: selectedPropertyId,
                   amount: expenseAmount,
                   category: expenseCategory,
-                  vendorName: expenseVendor || null,
+                  vendorName: expenseVendor || "Miscellaneous",
                   description: expenseDescription || null,
                   expenseDate: new Date().toISOString(),
                   createdBy: user?.email || user?.firstName || "Dashboard",
