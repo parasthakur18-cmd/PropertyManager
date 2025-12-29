@@ -92,7 +92,17 @@ export default function CalendarView() {
   const [, navigate] = useLocation();
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">("all");
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
+    const saved = localStorage.getItem('selectedPropertyId');
+    return saved ? parseInt(saved) : "all";
+  });
+  
+  // Sync property selection to localStorage
+  useEffect(() => {
+    if (selectedPropertyId !== "all") {
+      localStorage.setItem('selectedPropertyId', selectedPropertyId.toString());
+    }
+  }, [selectedPropertyId]);
   const [showRoomSidebar, setShowRoomSidebar] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});

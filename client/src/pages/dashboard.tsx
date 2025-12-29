@@ -89,7 +89,17 @@ type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(() => {
+    const saved = localStorage.getItem('selectedPropertyId');
+    return saved ? parseInt(saved) : null;
+  });
+  
+  // Save property selection to localStorage
+  useEffect(() => {
+    if (selectedPropertyId) {
+      localStorage.setItem('selectedPropertyId', selectedPropertyId.toString());
+    }
+  }, [selectedPropertyId]);
   const [mobileTab, setMobileTab] = useState<MobileTab>("inhouse");
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
