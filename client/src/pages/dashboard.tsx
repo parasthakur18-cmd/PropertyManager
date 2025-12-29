@@ -1940,13 +1940,24 @@ export default function Dashboard() {
               <Receipt className="h-5 w-5" />
               Quick Add Expense
             </DialogTitle>
-            <DialogDescription>
-              Add an expense for {selectedPropertyId ? properties?.find(p => p.id === selectedPropertyId)?.name : "all properties"}
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Amount (₹)</label>
+              <label className="text-sm font-medium">Property *</label>
+              <select
+                value={selectedPropertyId || ""}
+                onChange={(e) => setSelectedPropertyId(e.target.value ? parseInt(e.target.value) : null)}
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                data-testid="select-expense-property"
+              >
+                <option value="">Select Property</option>
+                {properties?.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (₹) *</label>
               <input
                 type="number"
                 value={expenseAmount}
