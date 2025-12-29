@@ -34,6 +34,7 @@ export default function Properties() {
       totalRooms: 0,
       contactEmail: "",
       contactPhone: "",
+      monthlyRent: "0",
       isActive: true,
     },
   });
@@ -243,6 +244,29 @@ export default function Properties() {
                     )}
                   />
                 </div>
+                <FormField
+                  control={form.control}
+                  name="monthlyRent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monthly Rent (for P&L)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="20000"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          data-testid="input-property-monthly-rent"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Used in monthly P&L reports when no lease is defined
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <DialogFooter>
                   <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-property">
                     {createMutation.isPending ? "Creating..." : "Create Property"}
