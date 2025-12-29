@@ -1970,7 +1970,7 @@ export class DatabaseStorage implements IStorage {
         .innerJoin(bookings, eq(bills.bookingId, bookings.id))
         .innerJoin(rooms, eq(bookings.roomId, rooms.id))
         .where(and(
-          gte(bills.createdAt, currentMonth),
+          gte(bills.createdAt, thirtyDaysAgo),
           eq(rooms.propertyId, propertyId)
         ));
     }

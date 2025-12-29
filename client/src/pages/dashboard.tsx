@@ -386,12 +386,17 @@ export default function Dashboard() {
     return bookings.filter(b => b.propertyId === selectedPropertyId);
   }, [bookings, selectedPropertyId]);
 
+  const filteredRooms = useMemo(() => {
+    if (!rooms) return [];
+    if (!selectedPropertyId) return rooms;
+    return rooms.filter(r => r.propertyId === selectedPropertyId);
+  }, [rooms, selectedPropertyId]);
+
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
-    // Always show all orders regardless of property filter to ensure consistency between mobile and desktop
-    // The property filter applies to bookings and other sections, but orders should always be visible
-    return orders;
-  }, [orders]);
+    if (!selectedPropertyId) return orders;
+    return orders.filter(o => o.propertyId === selectedPropertyId);
+  }, [orders, selectedPropertyId]);
 
   const todayCheckIns = useMemo(() => 
     filteredBookings.filter(b => 
@@ -430,11 +435,11 @@ export default function Dashboard() {
 
   const getGuestInfo = (booking: Booking) => {
     const guest = guests?.find(g => g.id === booking.guestId);
-    const room = rooms?.find(r => r.id === booking.roomId);
+    const room = (rooms || []).find(r => r.id === booking.roomId);
     const property = properties?.find(p => p.id === booking.propertyId);
     
     const groupRooms = booking.isGroupBooking && booking.roomIds
-      ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
+      ? (rooms || []).filter((r) => booking.roomIds?.includes(r.id))
       : [];
     
     const roomDisplay = booking.isGroupBooking && groupRooms.length > 0
@@ -445,7 +450,7 @@ export default function Dashboard() {
   };
 
   const getOrderInfo = (order: Order) => {
-    const room = order.roomId ? rooms?.find(r => r.id === order.roomId) : null;
+    const room = order.roomId ? (rooms || []).find(r => r.id === order.roomId) : null;
     const property = order.propertyId ? properties?.find(p => p.id === order.propertyId) : null;
     return { room, property };
   };
