@@ -3088,6 +3088,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const property = await storage.getProperty(booking.propertyId);
       
+      // Check if checkin_message template is enabled
+      const checkinTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
+      const isCheckinEnabled = checkinTemplateSetting?.isEnabled !== false;
+      
+      if (!isCheckinEnabled) {
+        return res.status(400).json({ message: "Check-in WhatsApp messages are disabled for this property" });
+      }
+      
       // Generate the self check-in link
       const baseUrl = process.env.REPLIT_DEV_DOMAIN 
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
