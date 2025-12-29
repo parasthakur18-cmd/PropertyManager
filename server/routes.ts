@@ -2644,11 +2644,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Send WhatsApp checkout notification
+      // Send WhatsApp checkout notification (if enabled)
       try {
         const guest = await storage.getGuest(booking.guestId);
         
-        if (guest && guest.phone) {
+        // Check if checkout_message template is enabled
+        const checkoutTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkout_message');
+        const isCheckoutTemplateEnabled = checkoutTemplateSetting?.isEnabled !== false;
+        
+        if (guest && guest.phone && isCheckoutTemplateEnabled) {
           // Get property info
           let propertyName = "Your Property";
           let roomNumbers = "TBD";
@@ -2683,6 +2687,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           
           console.log(`[WhatsApp] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+        } else if (!isCheckoutTemplateEnabled) {
+          console.log(`[WhatsApp] Booking #${booking.id} - checkout_message template disabled, skipping notification`);
         } else if (!guest) {
           console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send checkout notification: guest ${booking.guestId} not found`);
         } else if (!guest.phone) {
@@ -2762,6 +2768,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const foodChargesNum = parseFloat(foodCharges || 0);
       const advancePaymentNum = parseFloat(advancePayment || 0);
       const balanceDueNum = Math.max(0, calculatedBalanceDue);
+      
+      // Check if prebill_message template is enabled
+      const prebillTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'prebill_message');
+      const isPrebillEnabled = prebillTemplateSetting?.isEnabled !== false;
+      
+      if (!isPrebillEnabled) {
+        return res.status(400).json({ message: "Pre-bill WhatsApp messages are disabled for this property" });
+      }
       
       // Send pre-bill with balance due (after advance payment deduction)
       const result = await sendPreBillNotification(
@@ -3011,25 +3025,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         updatedAt: new Date(),
       }).where(eq(bookings.id, bookingId));
       
-      // Send WhatsApp message with payment link using new pending_payment template (22226)
+      // Send WhatsApp message with payment link using pending_payment template (22226)
       const property = await storage.getProperty(booking.propertyId);
-      try {
-        const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
-        const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-        
-        console.log(`[WhatsApp] Attempting to send advance payment request for booking #${bookingId} to ${guest.phone}`);
-        const waResult = await sendAdvancePaymentRequest(
-          guest.phone,
-          guest.fullName || "Guest",
-          checkInFormatted,
-          checkOutFormatted,
-          property?.name || "Property",
-          `₹${advanceAmount.toLocaleString('en-IN')}`,
-          paymentLink.shortUrl
-        );
-        console.log(`[WhatsApp] Result for booking #${bookingId}:`, waResult);
-      } catch (waError: any) {
-        console.error("[WhatsApp] Error sending advance payment request:", waError.message);
+      
+      // Check if pending_payment template is enabled
+      const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'pending_payment');
+      const isTemplateEnabled = templateSetting?.isEnabled !== false;
+      
+      if (isTemplateEnabled) {
+        try {
+          const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+          const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+          
+          console.log(`[WhatsApp] Attempting to send advance payment request for booking #${bookingId} to ${guest.phone}`);
+          const waResult = await sendAdvancePaymentRequest(
+            guest.phone,
+            guest.fullName || "Guest",
+            checkInFormatted,
+            checkOutFormatted,
+            property?.name || "Property",
+            `₹${advanceAmount.toLocaleString('en-IN')}`,
+            paymentLink.shortUrl
+          );
+          console.log(`[WhatsApp] Result for booking #${bookingId}:`, waResult);
+        } catch (waError: any) {
+          console.error("[WhatsApp] Error sending advance payment request:", waError.message);
+        }
+      } else {
+        console.log(`[WhatsApp] pending_payment template disabled for property ${booking.propertyId}, skipping message`);
       }
       
       console.log(`[ADVANCE PAYMENT] Payment link sent to ${guest.fullName} for booking #${bookingId}, amount: ₹${advanceAmount}`);
@@ -3328,7 +3351,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           try {
             const guest = await storage.getGuest(booking.guestId);
-            if (guest && guest.phone) {
+            
+            // Check if checkout_message template is enabled
+            const checkoutTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkout_message');
+            const isCheckoutEnabled = checkoutTemplateSetting?.isEnabled !== false;
+            
+            if (guest && guest.phone && isCheckoutEnabled) {
               let propertyName = "Your Property";
               let roomNumbers = "TBD";
               
@@ -3362,6 +3390,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
               
               console.log(`[AUTO-CHECKOUT] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+            } else if (!isCheckoutEnabled) {
+              console.log(`[AUTO-CHECKOUT] Booking #${booking.id} - checkout_message template disabled, skipping notification`);
             }
           } catch (whatsappError: any) {
             console.warn(`[AUTO-CHECKOUT] Booking #${booking.id} - WhatsApp failed (non-critical):`, whatsappError.message);
@@ -3400,6 +3430,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Guest phone number not found" });
       }
 
+      // Check if prebill_message template is enabled
+      const prebillTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'prebill_message');
+      const isPrebillEnabled = prebillTemplateSetting?.isEnabled !== false;
+      
+      if (!isPrebillEnabled) {
+        return res.status(400).json({ message: "Pre-bill WhatsApp messages are disabled for this property" });
+      }
+      
       // Format bill details for WhatsApp (template already has ₹ symbol)
       const guestName = guest.fullName || "Guest";
       const roomCharges = parseFloat(billDetails.roomCharges || 0).toFixed(2);
@@ -8647,12 +8685,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn(`[EMAIL] Failed to send check-in confirmation:`, emailError);
       }
 
-      // Send WhatsApp welcome message with menu link
+      // Send WhatsApp welcome message with menu link (if enabled)
       try {
         const { sendWelcomeWithMenuLink } = await import("./whatsapp");
         const guestPhone = finalPhone || guest.phone;
         
-        if (guestPhone && property?.id) {
+        // Check if welcome_menu template is enabled
+        const welcomeTemplateSetting = property?.id 
+          ? await storage.getWhatsappTemplateSetting(property.id, 'welcome_menu')
+          : null;
+        const isWelcomeEnabled = welcomeTemplateSetting?.isEnabled !== false;
+        
+        if (guestPhone && property?.id && isWelcomeEnabled) {
           // Generate menu link for the property
           const baseUrl = process.env.REPLIT_DEV_DOMAIN 
             ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -8670,6 +8714,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             menuLink
           );
           console.log(`[WHATSAPP] Welcome message sent to ${guestPhone} with menu link`);
+        } else if (!isWelcomeEnabled) {
+          console.log(`[WHATSAPP] welcome_menu template disabled, skipping welcome message`);
         }
       } catch (whatsappError) {
         console.warn(`[WHATSAPP] Failed to send welcome message:`, whatsappError);
@@ -10565,7 +10611,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         // Conditions: not exceeded max reminders AND enough time has passed since last reminder
         const canSendReminder = reminderCount < maxReminders && hoursSinceLastReminder >= reminderHours;
         
-        if (canSendReminder) {
+        // Check if payment_reminder template is enabled
+        const reminderTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_reminder');
+        const isReminderTemplateEnabled = reminderTemplateSetting?.isEnabled !== false;
+        
+        if (canSendReminder && isReminderTemplateEnabled) {
           try {
             await sendPaymentReminder(
               guest.phone || "",
@@ -10587,6 +10637,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           } catch (reminderError: any) {
             console.error(`[PAYMENT-JOB] Failed to send reminder:`, reminderError.message);
           }
+        } else if (canSendReminder && !isReminderTemplateEnabled) {
+          console.log(`[PAYMENT-JOB] payment_reminder template disabled for property ${booking.propertyId}, skipping reminder`);
         }
       }
       

@@ -549,7 +549,16 @@ export async function sendSelfCheckinLink(
 }
 
 // Template type mapping for WhatsApp template settings
-export type TemplateType = 'pending_payment' | 'payment_confirmation' | 'checkin_message' | 'addon_service' | 'checkout_message';
+export type TemplateType = 
+  | 'booking_confirmation' 
+  | 'pending_payment' 
+  | 'payment_reminder'
+  | 'payment_confirmation' 
+  | 'checkin_message' 
+  | 'checkout_message'
+  | 'prebill_message'
+  | 'split_payment'
+  | 'welcome_menu';
 
 interface TemplateSetting {
   templateType: string;

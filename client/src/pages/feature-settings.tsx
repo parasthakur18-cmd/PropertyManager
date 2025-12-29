@@ -83,11 +83,15 @@ const features = [
 ];
 
 const WHATSAPP_TEMPLATES = [
-  { type: 'pending_payment', name: 'Pending Payment', description: 'Send payment request for booking enquiries', icon: '💳' },
-  { type: 'payment_confirmation', name: 'Payment Confirmation', description: 'Send when payment is received', icon: '✅' },
-  { type: 'checkin_message', name: 'Check-in Message', description: 'Send when guest checks in', icon: '🏨' },
-  { type: 'addon_service', name: 'Add-on Service', description: 'Send for additional services (future)', icon: '🛎️' },
-  { type: 'checkout_message', name: 'Checkout Message', description: 'Send when guest checks out', icon: '👋' }
+  { type: 'booking_confirmation', name: 'Booking Confirmation', description: 'Send when booking is created (18491)', icon: '📅' },
+  { type: 'pending_payment', name: 'Advance Payment Request', description: 'Send payment link for advance payment (22226)', icon: '💳' },
+  { type: 'payment_reminder', name: 'Payment Reminder', description: 'Auto-reminders for pending payments (18489)', icon: '⏰' },
+  { type: 'payment_confirmation', name: 'Payment Confirmation', description: 'Send when payment is received (18649)', icon: '✅' },
+  { type: 'checkin_message', name: 'Check-in Message', description: 'Send when guest checks in (18712)', icon: '🏨' },
+  { type: 'checkout_message', name: 'Checkout Message', description: 'Send checkout bill details (18667)', icon: '👋' },
+  { type: 'prebill_message', name: 'Pre-bill Verification', description: 'Send bill verification before checkout (19852)', icon: '📋' },
+  { type: 'split_payment', name: 'Split Payment', description: 'Send split payment links (19892)', icon: '💰' },
+  { type: 'welcome_menu', name: 'Welcome Menu', description: 'Send QR food ordering link (21932)', icon: '🍽️' },
 ];
 
 export default function FeatureSettings() {
