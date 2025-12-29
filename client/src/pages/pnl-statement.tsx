@@ -65,6 +65,11 @@ export default function PnLStatement() {
   const { user } = useAuth();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [selectedLeaseId, setSelectedLeaseId] = useState<number | null>(null);
+  const [filterType, setFilterType] = useState<'lease' | 'month'>('month');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -85,12 +90,15 @@ export default function PnLStatement() {
     : [];
 
   const { data: pnlReport, isLoading, error } = useQuery<PnLReport>({
-    queryKey: ["/api/properties", selectedPropertyId, "pnl", selectedLeaseId],
+    queryKey: ["/api/properties", selectedPropertyId, "pnl", filterType, filterType === 'month' ? selectedMonth : selectedLeaseId],
     queryFn: async () => {
       if (!selectedPropertyId) return null;
-      const url = selectedLeaseId 
-        ? `/api/properties/${selectedPropertyId}/pnl?leaseId=${selectedLeaseId}`
-        : `/api/properties/${selectedPropertyId}/pnl`;
+      let url = `/api/properties/${selectedPropertyId}/pnl`;
+      if (filterType === 'month' && selectedMonth) {
+        url += `?month=${selectedMonth}`;
+      } else if (filterType === 'lease' && selectedLeaseId) {
+        url += `?leaseId=${selectedLeaseId}`;
+      }
       const response = await fetch(url);
       if (!response.ok) throw new Error("Failed to fetch P&L report");
       return response.json();
