@@ -53,6 +53,44 @@ export default function AuditLogs() {
     }
   };
 
+  // Helper to get only changed fields between before and after
+  const getChangedFields = (before: Record<string, any> | null, after: Record<string, any> | null) => {
+    if (!before && !after) return [];
+    if (!before) return Object.entries(after || {}).map(([key, value]) => ({ field: key, oldValue: null, newValue: value }));
+    if (!after) return Object.entries(before).map(([key, value]) => ({ field: key, oldValue: value, newValue: null }));
+    
+    const changes: { field: string; oldValue: any; newValue: any }[] = [];
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    
+    allKeys.forEach(key => {
+      const oldVal = before[key];
+      const newVal = after[key];
+      // Only show if values are different
+      if (JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+        changes.push({ field: key, oldValue: oldVal, newValue: newVal });
+      }
+    });
+    
+    return changes;
+  };
+
+  // Format field name to be more readable
+  const formatFieldName = (field: string) => {
+    return field
+      .replace(/([A-Z])/g, ' $1')
+      .replace(/_/g, ' ')
+      .replace(/^./, str => str.toUpperCase())
+      .trim();
+  };
+
+  // Format value for display
+  const formatValue = (value: any) => {
+    if (value === null || value === undefined) return <span className="text-muted-foreground italic">empty</span>;
+    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
@@ -135,24 +173,28 @@ export default function AuditLogs() {
 
                       {/* Show detailed changes */}
                       {log.changeSet && (log.changeSet.before || log.changeSet.after) ? (
-                        <div className="mt-4 space-y-2">
-                          <div className="text-xs font-semibold text-foreground">Changes Recorded:</div>
-                          {log.changeSet.before && (
-                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-3 text-xs space-y-1">
-                              <div className="font-medium text-red-900 dark:text-red-300">Before:</div>
-                              <div className="font-mono text-red-800 dark:text-red-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                                {JSON.stringify(log.changeSet.before, null, 2)}
-                              </div>
-                            </div>
-                          )}
-                          {log.changeSet.after && (
-                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded p-3 text-xs space-y-1">
-                              <div className="font-medium text-green-900 dark:text-green-300">After:</div>
-                              <div className="font-mono text-green-800 dark:text-green-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
-                                {JSON.stringify(log.changeSet.after, null, 2)}
-                              </div>
-                            </div>
-                          )}
+                        <div className="mt-4">
+                          <div className="text-xs font-semibold text-foreground mb-2">Changes Made:</div>
+                          <div className="bg-muted/50 rounded-lg border overflow-hidden">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-muted/80">
+                                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Field</th>
+                                  <th className="text-left px-3 py-2 font-medium text-red-600 dark:text-red-400">Before</th>
+                                  <th className="text-left px-3 py-2 font-medium text-green-600 dark:text-green-400">After</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {getChangedFields(log.changeSet.before, log.changeSet.after).map((change, idx) => (
+                                  <tr key={idx} className="border-b last:border-0">
+                                    <td className="px-3 py-2 font-medium text-foreground">{formatFieldName(change.field)}</td>
+                                    <td className="px-3 py-2 text-red-600 dark:text-red-400 font-mono text-xs">{formatValue(change.oldValue)}</td>
+                                    <td className="px-3 py-2 text-green-600 dark:text-green-400 font-mono text-xs">{formatValue(change.newValue)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-4 text-xs text-muted-foreground italic">
