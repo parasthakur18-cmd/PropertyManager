@@ -2855,10 +2855,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const booking = await storage.getBooking(preBill.bookingId);
       const guest = booking ? await storage.getGuest(booking.guestId) : null;
 
-      if (guest && guest.phone && guest.email && preBill.balanceDue) {
+      if (guest && guest.phone && guest.email && preBill.balanceDue && booking) {
+        // Check if split_payment template is enabled
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
         const balanceDue = parseFloat(preBill.balanceDue.toString());
         
-        if (balanceDue > 0) {
+        if (balanceDue > 0 && isSplitPaymentEnabled) {
           const paymentLink = await createPaymentLink(
             preBill.bookingId,
             balanceDue,
@@ -2904,6 +2908,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // guestEmail is optional - many guests don't have email addresses
       if (!amount || !guestName || !guestPhone || !bookingId) {
         return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      // Check if split_payment template is enabled
+      const booking = await storage.getBooking(bookingId);
+      if (booking) {
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
+        if (!isSplitPaymentEnabled) {
+          return res.status(400).json({ message: "Split payment WhatsApp messages are disabled for this property" });
+        }
       }
 
       const paymentLink = await createPaymentLink(
@@ -3650,6 +3665,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl} for amount ₹${paymentAmount}`);
+      
+      // Check if split_payment template is enabled before sending WhatsApp
+      const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+      const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+      
+      if (!isSplitPaymentEnabled) {
+        // Still return payment link, just don't send WhatsApp
+        console.log(`[WhatsApp] split_payment template disabled, skipping WhatsApp message`);
+        return res.json({ 
+          success: true, 
+          message: "Payment link created (WhatsApp disabled)",
+          paymentLink: paymentLink.shortUrl,
+          linkId: paymentLink.linkId,
+          billId: billId
+        });
+      }
       
       // Determine which template to use based on whether cash was received
       const advancePaid = parseFloat(billDetails.advancePaid || 0);
@@ -5032,6 +5063,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`[Enquiry Payment] Creating RazorPay link for enquiry #${enquiryId}, amount: ₹${advanceAmount}`);
+      
+      // Check if split_payment template is enabled
+      if (enquiry.propertyId) {
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(enquiry.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
+        if (!isSplitPaymentEnabled) {
+          return res.status(400).json({ message: "Split payment WhatsApp messages are disabled for this property" });
+        }
+      }
 
       // Create RazorPay payment link
       const paymentLink = await createEnquiryPaymentLink(
