@@ -5952,7 +5952,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const updated = await storage.updateStaffMember(parseInt(req.params.id), req.body);
+      // Handle date fields properly
+      const updateData: any = { ...req.body };
+      if (updateData.joiningDate) {
+        updateData.joiningDate = new Date(updateData.joiningDate);
+      }
+      if (updateData.leavingDate) {
+        updateData.leavingDate = new Date(updateData.leavingDate);
+      }
+      // Handle baseSalary as string for decimal type
+      if (updateData.baseSalary !== undefined) {
+        updateData.baseSalary = String(updateData.baseSalary);
+      }
+
+      const updated = await storage.updateStaffMember(parseInt(req.params.id), updateData);
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
