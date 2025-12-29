@@ -121,6 +121,12 @@ export default function Dashboard() {
   const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
   const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
   
+  // Quick expense dialog
+  const [quickExpenseOpen, setQuickExpenseOpen] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("");
+  const [expenseDescription, setExpenseDescription] = useState("");
+  
   // Onboarding wizard state - show for new users who haven't completed onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
   
@@ -175,6 +181,27 @@ export default function Dashboard() {
 
   const { data: extraServices } = useQuery<any[]>({
     queryKey: ["/api/extra-services"],
+  });
+
+  const { data: expenseCategories } = useQuery<any[]>({
+    queryKey: ["/api/expense-categories"],
+  });
+
+  const createExpenseMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("/api/expenses", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Expense added successfully" });
+      setQuickExpenseOpen(false);
+      setExpenseAmount("");
+      setExpenseCategory("");
+      setExpenseDescription("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to add expense", description: error.message, variant: "destructive" });
+    },
   });
 
   const updateStatusMutation = useMutation({
@@ -1070,6 +1097,16 @@ export default function Dashboard() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setQuickExpenseOpen(true)}
+              className="h-8"
+              data-testid="btn-quick-expense"
+            >
+              <Receipt className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">Expense</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setLocation("/enquiries?new=true")}
               className="h-8"
               data-testid="btn-quick-enquiry"
@@ -1892,6 +1929,94 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Expense Dialog */}
+      <Dialog open={quickExpenseOpen} onOpenChange={setQuickExpenseOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Quick Add Expense
+            </DialogTitle>
+            <DialogDescription>
+              Add an expense for {selectedPropertyId ? properties?.find(p => p.id === selectedPropertyId)?.name : "all properties"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Amount (₹)</label>
+              <input
+                type="number"
+                value={expenseAmount}
+                onChange={(e) => setExpenseAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                data-testid="input-quick-expense-amount"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category</label>
+              <select
+                value={expenseCategory}
+                onChange={(e) => setExpenseCategory(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                data-testid="select-quick-expense-category"
+              >
+                <option value="">Select category</option>
+                {expenseCategories?.map((cat: any) => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+                <option value="Maintenance">Maintenance</option>
+                <option value="Utilities">Utilities</option>
+                <option value="Supplies">Supplies</option>
+                <option value="Groceries">Groceries</option>
+                <option value="Staff Salary">Staff Salary</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description (Optional)</label>
+              <input
+                type="text"
+                value={expenseDescription}
+                onChange={(e) => setExpenseDescription(e.target.value)}
+                placeholder="Brief description"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                data-testid="input-quick-expense-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setQuickExpenseOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!expenseAmount || !expenseCategory) {
+                  toast({ title: "Please fill amount and category", variant: "destructive" });
+                  return;
+                }
+                if (!selectedPropertyId) {
+                  toast({ title: "Please select a property first", variant: "destructive" });
+                  return;
+                }
+                createExpenseMutation.mutate({
+                  propertyId: selectedPropertyId,
+                  amount: expenseAmount,
+                  category: expenseCategory,
+                  description: expenseDescription || null,
+                  expenseDate: new Date().toISOString(),
+                  createdBy: user?.email || user?.firstName || "Dashboard",
+                });
+              }}
+              disabled={createExpenseMutation.isPending}
+              data-testid="btn-submit-quick-expense"
+            >
+              {createExpenseMutation.isPending ? "Adding..." : "Add Expense"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
