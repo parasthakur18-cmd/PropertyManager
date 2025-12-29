@@ -1966,9 +1966,10 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // Get pro-rated lease amount for the month
+    // Get monthly rent - first check for lease, then fallback to property's monthlyRent
     const allLeases = await this.getLeasesByProperty(propertyId);
     let monthlyLeaseAmount = 0;
+    let usedPropertyRent = false;
     
     for (const lease of allLeases) {
       const leaseStart = new Date(lease.startDate);
@@ -1980,6 +1981,15 @@ export class DatabaseStorage implements IStorage {
         const leaseMonths = Math.max(1, Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (30 * 24 * 60 * 60 * 1000)));
         const monthlyRate = parseFloat(lease.totalAmount.toString()) / leaseMonths;
         monthlyLeaseAmount += monthlyRate;
+      }
+    }
+    
+    // If no lease covers this month, use property's monthlyRent
+    if (monthlyLeaseAmount === 0) {
+      const property = await this.getProperty(propertyId);
+      if (property?.monthlyRent) {
+        monthlyLeaseAmount = parseFloat(property.monthlyRent.toString());
+        usedPropertyRent = true;
       }
     }
 
@@ -2007,6 +2017,7 @@ export class DatabaseStorage implements IStorage {
       propertyId,
       month,
       isMonthlyReport: true,
+      usedPropertyRent,
       periodStart: startDate,
       periodEnd: endDate,
       pnlData: [{
