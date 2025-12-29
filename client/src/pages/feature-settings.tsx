@@ -285,12 +285,25 @@ export default function FeatureSettings() {
         <p className="text-muted-foreground">
           Enable or disable optional features for your property management system
         </p>
-        {selectedProperty && properties.length > 0 && (
+        {properties && properties.length > 1 && (
+          <div className="mt-4 flex items-center gap-3">
+            <label className="text-sm font-medium">Property:</label>
+            <Select value={selectedProperty || propertyId?.toString() || ""} onValueChange={setSelectedProperty}>
+              <SelectTrigger className="w-64" data-testid="select-property-main">
+                <SelectValue placeholder="Select property..." />
+              </SelectTrigger>
+              <SelectContent>
+                {properties.map((prop: any) => (
+                  <SelectItem key={prop.id} value={prop.id.toString()}>{prop.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {properties && properties.length === 1 && (
           <div className="mt-4">
-            <label className="text-sm font-medium">Current Property:</label>
-            <p className="text-sm text-muted-foreground">
-              {properties.find((p: any) => p.id.toString() === selectedProperty)?.name || "Unknown"}
-            </p>
+            <label className="text-sm font-medium">Property: </label>
+            <span className="text-sm text-muted-foreground">{properties[0]?.name}</span>
           </div>
         )}
       </div>
