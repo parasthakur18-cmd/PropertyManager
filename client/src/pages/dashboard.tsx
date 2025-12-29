@@ -126,6 +126,7 @@ export default function Dashboard() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseVendor, setExpenseVendor] = useState("");
   
   // Onboarding wizard state - show for new users who haven't completed onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -198,6 +199,7 @@ export default function Dashboard() {
       setExpenseAmount("");
       setExpenseCategory("");
       setExpenseDescription("");
+      setExpenseVendor("");
     },
     onError: (error: Error) => {
       toast({ title: "Failed to add expense", description: error.message, variant: "destructive" });
@@ -1988,6 +1990,17 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">Vendor Name (Optional)</label>
+              <input
+                type="text"
+                value={expenseVendor}
+                onChange={(e) => setExpenseVendor(e.target.value)}
+                placeholder="e.g., Local Grocery Store"
+                className="w-full px-3 py-2 border rounded-md bg-background"
+                data-testid="input-quick-expense-vendor"
+              />
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Description (Optional)</label>
               <input
                 type="text"
@@ -2017,6 +2030,7 @@ export default function Dashboard() {
                   propertyId: selectedPropertyId,
                   amount: expenseAmount,
                   category: expenseCategory,
+                  vendorName: expenseVendor || null,
                   description: expenseDescription || null,
                   expenseDate: new Date().toISOString(),
                   createdBy: user?.email || user?.firstName || "Dashboard",
