@@ -169,30 +169,67 @@ export default function PnLStatement() {
                 </Select>
               </div>
 
-              {selectedPropertyId && propertyLeases.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <Select
-                    value={selectedLeaseId?.toString() || "all"}
-                    onValueChange={(value) => setSelectedLeaseId(value === "all" ? null : parseInt(value))}
-                  >
-                    <SelectTrigger className="w-[250px]" data-testid="select-pnl-lease">
-                      <SelectValue placeholder="All Lease Periods" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all" data-testid="select-pnl-lease-all">All Lease Periods</SelectItem>
-                      {propertyLeases.map((lease) => (
-                        <SelectItem 
-                          key={lease.id} 
-                          value={lease.id.toString()}
-                          data-testid={`select-pnl-lease-${lease.id}`}
-                        >
-                          {format(new Date(lease.startDate), "MMM yyyy")} - {lease.endDate ? format(new Date(lease.endDate), "MMM yyyy") : "Present"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {selectedPropertyId && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={filterType}
+                      onValueChange={(value: 'lease' | 'month') => {
+                        setFilterType(value);
+                        if (value === 'month') {
+                          setSelectedLeaseId(null);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-[150px]" data-testid="select-pnl-filter-type">
+                        <SelectValue placeholder="Filter by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="month" data-testid="select-pnl-filter-month">By Month</SelectItem>
+                        <SelectItem value="lease" data-testid="select-pnl-filter-lease">By Lease Period</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {filterType === 'month' && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <input
+                        type="month"
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="flex h-9 w-[180px] rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        data-testid="input-pnl-month"
+                      />
+                    </div>
+                  )}
+
+                  {filterType === 'lease' && propertyLeases.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <Select
+                        value={selectedLeaseId?.toString() || "all"}
+                        onValueChange={(value) => setSelectedLeaseId(value === "all" ? null : parseInt(value))}
+                      >
+                        <SelectTrigger className="w-[250px]" data-testid="select-pnl-lease">
+                          <SelectValue placeholder="All Lease Periods" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all" data-testid="select-pnl-lease-all">All Lease Periods</SelectItem>
+                          {propertyLeases.map((lease) => (
+                            <SelectItem 
+                              key={lease.id} 
+                              value={lease.id.toString()}
+                              data-testid={`select-pnl-lease-${lease.id}`}
+                            >
+                              {format(new Date(lease.startDate), "MMM yyyy")} - {lease.endDate ? format(new Date(lease.endDate), "MMM yyyy") : "Present"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </CardContent>
