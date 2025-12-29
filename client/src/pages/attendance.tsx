@@ -36,6 +36,8 @@ const addStaffSchema = z.object({
 
 const editStaffSchema = z.object({
   baseSalary: z.coerce.number().nonnegative("Base salary must be non-negative"),
+  joiningDate: z.string().optional(),
+  leavingDate: z.string().optional(),
 });
 
 interface AttendanceStats {
@@ -149,6 +151,8 @@ export default function Attendance() {
     resolver: zodResolver(editStaffSchema),
     defaultValues: {
       baseSalary: 0,
+      joiningDate: "",
+      leavingDate: "",
     },
   });
 
@@ -214,9 +218,16 @@ export default function Attendance() {
 
   const editStaffMutation = useMutation({
     mutationFn: async (data: z.infer<typeof editStaffSchema>) => {
-      return await apiRequest(`/api/staff-members/${editingStaffId}`, "PATCH", {
+      const updateData: any = {
         baseSalary: data.baseSalary,
-      });
+      };
+      if (data.joiningDate) {
+        updateData.joiningDate = new Date(data.joiningDate);
+      }
+      if (data.leavingDate) {
+        updateData.leavingDate = new Date(data.leavingDate);
+      }
+      return await apiRequest(`/api/staff-members/${editingStaffId}`, "PATCH", updateData);
     },
     onSuccess: () => {
       refetchStaff();
@@ -226,13 +237,13 @@ export default function Attendance() {
       setEditingStaffId(null);
       toast({
         title: "Success",
-        description: "Staff salary updated successfully",
+        description: "Staff details updated successfully",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update salary",
+        description: error.message || "Failed to update staff",
         variant: "destructive",
       });
     },
@@ -512,8 +523,13 @@ export default function Attendance() {
                               size="icon"
                               variant="ghost"
                               onClick={() => {
+                                const staff = staffMembers.find((s: any) => s.id === parseInt(stat.staffId));
                                 setEditingStaffId(parseInt(stat.staffId));
-                                editStaffForm.reset({ baseSalary: stat.baseSalary || 0 });
+                                editStaffForm.reset({ 
+                                  baseSalary: stat.baseSalary || 0,
+                                  joiningDate: staff?.joiningDate ? new Date(staff.joiningDate).toISOString().split('T')[0] : '',
+                                  leavingDate: staff?.leavingDate ? new Date(staff.leavingDate).toISOString().split('T')[0] : '',
+                                });
                                 setIsEditStaffDialogOpen(true);
                               }}
                               data-testid={`button-edit-salary-table-${stat.staffId}`}
@@ -705,7 +721,7 @@ export default function Attendance() {
       <Dialog open={isEditStaffDialogOpen} onOpenChange={setIsEditStaffDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Staff Salary</DialogTitle>
+            <DialogTitle>Edit Staff Details</DialogTitle>
           </DialogHeader>
           <Form {...editStaffForm}>
             <form onSubmit={editStaffForm.handleSubmit((data) => editStaffMutation.mutate(data))} className="space-y-4">
@@ -722,8 +738,35 @@ export default function Attendance() {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={editStaffForm.control}
+                name="joiningDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Joining Date</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="date" data-testid="input-edit-joining-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editStaffForm.control}
+                name="leavingDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Leaving Date (if applicable)</FormLabel>
+                    <FormControl>
+                      <Input {...field} type="date" data-testid="input-edit-leaving-date" />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">Set this when an employee leaves</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <Button type="submit" disabled={editStaffMutation.isPending} className="w-full">
-                {editStaffMutation.isPending ? "Saving..." : "Save Salary"}
+                {editStaffMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </form>
           </Form>
@@ -884,13 +927,17 @@ export default function Attendance() {
                     variant="outline"
                     onClick={() => {
                       setEditingStaffId(staff.id);
-                      editStaffForm.reset({ baseSalary: staff.baseSalary || 0 });
+                      editStaffForm.reset({ 
+                        baseSalary: staff.baseSalary || 0,
+                        joiningDate: staff?.joiningDate ? new Date(staff.joiningDate).toISOString().split('T')[0] : '',
+                        leavingDate: staff?.leavingDate ? new Date(staff.leavingDate).toISOString().split('T')[0] : '',
+                      });
                       setIsEditStaffDialogOpen(true);
                     }}
                     data-testid={`button-edit-salary-${staff.id}`}
                   >
                     <Edit2 className="h-4 w-4 mr-1" />
-                    Edit Salary
+                    Edit Staff
                   </Button>
                 </div>
                 <div className="grid grid-cols-7 gap-2">

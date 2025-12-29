@@ -623,6 +623,7 @@ export const staffMembers = pgTable("staff_members", {
   role: varchar("role", { length: 50 }),
   propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   joiningDate: timestamp("joining_date"),
+  leavingDate: timestamp("leaving_date"),
   isActive: boolean("is_active").default(true),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
