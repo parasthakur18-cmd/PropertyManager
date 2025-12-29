@@ -512,25 +512,39 @@ export async function sendCustomWhatsAppMessage(
 }
 
 /**
- * Send self check-in link to guest via WhatsApp
- * Uses a simple text message with the check-in link
+ * Send self check-in link WhatsApp message
+ * Uses the check-in notification template (18712) by default
+ * 
+ * Template variables (in order):
+ * 1. Property Name
+ * 2. Guest Name
+ * 3. Room Numbers
+ * 4. Check-in Date
+ * 5. Check-out Date
+ * 
+ * Note: The default template doesn't include a URL. To send a custom message
+ * with the check-in link, set up a new template in Authkey and configure
+ * AUTHKEY_WA_SELF_CHECKIN environment variable.
  */
 export async function sendSelfCheckinLink(
   phoneNumber: string,
   guestName: string,
   propertyName: string,
   checkinLink: string,
-  checkInDate: string
+  checkInDate: string,
+  checkOutDate?: string,
+  roomNumber?: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_SELF_CHECKIN || "22226";
+  const templateId = process.env.AUTHKEY_WA_SELF_CHECKIN || "18712";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
+  // Use check-in notification template variables: [propertyName, guestName, roomNumbers, checkInDate, checkOutDate]
   return sendWhatsAppMessage({
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, propertyName, checkInDate, checkinLink],
+    variables: [propertyName, guestName, roomNumber || "Your Room", checkInDate, checkOutDate || checkInDate],
   });
 }
 

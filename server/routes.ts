@@ -3074,6 +3074,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const checkinLink = `${baseUrl}/guest-self-checkin?bookingId=${bookingId}`;
       const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+      const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+      
+      // Get room number if assigned
+      let roomNumber = "Your Room";
+      if (booking.roomId) {
+        const room = await storage.getRoom(booking.roomId);
+        roomNumber = room?.roomNumber || "Your Room";
+      }
       
       try {
         await sendSelfCheckinLink(
@@ -3081,7 +3089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           guest.fullName || "Guest",
           property?.name || "Property",
           checkinLink,
-          checkInFormatted
+          checkInFormatted,
+          checkOutFormatted,
+          roomNumber
         );
         
         console.log(`[SELF CHECKIN] Check-in link sent to ${guest.fullName} for booking #${bookingId}`);
