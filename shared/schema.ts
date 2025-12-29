@@ -97,6 +97,7 @@ export const properties = pgTable("properties", {
   totalRooms: integer("total_rooms"),
   contactEmail: varchar("contact_email", { length: 255 }),
   contactPhone: varchar("contact_phone", { length: 20 }),
+  monthlyRent: decimal("monthly_rent", { precision: 10, scale: 2 }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
