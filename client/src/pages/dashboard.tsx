@@ -125,6 +125,14 @@ export default function Dashboard() {
   
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats", selectedPropertyId],
+    queryFn: async () => {
+      const url = selectedPropertyId 
+        ? `/api/dashboard/stats?propertyId=${selectedPropertyId}`
+        : "/api/dashboard/stats";
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to fetch stats");
+      return response.json();
+    },
   });
 
   const { data: bookings, isLoading: bookingsLoading } = useQuery<Booking[]>({
