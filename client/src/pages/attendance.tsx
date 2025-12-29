@@ -330,7 +330,11 @@ export default function Attendance() {
         <TabsContent value="roster" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Mark Attendance for All Staff</CardTitle>
+              <CardTitle>Mark Exceptions Only</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                All staff are automatically marked as <span className="text-green-600 font-medium">Present</span> by default. 
+                Only mark exceptions when someone is absent, on leave, or half-day.
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -354,16 +358,18 @@ export default function Attendance() {
                     <thead>
                       <tr className="border-b bg-muted">
                         <th className="text-left p-3 font-semibold">Staff Member</th>
-                        <th className="text-center p-3 font-semibold">Present</th>
-                        <th className="text-center p-3 font-semibold">Absent</th>
-                        <th className="text-center p-3 font-semibold">Leave</th>
-                        <th className="text-center p-3 font-semibold">Half Day</th>
+                        <th className="text-center p-3 font-semibold text-green-600">Present (Default)</th>
+                        <th className="text-center p-3 font-semibold text-red-600">Absent</th>
+                        <th className="text-center p-3 font-semibold text-blue-600">Leave</th>
+                        <th className="text-center p-3 font-semibold text-yellow-600">Half Day</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredStaffMembers.map((staff) => {
                         const dayAttendance = getAttendanceForDate(staff.id, new Date(rosterDate));
                         const currentStatus = dayAttendance?.status;
+                        // If no record exists, staff is considered Present by default
+                        const isDefaultPresent = !currentStatus;
                         return (
                           <tr key={staff.id} className="border-b hover:bg-muted/50">
                             <td className="p-3">
@@ -371,14 +377,21 @@ export default function Attendance() {
                               <div className="text-xs text-muted-foreground">{staff.jobTitle}</div>
                             </td>
                             <td className="text-center p-2">
-                              <Button
-                                size="sm"
-                                className={currentStatus === "present" ? "bg-green-700 hover:bg-green-800 text-white" : "bg-green-100 hover:bg-green-200 text-green-700"}
-                                onClick={() => handleRosterStatusChange(String(staff.id), "present")}
-                                data-testid={`button-present-${staff.id}`}
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
+                              {isDefaultPresent ? (
+                                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Auto
+                                </Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className={currentStatus === "present" ? "bg-green-700 hover:bg-green-800 text-white" : "bg-green-100 hover:bg-green-200 text-green-700"}
+                                  onClick={() => handleRosterStatusChange(String(staff.id), "present")}
+                                  data-testid={`button-present-${staff.id}`}
+                                >
+                                  <CheckCircle className="h-4 w-4" />
+                                </Button>
+                              )}
                             </td>
                             <td className="text-center p-2">
                               <Button
@@ -437,7 +450,7 @@ export default function Attendance() {
             <CardHeader>
               <CardTitle>Monthly Salary Summary</CardTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Month: {format(selectedMonth, "MMMM yyyy")}
+                Month: {format(selectedMonth, "MMMM yyyy")} | Working Days: {attendanceStats[0]?.totalWorkDays || 26} (excl. Sundays)
               </p>
             </CardHeader>
             <CardContent>
@@ -445,39 +458,59 @@ export default function Attendance() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b bg-muted">
-                      <th className="text-left p-3 font-semibold">Staff Member</th>
+                      <th className="text-left p-3 font-semibold">Staff</th>
                       <th className="text-right p-3 font-semibold">Base Salary</th>
-                      <th className="text-center p-3 font-semibold">Absents</th>
-                      <th className="text-right p-3 font-semibold">Deduction/Day</th>
-                      <th className="text-right p-3 font-semibold">Total Deduction</th>
-                      <th className="text-right p-3 font-semibold">Net Salary</th>
-                      <th className="text-center p-3 font-semibold">Action</th>
+                      <th className="text-center p-3 font-semibold">Present</th>
+                      <th className="text-center p-3 font-semibold">Absent</th>
+                      <th className="text-right p-3 font-semibold text-orange-600">Attendance Ded.</th>
+                      <th className="text-right p-3 font-semibold text-purple-600">Advance Ded.</th>
+                      <th className="text-right p-3 font-semibold text-red-600">Total Ded.</th>
+                      <th className="text-right p-3 font-semibold text-green-600">Net Salary</th>
+                      <th className="text-center p-3 font-semibold">Edit</th>
                     </tr>
                   </thead>
                   <tbody>
                     {attendanceStats.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <td colSpan={9} className="text-center py-8 text-muted-foreground">
                           No salary data available for this month
                         </td>
                       </tr>
                     ) : (
-                      attendanceStats.map((stat) => (
+                      attendanceStats.map((stat: any) => (
                         <tr key={stat.staffId} className="border-b hover:bg-muted/50">
                           <td className="p-3 font-medium">{stat.staffName}</td>
                           <td className="text-right p-3 font-mono">₹{stat.baseSalary.toLocaleString()}</td>
+                          <td className="text-center p-3">
+                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              {stat.presentDays}
+                            </Badge>
+                          </td>
                           <td className="text-center p-3">
                             <Badge variant={stat.absentDays > 0 ? "destructive" : "secondary"}>
                               {stat.absentDays}
                             </Badge>
                           </td>
-                          <td className="text-right p-3 font-mono">₹{stat.deductionPerDay.toLocaleString()}</td>
-                          <td className="text-right p-3 font-mono text-red-600">₹{stat.totalDeduction.toLocaleString()}</td>
-                          <td className="text-right p-3 font-mono font-semibold text-green-600">₹{stat.netSalary.toLocaleString()}</td>
+                          <td className="text-right p-3 font-mono text-orange-600">
+                            ₹{(stat.attendanceDeduction || 0).toLocaleString()}
+                          </td>
+                          <td className="text-right p-3 font-mono text-purple-600">
+                            {(stat.advanceDeduction || 0) > 0 ? (
+                              <span>₹{stat.advanceDeduction.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </td>
+                          <td className="text-right p-3 font-mono text-red-600 font-semibold">
+                            ₹{stat.totalDeduction.toLocaleString()}
+                          </td>
+                          <td className="text-right p-3 font-mono font-bold text-green-600">
+                            ₹{stat.netSalary.toLocaleString()}
+                          </td>
                           <td className="text-center p-3">
                             <Button
-                              size="sm"
-                              variant="outline"
+                              size="icon"
+                              variant="ghost"
                               onClick={() => {
                                 setEditingStaffId(parseInt(stat.staffId));
                                 editStaffForm.reset({ baseSalary: stat.baseSalary || 0 });
@@ -485,7 +518,7 @@ export default function Attendance() {
                               }}
                               data-testid={`button-edit-salary-table-${stat.staffId}`}
                             >
-                              <Edit2 className="h-3 w-3" />
+                              <Edit2 className="h-4 w-4" />
                             </Button>
                           </td>
                         </tr>
