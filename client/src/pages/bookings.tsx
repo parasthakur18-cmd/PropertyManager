@@ -1928,8 +1928,8 @@ export default function Bookings() {
                                 variant="ghost"
                                 className="h-8 w-8"
                                 onClick={() => sendCheckinLinkMutation.mutate({ bookingId: booking.id })}
-                                disabled={sendCheckinLinkMutation.isPending}
-                                title="Send self check-in link via WhatsApp"
+                                disabled={sendCheckinLinkMutation.isPending || booking.status === "checked-in" || booking.status === "checked-out"}
+                                title={booking.status === "checked-in" || booking.status === "checked-out" ? "Guest already checked in" : "Send self check-in link via WhatsApp"}
                                 data-testid={`button-checkin-link-${booking.id}`}
                               >
                                 <Send className="h-4 w-4" />
