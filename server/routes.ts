@@ -6447,56 +6447,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GET /api/attendance/stats - Get attendance statistics
+  // NEW LOGIC: All staff are "Present" by default - only exceptions are recorded
   app.get("/api/attendance/stats", isAuthenticated, async (req, res) => {
     try {
+      const month = req.query.month as string; // Format: YYYY-MM
+      
       // Get all staff members
       const staffMembers = await storage.getAllStaffMembers();
       
       // Get all attendance records
       const attendanceRecords = await storage.getAllAttendance();
       
+      // Get all pending salary advances for deduction
+      const allAdvances = await storage.getAllAdvances();
+      
       // Calculate stats for each staff member
-      const stats = staffMembers.map((staff) => {
-        const staffAttendance = attendanceRecords.filter(
-          (record) => record.staffId === staff.id
-        );
+      const stats = await Promise.all(staffMembers.map(async (staff) => {
+        // Filter attendance for selected month
+        const staffAttendance = attendanceRecords.filter((record) => {
+          if (record.staffId !== staff.id) return false;
+          if (month) {
+            const recordMonth = new Date(record.attendanceDate).toISOString().slice(0, 7);
+            return recordMonth === month;
+          }
+          return true;
+        });
 
-        const presentDays = staffAttendance.filter((a) => a.status === "present").length;
+        // Count only exceptions - no need to mark "present" anymore
         const absentDays = staffAttendance.filter((a) => a.status === "absent").length;
         const leaveDays = staffAttendance.filter((a) => a.status === "leave").length;
         const halfDays = staffAttendance.filter((a) => a.status === "half-day").length;
-        const totalDays = staffAttendance.length;
 
-        const attendancePercentage = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
+        // Calculate working days in the month (excluding Sundays)
+        let workingDaysInMonth = 26; // Default assumption
+        if (month) {
+          const [year, monthNum] = month.split('-').map(Number);
+          const monthStart = new Date(year, monthNum - 1, 1);
+          const monthEnd = new Date(year, monthNum, 0);
+          
+          // Count days excluding Sundays
+          let workDays = 0;
+          for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() !== 0) { // 0 = Sunday
+              workDays++;
+            }
+          }
+          workingDaysInMonth = workDays;
+          
+          // Adjust for joining date if staff joined mid-month
+          if (staff.joiningDate) {
+            const joinDate = new Date(staff.joiningDate);
+            if (joinDate > monthStart && joinDate <= monthEnd) {
+              // Recalculate from joining date
+              workDays = 0;
+              for (let d = new Date(joinDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() !== 0) {
+                  workDays++;
+                }
+              }
+              workingDaysInMonth = workDays;
+            }
+          }
+        }
 
-        // Calculate working days based on joining date
-        const monthStart = new Date();
-        monthStart.setDate(1);
+        // Present days = Total working days - Absent - Half days count as 0.5
+        const presentDays = workingDaysInMonth - absentDays - (halfDays * 0.5);
         
-        // Determine effective start date (joining date or month start, whichever is later)
-        const effectiveStart = staff.joiningDate && new Date(staff.joiningDate) > monthStart 
-          ? new Date(staff.joiningDate) 
-          : monthStart;
-
-        // Count working days from effective start to month end
-        const workingDaysInPeriod = totalDays > 0 ? totalDays : 30;
-        const deductionPerDay = (staff.baseSalary || 0) / workingDaysInPeriod;
+        // Calculate deductions
+        const baseSalary = parseFloat(String(staff.baseSalary || 0));
+        const deductionPerDay = baseSalary / workingDaysInMonth;
+        
+        // Absent = full day deduction, Half-day = 0.5 day deduction
+        // Leave = no deduction (paid leave)
+        const attendanceDeduction = (deductionPerDay * absentDays) + (deductionPerDay * halfDays * 0.5);
+        
+        // Get pending salary advances for this staff member
+        const staffAdvances = allAdvances.filter(
+          (adv) => adv.staffMemberId === staff.id && adv.repaymentStatus === 'pending'
+        );
+        const totalAdvances = staffAdvances.reduce(
+          (sum, adv) => sum + parseFloat(String(adv.amount || 0)), 0
+        );
+        
+        // Total deduction = attendance deduction + pending advances
+        const totalDeduction = attendanceDeduction + totalAdvances;
+        
+        // Net salary after all deductions
+        const netSalary = baseSalary - totalDeduction;
+        
+        // Attendance percentage based on effective present days
+        const attendancePercentage = workingDaysInMonth > 0 
+          ? (presentDays / workingDaysInMonth) * 100 
+          : 100;
 
         return {
           staffId: staff.id,
           staffName: staff.name,
-          presentDays,
+          presentDays: Math.max(0, presentDays),
           absentDays,
           leaveDays,
           halfDays,
-          totalWorkDays: workingDaysInPeriod,
-          attendancePercentage,
-          deductionPerDay,
-          totalDeduction: deductionPerDay * absentDays,
-          baseSalary: staff.baseSalary || 0,
-          netSalary: (staff.baseSalary || 0) - (deductionPerDay * absentDays),
+          totalWorkDays: workingDaysInMonth,
+          attendancePercentage: Math.min(100, Math.max(0, attendancePercentage)),
+          deductionPerDay: Math.round(deductionPerDay * 100) / 100,
+          attendanceDeduction: Math.round(attendanceDeduction * 100) / 100,
+          advanceDeduction: Math.round(totalAdvances * 100) / 100,
+          totalDeduction: Math.round(totalDeduction * 100) / 100,
+          baseSalary,
+          netSalary: Math.round(Math.max(0, netSalary) * 100) / 100,
         };
-      });
+      }));
 
       res.json(stats);
     } catch (error: any) {
