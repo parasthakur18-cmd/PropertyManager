@@ -76,6 +76,59 @@ import {
   TenantAccessError 
 } from "./tenantIsolation";
 
+// IP Geolocation helper - uses free ip-api.com service (no API key required)
+async function getLocationFromIp(ip: string): Promise<{ city: string; state: string; country: string } | null> {
+  try {
+    // Skip for localhost/private IPs
+    if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+      return null;
+    }
+    
+    // Clean IP address (remove ::ffff: prefix if present)
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    
+    const response = await fetch(`http://ip-api.com/json/${cleanIp}?fields=status,country,regionName,city`, {
+      signal: AbortSignal.timeout(3000) // 3 second timeout
+    });
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    if (data.status !== 'success') return null;
+    
+    return {
+      city: data.city || '',
+      state: data.regionName || '',
+      country: data.country || ''
+    };
+  } catch (error) {
+    console.log(`[GEO] Failed to get location for IP ${ip}:`, error);
+    return null;
+  }
+}
+
+// Update user location from IP
+async function updateUserLocationFromIp(userId: string, ipAddress: string) {
+  try {
+    const location = await getLocationFromIp(ipAddress);
+    if (location && (location.city || location.state || location.country)) {
+      await db.update(users)
+        .set({
+          city: location.city || null,
+          state: location.state || null,
+          country: location.country || null,
+          lastLoginIp: ipAddress.substring(0, 45),
+          lastLoginAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+      console.log(`[GEO] Updated location for user ${userId}: ${location.city}, ${location.state}, ${location.country}`);
+    }
+  } catch (error) {
+    console.log(`[GEO] Failed to update location for user ${userId}:`, error);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
@@ -7273,6 +7326,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(500).json({ message: "Login failed" });
           }
           
+          // Capture geographic location from IP (non-blocking)
+          const ipAddress = req.ip || req.socket.remoteAddress || '';
+          updateUserLocationFromIp(user.id, ipAddress).catch(() => {});
+          
           console.log(`[OTP-LOGIN] ✓ SUCCESS - User ${user.phone} logged in`);
           res.json({
             success: true,
@@ -9835,6 +9892,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } catch (logErr) {
             console.error('[ACTIVITY] Error logging login:', logErr);
           }
+          
+          // Capture geographic location from IP (non-blocking)
+          updateUserLocationFromIp(user[0].id, ipAddress).catch(() => {});
           
           console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);
           res.json({ 

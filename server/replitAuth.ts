@@ -7,6 +7,49 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { db } from "./db";
+import { users } from "@shared/schema";
+import { eq } from "drizzle-orm";
+
+// IP Geolocation helper - uses free ip-api.com service
+async function getLocationFromIp(ip: string): Promise<{ city: string; state: string; country: string } | null> {
+  try {
+    if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+      return null;
+    }
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    const response = await fetch(`http://ip-api.com/json/${cleanIp}?fields=status,country,regionName,city`, {
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.status !== 'success') return null;
+    return { city: data.city || '', state: data.regionName || '', country: data.country || '' };
+  } catch {
+    return null;
+  }
+}
+
+async function updateUserLocationFromIp(userId: string, ipAddress: string) {
+  try {
+    const location = await getLocationFromIp(ipAddress);
+    if (location && (location.city || location.state || location.country)) {
+      await db.update(users)
+        .set({
+          city: location.city || null,
+          state: location.state || null,
+          country: location.country || null,
+          lastLoginIp: ipAddress.substring(0, 45),
+          lastLoginAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+      console.log(`[GEO] Updated location for user ${userId}: ${location.city}, ${location.state}, ${location.country}`);
+    }
+  } catch {
+    // Non-blocking, ignore errors
+  }
+}
 
 if (!process.env.REPLIT_DOMAINS) {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
@@ -240,6 +283,9 @@ export async function setupAuth(app: Express) {
             ipAddress: ipAddress.substring(0, 45),
             userAgent: userAgent.substring(0, 500),
           });
+          
+          // Capture geographic location from IP (non-blocking)
+          updateUserLocationFromIp(userId, ipAddress).catch(() => {});
         } catch (sessionErr) {
           console.error('[SESSION] Error creating session:', sessionErr);
         }
