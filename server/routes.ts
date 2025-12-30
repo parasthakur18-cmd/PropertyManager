@@ -8056,6 +8056,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Property Health Scores - Analyze which properties need attention
+  app.get("/api/super-admin/property-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allRooms = await storage.getAllRooms();
+      const allBills = await storage.getAllBills();
+      
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      const propertyHealth = allProperties.map(property => {
+        const propertyRooms = allRooms.filter(r => r.propertyId === property.id);
+        const propertyBookings = allBookings.filter(b => b.propertyId === property.id);
+        const propertyBills = allBills.filter(b => {
+          const booking = propertyBookings.find(pb => pb.id === b.bookingId);
+          return booking !== undefined;
+        });
+        
+        // Recent bookings (last 30 days)
+        const recentBookings = propertyBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= thirtyDaysAgo;
+        });
+        
+        // Very recent bookings (last 7 days)
+        const weeklyBookings = propertyBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= sevenDaysAgo;
+        });
+        
+        // Current occupancy (active bookings today)
+        const activeBookings = propertyBookings.filter(b => {
+          const checkIn = new Date(b.checkInDate);
+          const checkOut = new Date(b.checkOutDate);
+          return checkIn <= now && checkOut >= now && b.status !== 'cancelled';
+        });
+        const occupancyRate = propertyRooms.length > 0 
+          ? Math.round((activeBookings.length / propertyRooms.length) * 100) 
+          : 0;
+        
+        // Revenue (last 30 days)
+        const recentRevenue = propertyBills
+          .filter(b => {
+            const paidAt = new Date(b.paidAt || b.createdAt || 0);
+            return paidAt >= thirtyDaysAgo && b.paymentStatus === 'paid';
+          })
+          .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        
+        // Calculate health score (0-100)
+        let healthScore = 50; // Base score
+        
+        // Booking activity (+/- 20 points)
+        if (recentBookings.length >= 10) healthScore += 20;
+        else if (recentBookings.length >= 5) healthScore += 10;
+        else if (recentBookings.length === 0) healthScore -= 20;
+        else healthScore -= 10;
+        
+        // Occupancy (+/- 15 points)
+        if (occupancyRate >= 70) healthScore += 15;
+        else if (occupancyRate >= 40) healthScore += 5;
+        else if (occupancyRate === 0) healthScore -= 15;
+        
+        // Revenue (+/- 15 points)
+        if (recentRevenue >= 100000) healthScore += 15;
+        else if (recentRevenue >= 50000) healthScore += 10;
+        else if (recentRevenue >= 10000) healthScore += 5;
+        else if (recentRevenue === 0) healthScore -= 10;
+        
+        // Clamp score between 0 and 100
+        healthScore = Math.max(0, Math.min(100, healthScore));
+        
+        // Determine status
+        let status: 'thriving' | 'healthy' | 'attention' | 'critical';
+        if (healthScore >= 80) status = 'thriving';
+        else if (healthScore >= 60) status = 'healthy';
+        else if (healthScore >= 40) status = 'attention';
+        else status = 'critical';
+        
+        return {
+          id: property.id,
+          name: property.name,
+          location: property.location,
+          isActive: property.isActive,
+          healthScore,
+          status,
+          metrics: {
+            totalRooms: propertyRooms.length,
+            totalBookings: propertyBookings.length,
+            recentBookings: recentBookings.length,
+            weeklyBookings: weeklyBookings.length,
+            occupancyRate,
+            activeBookings: activeBookings.length,
+            recentRevenue: Math.round(recentRevenue),
+          },
+        };
+      });
+      
+      // Sort by health score (lowest first to highlight problem properties)
+      propertyHealth.sort((a, b) => a.healthScore - b.healthScore);
+      
+      // Summary stats
+      const summary = {
+        totalProperties: allProperties.length,
+        thriving: propertyHealth.filter(p => p.status === 'thriving').length,
+        healthy: propertyHealth.filter(p => p.status === 'healthy').length,
+        needsAttention: propertyHealth.filter(p => p.status === 'attention').length,
+        critical: propertyHealth.filter(p => p.status === 'critical').length,
+        avgHealthScore: Math.round(propertyHealth.reduce((sum, p) => sum + p.healthScore, 0) / (propertyHealth.length || 1)),
+      };
+      
+      res.json({ properties: propertyHealth, summary });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PROPERTY-HEALTH] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Super Admin Report Download - CSV with all property data
   app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
     try {

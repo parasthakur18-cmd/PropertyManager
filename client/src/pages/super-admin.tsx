@@ -22,7 +22,7 @@ interface ErrorCrash {
   isResolved?: boolean;
   createdAt?: string;
 }
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -293,6 +293,37 @@ export default function SuperAdmin() {
   }>({
     queryKey: ["/api/super-admin/system-health"],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
+  });
+
+  // Fetch property health scores
+  const { data: propertyHealthData, isLoading: propertyHealthLoading, refetch: refetchPropertyHealth } = useQuery<{
+    properties: Array<{
+      id: number;
+      name: string;
+      location: string;
+      isActive: boolean;
+      healthScore: number;
+      status: 'thriving' | 'healthy' | 'attention' | 'critical';
+      metrics: {
+        totalRooms: number;
+        totalBookings: number;
+        recentBookings: number;
+        weeklyBookings: number;
+        occupancyRate: number;
+        activeBookings: number;
+        recentRevenue: number;
+      };
+    }>;
+    summary: {
+      totalProperties: number;
+      thriving: number;
+      healthy: number;
+      needsAttention: number;
+      critical: number;
+      avgHealthScore: number;
+    };
+  }>({
+    queryKey: ["/api/super-admin/property-health"],
   });
 
   // Terminate session mutation
@@ -1598,6 +1629,131 @@ export default function SuperAdmin() {
               </>
             ) : (
               <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load system health data</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* Property Health Tab */}
+        {activeTab === "property-health" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-teal-600" />
+                Property Health Scores
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchPropertyHealth()} data-testid="button-refresh-property-health">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {propertyHealthLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Calculating property health scores...</CardContent></Card>
+            ) : propertyHealthData ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-green-600">{propertyHealthData.summary.thriving}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Thriving</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-blue-600">{propertyHealthData.summary.healthy}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Healthy</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-yellow-200 dark:border-yellow-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-yellow-600">{propertyHealthData.summary.needsAttention}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Needs Attention</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-red-200 dark:border-red-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-red-600">{propertyHealthData.summary.critical}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Critical</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-teal-600">{propertyHealthData.summary.avgHealthScore}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Avg Score</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Property List */}
+                <div className="space-y-3">
+                  {propertyHealthData.properties.map((prop) => (
+                    <Card key={prop.id} className={`${
+                      prop.status === 'critical' ? 'border-red-300 dark:border-red-700' :
+                      prop.status === 'attention' ? 'border-yellow-300 dark:border-yellow-700' :
+                      prop.status === 'thriving' ? 'border-green-300 dark:border-green-700' :
+                      ''
+                    }`}>
+                      <CardContent className="py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            {/* Health Score Circle */}
+                            <div className={`flex items-center justify-center w-14 h-14 rounded-full text-white font-bold text-lg ${
+                              prop.status === 'thriving' ? 'bg-green-500' :
+                              prop.status === 'healthy' ? 'bg-blue-500' :
+                              prop.status === 'attention' ? 'bg-yellow-500' :
+                              'bg-red-500'
+                            }`}>
+                              {prop.healthScore}
+                            </div>
+                            <div>
+                              <div className="font-semibold flex items-center gap-2">
+                                {prop.name}
+                                {prop.status === 'critical' && <TrendingDown className="h-4 w-4 text-red-500" />}
+                                {prop.status === 'thriving' && <TrendingUp className="h-4 w-4 text-green-500" />}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{prop.location}</p>
+                              <Badge variant={
+                                prop.status === 'thriving' ? 'default' :
+                                prop.status === 'healthy' ? 'secondary' :
+                                prop.status === 'attention' ? 'outline' :
+                                'destructive'
+                              } className="mt-1">
+                                {prop.status === 'thriving' ? 'Thriving' :
+                                 prop.status === 'healthy' ? 'Healthy' :
+                                 prop.status === 'attention' ? 'Needs Attention' :
+                                 'Critical'}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {/* Metrics */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.occupancyRate}%</div>
+                              <div className="text-xs text-muted-foreground">Occupancy</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.recentBookings}</div>
+                              <div className="text-xs text-muted-foreground">30-day Bookings</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.weeklyBookings}</div>
+                              <div className="text-xs text-muted-foreground">7-day Bookings</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">₹{(prop.metrics.recentRevenue / 1000).toFixed(0)}k</div>
+                              <div className="text-xs text-muted-foreground">30-day Revenue</div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load property health data</CardContent></Card>
             )}
           </div>
         )}
