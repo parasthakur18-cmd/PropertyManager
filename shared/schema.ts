@@ -1167,3 +1167,72 @@ export type InsertSubscriptionPayment = z.infer<typeof insertSubscriptionPayment
 // Subscription status types
 export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'past_due' | 'trialing';
 export type BillingCycle = 'monthly' | 'yearly';
+
+// ===== ACTIVITY LOGS & AUDIT TRAIL =====
+
+// Activity Logs table - tracks all user actions
+export const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
+  userEmail: varchar("user_email", { length: 255 }),
+  userName: varchar("user_name", { length: 255 }),
+  action: varchar("action", { length: 100 }).notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  resourceType: varchar("resource_type", { length: 50 }),
+  resourceId: varchar("resource_id", { length: 100 }),
+  resourceName: varchar("resource_name", { length: 255 }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'set null' }),
+  propertyName: varchar("property_name", { length: 255 }),
+  details: jsonb("details").$type<Record<string, unknown>>(),
+  ipAddress: varchar("ip_address", { length: 50 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+
+// Activity log categories
+export type ActivityCategory = 
+  | 'auth'           // login, logout, password change
+  | 'booking'        // create, update, cancel bookings
+  | 'guest'          // guest management
+  | 'payment'        // payments, refunds
+  | 'property'       // property settings changes
+  | 'room'           // room management
+  | 'staff'          // staff management
+  | 'order'          // food orders
+  | 'expense'        // expenses, vendors
+  | 'settings'       // feature settings, WhatsApp settings
+  | 'admin';         // super admin actions
+
+// ===== SESSION MANAGEMENT =====
+
+// User Sessions table - tracks active user sessions
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  sessionToken: varchar("session_token", { length: 255 }).notNull().unique(),
+  deviceInfo: varchar("device_info", { length: 255 }),
+  browser: varchar("browser", { length: 100 }),
+  os: varchar("os", { length: 100 }),
+  ipAddress: varchar("ip_address", { length: 50 }),
+  location: varchar("location", { length: 255 }),
+  isActive: boolean("is_active").notNull().default(true),
+  lastActivityAt: timestamp("last_activity_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type UserSession = typeof userSessions.$inferSelect;
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
