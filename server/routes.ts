@@ -56,7 +56,7 @@ import {
   sendPaymentReminder,
   sendSelfCheckinLink
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -8613,6 +8613,313 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("[RETURN-TO-ADMIN] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SUBSCRIPTION & BILLING ENDPOINTS =====
+
+  // Get all subscription plans (public)
+  app.get("/api/subscription-plans", async (req, res) => {
+    try {
+      const plans = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.isActive, true)).orderBy(subscriptionPlans.displayOrder);
+      res.json(plans);
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error fetching plans:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get current user's subscription
+  app.get("/api/subscription/current", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      // Get user's active subscription
+      const [subscription] = await db.select()
+        .from(userSubscriptions)
+        .where(eq(userSubscriptions.userId, userId))
+        .orderBy(desc(userSubscriptions.createdAt))
+        .limit(1);
+
+      let plan = null;
+      if (subscription) {
+        const [planData] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, subscription.planId));
+        plan = planData;
+      }
+
+      res.json({
+        subscription,
+        plan,
+        user: {
+          subscriptionStatus: user.subscriptionStatus,
+          trialEndsAt: user.trialEndsAt,
+        }
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error fetching current subscription:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Create Razorpay order for subscription payment
+  app.post("/api/subscription/create-order", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { planId, billingCycle } = req.body;
+      if (!planId || !billingCycle) {
+        return res.status(400).json({ message: "Plan ID and billing cycle required" });
+      }
+
+      const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const amount = billingCycle === 'yearly' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+      const amountInPaise = Math.round(amount * 100);
+
+      // Create Razorpay order
+      const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+      const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+      if (!razorpayKeyId || !razorpayKeySecret) {
+        return res.status(500).json({ message: "Payment gateway not configured" });
+      }
+
+      const orderResponse = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')
+        },
+        body: JSON.stringify({
+          amount: amountInPaise,
+          currency: 'INR',
+          receipt: `sub_${userId}_${Date.now()}`,
+          notes: {
+            userId,
+            planId,
+            planName: plan.name,
+            billingCycle
+          }
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const error = await orderResponse.text();
+        console.error("[RAZORPAY] Order creation failed:", error);
+        return res.status(500).json({ message: "Failed to create payment order" });
+      }
+
+      const order = await orderResponse.json();
+
+      res.json({
+        orderId: order.id,
+        amount: amountInPaise,
+        currency: 'INR',
+        keyId: razorpayKeyId,
+        planName: plan.name,
+        billingCycle,
+        user: {
+          email: user.email,
+          phone: user.phone,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        }
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error creating order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Verify payment and activate subscription
+  app.post("/api/subscription/verify-payment", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planId, billingCycle } = req.body;
+
+      // Verify signature
+      const crypto = require('crypto');
+      const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+      const generated_signature = crypto
+        .createHmac('sha256', razorpayKeySecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest('hex');
+
+      if (generated_signature !== razorpay_signature) {
+        return res.status(400).json({ message: "Payment verification failed" });
+      }
+
+      const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+      const now = new Date();
+      const endDate = new Date(now);
+      if (billingCycle === 'yearly') {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      } else {
+        endDate.setMonth(endDate.getMonth() + 1);
+      }
+
+      // Create subscription record
+      const [newSubscription] = await db.insert(userSubscriptions).values({
+        userId,
+        planId,
+        status: 'active',
+        billingCycle,
+        startDate: now,
+        endDate,
+        lastPaymentAt: now,
+        nextBillingAt: endDate,
+      }).returning();
+
+      // Create payment record
+      const amount = billingCycle === 'yearly' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+      await db.insert(subscriptionPayments).values({
+        subscriptionId: newSubscription.id,
+        userId,
+        amount: amount.toString(),
+        currency: 'INR',
+        status: 'completed',
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        paidAt: now,
+      });
+
+      // Update user subscription status
+      await db.update(users).set({
+        subscriptionPlanId: planId,
+        subscriptionStatus: 'active',
+        subscriptionStartDate: now,
+        subscriptionEndDate: endDate,
+        updatedAt: now,
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUBSCRIPTION] ✓ User ${userId} subscribed to ${plan.name} (${billingCycle})`);
+
+      res.json({
+        success: true,
+        message: `Successfully subscribed to ${plan.name}`,
+        subscription: newSubscription
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Payment verification error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Get all subscription plans (including inactive)
+  app.get("/api/super-admin/subscription-plans", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const plans = await db.select().from(subscriptionPlans).orderBy(subscriptionPlans.displayOrder);
+      res.json(plans);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Update subscription plan
+  app.patch("/api/super-admin/subscription-plans/:id", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const planId = parseInt(req.params.id);
+      const updates = req.body;
+
+      await db.update(subscriptionPlans).set({
+        ...updates,
+        updatedAt: new Date()
+      }).where(eq(subscriptionPlans.id, planId));
+
+      const [updated] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Get subscription analytics
+  app.get("/api/super-admin/subscription-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get subscription counts by plan
+      const allSubscriptions = await db.select().from(userSubscriptions);
+      const allPayments = await db.select().from(subscriptionPayments);
+      const plans = await db.select().from(subscriptionPlans);
+
+      const planMap = new Map(plans.map(p => [p.id, p]));
+      
+      const activeByPlan: Record<string, number> = {};
+      let totalActive = 0;
+      let totalRevenue = 0;
+      let monthlyRevenue = 0;
+
+      const now = new Date();
+      const oneMonthAgo = new Date(now);
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+      for (const sub of allSubscriptions) {
+        if (sub.status === 'active') {
+          const planName = planMap.get(sub.planId)?.name || 'Unknown';
+          activeByPlan[planName] = (activeByPlan[planName] || 0) + 1;
+          totalActive++;
+        }
+      }
+
+      for (const payment of allPayments) {
+        if (payment.status === 'completed') {
+          totalRevenue += Number(payment.amount);
+          if (payment.paidAt && new Date(payment.paidAt) >= oneMonthAgo) {
+            monthlyRevenue += Number(payment.amount);
+          }
+        }
+      }
+
+      res.json({
+        totalActive,
+        activeByPlan,
+        totalRevenue,
+        monthlyRevenue,
+        totalPayments: allPayments.length,
+        plans: plans.map(p => ({
+          id: p.id,
+          name: p.name,
+          monthlyPrice: p.monthlyPrice,
+          activeCount: activeByPlan[p.name] || 0
+        }))
+      });
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });

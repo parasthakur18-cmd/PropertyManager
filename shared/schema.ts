@@ -32,6 +32,14 @@ export const users = pgTable("users", {
   country: varchar("country", { length: 100 }),
   lastLoginIp: varchar("last_login_ip", { length: 45 }),
   lastLoginAt: timestamp("last_login_at"),
+  // Subscription/billing fields
+  subscriptionPlanId: integer("subscription_plan_id"),
+  subscriptionStatus: varchar("subscription_status", { length: 20 }).default("trial"), // trial, active, expired, cancelled
+  subscriptionStartDate: timestamp("subscription_start_date"),
+  subscriptionEndDate: timestamp("subscription_end_date"),
+  razorpaySubscriptionId: varchar("razorpay_subscription_id", { length: 100 }),
+  razorpayCustomerId: varchar("razorpay_customer_id", { length: 100 }),
+  trialEndsAt: timestamp("trial_ends_at"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -72,6 +80,7 @@ export type UpsertUser = {
 export type VerificationStatus = 'pending' | 'verified' | 'rejected';
 export type TenantType = 'super_admin' | 'property_owner' | 'staff';
 export type SignupMethod = 'google' | 'email' | 'phone';
+export type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'cancelled' | 'past_due';
 
 // OTP Tokens table for mobile login
 export const otpTokens = pgTable("otp_tokens", {
