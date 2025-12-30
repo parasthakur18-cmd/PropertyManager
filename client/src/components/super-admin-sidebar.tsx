@@ -13,6 +13,7 @@ import {
   HeartPulse,
   TrendingUp,
   MapPin,
+  CreditCard,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { useAuth } from "@/hooks/useAuth";
 // Super Admin only sees system-level features, not property operations
 const systemMenuItems = [
   { title: "Dashboard", tab: "dashboard", icon: Home },
+  { title: "Subscriptions", tab: "subscriptions", icon: CreditCard },
   { title: "System Health", tab: "health", icon: HeartPulse },
   { title: "Property Health", tab: "property-health", icon: TrendingUp },
   { title: "Geographic", tab: "geographic", icon: MapPin },

@@ -22,7 +22,7 @@ interface ErrorCrash {
   isResolved?: boolean;
   createdAt?: string;
 }
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown, MapPin, Globe, Flag } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown, MapPin, Globe, Flag, CreditCard } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -340,6 +340,41 @@ export default function SuperAdmin() {
     byCity: Array<{ city: string; count: number }>;
   }>({
     queryKey: ["/api/super-admin/geographic-analytics"],
+  });
+
+  // Fetch subscription analytics
+  const { data: subscriptionData, isLoading: subscriptionLoading, refetch: refetchSubscriptions } = useQuery<{
+    totalActive: number;
+    activeByPlan: Record<string, number>;
+    totalRevenue: number;
+    monthlyRevenue: number;
+    totalPayments: number;
+    plans: Array<{
+      id: number;
+      name: string;
+      monthlyPrice: string;
+      activeCount: number;
+    }>;
+  }>({
+    queryKey: ["/api/super-admin/subscription-analytics"],
+  });
+
+  // Fetch subscription plans for editing
+  const { data: allPlans = [], refetch: refetchPlans } = useQuery<Array<{
+    id: number;
+    name: string;
+    slug: string;
+    description: string;
+    monthlyPrice: string;
+    yearlyPrice: string;
+    maxProperties: number;
+    maxRooms: number;
+    maxStaff: number;
+    features: string[];
+    isActive: boolean;
+    displayOrder: number;
+  }>>({
+    queryKey: ["/api/super-admin/subscription-plans"],
   });
 
   // Terminate session mutation
@@ -1504,6 +1539,149 @@ export default function SuperAdmin() {
             )}
           </div>
         </div>
+        )}
+
+        {/* Subscriptions Tab */}
+        {activeTab === "subscriptions" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-teal-600" />
+                Subscription Management
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => { refetchSubscriptions(); refetchPlans(); }} data-testid="button-refresh-subscriptions">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {subscriptionLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading subscription data...</CardContent></Card>
+            ) : subscriptionData ? (
+              <>
+                {/* Revenue Overview */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400">Active Subscriptions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600">{subscriptionData.totalActive}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Paying customers</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400">Monthly Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-blue-600">₹{subscriptionData.monthlyRevenue?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">This month</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-purple-200 dark:border-purple-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-400">Total Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">₹{subscriptionData.totalRevenue?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">All time</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-teal-200 dark:border-teal-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-teal-700 dark:text-teal-400">Total Payments</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-teal-600">{subscriptionData.totalPayments}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Transactions</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Subscribers by Plan */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Subscribers by Plan</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {subscriptionData.plans?.map((plan) => (
+                        <div key={plan.id} className="p-4 border rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                          <div className="font-semibold text-lg">{plan.name}</div>
+                          <div className="text-3xl font-bold text-teal-600 mt-1">{plan.activeCount}</div>
+                          <div className="text-sm text-muted-foreground">₹{Number(plan.monthlyPrice).toLocaleString()}/mo</div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Plan Management */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Subscription Plans</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {allPlans.map((plan) => (
+                        <div key={plan.id} className="p-4 border rounded-lg">
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-lg">{plan.name}</h3>
+                                <Badge variant={plan.isActive ? "default" : "secondary"}>
+                                  {plan.isActive ? "Active" : "Inactive"}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
+                              <div className="flex flex-wrap gap-4 mt-2 text-sm">
+                                <span>Monthly: <strong>₹{Number(plan.monthlyPrice).toLocaleString()}</strong></span>
+                                <span>Yearly: <strong>₹{Number(plan.yearlyPrice).toLocaleString()}</strong></span>
+                              </div>
+                              <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+                                <span>Max Properties: {plan.maxProperties}</span>
+                                <span>Max Rooms: {plan.maxRooms}</span>
+                                <span>Max Staff: {plan.maxStaff}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    await apiRequest(`/api/super-admin/subscription-plans/${plan.id}`, "PATCH", { isActive: !plan.isActive });
+                                    refetchPlans();
+                                    refetchSubscriptions();
+                                    toast({ title: `Plan ${plan.isActive ? 'disabled' : 'enabled'}` });
+                                  } catch (error: any) {
+                                    toast({ title: "Error", description: error.message, variant: "destructive" });
+                                  }
+                                }}
+                                data-testid={`button-toggle-plan-${plan.id}`}
+                              >
+                                {plan.isActive ? "Disable" : "Enable"}
+                              </Button>
+                            </div>
+                          </div>
+                          {plan.features && plan.features.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {plan.features.map((feature, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">{feature}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">No subscription data available</CardContent></Card>
+            )}
+          </div>
         )}
 
         {/* System Health Tab */}
