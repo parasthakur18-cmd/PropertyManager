@@ -1872,6 +1872,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
+      
+      // Activity log for booking creation
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
+        const dbUser = userId ? await storage.getUser(userId) : null;
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        
+        await storage.createActivityLog({
+          userId: userId || null,
+          userEmail: dbUser?.email || null,
+          userName: dbUser ? `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() : null,
+          action: 'create_booking',
+          category: 'booking',
+          resourceType: 'booking',
+          resourceId: String(booking.id),
+          resourceName: `Booking #${booking.id} - ${guest?.fullName || 'Guest'}`,
+          propertyId: booking.propertyId,
+          propertyName: property?.name || null,
+          details: { 
+            guestName: guest?.fullName, 
+            checkIn: booking.checkInDate, 
+            checkOut: booking.checkOutDate,
+            roomId: booking.roomId 
+          },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging booking creation:', logErr);
+      }
+      
       res.status(201).json(booking);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -3844,6 +3877,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`[RazorPay Webhook] Admin notifications created for advance payment`);
             } catch (notifError: any) {
               console.error(`[RazorPay Webhook] Failed to create notification:`, notifError.message);
+            }
+            
+            // Activity log for advance payment received
+            try {
+              const property = await storage.getProperty(booking.propertyId);
+              await storage.createActivityLog({
+                userId: null, // Webhook - no user
+                userEmail: null,
+                userName: 'Razorpay Webhook',
+                action: 'advance_payment_received',
+                category: 'payment',
+                resourceType: 'booking',
+                resourceId: String(bookingId),
+                resourceName: `Booking #${bookingId}`,
+                propertyId: booking.propertyId,
+                propertyName: property?.name || null,
+                details: { 
+                  amount: amountInRupees,
+                  guestName: guest?.fullName,
+                  paymentLinkId: payment_link_id
+                },
+              });
+            } catch (logErr) {
+              console.error('[ACTIVITY] Error logging advance payment:', logErr);
             }
           } else {
             // Regular bill payment flow (existing logic)
@@ -8193,6 +8250,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Activity log for user approval
+      try {
+        await storage.createActivityLog({
+          userId: adminId,
+          userEmail: admin.email,
+          userName: `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email,
+          action: 'approve_user',
+          category: 'admin',
+          resourceType: 'user',
+          resourceId: userId,
+          resourceName: targetUser.email,
+          details: { 
+            approvedUserEmail: targetUser.email,
+            propertyName: newProperty.name,
+            propertyId: newProperty.id
+          },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging user approval:', logErr);
+      }
+
       res.json({
         success: true,
         message: `User ${targetUser.email} approved successfully`,
@@ -8251,6 +8331,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).where(eq(users.id, userId));
 
       console.log(`[SUPER-ADMIN] ✗ Rejected user ${targetUser.email}${reason ? ` - Reason: ${reason}` : ''}`);
+
+      // Activity log for user rejection
+      try {
+        await storage.createActivityLog({
+          userId: adminId,
+          userEmail: admin.email,
+          userName: `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email,
+          action: 'reject_user',
+          category: 'admin',
+          resourceType: 'user',
+          resourceId: userId,
+          resourceName: targetUser.email,
+          details: { rejectedUserEmail: targetUser.email, reason },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging user rejection:', logErr);
+      }
 
       // Send WhatsApp notification if phone available
       if (targetUser.phone) {
@@ -9321,6 +9420,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`[SESSION] Created session for email user ${user[0].id}`);
           } catch (sessionErr) {
             console.error('[SESSION] Error creating session:', sessionErr);
+          }
+          
+          // Log activity
+          try {
+            await storage.createActivityLog({
+              userId: user[0].id,
+              userEmail: user[0].email,
+              userName: `${user[0].firstName || ''} ${user[0].lastName || ''}`.trim() || user[0].email,
+              action: 'login',
+              category: 'auth',
+              details: { method: 'email', role: user[0].role },
+              ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+              userAgent: (req.get('User-Agent') || '').substring(0, 500),
+            });
+          } catch (logErr) {
+            console.error('[ACTIVITY] Error logging login:', logErr);
           }
           
           console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);

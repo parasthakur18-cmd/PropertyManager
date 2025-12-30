@@ -228,6 +228,18 @@ export async function setupAuth(app: Express) {
             });
             console.log(`[SESSION] Created session for user ${userId}`);
           }
+          
+          // Log OAuth login activity
+          await storage.createActivityLog({
+            userId,
+            userEmail: dbUser.email,
+            userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email,
+            action: 'login',
+            category: 'auth',
+            details: { method: 'oauth', role: dbUser.role },
+            ipAddress: ipAddress.substring(0, 45),
+            userAgent: userAgent.substring(0, 500),
+          });
         } catch (sessionErr) {
           console.error('[SESSION] Error creating session:', sessionErr);
         }
@@ -265,7 +277,43 @@ export async function setupAuth(app: Express) {
     next();
   });
 
-  app.get("/api/logout", (req, res) => {
+  app.get("/api/logout", async (req, res) => {
+    // Capture user info before destroying session for activity logging
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
+    let userEmail: string | null = null;
+    let userName: string | null = null;
+    
+    if (userId) {
+      try {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          userEmail = dbUser.email;
+          userName = `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email;
+        }
+      } catch (e) {
+        console.error('[LOGOUT] Error fetching user for logging:', e);
+      }
+    }
+    
+    // Log logout activity
+    try {
+      if (userId) {
+        await storage.createActivityLog({
+          userId,
+          userEmail,
+          userName,
+          action: 'logout',
+          category: 'auth',
+          details: { method: user?.isEmailAuth ? 'email' : 'oauth' },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      }
+    } catch (logErr) {
+      console.error('[ACTIVITY] Error logging logout:', logErr);
+    }
+    
     req.logout((err) => {
       if (err) console.error("Logout error:", err);
       
