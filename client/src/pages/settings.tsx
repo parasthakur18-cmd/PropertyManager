@@ -3,8 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, User, Shield, HelpCircle, Lock, ChevronRight } from "lucide-react";
-import { Link } from "wouter";
+import { LogOut, Shield } from "lucide-react";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -86,47 +85,6 @@ export default function Settings() {
               <LogOut className="h-4 w-4 mr-2" />
               Sign Out
             </Button>
-          </CardContent>
-        </Card>
-
-        {(user?.role === "admin" || user?.role === "super-admin") && (
-          <Card>
-            <CardHeader>
-              <CardTitle>System Management</CardTitle>
-              <CardDescription>View audit logs and system activities</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link href="/audit-logs">
-                <Button
-                  variant="outline"
-                  data-testid="button-audit-logs"
-                  className="w-full sm:w-auto"
-                >
-                  <Lock className="h-4 w-4 mr-2" />
-                  View Audit Logs
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Help & Support</CardTitle>
-            <CardDescription>Report issues or provide feedback</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/report-issue">
-              <Button
-                variant="outline"
-                data-testid="button-report-issue"
-                className="w-full sm:w-auto"
-              >
-                <HelpCircle className="h-4 w-4 mr-2" />
-                Report an Issue
-              </Button>
-            </Link>
           </CardContent>
         </Card>
       </div>
