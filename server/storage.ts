@@ -100,6 +100,9 @@ import {
   whatsappTemplateSettings,
   type WhatsappTemplateSetting,
   type InsertWhatsappTemplateSetting,
+  passwordResetOtps,
+  type PasswordResetOtp,
+  type InsertPasswordResetOtp,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";

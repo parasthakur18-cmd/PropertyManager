@@ -88,6 +88,26 @@ export const insertOtpTokenSchema = createInsertSchema(otpTokens).omit({
 export type InsertOtpToken = z.infer<typeof insertOtpTokenSchema>;
 export type OtpToken = typeof otpTokens.$inferSelect;
 
+// Password Reset OTPs table for forgot password
+export const passwordResetOtps = pgTable("password_reset_otps", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 20 }),
+  channel: varchar("channel", { length: 20 }).notNull().default("email"),
+  otp: varchar("otp", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  isUsed: boolean("is_used").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPasswordResetOtpSchema = createInsertSchema(passwordResetOtps).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPasswordResetOtp = z.infer<typeof insertPasswordResetOtpSchema>;
+export type PasswordResetOtp = typeof passwordResetOtps.$inferSelect;
+
 // Properties table - matches actual database
 export const properties = pgTable("properties", {
   id: serial("id").primaryKey(),
