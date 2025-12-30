@@ -103,6 +103,12 @@ import {
   passwordResetOtps,
   type PasswordResetOtp,
   type InsertPasswordResetOtp,
+  activityLogs,
+  type ActivityLog,
+  type InsertActivityLog,
+  userSessions,
+  type UserSession,
+  type InsertUserSession,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -357,6 +363,28 @@ export interface IStorage {
   getWhatsappTemplateSetting(propertyId: number, templateType: string): Promise<WhatsappTemplateSetting | undefined>;
   upsertWhatsappTemplateSetting(setting: InsertWhatsappTemplateSetting): Promise<WhatsappTemplateSetting>;
   initializePropertyWhatsappSettings(propertyId: number): Promise<void>;
+
+  // Activity Logs operations
+  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+  getActivityLogs(filters?: {
+    userId?: string;
+    category?: string;
+    propertyId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ logs: ActivityLog[]; total: number }>;
+  getActivityLogsByUser(userId: string, limit?: number): Promise<ActivityLog[]>;
+
+  // User Session operations
+  createUserSession(session: InsertUserSession): Promise<UserSession>;
+  getUserSessions(userId: string): Promise<UserSession[]>;
+  getActiveSessionsCount(): Promise<number>;
+  updateSessionActivity(sessionToken: string): Promise<void>;
+  deactivateSession(sessionToken: string): Promise<void>;
+  deactivateAllUserSessions(userId: string): Promise<void>;
+  cleanupExpiredSessions(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3215,6 +3243,135 @@ export class DatabaseStorage implements IStorage {
         });
       }
     }
+  }
+
+  // Activity Logs operations
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const [created] = await db.insert(activityLogs).values(log).returning();
+    return created;
+  }
+
+  async getActivityLogs(filters?: {
+    userId?: string;
+    category?: string;
+    propertyId?: number;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ logs: ActivityLog[]; total: number }> {
+    const conditions = [];
+    
+    if (filters?.userId) {
+      conditions.push(eq(activityLogs.userId, filters.userId));
+    }
+    if (filters?.category) {
+      conditions.push(eq(activityLogs.category, filters.category));
+    }
+    if (filters?.propertyId) {
+      conditions.push(eq(activityLogs.propertyId, filters.propertyId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(activityLogs.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(activityLogs.createdAt, filters.endDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Get total count
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(activityLogs)
+      .where(whereClause);
+    
+    const total = countResult?.count || 0;
+
+    // Get paginated logs
+    let query = db
+      .select()
+      .from(activityLogs)
+      .where(whereClause)
+      .orderBy(desc(activityLogs.createdAt));
+
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    if (filters?.offset) {
+      query = query.offset(filters.offset) as any;
+    }
+
+    const logs = await query;
+    return { logs, total };
+  }
+
+  async getActivityLogsByUser(userId: string, limit: number = 50): Promise<ActivityLog[]> {
+    return await db
+      .select()
+      .from(activityLogs)
+      .where(eq(activityLogs.userId, userId))
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit);
+  }
+
+  // User Session operations
+  async createUserSession(session: InsertUserSession): Promise<UserSession> {
+    const [created] = await db.insert(userSessions).values(session).returning();
+    return created;
+  }
+
+  async getUserSessions(userId: string): Promise<UserSession[]> {
+    return await db
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.lastActivityAt));
+  }
+
+  async getActiveSessionsCount(): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(userSessions)
+      .where(eq(userSessions.isActive, true));
+    return result?.count || 0;
+  }
+
+  async updateSessionActivity(sessionToken: string): Promise<void> {
+    await db
+      .update(userSessions)
+      .set({ lastActivityAt: new Date() })
+      .where(eq(userSessions.sessionToken, sessionToken));
+  }
+
+  async deactivateSession(sessionToken: string): Promise<void> {
+    await db
+      .update(userSessions)
+      .set({ isActive: false })
+      .where(eq(userSessions.sessionToken, sessionToken));
+  }
+
+  async deactivateAllUserSessions(userId: string): Promise<void> {
+    await db
+      .update(userSessions)
+      .set({ isActive: false })
+      .where(eq(userSessions.userId, userId));
+  }
+
+  async cleanupExpiredSessions(): Promise<number> {
+    const result = await db
+      .delete(userSessions)
+      .where(
+        or(
+          and(
+            eq(userSessions.isActive, false),
+            lt(userSessions.lastActivityAt, new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)) // 7 days old
+          ),
+          lt(userSessions.expiresAt, new Date())
+        )
+      )
+      .returning();
+    return result.length;
   }
 }
 
