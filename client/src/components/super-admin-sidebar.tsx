@@ -12,6 +12,7 @@ import {
   Monitor,
   HeartPulse,
   TrendingUp,
+  MapPin,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ const systemMenuItems = [
   { title: "Dashboard", tab: "dashboard", icon: Home },
   { title: "System Health", tab: "health", icon: HeartPulse },
   { title: "Property Health", tab: "property-health", icon: TrendingUp },
+  { title: "Geographic", tab: "geographic", icon: MapPin },
   { title: "All Properties", tab: "properties", icon: Building2 },
   { title: "All Users", tab: "users", icon: Users },
   { title: "Activity Logs", tab: "activity", icon: Activity },

@@ -22,7 +22,7 @@ interface ErrorCrash {
   isResolved?: boolean;
   createdAt?: string;
 }
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown, MapPin, Globe, Flag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -324,6 +324,22 @@ export default function SuperAdmin() {
     };
   }>({
     queryKey: ["/api/super-admin/property-health"],
+  });
+
+  // Fetch geographic analytics
+  const { data: geoData, isLoading: geoLoading, refetch: refetchGeo } = useQuery<{
+    summary: {
+      totalUsers: number;
+      usersWithLocation: number;
+      usersWithoutLocation: number;
+      totalCountries: number;
+      totalStates: number;
+    };
+    byCountry: Array<{ country: string; count: number }>;
+    byState: Array<{ country: string; state: string; count: number }>;
+    byCity: Array<{ city: string; count: number }>;
+  }>({
+    queryKey: ["/api/super-admin/geographic-analytics"],
   });
 
   // Terminate session mutation
@@ -1754,6 +1770,150 @@ export default function SuperAdmin() {
               </>
             ) : (
               <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load property health data</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* Geographic Analytics Tab */}
+        {activeTab === "geographic" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Globe className="h-5 w-5 text-blue-600" />
+                Geographic Distribution
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchGeo()} data-testid="button-refresh-geo">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {geoLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading geographic data...</CardContent></Card>
+            ) : geoData ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-blue-600">{geoData.summary.totalUsers}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Total Users</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-green-600">{geoData.summary.usersWithLocation}</div>
+                      <p className="text-xs text-muted-foreground mt-1">With Location</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-orange-200 dark:border-orange-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-orange-600">{geoData.summary.usersWithoutLocation}</div>
+                      <p className="text-xs text-muted-foreground mt-1">No Location</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-purple-600">{geoData.summary.totalCountries}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Countries</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-teal-600">{geoData.summary.totalStates}</div>
+                      <p className="text-xs text-muted-foreground mt-1">States</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* By Country */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Globe className="h-5 w-5 text-blue-500" />
+                        Users by Country
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byCountry.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <span className="font-medium text-sm">{item.country}</span>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byCountry.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No country data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* By State */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Flag className="h-5 w-5 text-purple-500" />
+                        Users by State
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byState.filter(s => s.state !== 'Unknown').map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <div className="flex-1">
+                              <span className="font-medium text-sm">{item.state}</span>
+                              {item.country !== 'Unknown' && (
+                                <span className="text-xs text-muted-foreground ml-2">({item.country})</span>
+                              )}
+                            </div>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byState.filter(s => s.state !== 'Unknown').length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No state data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* By City */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MapPin className="h-5 w-5 text-teal-500" />
+                        Users by City
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byCity.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <span className="font-medium text-sm">{item.city}</span>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byCity.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No city data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Help text */}
+                <Card>
+                  <CardContent className="py-4">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Note:</strong> User locations are captured during registration and login. 
+                      You can also set user locations manually from the "All Users" tab.
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load geographic data</CardContent></Card>
             )}
           </div>
         )}

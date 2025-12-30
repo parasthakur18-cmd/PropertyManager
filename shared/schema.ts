@@ -26,6 +26,12 @@ export const users = pgTable("users", {
   approvedAt: timestamp("approved_at"),
   signupMethod: varchar("signup_method", { length: 20 }).default("google"),
   hasCompletedOnboarding: boolean("has_completed_onboarding").default(false),
+  // Geographic tracking
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  lastLoginIp: varchar("last_login_ip", { length: 45 }),
+  lastLoginAt: timestamp("last_login_at"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

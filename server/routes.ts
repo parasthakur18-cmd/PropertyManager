@@ -8183,6 +8183,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Geographic Analytics - Track users by location
+  app.get("/api/super-admin/geographic-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get all users
+      const allUsers = await storage.getAllUsers();
+      
+      // Aggregate by country
+      const countryStats: Record<string, number> = {};
+      const stateStats: Record<string, Record<string, number>> = {}; // country -> state -> count
+      const cityStats: Record<string, number> = {};
+      
+      let usersWithLocation = 0;
+      let usersWithoutLocation = 0;
+      
+      allUsers.forEach(user => {
+        const country = user.country || 'Unknown';
+        const state = user.state || 'Unknown';
+        const city = user.city || 'Unknown';
+        
+        if (user.country || user.state || user.city) {
+          usersWithLocation++;
+        } else {
+          usersWithoutLocation++;
+        }
+        
+        // Count by country
+        countryStats[country] = (countryStats[country] || 0) + 1;
+        
+        // Count by state within country
+        if (!stateStats[country]) stateStats[country] = {};
+        stateStats[country][state] = (stateStats[country][state] || 0) + 1;
+        
+        // Count by city
+        const cityKey = city !== 'Unknown' ? `${city}, ${state}` : 'Unknown';
+        cityStats[cityKey] = (cityStats[cityKey] || 0) + 1;
+      });
+      
+      // Convert to sorted arrays
+      const byCountry = Object.entries(countryStats)
+        .map(([country, count]) => ({ country, count }))
+        .sort((a, b) => b.count - a.count);
+      
+      const byState = Object.entries(stateStats).flatMap(([country, states]) =>
+        Object.entries(states).map(([state, count]) => ({
+          country,
+          state,
+          count,
+        }))
+      ).sort((a, b) => b.count - a.count);
+      
+      const byCity = Object.entries(cityStats)
+        .filter(([city]) => city !== 'Unknown')
+        .map(([city, count]) => ({ city, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 50); // Top 50 cities
+      
+      res.json({
+        summary: {
+          totalUsers: allUsers.length,
+          usersWithLocation,
+          usersWithoutLocation,
+          totalCountries: Object.keys(countryStats).filter(c => c !== 'Unknown').length,
+          totalStates: byState.filter(s => s.state !== 'Unknown').length,
+        },
+        byCountry,
+        byState: byState.slice(0, 30), // Top 30 states
+        byCity,
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/GEOGRAPHIC-ANALYTICS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Update User Location - Allow setting user location
+  app.patch("/api/super-admin/users/:userId/location", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const { city, state, country } = req.body;
+      
+      await db.update(users)
+        .set({ 
+          city: city || null, 
+          state: state || null, 
+          country: country || null,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+      
+      res.json({ success: true, message: "User location updated" });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/UPDATE-LOCATION] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Super Admin Report Download - CSV with all property data
   app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
     try {
