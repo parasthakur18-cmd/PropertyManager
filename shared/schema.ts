@@ -1082,3 +1082,88 @@ export type WhatsappTemplateType =
   | 'checkin_message'
   | 'addon_service'
   | 'checkout_message';
+
+// ===== SUBSCRIPTION & BILLING SYSTEM =====
+
+// Subscription Plans table - defines available tiers
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
+  description: text("description"),
+  monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 }).notNull().default("0"),
+  yearlyPrice: decimal("yearly_price", { precision: 10, scale: 2 }),
+  maxProperties: integer("max_properties").notNull().default(1),
+  maxRooms: integer("max_rooms").notNull().default(10),
+  maxStaff: integer("max_staff").default(2),
+  features: jsonb("features").$type<string[]>().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  displayOrder: integer("display_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSubscriptionPlanSchema = createInsertSchema(subscriptionPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = z.infer<typeof insertSubscriptionPlanSchema>;
+
+// User Subscriptions table - tracks which plan each user has
+export const userSubscriptions = pgTable("user_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  planId: integer("plan_id").notNull().references(() => subscriptionPlans.id),
+  status: varchar("status", { length: 30 }).notNull().default("active"),
+  billingCycle: varchar("billing_cycle", { length: 20 }).notNull().default("monthly"),
+  startDate: timestamp("start_date").notNull().defaultNow(),
+  endDate: timestamp("end_date"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  razorpaySubscriptionId: varchar("razorpay_subscription_id", { length: 100 }),
+  razorpayCustomerId: varchar("razorpay_customer_id", { length: 100 }),
+  lastPaymentAt: timestamp("last_payment_at"),
+  nextBillingAt: timestamp("next_billing_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserSubscriptionSchema = createInsertSchema(userSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserSubscription = typeof userSubscriptions.$inferSelect;
+export type InsertUserSubscription = z.infer<typeof insertUserSubscriptionSchema>;
+
+// Subscription Payments table - payment history
+export const subscriptionPayments = pgTable("subscription_payments", {
+  id: serial("id").primaryKey(),
+  subscriptionId: integer("subscription_id").notNull().references(() => userSubscriptions.id),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("INR"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  razorpayPaymentId: varchar("razorpay_payment_id", { length: 100 }),
+  razorpayOrderId: varchar("razorpay_order_id", { length: 100 }),
+  invoiceNumber: varchar("invoice_number", { length: 50 }),
+  invoiceUrl: text("invoice_url"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSubscriptionPaymentSchema = createInsertSchema(subscriptionPayments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type SubscriptionPayment = typeof subscriptionPayments.$inferSelect;
+export type InsertSubscriptionPayment = z.infer<typeof insertSubscriptionPaymentSchema>;
+
+// Subscription status types
+export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'past_due' | 'trialing';
+export type BillingCycle = 'monthly' | 'yearly';
