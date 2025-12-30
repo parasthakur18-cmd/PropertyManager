@@ -270,19 +270,23 @@ export async function setupAuth(app: Express) {
               isActive: true,
             });
             console.log(`[SESSION] Created session for user ${userId}`);
+            
+            // Fetch user from database for activity logging
+            const dbUser = await storage.getUser(userId);
+            if (dbUser) {
+              // Log OAuth login activity
+              await storage.createActivityLog({
+                userId,
+                userEmail: dbUser.email,
+                userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email,
+                action: 'login',
+                category: 'auth',
+                details: { method: 'oauth', role: dbUser.role },
+                ipAddress: ipAddress.substring(0, 45),
+                userAgent: userAgent.substring(0, 500),
+              });
+            }
           }
-          
-          // Log OAuth login activity
-          await storage.createActivityLog({
-            userId,
-            userEmail: dbUser.email,
-            userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email,
-            action: 'login',
-            category: 'auth',
-            details: { method: 'oauth', role: dbUser.role },
-            ipAddress: ipAddress.substring(0, 45),
-            userAgent: userAgent.substring(0, 500),
-          });
           
           // Capture geographic location from IP (non-blocking)
           updateUserLocationFromIp(userId, ipAddress).catch(() => {});
