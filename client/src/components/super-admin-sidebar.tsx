@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Activity,
   Monitor,
+  HeartPulse,
 } from "lucide-react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 // Super Admin only sees system-level features, not property operations
 const systemMenuItems = [
   { title: "Dashboard", tab: "dashboard", icon: Home },
+  { title: "System Health", tab: "health", icon: HeartPulse },
   { title: "All Properties", tab: "properties", icon: Building2 },
   { title: "All Users", tab: "users", icon: Users },
   { title: "Activity Logs", tab: "activity", icon: Activity },

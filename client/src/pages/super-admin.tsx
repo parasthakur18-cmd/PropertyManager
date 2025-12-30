@@ -22,7 +22,7 @@ interface ErrorCrash {
   isResolved?: boolean;
   createdAt?: string;
 }
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -278,6 +278,21 @@ export default function SuperAdmin() {
   // Fetch sessions data
   const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery<SessionsData>({
     queryKey: ["/api/sessions"],
+  });
+
+  // Fetch system health data
+  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useQuery<{
+    status: string;
+    uptime: { hours: number; minutes: number; formatted: string };
+    memory: { usedMB: number; totalMB: number; percent: number };
+    database: { status: string; responseTimeMs: number };
+    sessions: { active: number; total: number };
+    errors: { last24h: number; unresolved: number };
+    activity: { requestsLastHour: number };
+    timestamp: string;
+  }>({
+    queryKey: ["/api/super-admin/system-health"],
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
   // Terminate session mutation
@@ -1442,6 +1457,149 @@ export default function SuperAdmin() {
             )}
           </div>
         </div>
+        )}
+
+        {/* System Health Tab */}
+        {activeTab === "health" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <HeartPulse className="h-5 w-5 text-teal-600" />
+                System Health Monitor
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchHealth()} data-testid="button-refresh-health">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {healthLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading system metrics...</CardContent></Card>
+            ) : healthData ? (
+              <>
+                {/* Overall Status Banner */}
+                <Card className={healthData.status === 'healthy' ? 'border-green-300 dark:border-green-700' : 'border-yellow-300 dark:border-yellow-700'}>
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-4 w-4 rounded-full ${healthData.status === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`} />
+                        <span className="font-semibold text-lg">
+                          System Status: <span className={healthData.status === 'healthy' ? 'text-green-600' : 'text-yellow-600'}>{healthData.status.toUpperCase()}</span>
+                        </span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        Last updated: {new Date(healthData.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Uptime */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Server className="h-4 w-4" />
+                        Server Uptime
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-teal-600">{healthData.uptime.formatted}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Since last restart</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Memory Usage */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Memory Usage
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className={`text-2xl font-bold ${healthData.memory.percent < 70 ? 'text-green-600' : healthData.memory.percent < 90 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {healthData.memory.percent}%
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.memory.usedMB}MB / {healthData.memory.totalMB}MB</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Database Status */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Database className="h-4 w-4" />
+                        Database
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className={`text-2xl font-bold ${healthData.database.status === 'healthy' ? 'text-green-600' : healthData.database.status === 'slow' ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {healthData.database.status.toUpperCase()}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.database.responseTimeMs}ms response</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Active Sessions */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Monitor className="h-4 w-4" />
+                        Active Sessions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">{healthData.sessions.active}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.sessions.total} total sessions</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Error & Activity Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-red-500" />
+                        Error Tracking
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                          <div className="text-sm text-muted-foreground mb-1">Last 24 Hours</div>
+                          <div className="text-3xl font-bold text-red-600">{healthData.errors.last24h}</div>
+                        </div>
+                        <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                          <div className="text-sm text-muted-foreground mb-1">Unresolved</div>
+                          <div className="text-3xl font-bold text-orange-600">{healthData.errors.unresolved}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-teal-500" />
+                        API Activity
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-center p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Requests (Last Hour)</div>
+                        <div className="text-3xl font-bold text-teal-600">{healthData.activity.requestsLastHour}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load system health data</CardContent></Card>
+            )}
+          </div>
         )}
 
         {/* Properties Tab */}

@@ -7961,6 +7961,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin System Health - Real-time server metrics
+  app.get("/api/super-admin/system-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Server uptime
+      const uptimeSeconds = process.uptime();
+      const uptimeHours = Math.floor(uptimeSeconds / 3600);
+      const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
+      
+      // Memory usage
+      const memUsage = process.memoryUsage();
+      const memUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const memTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      const memPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+      
+      // Active sessions count
+      const allSessions = await storage.getAllUserSessions();
+      const activeSessions = allSessions.filter(s => {
+        const expiry = new Date(s.expiresAt);
+        return expiry > new Date();
+      });
+      
+      // Database check
+      let dbStatus = 'healthy';
+      let dbResponseTime = 0;
+      try {
+        const dbStart = Date.now();
+        await db.select().from(users).limit(1);
+        dbResponseTime = Date.now() - dbStart;
+        if (dbResponseTime > 500) dbStatus = 'slow';
+      } catch {
+        dbStatus = 'error';
+      }
+      
+      // Recent errors count (last 24h)
+      const allErrors = await storage.getAllErrorCrashes();
+      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentErrors = allErrors.filter(e => new Date(e.createdAt || 0) > last24h);
+      
+      // API health - count recent activity logs as proxy for requests
+      const allLogs = await storage.getActivityLogs({ limit: 100 });
+      const lastHour = new Date(Date.now() - 60 * 60 * 1000);
+      const recentRequests = allLogs.filter(l => new Date(l.createdAt) > lastHour);
+      
+      res.json({
+        status: dbStatus === 'healthy' && memPercent < 90 ? 'healthy' : 'warning',
+        uptime: {
+          hours: uptimeHours,
+          minutes: uptimeMinutes,
+          formatted: `${uptimeHours}h ${uptimeMinutes}m`,
+        },
+        memory: {
+          usedMB: memUsedMB,
+          totalMB: memTotalMB,
+          percent: memPercent,
+        },
+        database: {
+          status: dbStatus,
+          responseTimeMs: dbResponseTime,
+        },
+        sessions: {
+          active: activeSessions.length,
+          total: allSessions.length,
+        },
+        errors: {
+          last24h: recentErrors.length,
+          unresolved: allErrors.filter(e => e.status !== 'resolved').length,
+        },
+        activity: {
+          requestsLastHour: recentRequests.length,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/SYSTEM-HEALTH] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Super Admin Report Download - CSV with all property data
   app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
     try {
