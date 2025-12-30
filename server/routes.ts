@@ -10201,7 +10201,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Capture geographic location from IP (non-blocking)
-          updateUserLocationFromIp(user[0].id, ipAddress).catch(() => {});
+          const loginIpAddress = req.ip || req.socket.remoteAddress || '';
+          updateUserLocationFromIp(user[0].id, loginIpAddress).catch(() => {});
           
           console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);
           res.json({ 
