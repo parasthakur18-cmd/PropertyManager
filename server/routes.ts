@@ -8002,15 +8002,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         dbStatus = 'error';
       }
       
-      // Recent errors count (last 24h)
-      const allErrors = await storage.getAllErrorCrashes();
-      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const recentErrors = allErrors.filter(e => new Date(e.createdAt || 0) > last24h);
+      // Recent errors count (last 24h) - handle gracefully if function doesn't exist
+      let recentErrorsCount = 0;
+      let unresolvedErrorsCount = 0;
+      try {
+        if (typeof (storage as any).getAllErrorCrashes === 'function') {
+          const allErrors = await (storage as any).getAllErrorCrashes();
+          const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          recentErrorsCount = allErrors.filter((e: any) => new Date(e.createdAt || 0) > last24h).length;
+          unresolvedErrorsCount = allErrors.filter((e: any) => e.status !== 'resolved').length;
+        }
+      } catch {
+        // Errors tracking not available
+      }
       
       // API health - count recent activity logs as proxy for requests
       const allLogs = await storage.getActivityLogs({ limit: 100 });
       const lastHour = new Date(Date.now() - 60 * 60 * 1000);
-      const recentRequests = allLogs.filter(l => new Date(l.createdAt) > lastHour);
+      const recentRequests = allLogs.logs.filter(l => new Date(l.createdAt) > lastHour);
       
       res.json({
         status: dbStatus === 'healthy' && memPercent < 90 ? 'healthy' : 'warning',
@@ -8033,8 +8042,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           total: allSessions.length,
         },
         errors: {
-          last24h: recentErrors.length,
-          unresolved: allErrors.filter(e => e.status !== 'resolved').length,
+          last24h: recentErrorsCount,
+          unresolved: unresolvedErrorsCount,
         },
         activity: {
           requestsLastHour: recentRequests.length,
