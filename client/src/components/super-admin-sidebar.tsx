@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Building2,
   Home,
@@ -30,12 +31,23 @@ export function SuperAdminSidebar() {
   const [location, setLocation] = useLocation();
   const { user } = useAuth();
 
+  // Track current tab with state so sidebar updates when changed
+  const [currentTab, setCurrentTab] = useState(() => {
+    return new URLSearchParams(window.location.search).get('tab') || 'users';
+  });
+
+  // Listen for tab changes
+  useEffect(() => {
+    const handleTabChange = (e: CustomEvent) => {
+      setCurrentTab(e.detail);
+    };
+    window.addEventListener('tabchange', handleTabChange as EventListener);
+    return () => window.removeEventListener('tabchange', handleTabChange as EventListener);
+  }, []);
+
   const userInitials = user
     ? `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase() || "U"
     : "U";
-
-  // Get current active tab from URL
-  const currentTab = new URLSearchParams(window.location.search).get('tab') || 'users';
 
   return (
     <div className="w-64 bg-slate-50 dark:bg-slate-900/50 border-r border-slate-200 dark:border-slate-800 flex flex-col h-screen overflow-hidden">
@@ -61,7 +73,12 @@ export function SuperAdminSidebar() {
               return (
                 <button
                   key={item.title}
-                  onClick={() => setLocation(`/super-admin?tab=${item.tab}`)}
+                  onClick={() => {
+                    // Use window.history to update URL without full navigation
+                    window.history.pushState({}, '', `/super-admin?tab=${item.tab}`);
+                    // Dispatch a custom event to notify the page of tab change
+                    window.dispatchEvent(new CustomEvent('tabchange', { detail: item.tab }));
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left ${
                     isActive
                       ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400"
