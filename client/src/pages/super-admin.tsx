@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport } from "@shared/schema";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ErrorCrash type - matching backend implementation
 interface ErrorCrash {
@@ -244,6 +245,15 @@ export default function SuperAdmin() {
   
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery<DashboardData>({
     queryKey: ["/api/super-admin/dashboard"],
+  });
+
+  // Fetch analytics data for charts
+  const { data: analyticsData } = useQuery<{
+    monthlyTrends: { month: string; bookings: number; revenue: number; signups: number }[];
+    totalRevenue: number;
+    avgBookingsPerMonth: number;
+  }>({
+    queryKey: ["/api/super-admin/analytics"],
   });
 
   // Fetch pending users for approval - MUST be before early returns
@@ -792,6 +802,66 @@ export default function SuperAdmin() {
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Analytics Charts */}
+                {analyticsData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Bookings Trend Chart */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Booking Trends (Last 6 Months)</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={analyticsData.monthlyTrends}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis dataKey="month" className="text-xs" />
+                            <YAxis className="text-xs" />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))', 
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
+                              }} 
+                            />
+                            <Bar dataKey="bookings" fill="#0d9488" name="Bookings" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Revenue & Signups Trend Chart */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Growth Trends</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <LineChart data={analyticsData.monthlyTrends}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis dataKey="month" className="text-xs" />
+                            <YAxis yAxisId="left" className="text-xs" />
+                            <YAxis yAxisId="right" orientation="right" className="text-xs" />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))', 
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
+                              }}
+                              formatter={(value: number, name: string) => [
+                                name === 'Revenue' ? `₹${value.toLocaleString('en-IN')}` : value,
+                                name
+                              ]}
+                            />
+                            <Legend />
+                            <Line yAxisId="left" type="monotone" dataKey="signups" stroke="#3b82f6" name="User Signups" strokeWidth={2} dot={{ r: 4 }} />
+                            <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#22c55e" name="Revenue" strokeWidth={2} dot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
 
                 {/* Support & Issues Overview */}
                 <Card>

@@ -7897,6 +7897,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Analytics - Monthly trends for charts
+  app.get("/api/super-admin/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const allBills = await storage.getAllBills();
+      const allUsers = await storage.getAllUsers();
+      
+      // Get last 6 months of data
+      const monthlyData = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+        const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+        
+        const monthName = monthStart.toLocaleString('en-US', { month: 'short' });
+        
+        // Count bookings in this month
+        const monthBookings = allBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= monthStart && created <= monthEnd;
+        });
+        
+        // Sum revenue from bills in this month
+        const monthRevenue = allBills
+          .filter(b => {
+            const created = new Date(b.createdAt || b.paidAt || 0);
+            return created >= monthStart && created <= monthEnd && b.paymentStatus === 'paid';
+          })
+          .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        
+        // Count new users in this month
+        const monthSignups = allUsers.filter(u => {
+          const created = new Date(u.createdAt || 0);
+          return created >= monthStart && created <= monthEnd;
+        });
+        
+        monthlyData.push({
+          month: monthName,
+          bookings: monthBookings.length,
+          revenue: Math.round(monthRevenue),
+          signups: monthSignups.length,
+        });
+      }
+      
+      res.json({
+        monthlyTrends: monthlyData,
+        totalRevenue: allBills.filter(b => b.paymentStatus === 'paid').reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        avgBookingsPerMonth: Math.round(allBookings.length / 6),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/ANALYTICS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Super Admin Report Download - CSV with all property data
   app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
     try {
