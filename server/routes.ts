@@ -6992,8 +6992,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Log the registration
       console.log(`[REGISTRATION] New user registered (PENDING): ${email} with business: ${businessName}`);
 
-      // TODO: Send WhatsApp notification to Super Admin about new signup
-      // TODO: Send WhatsApp notification to user confirming pending status
+      // Notify all Super Admins about new user signup
+      try {
+        const allUsers = await storage.getAllUsers();
+        const superAdmins = allUsers.filter(u => u.role === 'super-admin');
+        
+        for (const admin of superAdmins) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_user_signup",
+            title: "New User Registration",
+            message: `${firstName || ''} ${lastName || ''} (${email}) registered with business: ${businessName}`,
+            soundType: "info",
+            relatedType: "user",
+            isRead: false,
+          });
+        }
+        console.log(`[REGISTRATION] Notified ${superAdmins.length} super admins about new signup`);
+      } catch (notifyError) {
+        console.error("[REGISTRATION] Failed to notify super admins:", notifyError);
+      }
 
       res.status(201).json({
         message: "Registration successful. Your account is pending approval by our team. You will be notified once approved.",
@@ -7398,15 +7416,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`[ISSUE REPORT] New issue reported by ${userId}: ${title}`);
 
-      // Send email notification to super admin
+      // Send email and in-app notification to super admins
       try {
         const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
         const reporterName = dbUser ? `${dbUser.firstName} ${dbUser.lastName}` : "User";
         
-        // Get super admin email
-        const [superAdmin] = await db.select().from(users).where(eq(users.role, 'super-admin'));
-        const superAdminEmail = superAdmin?.email || 'admin@hostezee.in';
+        // Get all super admins
+        const allUsers = await storage.getAllUsers();
+        const superAdmins = allUsers.filter(u => u.role === 'super-admin');
         
+        // Send email to first super admin
+        const superAdminEmail = superAdmins[0]?.email || 'admin@hostezee.in';
         await sendIssueReportNotificationEmail(
           superAdminEmail,
           reporterName,
@@ -7416,6 +7436,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           severity
         );
         console.log(`[EMAIL] Issue report notification sent to ${superAdminEmail}`);
+        
+        // Send in-app notification to all super admins
+        for (const admin of superAdmins) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "issue_reported",
+            title: `Issue Reported: ${severity.toUpperCase()}`,
+            message: `${reporterName} reported: ${title}`,
+            soundType: severity === 'critical' ? 'urgent' : 'warning',
+            relatedType: "issue",
+            isRead: false,
+          });
+        }
       } catch (emailError) {
         console.warn(`[EMAIL] Failed to send issue report notification:`, emailError);
         // Don't fail the whole request if email fails
@@ -9570,12 +9603,37 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const userNotifications = await db
+      const user = await storage.getUser(userId);
+      
+      let userNotifications = await db
         .select()
         .from(notifications)
         .where(eq(notifications.userId, userId))
         .orderBy(desc(notifications.createdAt))
         .limit(50);
+      
+      // For Super Admin: Only show system-level notifications
+      // Filter out operational notifications (bookings, payments, orders, check-ins)
+      if (user?.role === 'super-admin') {
+        const systemNotificationTypes = [
+          'approval_pending',      // New user registration
+          'approval_approved',     // User approved
+          'approval_rejected',     // User rejected
+          'new_user_signup',       // New signup
+          'error_reported',        // App error reported
+          'issue_reported',        // Issue/bug reported
+          'contact_enquiry',       // Website contact form
+          'system_alert',          // System alerts
+        ];
+        
+        userNotifications = userNotifications.filter((n: any) => 
+          systemNotificationTypes.includes(n.type) || 
+          n.type?.startsWith('system_') ||
+          n.type?.startsWith('error_') ||
+          n.type?.startsWith('approval_')
+        );
+      }
+      
       res.json(userNotifications);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
