@@ -380,6 +380,7 @@ export interface IStorage {
   // User Session operations
   createUserSession(session: InsertUserSession): Promise<UserSession>;
   getUserSessions(userId: string): Promise<UserSession[]>;
+  getAllUserSessions(): Promise<UserSession[]>;
   getActiveSessionsCount(): Promise<number>;
   updateSessionActivity(sessionToken: string): Promise<void>;
   deactivateSession(sessionToken: string): Promise<void>;
@@ -3326,6 +3327,13 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(userSessions)
       .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.lastActivityAt));
+  }
+
+  async getAllUserSessions(): Promise<UserSession[]> {
+    return await db
+      .select()
+      .from(userSessions)
       .orderBy(desc(userSessions.lastActivityAt));
   }
 
