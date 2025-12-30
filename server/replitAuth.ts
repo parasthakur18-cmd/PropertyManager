@@ -286,10 +286,10 @@ export async function setupAuth(app: Express) {
                 userAgent: userAgent.substring(0, 500),
               });
             }
+            
+            // Capture geographic location from IP (non-blocking)
+            updateUserLocationFromIp(userId, ipAddress).catch(() => {});
           }
-          
-          // Capture geographic location from IP (non-blocking)
-          updateUserLocationFromIp(userId, ipAddress).catch(() => {});
         } catch (sessionErr) {
           console.error('[SESSION] Error creating session:', sessionErr);
         }
