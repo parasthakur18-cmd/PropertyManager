@@ -676,7 +676,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Admin access required" });
       }
       
-      const users = await storage.getAllUsers();
+      const allUsers = await storage.getAllUsers();
+      // Filter out super-admin users - regular admins should not see or know about super-admin
+      const users = allUsers.filter(u => u.role !== 'super-admin');
       res.json(users);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -694,6 +696,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { id } = req.params;
       const validated = updateUserRoleSchema.parse(req.body);
+      
+      // Prevent regular admins from setting super-admin role
+      if (validated.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot assign super-admin role" });
+      }
+      
+      // Prevent modifying super-admin users
+      const targetUser = await storage.getUser(id);
+      if (targetUser?.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot modify super-admin users" });
+      }
       
       const user = await storage.updateUserRole(
         id, 
@@ -726,10 +739,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "You cannot delete your own account" });
       }
       
+      // Prevent deleting super-admin users
+      const userToDelete = await storage.getUser(id);
+      if (userToDelete?.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot delete super-admin users" });
+      }
+      
       // Check if this is the last admin
       const allUsers = await storage.getAllUsers();
       const adminUsers = allUsers.filter(u => u.role === "admin");
-      const userToDelete = await storage.getUser(id);
       
       if (userToDelete?.role === "admin" && adminUsers.length <= 1) {
         return res.status(400).json({ message: "Cannot delete the last admin user" });
