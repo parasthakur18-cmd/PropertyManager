@@ -8698,6 +8698,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== ACTIVITY LOGS & AUDIT TRAIL ENDPOINTS =====
+  
+  // Get activity logs (Super Admin only)
+  app.get("/api/activity-logs", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId, category, propertyId, startDate, endDate, limit, offset } = req.query;
+      
+      const filters: any = {};
+      if (userId) filters.userId = userId as string;
+      if (category) filters.category = category as string;
+      if (propertyId) filters.propertyId = parseInt(propertyId as string);
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+      if (limit) filters.limit = parseInt(limit as string);
+      if (offset) filters.offset = parseInt(offset as string);
+
+      const result = await storage.getActivityLogs(filters);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[ACTIVITY-LOGS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get activity logs for specific user
+  app.get("/api/activity-logs/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const logs = await storage.getActivityLogsByUser(userId, limit);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[ACTIVITY-LOGS/USER] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SESSION MANAGEMENT ENDPOINTS =====
+  
+  // Get all user sessions (Super Admin only)
+  app.get("/api/sessions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get all users with their sessions
+      const allUsers = await storage.getAllUsers();
+      const sessionsData = await Promise.all(
+        allUsers.map(async (u: any) => {
+          const sessions = await storage.getUserSessions(u.id);
+          const activeSessions = sessions.filter((s: any) => s.isActive);
+          return {
+            userId: u.id,
+            email: u.email,
+            name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+            role: u.role,
+            totalSessions: sessions.length,
+            activeSessions: activeSessions.length,
+            sessions: sessions.slice(0, 5), // Return last 5 sessions
+          };
+        })
+      );
+
+      // Filter to only users with sessions
+      const usersWithSessions = sessionsData.filter((u: any) => u.totalSessions > 0);
+      const activeSessionsCount = await storage.getActiveSessionsCount();
+
+      res.json({
+        totalActiveSessions: activeSessionsCount,
+        users: usersWithSessions,
+      });
+    } catch (error: any) {
+      console.error("[SESSIONS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get sessions for specific user
+  app.get("/api/sessions/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const sessions = await storage.getUserSessions(userId);
+      res.json(sessions);
+    } catch (error: any) {
+      console.error("[SESSIONS/USER] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Terminate specific session
+  app.post("/api/sessions/:sessionToken/terminate", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { sessionToken } = req.params;
+      await storage.deactivateSession(sessionToken);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId: user.id,
+        userEmail: user.email,
+        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        action: 'terminate_session',
+        category: 'admin',
+        details: { sessionToken: sessionToken.substring(0, 10) + '...' },
+      });
+
+      res.json({ success: true, message: "Session terminated" });
+    } catch (error: any) {
+      console.error("[SESSIONS/TERMINATE] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Terminate all sessions for a user
+  app.post("/api/sessions/user/:userId/terminate-all", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      await storage.deactivateAllUserSessions(userId);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId: user.id,
+        userEmail: user.email,
+        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        action: 'terminate_all_user_sessions',
+        category: 'admin',
+        resourceType: 'user',
+        resourceId: userId,
+      });
+
+      res.json({ success: true, message: "All sessions terminated for user" });
+    } catch (error: any) {
+      console.error("[SESSIONS/TERMINATE-ALL] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Cleanup expired sessions (can be called by cron job)
+  app.post("/api/sessions/cleanup", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const cleaned = await storage.cleanupExpiredSessions();
+      res.json({ success: true, message: `Cleaned up ${cleaned} expired sessions` });
+    } catch (error: any) {
+      console.error("[SESSIONS/CLEANUP] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Guest Self Check-in endpoints
   app.get("/api/guest-self-checkin/booking/:bookingId", async (req, res) => {
     try {
