@@ -8,7 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
+import type { User, Property, IssueReport } from "@shared/schema";
+
+// ErrorCrash type - matching backend implementation
+interface ErrorCrash {
+  id: number;
+  userId?: string;
+  errorType?: string;
+  errorMessage: string;
+  errorStack?: string;
+  page?: string;
+  isResolved?: boolean;
+  createdAt?: string;
+}
 import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
