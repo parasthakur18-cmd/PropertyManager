@@ -9284,10 +9284,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         (req.session as any).isEmailAuth = true;
         
         // Save session
-        req.session.save((saveErr) => {
+        req.session.save(async (saveErr) => {
           if (saveErr) {
             console.error("[EMAIL-LOGIN] Save error:", saveErr);
             return res.status(500).json({ message: "Login failed" });
+          }
+          
+          // Create session tracking record
+          try {
+            const userAgent = req.get('User-Agent') || '';
+            const ipAddress = req.ip || req.socket.remoteAddress || '';
+            
+            // Parse browser and OS from user agent
+            let browser = 'Unknown';
+            let os = 'Unknown';
+            if (userAgent.includes('Chrome')) browser = 'Chrome';
+            else if (userAgent.includes('Firefox')) browser = 'Firefox';
+            else if (userAgent.includes('Safari')) browser = 'Safari';
+            else if (userAgent.includes('Edge')) browser = 'Edge';
+            
+            if (userAgent.includes('Windows')) os = 'Windows';
+            else if (userAgent.includes('Mac')) os = 'macOS';
+            else if (userAgent.includes('Linux')) os = 'Linux';
+            else if (userAgent.includes('Android')) os = 'Android';
+            else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+            
+            await storage.createUserSession({
+              userId: user[0].id,
+              sessionToken: req.sessionID,
+              deviceInfo: userAgent.substring(0, 255),
+              browser,
+              os,
+              ipAddress: ipAddress.substring(0, 45),
+              isActive: true,
+            });
+            console.log(`[SESSION] Created session for email user ${user[0].id}`);
+          } catch (sessionErr) {
+            console.error('[SESSION] Error creating session:', sessionErr);
           }
           
           console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);

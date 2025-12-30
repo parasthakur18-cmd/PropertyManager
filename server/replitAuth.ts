@@ -186,9 +186,54 @@ export async function setupAuth(app: Express) {
     const strategyName = req.hostname === 'localhost'
       ? `replitauth:localhost`
       : `replitauth:${req.hostname}`;
-    passport.authenticate(strategyName, {
-      successRedirect: "/",
-      failureRedirect: "/api/login",
+    passport.authenticate(strategyName, async (err: any, user: any) => {
+      if (err || !user) {
+        return res.redirect("/api/login");
+      }
+      
+      req.logIn(user, async (loginErr) => {
+        if (loginErr) {
+          return res.redirect("/api/login");
+        }
+        
+        // Create session tracking record
+        try {
+          const userId = user.claims?.sub;
+          if (userId && req.sessionID) {
+            const userAgent = req.get('User-Agent') || '';
+            const ipAddress = req.ip || req.socket.remoteAddress || '';
+            
+            // Parse browser and OS from user agent
+            let browser = 'Unknown';
+            let os = 'Unknown';
+            if (userAgent.includes('Chrome')) browser = 'Chrome';
+            else if (userAgent.includes('Firefox')) browser = 'Firefox';
+            else if (userAgent.includes('Safari')) browser = 'Safari';
+            else if (userAgent.includes('Edge')) browser = 'Edge';
+            
+            if (userAgent.includes('Windows')) os = 'Windows';
+            else if (userAgent.includes('Mac')) os = 'macOS';
+            else if (userAgent.includes('Linux')) os = 'Linux';
+            else if (userAgent.includes('Android')) os = 'Android';
+            else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+            
+            await storage.createUserSession({
+              userId,
+              sessionToken: req.sessionID,
+              deviceInfo: userAgent.substring(0, 255),
+              browser,
+              os,
+              ipAddress: ipAddress.substring(0, 45),
+              isActive: true,
+            });
+            console.log(`[SESSION] Created session for user ${userId}`);
+          }
+        } catch (sessionErr) {
+          console.error('[SESSION] Error creating session:', sessionErr);
+        }
+        
+        return res.redirect("/");
+      });
     })(req, res, next);
   });
 
