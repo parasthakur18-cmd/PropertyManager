@@ -8703,15 +8703,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get activity logs (Super Admin only)
   app.get("/api/activity-logs", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
-      const { userId, category, propertyId, startDate, endDate, limit, offset } = req.query;
+      const { userId: filterUserId, category, propertyId, startDate, endDate, limit, offset } = req.query;
       
       const filters: any = {};
-      if (userId) filters.userId = userId as string;
+      if (filterUserId) filters.userId = filterUserId as string;
       if (category) filters.category = category as string;
       if (propertyId) filters.propertyId = parseInt(propertyId as string);
       if (startDate) filters.startDate = new Date(startDate as string);
@@ -8730,8 +8733,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get activity logs for specific user
   app.get("/api/activity-logs/user/:userId", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -8751,8 +8757,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all user sessions (Super Admin only)
   app.get("/api/sessions", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -8791,8 +8800,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get sessions for specific user
   app.get("/api/sessions/user/:userId", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -8808,8 +8820,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Terminate specific session
   app.post("/api/sessions/:sessionToken/terminate", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -8818,9 +8833,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: user.id,
-        userEmail: user.email,
-        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        userId: dbUser.id,
+        userEmail: dbUser.email,
+        userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim(),
         action: 'terminate_session',
         category: 'admin',
         details: { sessionToken: sessionToken.substring(0, 10) + '...' },
@@ -8836,8 +8851,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Terminate all sessions for a user
   app.post("/api/sessions/user/:userId/terminate-all", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user || user.role !== 'super-admin') {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
         return res.status(403).json({ message: "Super admin access required" });
       }
 
@@ -8846,9 +8864,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log activity
       await storage.createActivityLog({
-        userId: user.id,
-        userEmail: user.email,
-        userName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        userId: dbUser.id,
+        userEmail: dbUser.email,
+        userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim(),
         action: 'terminate_all_user_sessions',
         category: 'admin',
         resourceType: 'user',
