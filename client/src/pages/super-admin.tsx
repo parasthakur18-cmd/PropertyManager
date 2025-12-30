@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { User, Property, IssueReport, ErrorCrash } from "@shared/schema";
-import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown } from "lucide-react";
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -37,6 +37,52 @@ interface ContactEnquiry {
   message: string;
   status: string;
   createdAt: string;
+}
+
+interface ActivityLog {
+  id: number;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  action: string;
+  category: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceName: string | null;
+  propertyId: number | null;
+  propertyName: string | null;
+  details: Record<string, unknown> | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+interface UserSession {
+  id: number;
+  userId: string;
+  sessionToken: string;
+  deviceInfo: string | null;
+  browser: string | null;
+  os: string | null;
+  ipAddress: string | null;
+  location: string | null;
+  isActive: boolean;
+  lastActivityAt: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+interface SessionsData {
+  totalActiveSessions: number;
+  users: Array<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    totalSessions: number;
+    activeSessions: number;
+    sessions: UserSession[];
+  }>;
 }
 
 export default function SuperAdmin() {
@@ -70,6 +116,11 @@ export default function SuperAdmin() {
   const [emailMessage, setEmailMessage] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isExportingUsers, setIsExportingUsers] = useState(false);
+
+  // Activity logs state
+  const [activityCategory, setActivityCategory] = useState<string>("all");
+  const [activityPage, setActivityPage] = useState(0);
+  const ACTIVITY_PAGE_SIZE = 20;
 
   // Check if user is authenticated as super admin on mount
   useEffect(() => {
@@ -174,6 +225,67 @@ export default function SuperAdmin() {
   // Fetch pending users for approval - MUST be before early returns
   const { data: pendingUsers = [], isLoading: pendingUsersLoading } = useQuery<User[]>({
     queryKey: ["/api/super-admin/pending-users"],
+  });
+
+  // Fetch activity logs
+  const { data: activityLogsData, isLoading: activityLogsLoading, refetch: refetchActivityLogs } = useQuery<{ logs: ActivityLog[]; total: number }>({
+    queryKey: ["/api/activity-logs", activityCategory, activityPage],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activityCategory !== "all") params.append("category", activityCategory);
+      params.append("limit", String(ACTIVITY_PAGE_SIZE));
+      params.append("offset", String(activityPage * ACTIVITY_PAGE_SIZE));
+      const res = await fetch(`/api/activity-logs?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch activity logs");
+      return res.json();
+    },
+  });
+
+  // Fetch sessions data
+  const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery<SessionsData>({
+    queryKey: ["/api/sessions"],
+  });
+
+  // Terminate session mutation
+  const terminateSession = useMutation({
+    mutationFn: async (sessionToken: string) => {
+      return apiRequest(`/api/sessions/${encodeURIComponent(sessionToken)}/terminate`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      toast({
+        title: "Session Terminated",
+        description: "The session has been ended successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to terminate session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Terminate all user sessions mutation
+  const terminateAllUserSessions = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest(`/api/sessions/user/${userId}/terminate-all`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      toast({
+        title: "All Sessions Terminated",
+        description: "All sessions for this user have been ended.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to terminate sessions",
+        variant: "destructive",
+      });
+    },
   });
 
   // Handle opening approval dialog - pre-fill location from user data
@@ -1397,6 +1509,233 @@ export default function SuperAdmin() {
               ))
             )}
           </div>
+        </div>
+        )}
+
+        {/* Activity Logs Tab */}
+        {activeTab === "activity" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Activity className="h-5 w-5 text-teal-600" />
+              Activity Logs
+            </h2>
+            <div className="flex items-center gap-2">
+              <Select value={activityCategory} onValueChange={(v) => { setActivityCategory(v); setActivityPage(0); }}>
+                <SelectTrigger className="w-40" data-testid="select-activity-category">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="auth">Authentication</SelectItem>
+                  <SelectItem value="booking">Bookings</SelectItem>
+                  <SelectItem value="guest">Guests</SelectItem>
+                  <SelectItem value="payment">Payments</SelectItem>
+                  <SelectItem value="property">Properties</SelectItem>
+                  <SelectItem value="room">Rooms</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="order">Orders</SelectItem>
+                  <SelectItem value="expense">Expenses</SelectItem>
+                  <SelectItem value="settings">Settings</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={() => refetchActivityLogs()} data-testid="button-refresh-activity">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {activityLogsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading activity logs...
+              </CardContent>
+            </Card>
+          ) : !activityLogsData?.logs?.length ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Activity className="h-8 w-8 text-slate-400" />
+                <p>No activity logs yet</p>
+                <p className="text-xs">User actions will be recorded here automatically</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {activityLogsData.logs.map((log) => (
+                  <Card key={log.id} className="hover-elevate">
+                    <CardContent className="py-3 flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs capitalize">{log.category}</Badge>
+                          <span className="text-sm font-medium">{log.action.replace(/_/g, ' ')}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {log.userName || log.userEmail || 'Unknown user'}
+                          {log.resourceName && <span> - {log.resourceName}</span>}
+                          {log.propertyName && <span className="text-xs"> ({log.propertyName})</span>}
+                        </p>
+                        {log.details && Object.keys(log.details).length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1 truncate">
+                            {JSON.stringify(log.details).substring(0, 100)}...
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(log.createdAt), "MMM dd, HH:mm")}
+                        </p>
+                        {log.ipAddress && (
+                          <p className="text-xs text-muted-foreground">{log.ipAddress}</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {activityPage * ACTIVITY_PAGE_SIZE + 1} - {Math.min((activityPage + 1) * ACTIVITY_PAGE_SIZE, activityLogsData.total)} of {activityLogsData.total}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={activityPage === 0}
+                    onClick={() => setActivityPage(p => p - 1)}
+                    data-testid="button-activity-prev"
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={(activityPage + 1) * ACTIVITY_PAGE_SIZE >= activityLogsData.total}
+                    onClick={() => setActivityPage(p => p + 1)}
+                    data-testid="button-activity-next"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        )}
+
+        {/* Sessions Tab */}
+        {activeTab === "sessions" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Monitor className="h-5 w-5 text-teal-600" />
+              Active Sessions
+              {sessionsData?.totalActiveSessions !== undefined && (
+                <Badge variant="secondary">{sessionsData.totalActiveSessions} active</Badge>
+              )}
+            </h2>
+            <Button variant="outline" size="icon" onClick={() => refetchSessions()} data-testid="button-refresh-sessions">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {sessionsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading sessions...
+              </CardContent>
+            </Card>
+          ) : !sessionsData?.users?.length ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Monitor className="h-8 w-8 text-slate-400" />
+                <p>No active sessions</p>
+                <p className="text-xs">User login sessions will appear here</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {sessionsData.users.map((userData) => (
+                <Card key={userData.userId} className="hover-elevate">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-base">{userData.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{userData.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={userData.role === 'super-admin' ? 'default' : 'outline'} className="capitalize">
+                          {userData.role}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {userData.activeSessions} active
+                        </Badge>
+                        {userData.activeSessions > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => terminateAllUserSessions.mutate(userData.userId)}
+                            disabled={terminateAllUserSessions.isPending}
+                            data-testid={`button-terminate-all-${userData.userId}`}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            End All
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {userData.sessions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No recent sessions</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {userData.sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className={`flex items-center justify-between p-2 rounded border ${
+                              session.isActive
+                                ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`h-2 w-2 rounded-full ${session.isActive ? 'bg-green-500' : 'bg-slate-400'}`} />
+                              <div>
+                                <p className="text-sm">
+                                  {session.browser || 'Unknown Browser'} on {session.os || 'Unknown OS'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {session.ipAddress || 'Unknown IP'} - Last active: {format(new Date(session.lastActivityAt), "MMM dd, HH:mm")}
+                                </p>
+                              </div>
+                            </div>
+                            {session.isActive && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20"
+                                onClick={() => terminateSession.mutate(session.sessionToken)}
+                                disabled={terminateSession.isPending}
+                                data-testid={`button-terminate-session-${session.id}`}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
         )}
 
