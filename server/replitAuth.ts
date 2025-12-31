@@ -131,12 +131,44 @@ async function upsertUser(
     }
   } else {
     // New user via Google OAuth - requires Super Admin approval
-    const allUsers = await storage.getAllUsers();
-    const isFirstUser = allUsers.length === 0;
-    
     // Import db for direct insert with verificationStatus
     const { db } = await import("./db");
     const { users } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    
+    // First check if a user with this email already exists (could have been created via different auth method)
+    const [existingByEmail] = await db.select().from(users).where(eq(users.email, claims["email"])).limit(1);
+    
+    if (existingByEmail) {
+      // User with this email exists - update their ID to the new OIDC ID and update profile
+      console.log(`[GOOGLE-AUTH] Email ${claims["email"]} exists with different ID - updating to new OIDC ID`);
+      const [updated] = await db
+        .update(users)
+        .set({
+          id: claims["sub"],
+          firstName: claims["first_name"] || existingByEmail.firstName,
+          lastName: claims["last_name"] || existingByEmail.lastName,
+          profileImageUrl: claims["profile_image_url"] || existingByEmail.profileImageUrl,
+          role: isAdmin ? 'admin' : existingByEmail.role,
+          signupMethod: 'google',
+          updatedAt: new Date(),
+        })
+        .where(eq(users.email, claims["email"]))
+        .returning();
+      
+      // If admin user, ensure they have properties assigned
+      if (updated.role === 'admin' && (!updated.assignedPropertyIds || updated.assignedPropertyIds.length === 0)) {
+        const allProperties = await storage.getAllProperties();
+        const propertyIds = allProperties.map((p: any) => p.id);
+        if (propertyIds.length > 0) {
+          await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
+        }
+      }
+      return;
+    }
+    
+    const allUsers = await storage.getAllUsers();
+    const isFirstUser = allUsers.length === 0;
     
     // New users get "pending" status unless they're the first user or admin email
     const shouldAutoApprove = isFirstUser || isAdmin;
