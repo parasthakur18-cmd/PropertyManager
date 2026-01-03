@@ -82,7 +82,7 @@ export default function ForgotPassword() {
               className="w-full"
               onClick={() => {
                 const param =
-                  channel === "email" ? `email=${email}` : `phone=${phone}`;
+                  channel === "email" ? `email=${encodeURIComponent(email)}` : `phone=${encodeURIComponent(phone)}`;
                 setLocation(`/verify-otp?${param}&channel=${channel}`);
               }}
               data-testid="button-enter-otp"
