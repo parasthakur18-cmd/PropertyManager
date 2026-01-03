@@ -1263,10 +1263,10 @@ export default function SuperAdmin() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserCheck className="h-5 w-5 text-green-600" />
-                Approve User & Create Property
+                Approve User
               </DialogTitle>
               <DialogDescription>
-                Approving this user will create a new property for them and grant admin access.
+                Review and approve this user. A property will be created automatically using their registration details.
               </DialogDescription>
             </DialogHeader>
             
@@ -1282,26 +1282,18 @@ export default function SuperAdmin() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="propertyName">Property Name *</Label>
-                  <Input
-                    id="propertyName"
-                    value={approvalPropertyName}
-                    onChange={(e) => setApprovalPropertyName(e.target.value)}
-                    placeholder="e.g., Mountain View Resort"
-                    data-testid="input-property-name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="propertyLocation">Property Location *</Label>
-                  <Input
-                    id="propertyLocation"
-                    value={approvalPropertyLocation}
-                    onChange={(e) => setApprovalPropertyLocation(e.target.value)}
-                    placeholder="e.g., Shimla, Himachal Pradesh"
-                    data-testid="input-property-location"
-                  />
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Registration Details</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Property Name</p>
+                      <p className="text-sm font-medium">{selectedPendingUser.businessName || 'Not specified'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Location</p>
+                      <p className="text-sm font-medium">{selectedPendingUser.businessLocation || 'Not specified'}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1319,15 +1311,15 @@ export default function SuperAdmin() {
               <Button
                 className="bg-green-600 hover:bg-green-700"
                 onClick={() => {
-                  if (selectedPendingUser && approvalPropertyName && approvalPropertyLocation) {
+                  if (selectedPendingUser) {
                     approveUser.mutate({
                       userId: selectedPendingUser.id,
-                      propertyName: approvalPropertyName,
-                      propertyLocation: approvalPropertyLocation,
+                      propertyName: selectedPendingUser.businessName || "New Property",
+                      propertyLocation: selectedPendingUser.businessLocation || "",
                     });
                   }
                 }}
-                disabled={!approvalPropertyName || !approvalPropertyLocation || approveUser.isPending}
+                disabled={approveUser.isPending}
                 data-testid="button-confirm-approve"
               >
                 {approveUser.isPending ? "Approving..." : "Approve User"}
