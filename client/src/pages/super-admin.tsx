@@ -431,10 +431,15 @@ export default function SuperAdmin() {
   const approveUser = useMutation({
     mutationFn: async (data: {
       userId: string;
-      propertyName: string;
-      propertyLocation: string;
+      propertyName?: string;
+      propertyLocation?: string;
     }) => {
-      return apiRequest("/api/super-admin/approve-user", "POST", data);
+      return apiRequest(`/api/super-admin/approve-user/${data.userId}`, "POST", {
+        createProperty: {
+          name: data.propertyName || selectedPendingUser?.businessName || "New Property",
+          location: data.propertyLocation || selectedPendingUser?.businessLocation || "",
+        }
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/pending-users"] });
