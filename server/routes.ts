@@ -9187,11 +9187,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get users with pending verification status
+      // We check for 'pending' status specifically
       const pendingUsers = await db.select().from(users)
         .where(eq(users.verificationStatus, 'pending'))
         .orderBy(desc(users.createdAt));
 
-      console.log(`[SUPER-ADMIN] Found ${pendingUsers.length} pending users`);
+      console.log(`[SUPER-ADMIN] Found ${pendingUsers.length} pending users for email: ${dbUser.email}`);
       res.json(pendingUsers);
     } catch (error: any) {
       console.error(`[SUPER-ADMIN/PENDING-USERS] Error:`, error);
