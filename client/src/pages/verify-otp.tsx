@@ -42,7 +42,8 @@ export default function VerifyOTP() {
         title: "Success",
         description: "OTP verified! Now reset your password.",
       });
-      setLocation(`/reset-password?token=${data.resetToken}`);
+      // Use window.location.href for full navigation to ensure query params are set
+      window.location.href = `/reset-password?token=${data.resetToken}`;
     } catch (error: any) {
       toast({
         title: "Error",
