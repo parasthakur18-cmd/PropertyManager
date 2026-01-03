@@ -13,9 +13,10 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [location, setLocation] = useLocation();
-  const search = location.split("?")[1] || "";
-  const params = new URLSearchParams(search);
+  const [, setLocation] = useLocation();
+  
+  // Use window.location.search to get query params (wouter's useLocation only returns pathname)
+  const params = new URLSearchParams(window.location.search);
   const resetToken = params.get("token") || "";
 
   const handleSubmit = async (e: React.FormEvent) => {
