@@ -321,7 +321,8 @@ export interface IStorage {
   // Password Reset operations
   createPasswordResetOtp(data: InsertPasswordResetOtp): Promise<any>;
   verifyPasswordResetOtp(channel: string, identifier: string, otp: string): Promise<{ resetToken: string }>;
-  resetPassword(resetToken: string, newPassword: string): Promise<void>;
+  getPasswordResetOtpByToken(resetToken: string): Promise<PasswordResetOtp | null>;
+  deletePasswordResetOtp(id: number): Promise<void>;
 
   // Pre-Bill operations
   getPreBill(id: number): Promise<PreBill | undefined>;
@@ -2863,14 +2864,34 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Invalid or expired OTP");
     }
 
-    await db.update(passwordResetOtps).set({ isUsed: true }).where(eq(passwordResetOtps.id, record.id));
-
+    // Generate and store reset token
     const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    await db.update(passwordResetOtps).set({ 
+      isUsed: true,
+      resetToken: resetToken,
+    }).where(eq(passwordResetOtps.id, record.id));
+
     return { resetToken };
   }
 
-  async resetPassword(resetToken: string, newPassword: string): Promise<void> {
-    throw new Error("Password reset requires session token storage");
+  async getPasswordResetOtpByToken(resetToken: string): Promise<PasswordResetOtp | null> {
+    const [record] = await db.select().from(passwordResetOtps)
+      .where(eq(passwordResetOtps.resetToken, resetToken))
+      .limit(1);
+    
+    if (!record) return null;
+    
+    // Check if token is still valid (within 1 hour of OTP verification)
+    const tokenAge = Date.now() - new Date(record.expiresAt).getTime() + (15 * 60 * 1000);
+    if (tokenAge > 60 * 60 * 1000) { // 1 hour max for reset
+      return null;
+    }
+    
+    return record;
+  }
+
+  async deletePasswordResetOtp(id: number): Promise<void> {
+    await db.delete(passwordResetOtps).where(eq(passwordResetOtps.id, id));
   }
 
   // Contact Enquiry operations

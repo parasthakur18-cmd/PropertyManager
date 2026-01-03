@@ -7055,16 +7055,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/reset-password", async (req, res) => {
     try {
-      const { resetToken, newPassword } = req.body;
+      const { resetToken, password } = req.body;
       
-      if (!resetToken || !newPassword) {
+      if (!resetToken || !password) {
         return res.status(400).json({ message: "Reset token and new password required" });
       }
 
-      // In a real app, validate the resetToken against a stored session
-      // For now, this is a placeholder
+      // Validate the reset token and get the associated user
+      const otpRecord = await storage.getPasswordResetOtpByToken(resetToken);
+      if (!otpRecord) {
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+
+      // Find the user by email or phone
+      const identifier = otpRecord.email || otpRecord.phone;
+      const allUsers = await storage.getAllUsers();
+      const user = allUsers.find(u => u.email === identifier || u.phone === identifier);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Hash the new password and update user
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      await db.update(users).set({
+        passwordHash: hashedPassword,
+        updatedAt: new Date(),
+      }).where(eq(users.id, user.id));
+
+      // Delete the used OTP record
+      await storage.deletePasswordResetOtp(otpRecord.id);
+
+      console.log(`[PASSWORD-RESET] Password reset successful for user: ${user.email}`);
       res.json({ message: "Password reset successful" });
     } catch (error: any) {
+      console.error(`[PASSWORD-RESET] Error:`, error);
       res.status(500).json({ message: error.message });
     }
   });

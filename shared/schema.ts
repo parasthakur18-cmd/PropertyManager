@@ -110,6 +110,7 @@ export const passwordResetOtps = pgTable("password_reset_otps", {
   phone: varchar("phone", { length: 20 }),
   channel: varchar("channel", { length: 20 }).notNull().default("email"),
   otp: varchar("otp", { length: 6 }).notNull(),
+  resetToken: varchar("reset_token", { length: 100 }),
   expiresAt: timestamp("expires_at").notNull(),
   isUsed: boolean("is_used").default(false),
   createdAt: timestamp("created_at").defaultNow(),
