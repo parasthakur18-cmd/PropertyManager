@@ -11,9 +11,10 @@ export default function VerifyOTP() {
   const [otp, setOtp] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const [location, setLocation] = useLocation();
-  const search = location.split("?")[1] || "";
-  const params = new URLSearchParams(search);
+  const [, setLocation] = useLocation();
+  
+  // Use window.location.search to get query params (wouter's useLocation only returns pathname)
+  const params = new URLSearchParams(window.location.search);
   const email = params.get("email") || "";
   const phone = params.get("phone") || "";
   const channel = params.get("channel") || "email";
