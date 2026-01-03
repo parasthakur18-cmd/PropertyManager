@@ -106,7 +106,7 @@ async function upsertUser(
   const existingUser = await storage.getUser(claims["sub"]);
   
   // Owner emails always get admin (preserve admin status on re-login)
-  const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com'];
+  const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com', 'admin@hostezee.in'];
   const isAdmin = adminEmails.includes(claims["email"]);
   
   if (existingUser) {
