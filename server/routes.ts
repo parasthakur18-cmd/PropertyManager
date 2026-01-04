@@ -7642,8 +7642,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .join("\n");
 
       // Send as downloadable file
-      res.setHeader("Content-Type", "text/csv;charset=utf-8;");
-      res.setHeader("Content-Disposition", `attachment;filename=property-${propertyId}-export-${Date.now()}.csv`);
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="property-${propertyId}-export-${Date.now()}.csv"`);
       res.send(csvContent);
     } catch (error: any) {
       console.error("[PROPERTY EXPORT ERROR]", error);
