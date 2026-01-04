@@ -553,21 +553,21 @@ export default function Dashboard() {
               <div className="space-y-2">
                 <p className="text-sm text-slate-600 dark:text-slate-400">Total Bookings</p>
                 <p className="text-4xl font-bold text-slate-900 dark:text-white">{stats?.activeBookings || 0}</p>
-                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">↑ 12% this month</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">Active this month</p>
               </div>
               
               {/* Revenue */}
               <div className="space-y-2">
                 <p className="text-sm text-slate-600 dark:text-slate-400">Revenue</p>
                 <p className="text-4xl font-bold text-slate-900 dark:text-white">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
-                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">↑ 8% growth</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">This month</p>
               </div>
               
               {/* Active Guests */}
               <div className="space-y-2">
                 <p className="text-sm text-slate-600 dark:text-slate-400">Guests</p>
-                <p className="text-4xl font-bold text-slate-900 dark:text-white">{stats?.totalGuests || 0}</p>
-                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">Active guests</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white">{checkedInGuests.length}</p>
+                <p className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">Currently in-house</p>
               </div>
               
               {/* Occupancy */}
