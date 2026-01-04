@@ -684,14 +684,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user is admin
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
-      if (currentUser?.role !== "admin") {
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       
       const allUsers = await storage.getAllUsers();
-      // Filter out super-admin users - regular admins should not see or know about super-admin
-      const users = allUsers.filter(u => u.role !== 'super-admin');
-      res.json(users);
+      
+      // SUPER ADMIN: Sees all users
+      if (currentUser.role === 'super-admin') {
+        return res.json(allUsers);
+      }
+
+      // REGULAR ADMIN: Only sees users assigned to the same properties
+      const tenant = getTenantContext(currentUser);
+      const filteredUsers = allUsers.filter(u => {
+        // Don't show super-admins to regular admins
+        if (u.role === 'super-admin') return false;
+        
+        // Show users who share at least one property with the admin
+        if (!u.assignedPropertyIds || u.assignedPropertyIds.length === 0) {
+          // If user has no properties, only show if they were created by this admin or belong to their business
+          return u.businessName === currentUser.businessName;
+        }
+
+        return u.assignedPropertyIds.some(propId => canAccessProperty(tenant, parseInt(propId)));
+      });
+
+      res.json(filteredUsers);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
