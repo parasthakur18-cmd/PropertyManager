@@ -170,6 +170,8 @@ export default function Bookings() {
       mealPlan: "EP",
       advanceAmount: "",
       bedsBooked: null as number | null,
+      guestName: "",
+      guestPhone: "",
     },
   });
 
@@ -838,6 +840,9 @@ export default function Bookings() {
       return source;
     };
 
+    // Get guest details for editing
+    const guest = guests?.find(g => g.id === booking.guestId);
+    
     editForm.reset({
       propertyId: booking.propertyId,
       guestId: booking.guestId,
@@ -852,6 +857,8 @@ export default function Bookings() {
       source: normalizeSource(booking.source),
       travelAgentId: booking.travelAgentId || undefined,
       mealPlan: booking.mealPlan || "EP",
+      guestName: guest?.fullName || "",
+      guestPhone: guest?.phone || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -922,7 +929,28 @@ export default function Bookings() {
       travelAgentId: data.travelAgentId || null,
     };
     
-    updateBookingMutation.mutate({ id: editingBooking.id, data: payload });
+    // Update guest details if name or phone changed
+    if (editingBooking.guestId && (data.guestName || data.guestPhone)) {
+      const guestPayload: any = {};
+      if (data.guestName) guestPayload.fullName = data.guestName;
+      if (data.guestPhone) guestPayload.phone = data.guestPhone;
+      
+      // Update guest first, then update booking
+      apiRequest(`/api/guests/${editingBooking.guestId}`, "PATCH", guestPayload)
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
+          updateBookingMutation.mutate({ id: editingBooking.id, data: payload });
+        })
+        .catch((error) => {
+          toast({
+            title: "Error",
+            description: "Failed to update guest details: " + error.message,
+            variant: "destructive",
+          });
+        });
+    } else {
+      updateBookingMutation.mutate({ id: editingBooking.id, data: payload });
+    }
   };
 
   if (isLoading) {
@@ -2635,14 +2663,55 @@ export default function Bookings() {
                 </div>
               </div>
               <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
-                <h4 className="font-semibold text-sm mb-3">Guest & Status</h4>
+                <h4 className="font-semibold text-sm mb-3">Guest Details</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="guestName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Guest Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter guest name"
+                            value={field.value || ""}
+                            onChange={field.onChange}
+                            data-testid="input-edit-guest-name"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="guestPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Guest Phone</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter phone number"
+                            value={field.value || ""}
+                            onChange={field.onChange}
+                            data-testid="input-edit-guest-phone"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
+                <h4 className="font-semibold text-sm mb-3">Booking Status</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField
                     control={editForm.control}
                     name="status"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Booking Status</FormLabel>
+                        <FormLabel>Status</FormLabel>
                         <Select
                           onValueChange={field.onChange}
                           value={field.value || "pending"}
