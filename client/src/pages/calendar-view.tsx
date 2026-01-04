@@ -1014,11 +1014,42 @@ export default function CalendarView() {
                           {sourceLabels[booking.source || "direct"] || booking.source}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Amount:</span>
-                        <span className="ml-2 font-medium">
-                          ₹{Number(booking.totalAmount || 0).toLocaleString()}
-                        </span>
+                      {booking.mealPlan && (
+                        <div>
+                          <span className="text-muted-foreground">Meal Plan:</span>
+                          <span className="ml-2 font-medium capitalize">{booking.mealPlan}</span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Payment details section */}
+                    <div className="mt-3 pt-3 border-t border-dashed">
+                      <p className="text-xs text-muted-foreground mb-2 font-medium">Payment Details</p>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">Total Amount:</span>
+                          <span className="ml-2 font-medium">
+                            ₹{Number(booking.totalAmount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Advance:</span>
+                          <span className="ml-2 font-medium">
+                            ₹{Number(booking.advanceAmount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Balance:</span>
+                          <span className="ml-2 font-medium">
+                            ₹{(Number(booking.totalAmount || 0) - Number(booking.advanceAmount || 0)).toLocaleString()}
+                          </span>
+                        </div>
+                        {booking.advancePaymentStatus && (
+                          <div>
+                            <span className="text-muted-foreground">Advance Status:</span>
+                            <span className="ml-2 font-medium capitalize">{booking.advancePaymentStatus}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
