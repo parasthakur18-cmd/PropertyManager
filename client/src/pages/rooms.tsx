@@ -273,7 +273,7 @@ export default function Rooms() {
               Add Room
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Room</DialogTitle>
             </DialogHeader>
