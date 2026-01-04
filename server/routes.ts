@@ -7022,6 +7022,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Phone required for SMS OTP" });
       }
 
+      // Check if user exists with this email/phone before sending OTP
+      const allUsers = await storage.getAllUsers();
+      const identifier = channel === "email" ? email : phone;
+      const userExists = allUsers.find(u => 
+        (channel === "email" && u.email === identifier) || 
+        (channel === "sms" && u.phone === identifier)
+      );
+      
+      if (!userExists) {
+        return res.status(404).json({ message: "No account registered with this email address" });
+      }
+
       const otpRecord = await storage.createPasswordResetOtp({ email, phone, channel });
 
       // Send OTP via email or SMS
