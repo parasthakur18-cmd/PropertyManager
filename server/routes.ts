@@ -6696,14 +6696,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Filter staff by property access
       const staffMembers = allStaffMembers.filter(s => canAccessProperty(tenant, s.propertyId));
       
-      // Get all attendance records
-      const attendanceRecords = await storage.getAllAttendance();
+      // Get all attendance records - filtered by property access
+      const allAttendanceRecords = await storage.getAllAttendance();
+      const attendanceRecords = allAttendanceRecords.filter((r: any) => {
+        const propId = r.propertyId || r.property_id;
+        return propId && canAccessProperty(tenant, propId);
+      });
       
-      // Get all pending salary advances for deduction
+      // Get all pending salary advances for deduction - filtered by property access
       const allAdvances = await storage.getAllAdvances();
+      const filteredAdvances = allAdvances.filter((a: any) => a.propertyId && canAccessProperty(tenant, a.propertyId));
       
       // Calculate stats for each staff member
-      const stats = await Promise.all(staffMembers.filter(s => canAccessProperty(tenant, s.propertyId)).map(async (staff) => {
+      const stats = await Promise.all(staffMembers.map(async (staff) => {
         // Filter attendance for selected month
         const staffAttendance = attendanceRecords.filter((record) => {
           if (record.staffId !== staff.id) return false;
@@ -6763,7 +6768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const attendanceDeduction = (deductionPerDay * absentDays) + (deductionPerDay * halfDays * 0.5);
         
         // Get pending salary advances for this staff member
-        const staffAdvances = allAdvances.filter(
+        const staffAdvances = filteredAdvances.filter(
           (adv) => adv.staffMemberId === staff.id && adv.repaymentStatus === 'pending'
         );
         const totalAdvances = staffAdvances.reduce(
