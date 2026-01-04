@@ -645,7 +645,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Security: Non-super-admin with no properties sees empty data
       if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
-        return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
+        return res.json({ 
+          bookingsByMonth: [], 
+          revenueByMonth: [], 
+          occupancyByMonth: [],
+          stats: {
+            totalBookings: 0,
+            totalRevenue: 0,
+            totalGuests: 0,
+            occupancyRate: 0,
+            revenueGrowth: 0,
+            bookingGrowth: 0
+          }
+        });
       }
       
       let propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
@@ -5695,12 +5707,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Property Lease endpoints
-  app.get("/api/leases", isAuthenticated, async (req, res) => {
+  app.get("/api/leases", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
       const { propertyId } = req.query;
-      const leases = propertyId 
-        ? await storage.getLeasesByProperty(parseInt(propertyId as string))
-        : await storage.getAllLeases();
+
+      let leases;
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        leases = await storage.getLeasesByProperty(propId);
+      } else {
+        const allLeases = await storage.getAllLeases();
+        leases = allLeases.filter(l => l.propertyId && canAccessProperty(tenant, l.propertyId));
+      }
       res.json(leases);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -5845,12 +5872,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Property Expense endpoints
-  app.get("/api/expenses", isAuthenticated, async (req, res) => {
+  app.get("/api/expenses", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
       const { propertyId } = req.query;
-      const expenses = propertyId 
-        ? await storage.getExpensesByProperty(parseInt(propertyId as string))
-        : await storage.getAllExpenses();
+      const tenant = getTenantContext(currentUser);
+      
+      let expenses;
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        expenses = await storage.getExpensesByProperty(propId);
+      } else {
+        const allExpenses = await storage.getAllExpenses();
+        expenses = allExpenses.filter(e => e.propertyId && canAccessProperty(tenant, e.propertyId));
+      }
       res.json(expenses);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -6301,21 +6344,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Staff Salary Summary - with pending salary calculation (gross - advances)
-  app.get("/api/salaries/summary", isAuthenticated, async (req, res) => {
+  app.get("/api/salaries/summary", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
       const { startDate, endDate } = req.query;
       
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
       const salaries = await storage.getAllSalaries();
+      const filteredSalariesByTenant = salaries.filter(s => s.propertyId && canAccessProperty(tenant, s.propertyId));
       const advances = await storage.getAllAdvances();
       const allUsers = await storage.getAllUsers();
 
       // Filter by date range if provided
-      let filteredSalaries = salaries;
+      let filteredSalaries = filteredSalariesByTenant;
       if (startDate && endDate) {
         const start = new Date(startDate as string);
         const end = new Date(endDate as string);
@@ -6383,20 +6432,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Salary Advance endpoints
-  app.get("/api/advances", isAuthenticated, async (req, res) => {
+  app.get("/api/advances", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
-      const { userId } = req.query;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const { userId: targetUserId } = req.query;
 
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
-      const advances = userId 
-        ? await storage.getAdvancesByUser(userId as string)
+      const advances = targetUserId 
+        ? await storage.getAdvancesByUser(targetUserId as string)
         : await storage.getAllAdvances();
       
-      res.json(advances);
+      // Filter by property access
+      const filtered = advances.filter(a => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      res.json(filtered);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -6495,36 +6551,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== ATTENDANCE ENDPOINTS =====
   // GET /api/attendance - Get all attendance records
-  app.get("/api/attendance", isAuthenticated, async (req, res) => {
+  app.get("/api/attendance", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
       const { staffMemberId, propertyId, attendanceDate, month } = req.query;
 
       if (staffMemberId) {
         const records = await storage.getAttendanceByStaffMember(parseInt(staffMemberId as string));
-        return res.json(records);
+        // Filter by property access
+        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        return res.json(filtered);
       }
 
       if (propertyId) {
-        const records = await storage.getAttendanceByProperty(parseInt(propertyId as string));
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        const records = await storage.getAttendanceByProperty(propId);
         return res.json(records);
       }
 
       if (attendanceDate) {
         const date = new Date(attendanceDate as string);
         const records = await storage.getAttendanceByDate(date);
-        return res.json(records);
+        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        return res.json(filtered);
       }
 
       const allRecords = await storage.getAllAttendance();
-      console.log(`[ATTENDANCE DEBUG] Raw records from storage: ${allRecords.length} records`);
+      // Filter by property access
+      const filteredByTenant = allRecords.filter(r => (r.property_id || r.propertyId) && canAccessProperty(tenant, r.property_id || r.propertyId));
       
-      if (allRecords.length > 0) {
-        console.log(`[ATTENDANCE DEBUG] First record:`, JSON.stringify(allRecords[0], null, 2));
-      }
+      console.log(`[ATTENDANCE DEBUG] Raw records from storage: ${allRecords.length} records, filtered: ${filteredByTenant.length}`);
       
       // Transform all records to camelCase with proper date handling
-      const transformed = allRecords.map(r => {
+      const transformed = filteredByTenant.map(r => {
         let dateStr = "";
         const dateValue = r.attendance_date || r.attendanceDate;
         
@@ -6595,12 +6662,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // GET /api/attendance/stats - Get attendance statistics
   // NEW LOGIC: All staff are "Present" by default - only exceptions are recorded
-  app.get("/api/attendance/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/attendance/stats", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
       const month = req.query.month as string; // Format: YYYY-MM
       
       // Get all staff members
-      const staffMembers = await storage.getAllStaffMembers();
+      const allStaffMembers = await storage.getAllStaffMembers();
+      // Filter staff by property access
+      const staffMembers = allStaffMembers.filter(s => canAccessProperty(tenant, s.propertyId));
       
       // Get all attendance records
       const attendanceRecords = await storage.getAllAttendance();
@@ -6609,7 +6684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allAdvances = await storage.getAllAdvances();
       
       // Calculate stats for each staff member
-      const stats = await Promise.all(staffMembers.map(async (staff) => {
+      const stats = await Promise.all(staffMembers.filter(s => canAccessProperty(tenant, s.propertyId)).map(async (staff) => {
         // Filter attendance for selected month
         const staffAttendance = attendanceRecords.filter((record) => {
           if (record.staffId !== staff.id) return false;
@@ -6713,16 +6788,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== SALARY ADVANCES ENDPOINTS =====
   // GET /api/salary-advances - Get all salary advances
-  app.get("/api/salary-advances", isAuthenticated, async (req, res) => {
+  app.get("/api/salary-advances", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user as any;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      if (!['admin', 'manager', 'super_admin'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
       const advances = await storage.getAllAdvances();
-      res.json(advances);
+      // Filter by property access
+      const filtered = advances.filter(a => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      res.json(filtered);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
