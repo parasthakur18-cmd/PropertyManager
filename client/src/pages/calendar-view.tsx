@@ -30,7 +30,8 @@ import {
   Lock,
   Wrench,
   CheckCircle2,
-  MoreVertical
+  MoreVertical,
+  Hotel
 } from "lucide-react";
 import { format, addDays, startOfDay, eachDayOfInterval, addMonths } from "date-fns";
 import {
@@ -41,6 +42,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Property, Booking, Room } from "@shared/schema";
@@ -112,6 +116,12 @@ export default function CalendarView() {
   const [checkOutDate, setCheckOutDate] = useState(format(addDays(today, 1), "yyyy-MM-dd"));
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   const [activeRoomMenu, setActiveRoomMenu] = useState<number | null>(null);
+  const [dormitoryPopup, setDormitoryPopup] = useState<{
+    isOpen: boolean;
+    room: Room | null;
+    bookings: Booking[];
+    date: Date | null;
+  }>({ isOpen: false, room: null, bookings: [], date: null });
   const calendarRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   
@@ -290,6 +300,53 @@ export default function CalendarView() {
     });
     
     return Array.from(bookingSet.values());
+  };
+
+  // Get ALL bookings for a dormitory room on a specific date (allows multiple bookings)
+  const getAllDormitoryBookingsForDate = (roomId: number, date: Date): Booking[] => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return bookings.filter(b => {
+      const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
+      if (!roomMatches) return false;
+      
+      return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
+        format(new Date(b.checkOutDate), "yyyy-MM-dd") > dateStr &&
+        b.status !== "cancelled";
+    });
+  };
+
+  // Get all bookings for a dormitory room in the visible date range
+  const getAllDormitoryBookingsInRange = (roomId: number): Booking[] => {
+    const bookingSet = new Map<number, Booking>();
+    dates.forEach(date => {
+      const dormBookings = getAllDormitoryBookingsForDate(roomId, date);
+      dormBookings.forEach(b => bookingSet.set(b.id, b));
+    });
+    return Array.from(bookingSet.values());
+  };
+
+  // Check if a room is a dormitory
+  const isDormitoryRoom = (room: Room): boolean => {
+    return room.roomCategory === "dormitory" && (room.totalBeds || 1) > 1;
+  };
+
+  // Get total beds booked for a dormitory room in a date range
+  const getBedsBookedForDateRange = (roomId: number, startDate: Date, endDate: Date): number => {
+    const startStr = format(startDate, "yyyy-MM-dd");
+    const endStr = format(endDate, "yyyy-MM-dd");
+    
+    return bookings
+      .filter(b => {
+        const roomMatches = b.roomId === roomId;
+        if (!roomMatches) return false;
+        
+        const bookingStart = format(new Date(b.checkInDate), "yyyy-MM-dd");
+        const bookingEnd = format(new Date(b.checkOutDate), "yyyy-MM-dd");
+        
+        // Check if booking overlaps with the date range
+        return bookingStart < endStr && bookingEnd > startStr && b.status !== "cancelled";
+      })
+      .reduce((total, b) => total + (b.bedsBooked || 1), 0);
   };
 
   const getOccupancyPercent = (date: Date) => {
@@ -590,7 +647,43 @@ export default function CalendarView() {
 
                 {/* Individual Room Rows */}
                 {expandedTypes[type] && typeRooms.map(room => {
-                  const roomBookings = getBookingsForRoom(room.id);
+                  const isDorm = isDormitoryRoom(room);
+                  const roomBookings = isDorm 
+                    ? getAllDormitoryBookingsInRange(room.id)
+                    : getBookingsForRoom(room.id);
+                  
+                  // For dormitory rooms, prepare display data with overlapping booking info
+                  const getDormitoryDisplayBookings = () => {
+                    return roomBookings.map(booking => {
+                      if (!isDorm) return { booking, allBookings: [booking], additionalBeds: 0 };
+                      
+                      // Find all bookings that overlap with this one (including this booking)
+                      const overlapping = roomBookings.filter(other => {
+                        const bookingStart = new Date(booking.checkInDate);
+                        const bookingEnd = new Date(booking.checkOutDate);
+                        const otherStart = new Date(other.checkInDate);
+                        const otherEnd = new Date(other.checkOutDate);
+                        return bookingStart < otherEnd && bookingEnd > otherStart;
+                      });
+                      
+                      // Calculate total beds from OTHER overlapping bookings
+                      const otherBeds = overlapping
+                        .filter(b => b.id !== booking.id)
+                        .reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+                      
+                      // Also include extra beds from this booking itself (bedsBooked - 1)
+                      // Example: If booking has 2 beds, show "+1", if 5 beds show "+4"
+                      const thisBookingExtraBeds = Math.max(0, (booking.bedsBooked || 1) - 1);
+                      
+                      return {
+                        booking,
+                        allBookings: overlapping,
+                        additionalBeds: otherBeds + thisBookingExtraBeds
+                      };
+                    });
+                  };
+                  
+                  const displayBookings = getDormitoryDisplayBookings();
                   
                   return (
                     <div key={room.id} className="relative border-b bg-white dark:bg-card">
@@ -611,7 +704,7 @@ export default function CalendarView() {
 
                       {/* Booking bars overlay */}
                       <div className="absolute inset-0 pointer-events-none py-1.5">
-                        {roomBookings.map((booking) => {
+                        {displayBookings.map(({ booking, allBookings, additionalBeds }) => {
                           const checkInDate = startOfDay(new Date(booking.checkInDate));
                           const checkOutDate = startOfDay(new Date(booking.checkOutDate));
                           const rangeStart = startOfDay(startDate);
@@ -622,20 +715,16 @@ export default function CalendarView() {
                           if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
                           
                           const visibleStartIdx = Math.max(0, checkInDaysDiff);
-                          // Include checkout day (add 1 to make it inclusive)
                           const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
                           
-                          // Calculate position with half-day offsets
                           let leftPx = visibleStartIdx * CELL_WIDTH;
                           let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
                           
-                          // Start at half of check-in day if check-in is visible
                           if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) {
                             leftPx += CELL_WIDTH / 2;
                             widthPx -= CELL_WIDTH / 2;
                           }
                           
-                          // End at half of checkout day if checkout is visible
                           if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) {
                             widthPx -= CELL_WIDTH / 2;
                           }
@@ -645,6 +734,26 @@ export default function CalendarView() {
                           const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
                           const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
                           const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
+                          
+                          // Display name with "+X" for dormitory with multiple bookings
+                          const displayName = isDorm && additionalBeds > 0 
+                            ? `${guestName} +${additionalBeds}`
+                            : guestName;
+                          
+                          const handleClick = () => {
+                            if (isDorm && allBookings.length > 1) {
+                              // Open dormitory popup for multiple bookings
+                              setDormitoryPopup({
+                                isOpen: true,
+                                room,
+                                bookings: allBookings,
+                                date: checkInDate
+                              });
+                            } else {
+                              // Navigate to single booking
+                              navigate(`/bookings/${booking.id}`);
+                            }
+                          };
 
                           return (
                             <div
@@ -656,7 +765,7 @@ export default function CalendarView() {
                                 top: '4px',
                                 bottom: '4px',
                               }}
-                              onClick={() => navigate(`/bookings/${booking.id}`)}
+                              onClick={handleClick}
                               data-testid={`booking-bar-${booking.id}`}
                             >
                               <div
@@ -667,9 +776,12 @@ export default function CalendarView() {
                                 style={{
                                   background: statusStyle.gradient,
                                 }}
-                                title={`${guestName} - ${booking.status}`}
+                                title={isDorm && additionalBeds > 0 
+                                  ? `${guestName} +${additionalBeds} beds - Click for details`
+                                  : `${guestName} - ${booking.status}`
+                                }
                               >
-                                <span className="truncate">{guestName}</span>
+                                <span className="truncate">{displayName}</span>
                                 <span 
                                   className={cn(
                                     "w-2 h-2 rounded-full flex-shrink-0 ml-1",
@@ -792,6 +904,145 @@ export default function CalendarView() {
               data-testid="button-save-booking"
             >
               {createBookingMutation.isPending ? "Creating..." : "Create Booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dormitory Bookings Popup */}
+      <Dialog 
+        open={dormitoryPopup.isOpen} 
+        onOpenChange={(open) => setDormitoryPopup(prev => ({ ...prev, isOpen: open }))}
+      >
+        <DialogContent className="sm:max-w-lg max-h-[80vh]" data-testid="dialog-dormitory-bookings">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Hotel className="h-5 w-5" />
+              {dormitoryPopup.room?.roomNumber} - Dormitory Bookings
+            </DialogTitle>
+            <DialogDescription>
+              {dormitoryPopup.room?.totalBeds || 0} beds total | {dormitoryPopup.bookings.length} active booking(s)
+            </DialogDescription>
+          </DialogHeader>
+          
+          <ScrollArea className="max-h-[50vh] pr-4">
+            <div className="space-y-4">
+              {dormitoryPopup.bookings.map((booking, index) => {
+                const guest = guests.find(g => g.id === booking.guestId);
+                const guestName = guest?.fullName || "Guest";
+                const guestPhone = guest?.phone || "-";
+                const bedsBooked = booking.bedsBooked || 1;
+                const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
+                
+                const sourceLabels: Record<string, string> = {
+                  direct: "Direct",
+                  "walk-in": "Walk-in",
+                  airbnb: "Airbnb",
+                  booking: "Booking.com",
+                  goibibo: "Goibibo",
+                  makemytrip: "MakeMyTrip",
+                  oyo: "OYO",
+                  agoda: "Agoda",
+                  other: "Other"
+                };
+                
+                return (
+                  <div 
+                    key={booking.id} 
+                    className="border rounded-lg p-4 space-y-3 hover:bg-muted/50 transition-colors"
+                    data-testid={`dormitory-booking-${booking.id}`}
+                  >
+                    {/* Header with guest name and status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-semibold text-base">{guestName}</h4>
+                        <p className="text-sm text-muted-foreground">{guestPhone}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge 
+                          variant="outline"
+                          className="text-xs"
+                          style={{ background: statusStyle.gradient, color: statusStyle.text }}
+                        >
+                          {booking.status}
+                        </Badge>
+                        {isPaid ? (
+                          <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 text-xs">
+                            Paid
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100 text-xs">
+                            Unpaid
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <Separator />
+                    
+                    {/* Booking details grid */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Booking ID:</span>
+                        <span className="ml-2 font-medium">#{booking.id}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Beds Booked:</span>
+                        <span className="ml-2 font-medium">{bedsBooked}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Check-in:</span>
+                        <span className="ml-2 font-medium">
+                          {format(new Date(booking.checkInDate), "MMM d, yyyy")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Check-out:</span>
+                        <span className="ml-2 font-medium">
+                          {format(new Date(booking.checkOutDate), "MMM d, yyyy")}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Source:</span>
+                        <span className="ml-2 font-medium">
+                          {sourceLabels[booking.source || "direct"] || booking.source}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Amount:</span>
+                        <span className="ml-2 font-medium">
+                          ₹{Number(booking.totalAmount || 0).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* View booking button */}
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full mt-2"
+                      onClick={() => {
+                        setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
+                        navigate(`/bookings/${booking.id}`);
+                      }}
+                      data-testid={`button-view-booking-${booking.id}`}
+                    >
+                      View Full Details
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setDormitoryPopup(prev => ({ ...prev, isOpen: false }))}
+              data-testid="button-close-dormitory-popup"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
