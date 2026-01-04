@@ -460,8 +460,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Auto-verify owner/admin emails
+      const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com', 'admin@hostezee.in'];
+      const isAdminEmail = adminEmails.includes(user.email?.toLowerCase() || '');
+      
+      if (isAdminEmail && (user.verificationStatus === 'pending' || user.role !== 'admin')) {
+        // Auto-verify and promote admin emails
+        await db.update(users)
+          .set({ 
+            verificationStatus: 'verified', 
+            role: 'admin',
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, userId));
+        user = await storage.getUser(userId);
+        console.log(`[AUTH] Auto-verified admin email: ${user?.email}`);
+      }
+      
       // CHECK VERIFICATION STATUS - Block pending/rejected users (except super-admin)
-      if (user.role !== 'super-admin') {
+      if (user && user.role !== 'super-admin') {
         if (user.verificationStatus === 'rejected') {
           return res.status(403).json({ 
             message: "Your account has been rejected. Please contact support.",
