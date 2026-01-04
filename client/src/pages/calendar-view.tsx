@@ -741,18 +741,13 @@ export default function CalendarView() {
                             : guestName;
                           
                           const handleClick = () => {
-                            if (isDorm && allBookings.length > 1) {
-                              // Open dormitory popup for multiple bookings
-                              setDormitoryPopup({
-                                isOpen: true,
-                                room,
-                                bookings: allBookings,
-                                date: checkInDate
-                              });
-                            } else {
-                              // Navigate to single booking
-                              navigate(`/bookings/${booking.id}`);
-                            }
+                            // Always open popup for all bookings to show details
+                            setDormitoryPopup({
+                              isOpen: true,
+                              room,
+                              bookings: isDorm ? allBookings : [booking],
+                              date: checkInDate
+                            });
                           };
 
                           return (
@@ -909,19 +904,22 @@ export default function CalendarView() {
         </DialogContent>
       </Dialog>
 
-      {/* Dormitory Bookings Popup */}
+      {/* Booking Details Popup */}
       <Dialog 
         open={dormitoryPopup.isOpen} 
         onOpenChange={(open) => setDormitoryPopup(prev => ({ ...prev, isOpen: open }))}
       >
-        <DialogContent className="sm:max-w-lg max-h-[80vh]" data-testid="dialog-dormitory-bookings">
+        <DialogContent className="sm:max-w-lg max-h-[80vh]" data-testid="dialog-booking-details">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Hotel className="h-5 w-5" />
-              {dormitoryPopup.room?.roomNumber} - Dormitory Bookings
+              Room {dormitoryPopup.room?.roomNumber} - Booking Details
             </DialogTitle>
             <DialogDescription>
-              {dormitoryPopup.room?.totalBeds || 0} beds total | {dormitoryPopup.bookings.length} active booking(s)
+              {dormitoryPopup.room?.roomCategory === "dormitory" 
+                ? `${dormitoryPopup.room?.totalBeds || 0} beds total | ${dormitoryPopup.bookings.length} booking(s)`
+                : `${dormitoryPopup.room?.roomType || "Room"} | ${dormitoryPopup.bookings.length} booking(s)`
+              }
             </DialogDescription>
           </DialogHeader>
           
@@ -987,10 +985,17 @@ export default function CalendarView() {
                         <span className="text-muted-foreground">Booking ID:</span>
                         <span className="ml-2 font-medium">#{booking.id}</span>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground">Beds Booked:</span>
-                        <span className="ml-2 font-medium">{bedsBooked}</span>
-                      </div>
+                      {dormitoryPopup.room?.roomCategory === "dormitory" ? (
+                        <div>
+                          <span className="text-muted-foreground">Beds Booked:</span>
+                          <span className="ml-2 font-medium">{bedsBooked}</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-muted-foreground">Guests:</span>
+                          <span className="ml-2 font-medium">{booking.numberOfGuests || 1}</span>
+                        </div>
+                      )}
                       <div>
                         <span className="text-muted-foreground">Check-in:</span>
                         <span className="ml-2 font-medium">
