@@ -95,6 +95,7 @@ const adminAdminItems = [
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "OTA Integrations", url: "/ota-integrations", icon: Globe },
   { title: "Users", url: "/users", icon: UserCog },
+  { title: "Audit Trail", url: "/audit-logs", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
 ];
