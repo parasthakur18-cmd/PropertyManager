@@ -117,14 +117,27 @@ async function upsertUser(
   
   if (existingUser) {
     // User exists - update profile info but preserve role unless they're an admin email
-    const updatedUser = await storage.upsertUser({
-      id: claims["sub"],
-      email: claims["email"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      profileImageUrl: claims["profile_image_url"],
-      role: isAdmin ? 'admin' : existingUser.role, // Preserve existing role unless admin email
-    });
+    // Admin emails are automatically verified
+    const { db } = await import("./db");
+    const { users } = await import("@shared/schema");
+    const { eq } = await import("drizzle-orm");
+    
+    const updateData: any = {
+      firstName: claims["first_name"] || existingUser.firstName,
+      lastName: claims["last_name"] || existingUser.lastName,
+      profileImageUrl: claims["profile_image_url"] || existingUser.profileImageUrl,
+      role: isAdmin ? 'admin' : existingUser.role,
+      updatedAt: new Date(),
+    };
+    
+    // Auto-verify admin emails
+    if (isAdmin) {
+      updateData.verificationStatus = 'verified';
+    }
+    
+    await db.update(users).set(updateData).where(eq(users.id, claims["sub"]));
+    
+    const updatedUser = await storage.getUser(claims["sub"]);
     
     // If admin user has no assigned properties, auto-assign all properties
     // Only for actual admin role, not for staff/manager
