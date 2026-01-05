@@ -462,7 +462,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Auto-verify owner/admin emails
       const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com', 'admin@hostezee.in'];
-      const isAdminEmail = adminEmails.includes(user.email?.toLowerCase() || '');
+      const managerEmails = ['rajni44573@gmail.com'];
+      const userEmailLower = user.email?.toLowerCase() || '';
+      const isAdminEmail = adminEmails.includes(userEmailLower);
+      const isManagerEmail = managerEmails.includes(userEmailLower);
       
       if (isAdminEmail && (user.verificationStatus === 'pending' || user.role !== 'admin')) {
         // Auto-verify and promote admin emails
@@ -475,6 +478,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(eq(users.id, userId));
         user = await storage.getUser(userId);
         console.log(`[AUTH] Auto-verified admin email: ${user?.email}`);
+      }
+      
+      if (isManagerEmail && user.verificationStatus === 'pending') {
+        // Auto-verify manager emails (keep their role as manager)
+        await db.update(users)
+          .set({ 
+            verificationStatus: 'verified', 
+            role: user.role === 'admin' ? 'admin' : 'manager',
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, userId));
+        user = await storage.getUser(userId);
+        console.log(`[AUTH] Auto-verified manager email: ${user?.email}`);
       }
       
       // CHECK VERIFICATION STATUS - Block pending/rejected users (except super-admin)
