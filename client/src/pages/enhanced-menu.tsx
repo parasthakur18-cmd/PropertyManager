@@ -361,7 +361,13 @@ export default function EnhancedMenu() {
       toast({ title: "No items to import", description: "Please upload a CSV file first", variant: "destructive" });
       return;
     }
-    bulkImportMutation.mutate({ items: parsedItems, propertyId: selectedProperty });
+    // Ensure a valid property is selected
+    const propertyToUse = selectedProperty || properties?.[0]?.id;
+    if (!propertyToUse) {
+      toast({ title: "No property selected", description: "Please select a property first", variant: "destructive" });
+      return;
+    }
+    bulkImportMutation.mutate({ items: parsedItems, propertyId: propertyToUse });
   };
 
   // Handle category drag end
