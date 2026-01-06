@@ -287,10 +287,22 @@ export default function EnhancedMenu() {
       return [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     }
     
-    // Fallback: Sample rows if no items exist
+    // Fallback: Sample rows with one item from each common category
     const sampleRows = [
-      ['Butter Chicken', 'Main Course', '350', 'Creamy tomato curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
-      ['Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese', 'true', 'true', '', 'Extra Sauce:30']
+      ['Masala Omelette', 'Breakfast', '80', 'Spiced egg omelette with onions', 'false', 'true', '', ''],
+      ['Aloo Paratha', 'Breakfast', '60', 'Stuffed potato flatbread', 'true', 'true', '', 'Extra Butter:20'],
+      ['Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese cubes', 'true', 'true', 'Half:150,Full:280', 'Extra Sauce:30'],
+      ['Chicken Lollipop', 'Starters', '320', 'Crispy fried chicken wings', 'false', 'true', '', ''],
+      ['Butter Chicken', 'Main Course', '350', 'Creamy tomato chicken curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
+      ['Dal Makhani', 'Main Course', '220', 'Slow cooked black lentils', 'true', 'true', '', ''],
+      ['Veg Biryani', 'Rice & Biryani', '250', 'Fragrant rice with vegetables', 'true', 'true', '', 'Extra Raita:40'],
+      ['Chicken Biryani', 'Rice & Biryani', '320', 'Aromatic rice with chicken', 'false', 'true', 'Half:180,Full:320', 'Extra Raita:40'],
+      ['Butter Naan', 'Breads', '50', 'Soft buttered flatbread', 'true', 'true', '', ''],
+      ['Tandoori Roti', 'Breads', '30', 'Whole wheat bread from tandoor', 'true', 'true', '', ''],
+      ['Fresh Lime Soda', 'Beverages', '60', 'Sweet or salted lime drink', 'true', 'true', 'Sweet:60,Salted:60', ''],
+      ['Masala Chai', 'Beverages', '30', 'Indian spiced tea', 'true', 'true', '', ''],
+      ['Gulab Jamun', 'Desserts', '80', 'Sweet milk dumplings in syrup', 'true', 'true', '2pcs:80,4pcs:150', ''],
+      ['Ice Cream', 'Desserts', '100', 'Vanilla or chocolate', 'true', 'true', 'Single:60,Double:100', '']
     ];
     return [headers.join(','), ...sampleRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
   }
