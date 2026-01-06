@@ -437,8 +437,20 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     if (!req.user) {
       (req as any).user = {};
     }
-    (req as any).user.id = (req.session as any).userId;
+    const userId = (req.session as any).userId;
+    (req as any).user.id = userId;
     (req as any).user.isEmailAuth = true;
+    
+    // Load user role and properties from database for permission checks
+    try {
+      const dbUser = await storage.getUser(userId);
+      if (dbUser) {
+        (req as any).user.role = dbUser.role;
+        (req as any).user.assignedPropertyIds = dbUser.assignedPropertyIds;
+      }
+    } catch (err) {
+      console.error("[isAuthenticated] Error loading email auth user from DB:", err);
+    }
     return next();
   }
 
