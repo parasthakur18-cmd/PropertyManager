@@ -78,17 +78,7 @@ export default function Rooms() {
   const selectedEditCategory = editForm.watch("roomCategory");
 
   const createMutation = useMutation({
-    mutationFn: async (data: InsertRoom) => {
-      const baseRoomNumber = parseInt(data.roomNumber);
-      const roomsToCreate = [];
-      
-      for (let i = 0; i < quantity; i++) {
-        roomsToCreate.push({
-          ...data,
-          roomNumber: (baseRoomNumber + i).toString(),
-        });
-      }
-      
+    mutationFn: async (roomsToCreate: InsertRoom[]) => {
       // Create all rooms in parallel
       const results = await Promise.all(
         roomsToCreate.map(room => apiRequest("/api/rooms", "POST", room))
@@ -188,11 +178,29 @@ export default function Rooms() {
   });
 
   const onSubmit = (data: InsertRoom) => {
-    const formattedData = {
-      ...data,
-      pricePerNight: parseFloat(data.pricePerNight as any).toString(),
-    };
-    createMutation.mutate(formattedData);
+    const baseRoomNumber = parseInt(data.roomNumber);
+    const roomsToCreate = [];
+    
+    // If roomNumber is not a number, we'll just use the raw string and quantity won't increment it
+    if (isNaN(baseRoomNumber)) {
+      for (let i = 0; i < quantity; i++) {
+        roomsToCreate.push({
+          ...data,
+          roomNumber: i === 0 ? data.roomNumber : `${data.roomNumber}-${i + 1}`,
+          pricePerNight: String(parseFloat(data.pricePerNight as any)),
+        });
+      }
+    } else {
+      for (let i = 0; i < quantity; i++) {
+        roomsToCreate.push({
+          ...data,
+          roomNumber: (baseRoomNumber + i).toString(),
+          pricePerNight: String(parseFloat(data.pricePerNight as any)),
+        });
+      }
+    }
+    
+    createMutation.mutate(roomsToCreate as any);
   };
 
   const onEditSubmit = (data: InsertRoom) => {
