@@ -335,6 +335,30 @@ export default function EnhancedMenu() {
     link.click();
   };
 
+  const downloadAllMenuItems = async () => {
+    try {
+      const propertyToExport = selectedProperty || properties?.[0]?.id;
+      if (!propertyToExport) {
+        toast({ title: "No property selected", description: "Please select a property first", variant: "destructive" });
+        return;
+      }
+      
+      const response = await fetch(`/api/menu-items/export?propertyId=${propertyToExport}`);
+      if (!response.ok) throw new Error('Export failed');
+      
+      const blob = await response.blob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const propertyName = properties?.find(p => p.id === propertyToExport)?.name || 'menu';
+      link.download = `${propertyName.replace(/\s+/g, '_')}_menu_export.csv`;
+      link.click();
+      
+      toast({ title: "Export Complete", description: "Menu items downloaded successfully" });
+    } catch (error) {
+      toast({ title: "Export Failed", description: "Could not download menu items", variant: "destructive" });
+    }
+  };
+
   const resetBulkImport = () => {
     setParsedItems([]);
     setParseErrors([]);
@@ -681,11 +705,15 @@ export default function EnhancedMenu() {
                 </div>
               )}
 
-              {/* Download Template */}
-              <div className="flex items-center gap-4">
+              {/* Download Template & Export */}
+              <div className="flex items-center gap-4 flex-wrap">
                 <Button variant="outline" onClick={downloadTemplate}>
                   <Download className="h-4 w-4 mr-2" />
                   Download CSV Template
+                </Button>
+                <Button variant="outline" onClick={downloadAllMenuItems}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export Current Menu
                 </Button>
               </div>
 

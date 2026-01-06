@@ -4546,13 +4546,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const createdItem = await storage.createMenuItem(menuItemData);
 
           // Create variants if provided
+          const basePrice = parseFloat(item.price?.toString() || "0");
           for (const variant of parsedVariants) {
             const priceModifier = parseFloat(variant.priceModifier);
             if (!isNaN(priceModifier)) {
+              const actualPrice = basePrice + priceModifier;
               await storage.createMenuItemVariant({
                 menuItemId: createdItem.id,
-                name: variant.name,
-                priceModifier: priceModifier.toString(),
+                variantName: variant.name,
+                actualPrice: actualPrice.toString(),
+                discountedPrice: null,
               });
             }
           }
@@ -4563,8 +4566,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!isNaN(price) && price >= 0) {
               await storage.createMenuItemAddOn({
                 menuItemId: createdItem.id,
-                name: addOn.name,
-                price: price.toString(),
+                addOnName: addOn.name,
+                addOnPrice: price.toString(),
               });
             }
           }
@@ -4580,6 +4583,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: `Imported ${results.created} items${results.categoriesCreated > 0 ? `, created ${results.categoriesCreated} new categories` : ''}${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
         ...results,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Export menu items to CSV
+  app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+
+      // Get all menu items for this property
+      const allItems = await storage.getAllMenuItems();
+      const propertyItems = allItems.filter(item => item.propertyId === propertyId);
+
+      // Build CSV with variants and add-ons
+      const headers = ['name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+      const rows: string[][] = [];
+
+      for (const item of propertyItems) {
+        // Get variants for this item
+        const variants = await storage.getVariantsByMenuItem(item.id);
+        const variantStr = variants.map(v => {
+          const basePrice = parseFloat(item.price?.toString() || "0");
+          const actualPrice = parseFloat(v.actualPrice?.toString() || "0");
+          const modifier = actualPrice - basePrice;
+          return `${v.variantName}:${modifier}`;
+        }).join(',');
+
+        // Get add-ons for this item
+        const addOns = await storage.getAddOnsByMenuItem(item.id);
+        const addOnStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice}`).join(',');
+
+        rows.push([
+          item.name,
+          item.category || '',
+          item.price?.toString() || '0',
+          item.description || '',
+          item.isVeg ? 'True' : 'False',
+          item.isAvailable ? 'True' : 'False',
+          variantStr,
+          addOnStr
+        ]);
+      }
+
+      // Sort by category
+      rows.sort((a, b) => a[1].localeCompare(b[1]));
+
+      // Build CSV content
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="menu_export.csv"`);
+      res.send(csvContent);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
