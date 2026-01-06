@@ -180,7 +180,7 @@ export default function EnhancedMenu() {
     const item = menuItems.find(i => i.id === itemId);
     if (!item || !item.categoryId) return;
     
-    // Get all items in the same category, sorted by displayOrder
+    // Get all items in the same category, sorted by displayOrder (use index as fallback)
     const categoryItems = menuItems
       .filter(i => i.categoryId === item.categoryId)
       .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
@@ -194,12 +194,13 @@ export default function EnhancedMenu() {
     const currentItem = categoryItems[currentIndex];
     const targetItem = categoryItems[targetIndex];
     
-    // Swap the two items using the existing swap endpoint
+    // Use array indices for the swap - this is reliable regardless of displayOrder values
+    // After swap: currentItem will have targetIndex order, targetItem will have currentIndex order
     swapItemsMutation.mutate({
       id1: currentItem.id,
       id2: targetItem.id,
-      order1: currentItem.displayOrder ?? currentIndex,
-      order2: targetItem.displayOrder ?? targetIndex
+      order1: currentIndex,
+      order2: targetIndex
     });
   };
 

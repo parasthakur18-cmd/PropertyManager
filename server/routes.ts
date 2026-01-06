@@ -4264,12 +4264,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id1, id2, order1, order2 } = req.body;
       
+      console.log("[MENU-SWAP] Request body:", { id1, id2, order1, order2 });
+      
+      // Validate inputs
+      const parsedId1 = parseInt(String(id1), 10);
+      const parsedId2 = parseInt(String(id2), 10);
+      const parsedOrder1 = parseInt(String(order1), 10);
+      const parsedOrder2 = parseInt(String(order2), 10);
+      
+      if (isNaN(parsedId1) || isNaN(parsedId2) || isNaN(parsedOrder1) || isNaN(parsedOrder2)) {
+        console.log("[MENU-SWAP] Invalid input - NaN detected:", { parsedId1, parsedId2, parsedOrder1, parsedOrder2 });
+        return res.status(400).json({ message: "Invalid input: all values must be valid numbers" });
+      }
+      
       // Simple swap - update both items
-      await storage.updateMenuItem(Number(id1), { displayOrder: Number(order2) });
-      await storage.updateMenuItem(Number(id2), { displayOrder: Number(order1) });
+      await storage.updateMenuItem(parsedId1, { displayOrder: parsedOrder2 });
+      await storage.updateMenuItem(parsedId2, { displayOrder: parsedOrder1 });
+      
+      console.log("[MENU-SWAP] Swap successful:", { id1: parsedId1, newOrder1: parsedOrder2, id2: parsedId2, newOrder2: parsedOrder1 });
       
       res.status(200).json({ success: true });
     } catch (error: any) {
+      console.error("[MENU-SWAP] Error:", error.message);
       res.status(500).json({ message: error.message });
     }
   });
