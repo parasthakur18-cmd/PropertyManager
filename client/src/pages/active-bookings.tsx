@@ -120,6 +120,14 @@ export default function ActiveBookings() {
   const [extendedStayHandled, setExtendedStayHandled] = useState(false);
   const [extendedStayChoice, setExtendedStayChoice] = useState<"calculated" | "custom" | "skip" | null>(null);
   const [customExtendedAmount, setCustomExtendedAmount] = useState<string>("");
+  const [mergedBookingDetails, setMergedBookingDetails] = useState<Array<{
+    bookingId: number;
+    guestName: string;
+    roomNumber: string;
+    roomCharges: number;
+    advancePaid: number;
+    nights: number;
+  }> | null>(null);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -1072,6 +1080,9 @@ export default function ActiveBookings() {
                     className="flex-1"
                     variant="default"
                     onClick={async () => {
+                      // Clear previous merged details
+                      setMergedBookingDetails(null);
+                      
                       // Fetch bill to check if it's a merged bill
                       try {
                         const billRes = await fetch(`/api/bills/booking/${booking.id}`);
@@ -1079,6 +1090,45 @@ export default function ActiveBookings() {
                           const bill = await billRes.json();
                           // If bill has mergedBookingIds, use merged charges
                           if (bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
+                            // Fetch details for all merged bookings
+                            const mergedDetails: Array<{
+                              bookingId: number;
+                              guestName: string;
+                              roomNumber: string;
+                              roomCharges: number;
+                              advancePaid: number;
+                              nights: number;
+                            }> = [];
+                            
+                            for (const mergedBookingId of bill.mergedBookingIds) {
+                              const bookingRes = await fetch(`/api/bookings/${mergedBookingId}`);
+                              if (bookingRes.ok) {
+                                const mergedBooking = await bookingRes.json();
+                                const checkIn = new Date(mergedBooking.checkInDate);
+                                const checkOut = new Date(mergedBooking.checkOutDate);
+                                const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+                                
+                                // Calculate room charges for this booking
+                                let roomCharges = 0;
+                                if (mergedBooking.customPrice) {
+                                  roomCharges = parseFloat(mergedBooking.customPrice) * nights;
+                                } else if (mergedBooking.room) {
+                                  roomCharges = parseFloat(mergedBooking.room.pricePerNight || 0) * nights;
+                                }
+                                
+                                mergedDetails.push({
+                                  bookingId: mergedBooking.id,
+                                  guestName: mergedBooking.guest?.fullName || "Guest",
+                                  roomNumber: mergedBooking.room?.roomNumber || "N/A",
+                                  roomCharges,
+                                  advancePaid: parseFloat(String(mergedBooking.advanceAmount || 0)),
+                                  nights
+                                });
+                              }
+                            }
+                            
+                            setMergedBookingDetails(mergedDetails);
+                            
                             // For merged bills, use the bill's totalAdvance which combines all booking advances
                             const mergedAdvance = parseFloat(String(bill.totalAdvance || bill.advancePaid || 0));
                             const mergedTotal = parseFloat(String(bill.totalAmount || 0));
@@ -1135,6 +1185,7 @@ export default function ActiveBookings() {
           setExtendedStayHandled(false);
           setExtendedStayChoice(null);
           setCustomExtendedAmount("");
+          setMergedBookingDetails(null);
         }
       }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-checkout">
@@ -1333,7 +1384,43 @@ export default function ActiveBookings() {
                 )}
 
                 <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
-                  <div className="font-semibold text-base mb-2">Bill Breakdown</div>
+                  <div className="font-semibold text-base mb-2">
+                    Bill Breakdown
+                    {mergedBookingDetails && mergedBookingDetails.length > 1 && (
+                      <span className="ml-2 text-xs font-normal text-blue-600 dark:text-blue-400">
+                        (Merged Bill - {mergedBookingDetails.length} rooms)
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Room-by-room breakdown for merged bills */}
+                  {mergedBookingDetails && mergedBookingDetails.length > 1 && (
+                    <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+                      <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">Room-wise Charges:</div>
+                      {mergedBookingDetails.map((detail) => (
+                        <div key={detail.bookingId} className="flex justify-between text-xs py-1 border-b border-blue-100 dark:border-blue-800 last:border-0">
+                          <span className="text-blue-600 dark:text-blue-400">
+                            Room {detail.roomNumber} ({detail.guestName}) - {detail.nights} night{detail.nights > 1 ? "s" : ""}
+                          </span>
+                          <span className="font-mono text-blue-700 dark:text-blue-300">₹{detail.roomCharges.toFixed(2)}</span>
+                        </div>
+                      ))}
+                      {mergedBookingDetails.some(d => d.advancePaid > 0) && (
+                        <>
+                          <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mt-2 mb-1">Advance Payments:</div>
+                          {mergedBookingDetails.filter(d => d.advancePaid > 0).map((detail) => (
+                            <div key={`adv-${detail.bookingId}`} className="flex justify-between text-xs py-1 border-b border-blue-100 dark:border-blue-800 last:border-0">
+                              <span className="text-green-600 dark:text-green-400">
+                                Room {detail.roomNumber} ({detail.guestName})
+                              </span>
+                              <span className="font-mono text-green-700 dark:text-green-300">₹{detail.advancePaid.toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
                       Room Charges ({bookedNights}{extraNights > 0 && extendedStayHandled && extendedStayChoice !== "skip" ? ` + ${extraNights} extended` : ""} nights):
