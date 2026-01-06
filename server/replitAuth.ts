@@ -137,17 +137,8 @@ async function upsertUser(
     
     await db.update(users).set(updateData).where(eq(users.id, claims["sub"]));
     
-    const updatedUser = await storage.getUser(claims["sub"]);
-    
-    // If admin user has no assigned properties, auto-assign all properties
-    // Only for actual admin role, not for staff/manager
-    if (updatedUser.role === 'admin' && (!updatedUser.assignedPropertyIds || updatedUser.assignedPropertyIds.length === 0)) {
-      const allProperties = await storage.getAllProperties();
-      const propertyIds = allProperties.map((p: any) => p.id);
-      if (propertyIds.length > 0) {
-        await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
-      }
-    }
+    // Note: Admin users only see properties they're explicitly assigned to
+    // Super Admin has unlimited access via tenantIsolation.ts
   } else {
     // New user via Google OAuth - requires Super Admin approval
     // Import db for direct insert with verificationStatus
@@ -175,14 +166,7 @@ async function upsertUser(
         .where(eq(users.email, claims["email"]))
         .returning();
       
-      // If admin user, ensure they have properties assigned
-      if (updated.role === 'admin' && (!updated.assignedPropertyIds || updated.assignedPropertyIds.length === 0)) {
-        const allProperties = await storage.getAllProperties();
-        const propertyIds = allProperties.map((p: any) => p.id);
-        if (propertyIds.length > 0) {
-          await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
-        }
-      }
+      // Note: Admin users only see properties they're explicitly assigned to
       return;
     }
     
@@ -206,14 +190,8 @@ async function upsertUser(
     
     console.log(`[GOOGLE-AUTH] New user created: ${claims["email"]} - Status: ${shouldAutoApprove ? 'auto-approved' : 'pending approval'}`);
     
-    // If new admin user, auto-assign all properties
-    if (shouldAutoApprove && newUser.role === 'admin') {
-      const allProperties = await storage.getAllProperties();
-      const propertyIds = allProperties.map((p: any) => p.id);
-      if (propertyIds.length > 0) {
-        await storage.updateUserRole(claims["sub"], 'admin', propertyIds);
-      }
-    }
+    // Note: Admin users only see properties they're explicitly assigned to
+    // Super Admin has unlimited access via tenantIsolation.ts
   }
 }
 
