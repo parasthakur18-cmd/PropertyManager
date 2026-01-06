@@ -1912,7 +1912,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!booking) {
         return res.status(404).json({ message: "Booking not found" });
       }
-      res.json(booking);
+      
+      // Fetch room and guest details for complete booking info
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+      const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
+      
+      res.json({
+        ...booking,
+        room,
+        guest
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
