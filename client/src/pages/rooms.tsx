@@ -182,12 +182,13 @@ export default function Rooms() {
     const roomsToCreate = [];
     
     // If roomNumber is not a number, we'll just use the raw string and quantity won't increment it
-    if (isNaN(baseRoomNumber)) {
+    if (!data.roomNumber || isNaN(baseRoomNumber)) {
       for (let i = 0; i < quantity; i++) {
+        const roomNum = data.roomNumber || "Room";
         roomsToCreate.push({
           ...data,
-          roomNumber: i === 0 ? data.roomNumber : `${data.roomNumber}-${i + 1}`,
-          pricePerNight: String(parseFloat(data.pricePerNight as any)),
+          roomNumber: i === 0 ? roomNum : `${roomNum}-${i + 1}`,
+          pricePerNight: String(parseFloat(data.pricePerNight as any) || 0),
         });
       }
     } else {
