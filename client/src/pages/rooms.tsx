@@ -341,9 +341,9 @@ export default function Rooms() {
                     name="roomType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Room Type</FormLabel>
+                        <FormLabel>Room Type <span className="text-muted-foreground text-xs">(custom name)</span></FormLabel>
                         <FormControl>
-                          <Input placeholder="Deluxe" {...field} value={field.value || ""} data-testid="input-room-type" />
+                          <Input placeholder="e.g. Sea View, Garden Suite" {...field} value={field.value || ""} data-testid="input-room-type" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -357,8 +357,19 @@ export default function Rooms() {
                         min="1" 
                         max="100"
                         placeholder="1"
-                        value={quantity}
-                        onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                        value={quantity === 0 ? "" : quantity}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "") {
+                            setQuantity(0);
+                          } else {
+                            const num = parseInt(val);
+                            setQuantity(isNaN(num) ? 1 : Math.max(1, Math.min(100, num)));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (quantity === 0 || quantity < 1) setQuantity(1);
+                        }}
                         data-testid="input-room-quantity"
                       />
                     </FormControl>
@@ -369,7 +380,7 @@ export default function Rooms() {
                   name="roomCategory"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Room Category</FormLabel>
+                      <FormLabel>Room Category <span className="text-muted-foreground text-xs">(system category)</span></FormLabel>
                       <Select
                         onValueChange={field.onChange}
                         value={field.value || "standard"}
@@ -383,7 +394,7 @@ export default function Rooms() {
                           <SelectItem value="standard">Standard</SelectItem>
                           <SelectItem value="deluxe">Deluxe</SelectItem>
                           <SelectItem value="suite">Suite</SelectItem>
-                          <SelectItem value="dormitory">Dormitory</SelectItem>
+                          <SelectItem value="dormitory">Dormitory (bed-level tracking)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -420,7 +431,13 @@ export default function Rooms() {
                       <FormItem>
                         <FormLabel>Price per Night (₹)</FormLabel>
                         <FormControl>
-                          <Input type="number" placeholder="5000" {...field} data-testid="input-room-price" />
+                          <Input 
+                            type="number" 
+                            placeholder="5000" 
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value)}
+                            data-testid="input-room-price" 
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
