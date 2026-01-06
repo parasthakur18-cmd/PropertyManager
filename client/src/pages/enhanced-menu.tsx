@@ -226,12 +226,19 @@ export default function EnhancedMenu() {
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
       if (values.length < 3) {
-        errors.push(`Row ${i + 1}: Missing required fields`);
+        errors.push(`Row ${i + 1}: Only found ${values.length} columns. Need at least 3 (name, category, price). Check if using comma separator.`);
         continue;
       }
       const [name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
-      if (!name || !categoryName || !price) {
-        errors.push(`Row ${i + 1}: Name, category, and price are required`);
+      
+      // Build specific missing fields message
+      const missingFields: string[] = [];
+      if (!name || name.trim() === '') missingFields.push('name');
+      if (!categoryName || categoryName.trim() === '') missingFields.push('category');
+      if (!price || price.trim() === '') missingFields.push('price');
+      
+      if (missingFields.length > 0) {
+        errors.push(`Row ${i + 1}: Missing ${missingFields.join(', ')}. Found: name="${name || ''}", category="${categoryName || ''}", price="${price || ''}"`);
         continue;
       }
       const parsedPrice = parseFloat(price);
