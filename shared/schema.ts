@@ -1252,3 +1252,61 @@ export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
 
 export type UserSession = typeof userSessions.$inferSelect;
 export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+
+// ===== TASK MANAGER =====
+
+// Tasks table - property-level task management
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  assignedUserId: varchar("assigned_user_id").references(() => users.id, { onDelete: 'set null' }),
+  assignedUserName: varchar("assigned_user_name", { length: 255 }),
+  priority: varchar("priority", { length: 20 }).notNull().default('medium'), // low, medium, high
+  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, in_progress, completed, overdue
+  dueDate: date("due_date").notNull(),
+  dueTime: varchar("due_time", { length: 10 }), // HH:mm format
+  reminderEnabled: boolean("reminder_enabled").notNull().default(true),
+  reminderType: varchar("reminder_type", { length: 20 }).default('daily'), // one_time, daily
+  reminderTime: varchar("reminder_time", { length: 10 }).default('10:00'), // HH:mm format
+  reminderRecipients: text("reminder_recipients").array(), // Array of phone numbers
+  lastReminderSent: timestamp("last_reminder_sent"),
+  completedAt: timestamp("completed_at"),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastReminderSent: true,
+  completedAt: true,
+});
+
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+
+// Task priority and status types
+export type TaskPriority = 'low' | 'medium' | 'high';
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'overdue';
+
+// Task reminder logs - tracks sent reminders
+export const taskReminderLogs = pgTable("task_reminder_logs", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+  recipientPhone: varchar("recipient_phone", { length: 20 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(), // sent, failed, pending
+  sentAt: timestamp("sent_at").defaultNow(),
+  errorMessage: text("error_message"),
+});
+
+export const insertTaskReminderLogSchema = createInsertSchema(taskReminderLogs).omit({
+  id: true,
+  sentAt: true,
+});
+
+export type TaskReminderLog = typeof taskReminderLogs.$inferSelect;
+export type InsertTaskReminderLog = z.infer<typeof insertTaskReminderLogSchema>;
