@@ -4576,7 +4576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             foodType: item.isVeg ? 'veg' : 'non-veg',
             hasVariants: parsedVariants.length > 0,
             hasAddOns: parsedAddOns.length > 0,
-            displayOrder: item.displayOrder || 0,
+            displayOrder: item.sequence || item.displayOrder || 0,
           };
 
           const createdItem = await storage.createMenuItem(menuItemData);

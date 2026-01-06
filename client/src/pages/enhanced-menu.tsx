@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown, FileSpreadsheet, Download, CheckCircle2, AlertCircle, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -151,59 +151,6 @@ export default function EnhancedMenu() {
     },
   });
 
-  // Swap two items mutation
-  const swapItemsMutation = useMutation({
-    mutationFn: async (payload: { id1: number; id2: number; order1: number; order2: number }) => {
-      return await apiRequest("/api/menu-items/swap", "PATCH", payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
-      toast({
-        title: "Success",
-        description: "Menu items reordered successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: `Failed to reorder items: ${error.message}`,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Move item up or down within category
-  const moveItem = (itemId: number, direction: 'up' | 'down') => {
-    if (!menuItems) return;
-    
-    // Find the item
-    const item = menuItems.find(i => i.id === itemId);
-    if (!item || !item.categoryId) return;
-    
-    // Get all items in the same category, sorted by displayOrder (use index as fallback)
-    const categoryItems = menuItems
-      .filter(i => i.categoryId === item.categoryId)
-      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
-    
-    const currentIndex = categoryItems.findIndex(i => i.id === itemId);
-    if (currentIndex === -1) return;
-    
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= categoryItems.length) return;
-    
-    const currentItem = categoryItems[currentIndex];
-    const targetItem = categoryItems[targetIndex];
-    
-    // Use array indices for the swap - this is reliable regardless of displayOrder values
-    // After swap: currentItem will have targetIndex order, targetItem will have currentIndex order
-    swapItemsMutation.mutate({
-      id1: currentItem.id,
-      id2: targetItem.id,
-      order1: currentIndex,
-      order2: targetIndex
-    });
-  };
-
   // Bulk import functions
   function parseCSVLine(line: string): string[] {
     const result: string[] = [];
@@ -231,20 +178,26 @@ export default function EnhancedMenu() {
     const errors: string[] = [];
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
-      if (values.length < 3) {
-        errors.push(`Row ${i + 1}: Only found ${values.length} columns. Need at least 3 (name, category, price). Check if using comma separator.`);
+      if (values.length < 4) {
+        errors.push(`Row ${i + 1}: Only found ${values.length} columns. Need at least 4 (sequence, name, category, price). Check if using comma separator.`);
         continue;
       }
-      const [name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
+      const [sequence, name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
       
       // Build specific missing fields message
       const missingFields: string[] = [];
+      if (!sequence || sequence.trim() === '') missingFields.push('sequence');
       if (!name || name.trim() === '') missingFields.push('name');
       if (!categoryName || categoryName.trim() === '') missingFields.push('category');
       if (!price || price.trim() === '') missingFields.push('price');
       
       if (missingFields.length > 0) {
-        errors.push(`Row ${i + 1}: Missing ${missingFields.join(', ')}. Found: name="${name || ''}", category="${categoryName || ''}", price="${price || ''}"`);
+        errors.push(`Row ${i + 1}: Missing ${missingFields.join(', ')}. Found: sequence="${sequence || ''}", name="${name || ''}", category="${categoryName || ''}", price="${price || ''}"`);
+        continue;
+      }
+      const parsedSequence = parseInt(sequence, 10);
+      if (isNaN(parsedSequence)) {
+        errors.push(`Row ${i + 1}: Invalid sequence "${sequence}" - must be a number`);
         continue;
       }
       const parsedPrice = parseFloat(price);
@@ -259,6 +212,7 @@ export default function EnhancedMenu() {
       
       // Note: Backend will auto-create missing categories, so we just pass the category name
       items.push({
+        sequence: parsedSequence,
         name, 
         category: categoryName,
         categoryId: matchedCategory?.id || null, // Backend will create category if null
@@ -274,46 +228,64 @@ export default function EnhancedMenu() {
   }
 
   function generateCSVTemplate() {
-    const headers = ['name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+    const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
     
     // If we have existing menu items, export them as template examples
     if (menuItems && menuItems.length > 0 && categories && categories.length > 0) {
+      // Group items by category and sort within each category
+      const itemsByCategory: Record<number, typeof menuItems> = {};
+      menuItems.forEach(item => {
+        const catId = item.categoryId || 0;
+        if (!itemsByCategory[catId]) itemsByCategory[catId] = [];
+        itemsByCategory[catId].push(item);
+      });
+      
+      // Sort items within each category by displayOrder
+      Object.values(itemsByCategory).forEach(items => {
+        items.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+      });
+      
       const rows = menuItems.map(item => {
         const category = categories.find(c => c.id === item.categoryId);
         return [
+          (item.displayOrder ?? 0).toString(),
           item.name || '',
           category?.name || 'Uncategorized',
           item.price?.toString() || '0',
           item.description || '',
-          item.isVeg ? 'true' : 'false',
+          item.foodType === 'veg' ? 'true' : 'false',
           item.isAvailable !== false ? 'true' : 'false',
           '', // Variants would need separate fetch
           ''  // Add-ons would need separate fetch
         ];
       });
       
-      // Sort by category for easy understanding
-      rows.sort((a, b) => a[1].localeCompare(b[1]));
+      // Sort by category then by sequence for easy understanding
+      rows.sort((a, b) => {
+        const catCompare = a[2].localeCompare(b[2]);
+        if (catCompare !== 0) return catCompare;
+        return parseInt(a[0]) - parseInt(b[0]);
+      });
       
       return [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     }
     
-    // Fallback: Sample rows with one item from each common category
+    // Fallback: Sample rows with sequence numbers
     const sampleRows = [
-      ['Masala Omelette', 'Breakfast', '80', 'Spiced egg omelette with onions', 'false', 'true', '', ''],
-      ['Aloo Paratha', 'Breakfast', '60', 'Stuffed potato flatbread', 'true', 'true', '', 'Extra Butter:20'],
-      ['Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese cubes', 'true', 'true', 'Half:150,Full:280', 'Extra Sauce:30'],
-      ['Chicken Lollipop', 'Starters', '320', 'Crispy fried chicken wings', 'false', 'true', '', ''],
-      ['Butter Chicken', 'Main Course', '350', 'Creamy tomato chicken curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
-      ['Dal Makhani', 'Main Course', '220', 'Slow cooked black lentils', 'true', 'true', '', ''],
-      ['Veg Biryani', 'Rice & Biryani', '250', 'Fragrant rice with vegetables', 'true', 'true', '', 'Extra Raita:40'],
-      ['Chicken Biryani', 'Rice & Biryani', '320', 'Aromatic rice with chicken', 'false', 'true', 'Half:180,Full:320', 'Extra Raita:40'],
-      ['Butter Naan', 'Breads', '50', 'Soft buttered flatbread', 'true', 'true', '', ''],
-      ['Tandoori Roti', 'Breads', '30', 'Whole wheat bread from tandoor', 'true', 'true', '', ''],
-      ['Fresh Lime Soda', 'Beverages', '60', 'Sweet or salted lime drink', 'true', 'true', 'Sweet:60,Salted:60', ''],
-      ['Masala Chai', 'Beverages', '30', 'Indian spiced tea', 'true', 'true', '', ''],
-      ['Gulab Jamun', 'Desserts', '80', 'Sweet milk dumplings in syrup', 'true', 'true', '2pcs:80,4pcs:150', ''],
-      ['Ice Cream', 'Desserts', '100', 'Vanilla or chocolate', 'true', 'true', 'Single:60,Double:100', '']
+      ['1', 'Masala Omelette', 'Breakfast', '80', 'Spiced egg omelette with onions', 'false', 'true', '', ''],
+      ['2', 'Aloo Paratha', 'Breakfast', '60', 'Stuffed potato flatbread', 'true', 'true', '', 'Extra Butter:20'],
+      ['1', 'Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese cubes', 'true', 'true', 'Half:150,Full:280', 'Extra Sauce:30'],
+      ['2', 'Chicken Lollipop', 'Starters', '320', 'Crispy fried chicken wings', 'false', 'true', '', ''],
+      ['1', 'Butter Chicken', 'Main Course', '350', 'Creamy tomato chicken curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
+      ['2', 'Dal Makhani', 'Main Course', '220', 'Slow cooked black lentils', 'true', 'true', '', ''],
+      ['1', 'Veg Biryani', 'Rice & Biryani', '250', 'Fragrant rice with vegetables', 'true', 'true', '', 'Extra Raita:40'],
+      ['2', 'Chicken Biryani', 'Rice & Biryani', '320', 'Aromatic rice with chicken', 'false', 'true', 'Half:180,Full:320', 'Extra Raita:40'],
+      ['1', 'Butter Naan', 'Breads', '50', 'Soft buttered flatbread', 'true', 'true', '', ''],
+      ['2', 'Tandoori Roti', 'Breads', '30', 'Whole wheat bread from tandoor', 'true', 'true', '', ''],
+      ['1', 'Fresh Lime Soda', 'Beverages', '60', 'Sweet or salted lime drink', 'true', 'true', 'Sweet:60,Salted:60', ''],
+      ['2', 'Masala Chai', 'Beverages', '30', 'Indian spiced tea', 'true', 'true', '', ''],
+      ['1', 'Gulab Jamun', 'Desserts', '80', 'Sweet milk dumplings in syrup', 'true', 'true', '2pcs:80,4pcs:150', ''],
+      ['2', 'Ice Cream', 'Desserts', '100', 'Vanilla or chocolate', 'true', 'true', 'Single:60,Double:100', '']
     ];
     return [headers.join(','), ...sampleRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
   }
@@ -568,7 +540,6 @@ export default function EnhancedMenu() {
                 }}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
-                onMoveItem={moveItem}
               />
             ))}
 
@@ -820,7 +791,6 @@ function CategorySection({
   onEditItem,
   expandedItems,
   toggleItemExpanded,
-  onMoveItem,
 }: {
   category: MenuCategory;
   items: MenuItem[];
@@ -829,7 +799,6 @@ function CategorySection({
   onEditItem: (item: MenuItem) => void;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
-  onMoveItem: (itemId: number, direction: 'up' | 'down') => void;
 }) {
   const { toast } = useToast();
 
@@ -907,17 +876,15 @@ function CategorySection({
           Add Item to {category.name}
         </Button>
 
-        {/* Items List with Up/Down Arrows */}
+        {/* Items List */}
         <div className="space-y-2">
-          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item, index, sortedItems) => (
+          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item) => (
             <ItemCard
               key={item.id}
               item={item}
               onEdit={() => onEditItem(item)}
               isExpanded={expandedItems.has(item.id)}
               onToggleExpand={() => toggleItemExpanded(item.id)}
-              onMoveUp={index > 0 ? () => onMoveItem(item.id, 'up') : undefined}
-              onMoveDown={index < sortedItems.length - 1 ? () => onMoveItem(item.id, 'down') : undefined}
             />
           ))}
         </div>
@@ -933,15 +900,11 @@ function ItemCard({
   onEdit,
   isExpanded,
   onToggleExpand,
-  onMoveUp,
-  onMoveDown,
 }: {
   item: MenuItem;
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
 }) {
   const { toast } = useToast();
 
@@ -998,29 +961,6 @@ function ItemCard({
       <Card>
         <CardContent className="p-3">
           <div className="flex items-start justify-between gap-2">
-            {/* Move Up/Down Buttons */}
-            <div className="flex flex-col gap-0.5">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={onMoveUp}
-                disabled={!onMoveUp}
-                data-testid={`button-move-up-${item.id}`}
-              >
-                <ArrowUp className="h-3 w-3" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={onMoveDown}
-                disabled={!onMoveDown}
-                data-testid={`button-move-down-${item.id}`}
-              >
-                <ArrowDown className="h-3 w-3" />
-              </Button>
-            </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-xs">
