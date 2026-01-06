@@ -835,9 +835,15 @@ function CategorySection({
     const { active, over } = event;
     if (!over || active.id === over.id) return;
 
-    const sortedItems = [...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-    const oldIndex = sortedItems.findIndex(item => item.id === active.id);
-    const newIndex = sortedItems.findIndex(item => item.id === over.id);
+    const sortedItems = [...items].sort((a, b) => {
+      const orderA = a.displayOrder ?? 0;
+      const orderB = b.displayOrder ?? 0;
+      return orderA - orderB;
+    });
+    const oldIndex = sortedItems.findIndex(item => item.id === Number(active.id));
+    const newIndex = sortedItems.findIndex(item => item.id === Number(over.id));
+
+    if (oldIndex === -1 || newIndex === -1) return;
 
     const reordered = arrayMove(sortedItems, oldIndex, newIndex);
     const updates = reordered.map((item, idx) => ({
@@ -929,11 +935,11 @@ function CategorySection({
           onDragEnd={handleItemDragEnd}
         >
           <SortableContext
-            items={[...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map(item => item.id)}
+            items={[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map(item => item.id)}
             strategy={verticalListSortingStrategy}
           >
             <div className="space-y-2">
-              {[...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((item) => (
+              {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item) => (
                 <SortableItemCard
                   key={item.id}
                   item={item}
