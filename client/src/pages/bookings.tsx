@@ -785,7 +785,7 @@ export default function Bookings() {
         mealPlan: data.mealPlan || "EP",
         specialRequests: data.specialRequests || "",
         isGroupBooking: bookingType === "group",
-        bedsBooked: bookingType === "group" ? selectedRoomIds.length : null,
+        bedsBooked: bookingType === "group" ? selectedRoomIds.length : (bookingType === "dormitory" && data.bedsBooked ? parseInt(String(data.bedsBooked)) : null),
         travelAgentId: data.travelAgentId || null,
       };
       
@@ -925,7 +925,7 @@ export default function Bookings() {
       mealPlan: data.mealPlan,
       specialRequests: data.specialRequests,
       isGroupBooking: bookingType === "group",
-      bedsBooked: bookingType === "group" ? selectedRoomIds.length : null,
+      bedsBooked: editBookingType === "group" ? editSelectedRoomIds.length : (editBookingType === "dormitory" && data.bedsBooked ? parseInt(String(data.bedsBooked)) : null),
       travelAgentId: data.travelAgentId || null,
     };
     
