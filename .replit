@@ -43,3 +43,8 @@ integrations = ["javascript_log_in_with_replit:1.0.0", "javascript_database:1.0.
 
 [objectStorage]
 defaultBucketID = "replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff"
+
+[userenv]
+
+[userenv.shared]
+AUTHKEY_WA_TASK_REMINDER = "23109"
