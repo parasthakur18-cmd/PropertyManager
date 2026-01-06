@@ -1,0 +1,191 @@
+Build a Task Manager module inside the PMS that supports task creation, assignment, tracking, reminders, WhatsApp notifications, custom mobile numbers, and in-app notifications. This system must work across multiple properties and roles (Admin / Owner / Staff).
+
+1. Task Creation & Assignment
+
+Allow Admin/Owner to create tasks for any property.
+
+Each task must have the following fields:
+
+Task Title
+
+Task Description
+
+Property (linked to PMS properties)
+
+Assigned Staff/User
+
+Due Date
+
+Due Time
+
+Task Priority (Low / Medium / High)
+
+Task Status (default: Pending)
+
+2. WhatsApp Reminder Recipient Setup (IMPORTANT)
+
+While creating or editing a task, provide a section called “WhatsApp Reminder Recipients” with the ability to:
+
+Add one or multiple mobile numbers
+
+Default selectable options:
+
+Assigned staff mobile number (auto-filled if available)
+
+Admin / Owner mobile number
+
+Allow manual entry of any WhatsApp-enabled mobile number
+
+Validate numbers with country code
+
+👉 This ensures reminders are not limited to admin only and can be sent to anyone responsible.
+
+3. Task Status Management
+
+Each task must support the following statuses:
+
+Pending
+
+In Progress
+
+Completed
+
+Rules:
+
+Assigned users can update task status.
+
+When a task is marked Completed:
+
+All WhatsApp reminders must stop automatically
+
+All in-app notifications must stop
+
+Save task completion date & time
+
+Move task to “Completed Tasks” list
+
+4. Automatic Daily WhatsApp Reminders
+
+If a task remains Pending or In Progress:
+
+Send a daily WhatsApp reminder
+
+Recipients:
+
+Assigned staff
+
+Admin / Owner
+
+All added custom mobile numbers
+
+Each reminder message must include:
+
+Task name
+
+Property name
+
+Due date & time
+
+Current task status
+
+If the due date/time has passed:
+
+Mark task as Overdue
+
+Show “Overdue” label in dashboard and notifications
+
+5. Custom Reminder Scheduling
+
+While creating or editing a task, allow:
+
+Enable / Disable reminders
+
+Set custom reminder date & time
+
+Reminder type:
+
+One-time reminder
+
+Daily reminder (repeat until task is completed)
+
+6. Admin / Owner Daily Alert (10:00 AM Rule)
+
+System must run a daily check at 10:00 AM:
+
+If any task is still Pending or In Progress:
+
+Send a WhatsApp alert to:
+
+Admin / Owner
+
+Any additional selected mobile numbers
+
+Message must clearly state:
+
+Task name
+
+Assigned person
+
+Due date & time
+
+Status (Pending / Overdue)
+
+7. In-App Notifications
+
+Every WhatsApp reminder must also generate:
+
+PMS notification bell alert
+
+Real-time dashboard notification
+
+Clicking the notification should:
+
+Open a task details popup
+
+NOT redirect to a new page
+
+8. Task Dashboard View
+
+Create a Task Dashboard with separate views:
+
+All Tasks
+
+Pending Tasks
+
+Overdue Tasks
+
+Completed Tasks
+
+Filters required:
+
+Property
+
+Assigned user
+
+Due date
+
+Task status
+
+Priority
+
+9. System Behavior (Backend Logic)
+
+Implement a Reminder Engine (Cron Job) that:
+
+Runs automatically at defined intervals
+
+Checks task status and reminder settings
+
+Sends WhatsApp messages and in-app notifications
+
+Stops reminders immediately when task is completed
+
+Store reminder logs with:
+
+Task ID
+
+Mobile number
+
+Date & time sent
+
+Delivery status
