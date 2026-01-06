@@ -489,6 +489,40 @@ export async function sendPaymentReminder(
 }
 
 /**
+ * Send task reminder WhatsApp message
+ * Template ID: configurable via AUTHKEY_WA_TASK_REMINDER
+ * 
+ * Default Template Format:
+ * "Hello {{1}}, Task: {{2}}, Property: {{3}}, Due: {{4}}, Status: {{5}}"
+ * 
+ * Template variables (in order):
+ * 1. Assigned User Name
+ * 2. Task Title
+ * 3. Property Name
+ * 4. Due Date/Time
+ * 5. Status
+ */
+export async function sendTaskReminder(
+  phoneNumber: string,
+  userName: string,
+  taskTitle: string,
+  propertyName: string,
+  dueDate: string,
+  status: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_TASK_REMINDER || "18489";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [userName, taskTitle, propertyName, dueDate, status],
+  });
+}
+
+/**
  * Send custom WhatsApp message with custom template and variables
  * 
  * @param phoneNumber - Indian phone number (will be cleaned and formatted)

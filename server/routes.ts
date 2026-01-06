@@ -54,7 +54,8 @@ import {
   sendAdvancePaymentRequest,
   sendAdvancePaymentConfirmation,
   sendPaymentReminder,
-  sendSelfCheckinLink
+  sendSelfCheckinLink,
+  sendTaskReminder
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -10996,8 +10997,8 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
           type: 'task_assigned',
           title: 'New Task Assigned',
           message: `You have been assigned a new task: ${title}`,
-          propertyId,
-          metadata: { taskId: newTask.id },
+          relatedId: newTask.id,
+          relatedType: 'task',
         });
       }
       
@@ -12326,6 +12327,114 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   }, PAYMENT_CHECK_INTERVAL);
   
   console.log(`[PAYMENT-JOB] Background job started - checking every ${PAYMENT_CHECK_INTERVAL / 60000} minutes`);
+
+  // =====================================
+  // Daily Task Reminder Job (10 AM)
+  // =====================================
+  async function processTaskReminders() {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      
+      // Only run between 10:00 - 10:15 AM (15 minute check interval)
+      if (currentHour !== 10 || currentMinute >= 15) {
+        return;
+      }
+      
+      console.log(`[TASK-REMINDER] Running daily task reminder job at ${format(now, "HH:mm")}`);
+      
+      // Get all pending/in_progress tasks with reminders enabled
+      const pendingTasks = await db.select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.reminderEnabled, true),
+            inArray(tasks.status, ['pending', 'in_progress'])
+          )
+        );
+      
+      if (pendingTasks.length === 0) {
+        console.log("[TASK-REMINDER] No pending tasks with reminders enabled");
+        return;
+      }
+      
+      let remindersSent = 0;
+      
+      for (const task of pendingTasks) {
+        // Check reminder type - skip one_time if already reminded today
+        if (task.reminderType === 'one_time' && task.lastReminderSent) {
+          const lastReminder = new Date(task.lastReminderSent);
+          if (format(lastReminder, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')) {
+            continue; // Already sent today
+          }
+        }
+        
+        // Get property name
+        const [property] = await db.select().from(properties).where(eq(properties.id, task.propertyId)).limit(1);
+        const propertyName = property?.name || 'Unknown Property';
+        
+        // Get recipients - either custom list or assigned user
+        let recipients: string[] = [];
+        if (task.reminderRecipients && Array.isArray(task.reminderRecipients) && task.reminderRecipients.length > 0) {
+          recipients = task.reminderRecipients as string[];
+        } else if (task.assignedUserId) {
+          // Get assigned user's phone
+          const [assignedUser] = await db.select().from(users).where(eq(users.id, task.assignedUserId)).limit(1);
+          if (assignedUser?.phone) {
+            recipients = [assignedUser.phone];
+          }
+        }
+        
+        if (recipients.length === 0) {
+          console.log(`[TASK-REMINDER] No recipients for task #${task.id}`);
+          continue;
+        }
+        
+        // Format due date
+        const dueDate = task.dueDate ? format(new Date(task.dueDate), "dd MMM yyyy") : "Not set";
+        const dueTime = task.dueTime || "";
+        const dueDateFull = dueTime ? `${dueDate} ${dueTime}` : dueDate;
+        
+        // Send WhatsApp reminders to all recipients
+        for (const phone of recipients) {
+          try {
+            await sendTaskReminder(
+              phone,
+              task.assignedUserName || "Team",
+              task.title,
+              propertyName,
+              dueDateFull,
+              task.status || "pending"
+            );
+            remindersSent++;
+          } catch (err: any) {
+            console.error(`[TASK-REMINDER] Failed to send to ${phone}:`, err.message);
+          }
+        }
+        
+        // Update last reminder sent time
+        await db.update(tasks)
+          .set({ lastReminderSent: now })
+          .where(eq(tasks.id, task.id));
+      }
+      
+      console.log(`[TASK-REMINDER] Sent ${remindersSent} task reminders`);
+    } catch (error: any) {
+      console.error("[TASK-REMINDER] Error:", error.message);
+    }
+  }
+  
+  // Check every 15 minutes for task reminders
+  setTimeout(() => {
+    processTaskReminders();
+  }, 10000);
+  
+  setInterval(() => {
+    processTaskReminders();
+  }, 15 * 60 * 1000); // Every 15 minutes
+  
+  console.log("[TASK-REMINDER] Daily task reminder job started - checks every 15 minutes, sends at 10 AM");
 
   const httpServer = createServer(app);
   return httpServer;
