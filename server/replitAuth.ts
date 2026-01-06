@@ -85,10 +85,12 @@ export function getSession() {
     resave: false, // Don't save session if not modified (recommended for connect-pg-simple)
     saveUninitialized: false, // Don't create session until something is stored
     rolling: true, // Reset session expiration on each request (keeps active users logged in)
+    name: 'hostezee.sid', // Custom cookie name to avoid conflicts
+    proxy: true, // Trust the reverse proxy (required for Replit deployments)
     cookie: {
       httpOnly: true,
       secure: isProduction, // Use secure cookies in production (Replit uses HTTPS)
-      sameSite: 'lax',
+      sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-site in production with HTTPS
       path: '/',
       maxAge: sessionTtl,
     },
@@ -402,6 +404,7 @@ export async function setupAuth(app: Express) {
           if (sessionErr) console.error("Session destroy error:", sessionErr);
           
           // Clear session cookies
+          res.clearCookie("hostezee.sid", { path: "/" });
           res.clearCookie("connect.sid", { path: "/" });
           res.clearCookie("session", { path: "/" });
           
@@ -409,6 +412,7 @@ export async function setupAuth(app: Express) {
           res.redirect("/");
         });
       } else {
+        res.clearCookie("hostezee.sid", { path: "/" });
         res.clearCookie("connect.sid", { path: "/" });
         res.redirect("/");
       }
