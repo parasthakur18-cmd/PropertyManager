@@ -37,6 +37,7 @@ import {
   Globe,
   Bell,
   Store,
+  ListTodo,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -62,6 +63,7 @@ import { ChevronDown } from "lucide-react";
 const adminMainItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Properties", url: "/properties", icon: Building2 },
+  { title: "Tasks", url: "/tasks", icon: ListTodo },
   { title: "Notifications", url: "/notifications", icon: Bell },
 ];
 

@@ -74,6 +74,7 @@ import ReportIssue from "@/pages/report-issue";
 import OtaIntegrations from "@/pages/ota-integrations";
 import Notifications from "@/pages/notifications";
 import AuditLogs from "@/pages/audit-logs";
+import Tasks from "@/pages/tasks";
 import Architecture from "@/pages/architecture";
 import AdvancedFeatures from "@/pages/advanced-features";
 import FeatureSettings from "@/pages/feature-settings";
@@ -157,6 +158,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/ota-integrations" component={OtaIntegrations} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/audit-logs" component={AuditLogs} />
+          <Route path="/tasks" component={Tasks} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/settings" component={Settings} />
           <Route path="/feature-settings" component={FeatureSettings} />

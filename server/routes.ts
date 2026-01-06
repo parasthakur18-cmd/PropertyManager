@@ -56,7 +56,7 @@ import {
   sendPaymentReminder,
   sendSelfCheckinLink
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -10908,6 +10908,172 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     } catch (error: any) {
       console.error("[PENDING-ITEMS] Error:", error);
       res.status(500).json({ message: "Failed to fetch pending items" });
+    }
+  });
+
+  // ===== TASK MANAGER ROUTES =====
+  
+  // Get all tasks (filtered by property access)
+  app.get("/api/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const propertyIds = user.role === 'super-admin' 
+        ? (await storage.getAllProperties()).map((p: any) => p.id)
+        : (user.assignedPropertyIds || []);
+      
+      if (propertyIds.length === 0) {
+        return res.json([]);
+      }
+      
+      const allTasks = await db
+        .select()
+        .from(tasks)
+        .where(inArray(tasks.propertyId, propertyIds))
+        .orderBy(desc(tasks.createdAt));
+      
+      res.json(allTasks);
+    } catch (error: any) {
+      console.error("[TASKS] Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+  
+  // Get single task
+  app.get("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      
+      if (!task.length) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch task" });
+    }
+  });
+  
+  // Create task
+  app.post("/api/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user || (user.role !== 'admin' && user.role !== 'super-admin')) {
+        return res.status(403).json({ message: "Only admins can create tasks" });
+      }
+      
+      const { propertyId, title, description, assignedUserId, assignedUserName, priority, dueDate, dueTime, reminderEnabled, reminderType, reminderTime, reminderRecipients } = req.body;
+      
+      const [newTask] = await db.insert(tasks).values({
+        propertyId,
+        title,
+        description,
+        assignedUserId,
+        assignedUserName,
+        priority: priority || 'medium',
+        status: 'pending',
+        dueDate,
+        dueTime,
+        reminderEnabled: reminderEnabled !== false,
+        reminderType: reminderType || 'daily',
+        reminderTime: reminderTime || '10:00',
+        reminderRecipients: reminderRecipients || [],
+        createdBy: userId,
+      }).returning();
+      
+      // Create in-app notification for assigned user
+      if (assignedUserId) {
+        await db.insert(notifications).values({
+          userId: assignedUserId,
+          type: 'task_assigned',
+          title: 'New Task Assigned',
+          message: `You have been assigned a new task: ${title}`,
+          propertyId,
+          metadata: { taskId: newTask.id },
+        });
+      }
+      
+      console.log(`[TASKS] Task created: ${title} for property ${propertyId}`);
+      res.status(201).json(newTask);
+    } catch (error: any) {
+      console.error("[TASKS] Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+  
+  // Update task
+  app.patch("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const updates = req.body;
+      
+      // If status changed to completed, set completedAt
+      if (updates.status === 'completed') {
+        updates.completedAt = new Date();
+      }
+      
+      updates.updatedAt = new Date();
+      
+      const [updatedTask] = await db.update(tasks)
+        .set(updates)
+        .where(eq(tasks.id, taskId))
+        .returning();
+      
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      console.log(`[TASKS] Task ${taskId} updated: status=${updates.status || 'unchanged'}`);
+      res.json(updatedTask);
+    } catch (error: any) {
+      console.error("[TASKS] Error updating task:", error);
+      res.status(500).json({ message: "Failed to update task" });
+    }
+  });
+  
+  // Update task status
+  app.patch("/api/tasks/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const { status } = req.body;
+      
+      const updates: any = { status, updatedAt: new Date() };
+      if (status === 'completed') {
+        updates.completedAt = new Date();
+      }
+      
+      const [updatedTask] = await db.update(tasks)
+        .set(updates)
+        .where(eq(tasks.id, taskId))
+        .returning();
+      
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      console.log(`[TASKS] Task ${taskId} status changed to: ${status}`);
+      res.json(updatedTask);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update task status" });
+    }
+  });
+  
+  // Delete task
+  app.delete("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      await db.delete(tasks).where(eq(tasks.id, taskId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete task" });
     }
   });
 
