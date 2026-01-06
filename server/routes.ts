@@ -10299,7 +10299,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ===== SUPER ADMIN EMAIL/PASSWORD LOGIN =====
+  // ===== DEDICATED SUPER ADMIN LOGIN (separate from regular admin login) =====
+  app.post("/api/auth/super-admin-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+
+      // Find user by email
+      const user = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+      
+      if (user.length === 0 || !user[0].password) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // CRITICAL: Only allow super-admin role to login via this endpoint
+      if (user[0].role !== 'super-admin') {
+        console.log(`[SUPER-ADMIN-LOGIN] Rejected non-super-admin: ${email} (role: ${user[0].role})`);
+        return res.status(403).json({ message: "Access denied. This login is for system administrators only." });
+      }
+
+      // Compare password
+      const isValidPassword = await bcryptjs.compare(password, user[0].password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Regenerate session ID to create a fresh session
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("[SUPER-ADMIN-LOGIN] Regenerate error:", regenerateErr);
+          return res.status(500).json({ message: "Login failed" });
+        }
+
+        // Set email-auth data on new session
+        (req.session as any).userId = user[0].id;
+        (req.session as any).isEmailAuth = true;
+        (req.session as any).isSuperAdmin = true;
+        
+        // Save session
+        req.session.save(async (saveErr) => {
+          if (saveErr) {
+            console.error("[SUPER-ADMIN-LOGIN] Save error:", saveErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          
+          // Log activity
+          try {
+            await storage.createActivityLog({
+              userId: user[0].id,
+              userEmail: user[0].email,
+              userName: `${user[0].firstName || ''} ${user[0].lastName || ''}`.trim() || user[0].email,
+              action: 'super_admin_login',
+              category: 'auth',
+              details: { method: 'email', role: 'super-admin' },
+              ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+              userAgent: (req.get('User-Agent') || '').substring(0, 500),
+            });
+          } catch (logErr) {
+            console.error('[ACTIVITY] Error logging super admin login:', logErr);
+          }
+          
+          console.log(`[SUPER-ADMIN-LOGIN] ✓ SUCCESS - Super Admin ${user[0].email} logged in`);
+          res.json({ 
+            message: "Login successful", 
+            user: { 
+              id: user[0].id, 
+              email: user[0].email, 
+              role: user[0].role,
+              firstName: user[0].firstName,
+              lastName: user[0].lastName,
+            },
+            redirectTo: '/super-admin'
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("[SUPER-ADMIN-LOGIN] Error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // ===== REGULAR ADMIN/STAFF EMAIL/PASSWORD LOGIN =====
   app.post("/api/auth/email-login", async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -10313,6 +10396,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (user.length === 0 || !user[0].password) {
         return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // CRITICAL: Block super-admin accounts from using regular login
+      // They must use the dedicated super-admin login at /super-admin-login
+      if (user[0].role === 'super-admin') {
+        console.log(`[EMAIL-LOGIN] Blocked super-admin attempting regular login: ${email}`);
+        return res.status(403).json({ 
+          message: "System administrators must use the dedicated admin portal login.",
+          redirectTo: '/super-admin-login'
+        });
       }
 
       // Compare password
@@ -10329,7 +10422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      if (user[0].verificationStatus === "pending" && user[0].role !== "super-admin") {
+      if (user[0].verificationStatus === "pending") {
         return res.status(403).json({ 
           message: "Your account is pending approval. You will be notified once approved.",
           verificationStatus: "pending"

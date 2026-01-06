@@ -20,33 +20,34 @@ export default function SuperAdminLogin() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/email-login", {
+      // Use dedicated super-admin login endpoint (separate from regular admin login)
+      const response = await fetch("/api/auth/super-admin-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // Send cookies to establish session
+        credentials: "include",
         body: JSON.stringify({ email: email.toLowerCase(), password }),
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        const data = await response.json();
         setError(data.message || "Login failed");
         toast({
-          title: "Login Failed",
+          title: "Access Denied",
           description: data.message || "Invalid credentials",
           variant: "destructive",
         });
         return;
       }
 
-      const data = await response.json();
       toast({
         title: "Success",
         description: "Welcome to Super Admin Dashboard",
       });
       
-      // Small delay to ensure session is set, then redirect
+      // Redirect to super-admin portal
       setTimeout(() => {
-        window.location.href = "/super-admin";
+        window.location.href = data.redirectTo || "/super-admin";
       }, 100);
     } catch (err: any) {
       setError("Connection error. Please try again.");
