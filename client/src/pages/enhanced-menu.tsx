@@ -246,18 +246,16 @@ export default function EnhancedMenu() {
         errors.push(`Row ${i + 1}: Invalid price "${price}"`);
         continue;
       }
-      // Find categoryId by matching category name (case-insensitive)
+      // Find categoryId by matching category name (case-insensitive) - or let backend create it
       const matchedCategory = categories?.find(c => 
         c.name.toLowerCase().trim() === categoryName.toLowerCase().trim()
       );
-      if (!matchedCategory) {
-        errors.push(`Row ${i + 1}: Category "${categoryName}" not found. Available: ${categories?.map(c => c.name).join(', ')}`);
-        continue;
-      }
+      
+      // Note: Backend will auto-create missing categories, so we just pass the category name
       items.push({
         name, 
         category: categoryName,
-        categoryId: matchedCategory.id,
+        categoryId: matchedCategory?.id || null, // Backend will create category if null
         price: parsedPrice, 
         description: description || '',
         isVeg: isVeg?.toLowerCase() === 'true',

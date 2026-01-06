@@ -4464,11 +4464,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const results = {
         created: 0,
         failed: 0,
+        categoriesCreated: 0,
         errors: [] as string[],
       };
 
+      // Cache for categories we've created/found during import
+      const categoryCache: Map<string, number> = new Map();
+      
+      // Load existing categories for this property
+      const existingCategories = await storage.getMenuCategoriesByProperty(propertyId);
+      for (const cat of existingCategories) {
+        categoryCache.set(cat.name.toLowerCase().trim(), cat.id);
+      }
+
       for (const item of items) {
         try {
+          // Auto-create category if it doesn't exist
+          let categoryId = item.categoryId;
+          const categoryName = item.category?.trim();
+          
+          if (categoryName && !categoryId) {
+            const cacheKey = categoryName.toLowerCase();
+            if (categoryCache.has(cacheKey)) {
+              categoryId = categoryCache.get(cacheKey);
+            } else {
+              // Create new category for this property
+              const newCategory = await storage.createMenuCategory({
+                propertyId: propertyId,
+                name: categoryName,
+                description: null,
+                displayOrder: 0
+              });
+              categoryCache.set(cacheKey, newCategory.id);
+              categoryId = newCategory.id;
+              results.categoriesCreated++;
+              console.log(`[BULK-IMPORT] Created category "${categoryName}" for property ${propertyId}`);
+            }
+          }
+
           // Parse variants from CSV string format: "Name:Price,Name:Price"
           const parsedVariants: { name: string; priceModifier: string }[] = [];
           if (item.variants && typeof item.variants === 'string' && item.variants.trim()) {
@@ -4496,7 +4529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Create the menu item
           const menuItemData = {
             propertyId: propertyId || item.propertyId || null,
-            categoryId: item.categoryId || null,
+            categoryId: categoryId || null,
             name: item.name,
             description: item.description || null,
             category: item.category || null,
@@ -4544,7 +4577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(201).json({
-        message: `Imported ${results.created} items successfully${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
+        message: `Imported ${results.created} items${results.categoriesCreated > 0 ? `, created ${results.categoriesCreated} new categories` : ''}${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
         ...results,
       });
     } catch (error: any) {
