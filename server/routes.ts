@@ -4124,21 +4124,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "User not found. Please log in again." });
       }
       
-      // If user is a manager or kitchen, filter by assigned properties
-      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
-        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-          // Get menu items from all assigned properties
-          const allItems = await storage.getAllMenuItems();
-          const filteredItems = allItems.filter(item => currentUser.assignedPropertyIds!.includes(item.propertyId));
-          res.json(filteredItems);
-        } else {
-          // Manager/Kitchen without assigned property sees no menu items
-          res.json([]);
-        }
-      } else {
-        // Admin and staff see all menu items
+      // Filter menu items by assigned properties for all users (except super admin)
+      if (currentUser.role === "super_admin") {
+        // Super admin sees all menu items
         const items = await storage.getAllMenuItems();
         res.json(items);
+      } else if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        // All other users only see menu items from their assigned properties
+        const allItems = await storage.getAllMenuItems();
+        const filteredItems = allItems.filter(item => 
+          item.propertyId && currentUser.assignedPropertyIds!.includes(item.propertyId)
+        );
+        res.json(filteredItems);
+      } else {
+        // User without assigned properties sees no menu items
+        res.json([]);
       }
     } catch (error: any) {
       res.status(500).json({ message: error.message });
