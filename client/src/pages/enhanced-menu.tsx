@@ -172,30 +172,35 @@ export default function EnhancedMenu() {
     },
   });
 
-  // Reorder items via drag and drop
-  const reorderItemsMutation = useMutation({
-    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
-      return await apiRequest("/api/menu-items/reorder", "PATCH", { updates });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
-      toast({
-        title: "Success",
-        description: "Menu items reordered successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: `Failed to reorder items: ${error.message}`,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Handler for item reordering
-  const handleReorderItems = (categoryId: number, updates: { id: number; displayOrder: number }[]) => {
-    reorderItemsMutation.mutate(updates);
+  // Move item up or down within category
+  const moveItem = (itemId: number, direction: 'up' | 'down') => {
+    if (!menuItems) return;
+    
+    // Find the item
+    const item = menuItems.find(i => i.id === itemId);
+    if (!item || !item.categoryId) return;
+    
+    // Get all items in the same category, sorted by displayOrder
+    const categoryItems = menuItems
+      .filter(i => i.categoryId === item.categoryId)
+      .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    
+    const currentIndex = categoryItems.findIndex(i => i.id === itemId);
+    if (currentIndex === -1) return;
+    
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= categoryItems.length) return;
+    
+    const currentItem = categoryItems[currentIndex];
+    const targetItem = categoryItems[targetIndex];
+    
+    // Swap the two items using the existing swap endpoint
+    swapItemsMutation.mutate({
+      id1: currentItem.id,
+      id2: targetItem.id,
+      order1: currentItem.displayOrder ?? currentIndex,
+      order2: targetItem.displayOrder ?? targetIndex
+    });
   };
 
   // Bulk import functions
@@ -562,7 +567,7 @@ export default function EnhancedMenu() {
                 }}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
-                onReorderItems={handleReorderItems}
+                onMoveItem={moveItem}
               />
             ))}
 
@@ -814,7 +819,7 @@ function CategorySection({
   onEditItem,
   expandedItems,
   toggleItemExpanded,
-  onReorderItems,
+  onMoveItem,
 }: {
   category: MenuCategory;
   items: MenuItem[];
@@ -823,36 +828,9 @@ function CategorySection({
   onEditItem: (item: MenuItem) => void;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
-  onReorderItems: (categoryId: number, updates: { id: number; displayOrder: number }[]) => void;
+  onMoveItem: (itemId: number, direction: 'up' | 'down') => void;
 }) {
   const { toast } = useToast();
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
-
-  const handleItemDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const sortedItems = [...items].sort((a, b) => {
-      const orderA = a.displayOrder ?? 0;
-      const orderB = b.displayOrder ?? 0;
-      return orderA - orderB;
-    });
-    const oldIndex = sortedItems.findIndex(item => item.id === Number(active.id));
-    const newIndex = sortedItems.findIndex(item => item.id === Number(over.id));
-
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = arrayMove(sortedItems, oldIndex, newIndex);
-    const updates = reordered.map((item, idx) => ({
-      id: item.id,
-      displayOrder: idx,
-    }));
-
-    onReorderItems(category.id, updates);
-  };
 
   const deleteCategory = useMutation({
     mutationFn: async () => {
@@ -928,74 +906,25 @@ function CategorySection({
           Add Item to {category.name}
         </Button>
 
-        {/* Items List with Drag & Drop */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleItemDragEnd}
-        >
-          <SortableContext
-            items={[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map(item => item.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="space-y-2">
-              {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item) => (
-                <SortableItemCard
-                  key={item.id}
-                  item={item}
-                  onEdit={() => onEditItem(item)}
-                  isExpanded={expandedItems.has(item.id)}
-                  onToggleExpand={() => toggleItemExpanded(item.id)}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        {/* Items List with Up/Down Arrows */}
+        <div className="space-y-2">
+          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item, index, sortedItems) => (
+            <ItemCard
+              key={item.id}
+              item={item}
+              onEdit={() => onEditItem(item)}
+              isExpanded={expandedItems.has(item.id)}
+              onToggleExpand={() => toggleItemExpanded(item.id)}
+              onMoveUp={index > 0 ? () => onMoveItem(item.id, 'up') : undefined}
+              onMoveDown={index < sortedItems.length - 1 ? () => onMoveItem(item.id, 'down') : undefined}
+            />
+          ))}
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-
-// Sortable Item Card Wrapper
-function SortableItemCard({
-  item,
-  onEdit,
-  isExpanded,
-  onToggleExpand,
-}: {
-  item: MenuItem;
-  onEdit: () => void;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style}>
-      <ItemCard
-        item={item}
-        onEdit={onEdit}
-        isExpanded={isExpanded}
-        onToggleExpand={onToggleExpand}
-        dragHandleProps={{ ...attributes, ...listeners }}
-      />
-    </div>
-  );
-}
 
 // Item Card Component with Variants and Add-ons
 function ItemCard({
@@ -1003,13 +932,15 @@ function ItemCard({
   onEdit,
   isExpanded,
   onToggleExpand,
-  dragHandleProps,
+  onMoveUp,
+  onMoveDown,
 }: {
   item: MenuItem;
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
-  dragHandleProps?: any;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   const { toast } = useToast();
 
@@ -1066,13 +997,28 @@ function ItemCard({
       <Card>
         <CardContent className="p-3">
           <div className="flex items-start justify-between gap-2">
-            {/* Drag Handle */}
-            <div
-              {...dragHandleProps}
-              className="flex items-center justify-center cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none"
-              data-testid={`drag-handle-${item.id}`}
-            >
-              <GripVertical className="h-5 w-5 text-muted-foreground" />
+            {/* Move Up/Down Buttons */}
+            <div className="flex flex-col gap-0.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={onMoveUp}
+                disabled={!onMoveUp}
+                data-testid={`button-move-up-${item.id}`}
+              >
+                <ArrowUp className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={onMoveDown}
+                disabled={!onMoveDown}
+                data-testid={`button-move-down-${item.id}`}
+              >
+                <ArrowDown className="h-3 w-3" />
+              </Button>
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
