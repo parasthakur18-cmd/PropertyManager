@@ -114,21 +114,26 @@ async function upsertUser(
   const existingUser = await storage.getUser(claims["sub"]);
   
   // Owner emails always get admin (preserve admin status on re-login)
-  const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com', 'admin@hostezee.in'];
+  // NOTE: admin@hostezee.in is NOT included - super-admin is seeded separately and should never be downgraded
+  const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com'];
   const isAdmin = adminEmails.includes(claims["email"]);
   
   if (existingUser) {
     // User exists - update profile info but preserve role unless they're an admin email
-    // Admin emails are automatically verified
+    // Admin emails are automatically verified, super-admin is NEVER downgraded
     const { db } = await import("./db");
     const { users } = await import("@shared/schema");
     const { eq } = await import("drizzle-orm");
+    
+    // Preserve super-admin role - never downgrade to admin
+    const isSuperAdmin = existingUser.role === 'super-admin';
+    const newRole = isSuperAdmin ? 'super-admin' : (isAdmin ? 'admin' : existingUser.role);
     
     const updateData: any = {
       firstName: claims["first_name"] || existingUser.firstName,
       lastName: claims["last_name"] || existingUser.lastName,
       profileImageUrl: claims["profile_image_url"] || existingUser.profileImageUrl,
-      role: isAdmin ? 'admin' : existingUser.role,
+      role: newRole,
       updatedAt: new Date(),
     };
     
@@ -154,6 +159,11 @@ async function upsertUser(
     if (existingByEmail) {
       // User with this email exists - update their ID to the new OIDC ID and update profile
       console.log(`[GOOGLE-AUTH] Email ${claims["email"]} exists with different ID - updating to new OIDC ID`);
+      
+      // Preserve super-admin role - never downgrade
+      const existingIsSuperAdmin = existingByEmail.role === 'super-admin';
+      const roleToSet = existingIsSuperAdmin ? 'super-admin' : (isAdmin ? 'admin' : existingByEmail.role);
+      
       const [updated] = await db
         .update(users)
         .set({
@@ -161,7 +171,7 @@ async function upsertUser(
           firstName: claims["first_name"] || existingByEmail.firstName,
           lastName: claims["last_name"] || existingByEmail.lastName,
           profileImageUrl: claims["profile_image_url"] || existingByEmail.profileImageUrl,
-          role: isAdmin ? 'admin' : existingByEmail.role,
+          role: roleToSet,
           signupMethod: 'google',
           updatedAt: new Date(),
         })

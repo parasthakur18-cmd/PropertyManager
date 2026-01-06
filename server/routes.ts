@@ -139,29 +139,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Seed default super-admin user with email/password
   try {
-    const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
     const hashedPassword = await bcryptjs.hash('admin@123', 10);
     
-    if (existingSuperAdmins.length === 0) {
-      // Create new super-admin
-      const superAdminId = randomUUID();
-      await db.insert(users).values({
-        id: superAdminId,
-        email: 'admin@hostezee.in',
-        firstName: 'Hostezee',
-        lastName: 'Admin',
-        password: hashedPassword,
-        role: 'super-admin',
-        status: 'active',
-        businessName: 'Hostezee System',
-      });
-      console.log('[SEED] Default super-admin created: admin@hostezee.in with password admin@123');
+    // First check if admin@hostezee.in user exists (might have wrong role)
+    const [existingAdminUser] = await db.select().from(users).where(eq(users.email, 'admin@hostezee.in')).limit(1);
+    
+    if (existingAdminUser) {
+      // User exists - ensure they have super-admin role and password
+      if (existingAdminUser.role !== 'super-admin' || !existingAdminUser.password) {
+        await db.update(users).set({ 
+          role: 'super-admin', 
+          password: hashedPassword,
+          verificationStatus: 'verified',
+          status: 'active'
+        }).where(eq(users.email, 'admin@hostezee.in'));
+        console.log('[SEED] Fixed super-admin role and password for admin@hostezee.in');
+      }
     } else {
-      // Update existing super-admin with password if not already set
-      const superAdmin = existingSuperAdmins[0];
-      if (!superAdmin.password) {
-        await db.update(users).set({ password: hashedPassword }).where(eq(users.id, superAdmin.id));
-        console.log('[SEED] Updated super-admin with hashed password');
+      // No user with this email - check if any super-admin exists
+      const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
+      
+      if (existingSuperAdmins.length === 0) {
+        // Create new super-admin
+        const superAdminId = 'admin-hostezee';
+        await db.insert(users).values({
+          id: superAdminId,
+          email: 'admin@hostezee.in',
+          firstName: 'Hostezee',
+          lastName: 'Admin',
+          password: hashedPassword,
+          role: 'super-admin',
+          status: 'active',
+          verificationStatus: 'verified',
+          businessName: 'Hostezee System',
+        });
+        console.log('[SEED] Default super-admin created: admin@hostezee.in with password admin@123');
       }
     }
   } catch (error) {
@@ -461,14 +473,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Auto-verify owner/admin emails
-      const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com', 'admin@hostezee.in'];
+      // Auto-verify owner/admin emails (NOT super-admin - that's seeded separately)
+      const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com'];
       const managerEmails = ['rajni44573@gmail.com'];
       const userEmailLower = user.email?.toLowerCase() || '';
       const isAdminEmail = adminEmails.includes(userEmailLower);
       const isManagerEmail = managerEmails.includes(userEmailLower);
       
-      if (isAdminEmail && (user.verificationStatus === 'pending' || user.role !== 'admin')) {
+      // Only auto-promote to admin if not already super-admin (never downgrade super-admin)
+      if (isAdminEmail && user.role !== 'super-admin' && (user.verificationStatus === 'pending' || user.role !== 'admin')) {
         // Auto-verify and promote admin emails
         await db.update(users)
           .set({ 
