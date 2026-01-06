@@ -4274,6 +4274,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reorder multiple menu items (for drag-and-drop)
+  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { updates } = req.body;
+      
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Updates array is required" });
+      }
+
+      // Update each item's displayOrder
+      for (const update of updates) {
+        await storage.updateMenuItem(Number(update.id), { displayOrder: Number(update.displayOrder) });
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Menu Categories
   app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {

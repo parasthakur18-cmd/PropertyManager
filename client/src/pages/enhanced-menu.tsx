@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown, FileSpreadsheet, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, ArrowUp, ArrowDown, FileSpreadsheet, Download, CheckCircle2, AlertCircle, GripVertical } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -172,30 +172,30 @@ export default function EnhancedMenu() {
     },
   });
 
-  // Move item up or down within category
-  const moveItem = (categoryId: number, itemId: number, direction: 'up' | 'down') => {
-    if (!menuItems) return;
-    
-    const categoryItems = menuItems
-      .filter(item => item.categoryId === categoryId)
-      .sort((a, b) => a.displayOrder - b.displayOrder);
-    
-    const currentIndex = categoryItems.findIndex(item => item.id === itemId);
-    if (currentIndex === -1) return;
-    
-    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= categoryItems.length) return;
-    
-    const currentItem = categoryItems[currentIndex];
-    const targetItem = categoryItems[targetIndex];
-    
-    // Swap the two items
-    swapItemsMutation.mutate({
-      id1: currentItem.id,
-      id2: targetItem.id,
-      order1: currentItem.displayOrder,
-      order2: targetItem.displayOrder
-    });
+  // Reorder items via drag and drop
+  const reorderItemsMutation = useMutation({
+    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
+      return await apiRequest("/api/menu-items/reorder", "PATCH", { updates });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({
+        title: "Success",
+        description: "Menu items reordered successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: `Failed to reorder items: ${error.message}`,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handler for item reordering
+  const handleReorderItems = (categoryId: number, updates: { id: number; displayOrder: number }[]) => {
+    reorderItemsMutation.mutate(updates);
   };
 
   // Bulk import functions
@@ -562,7 +562,7 @@ export default function EnhancedMenu() {
                 }}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
-                onMoveItem={moveItem}
+                onReorderItems={handleReorderItems}
               />
             ))}
 
@@ -814,7 +814,7 @@ function CategorySection({
   onEditItem,
   expandedItems,
   toggleItemExpanded,
-  onMoveItem,
+  onReorderItems,
 }: {
   category: MenuCategory;
   items: MenuItem[];
@@ -823,9 +823,30 @@ function CategorySection({
   onEditItem: (item: MenuItem) => void;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
-  onMoveItem: (categoryId: number, itemId: number, direction: 'up' | 'down') => void;
+  onReorderItems: (categoryId: number, updates: { id: number; displayOrder: number }[]) => void;
 }) {
   const { toast } = useToast();
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleItemDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const sortedItems = [...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    const oldIndex = sortedItems.findIndex(item => item.id === active.id);
+    const newIndex = sortedItems.findIndex(item => item.id === over.id);
+
+    const reordered = arrayMove(sortedItems, oldIndex, newIndex);
+    const updates = reordered.map((item, idx) => ({
+      id: item.id,
+      displayOrder: idx,
+    }));
+
+    onReorderItems(category.id, updates);
+  };
 
   const deleteCategory = useMutation({
     mutationFn: async () => {
@@ -901,27 +922,74 @@ function CategorySection({
           Add Item to {category.name}
         </Button>
 
-        {/* Items List */}
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onEdit={() => onEditItem(item)}
-              isExpanded={expandedItems.has(item.id)}
-              onToggleExpand={() => toggleItemExpanded(item.id)}
-              onMoveUp={() => onMoveItem(category.id, item.id, 'up')}
-              onMoveDown={() => onMoveItem(category.id, item.id, 'down')}
-              isFirst={index === 0}
-              isLast={index === items.length - 1}
-            />
-          ))}
-        </div>
+        {/* Items List with Drag & Drop */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleItemDragEnd}
+        >
+          <SortableContext
+            items={[...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map(item => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {[...items].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((item) => (
+                <SortableItemCard
+                  key={item.id}
+                  item={item}
+                  onEdit={() => onEditItem(item)}
+                  isExpanded={expandedItems.has(item.id)}
+                  onToggleExpand={() => toggleItemExpanded(item.id)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       </CardContent>
     </Card>
   );
 }
 
+
+// Sortable Item Card Wrapper
+function SortableItemCard({
+  item,
+  onEdit,
+  isExpanded,
+  onToggleExpand,
+}: {
+  item: MenuItem;
+  onEdit: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <ItemCard
+        item={item}
+        onEdit={onEdit}
+        isExpanded={isExpanded}
+        onToggleExpand={onToggleExpand}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  );
+}
 
 // Item Card Component with Variants and Add-ons
 function ItemCard({
@@ -929,25 +997,19 @@ function ItemCard({
   onEdit,
   isExpanded,
   onToggleExpand,
-  onMoveUp,
-  onMoveDown,
-  isFirst,
-  isLast,
+  dragHandleProps,
 }: {
   item: MenuItem;
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
-  isFirst?: boolean;
-  isLast?: boolean;
+  dragHandleProps?: any;
 }) {
   const { toast } = useToast();
 
   const { data: variants } = useQuery<MenuItemVariant[]>({
     queryKey: [`/api/menu-items/${item.id}/variants`],
-    enabled: item.hasVariants,
+    enabled: item.hasVariants === true,
   });
 
   const { data: addOns } = useQuery<MenuItemAddOn[]>({
@@ -998,16 +1060,13 @@ function ItemCard({
       <Card>
         <CardContent className="p-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-[80px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">Order:</span>
-              <Input
-                type="number"
-                min="0"
-                value={item.displayOrder}
-                className="h-8 w-16 text-center"
-                disabled
-                data-testid={`text-order-${item.id}`}
-              />
+            {/* Drag Handle */}
+            <div
+              {...dragHandleProps}
+              className="flex items-center justify-center cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded touch-none"
+              data-testid={`drag-handle-${item.id}`}
+            >
+              <GripVertical className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
