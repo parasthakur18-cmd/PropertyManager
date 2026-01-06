@@ -10973,12 +10973,16 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       
       const { propertyId, title, description, assignedUserId, assignedUserName, priority, dueDate, dueTime, reminderEnabled, reminderType, reminderTime, reminderRecipients } = req.body;
       
+      // Handle empty string for assignedUserId - convert to null
+      const validAssignedUserId = assignedUserId && assignedUserId.trim() !== '' ? assignedUserId : null;
+      const validAssignedUserName = validAssignedUserId ? assignedUserName : null;
+      
       const [newTask] = await db.insert(tasks).values({
         propertyId,
         title,
         description,
-        assignedUserId,
-        assignedUserName,
+        assignedUserId: validAssignedUserId,
+        assignedUserName: validAssignedUserName,
         priority: priority || 'medium',
         status: 'pending',
         dueDate,
@@ -10991,9 +10995,9 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       }).returning();
       
       // Create in-app notification for assigned user
-      if (assignedUserId) {
+      if (validAssignedUserId) {
         await db.insert(notifications).values({
-          userId: assignedUserId,
+          userId: validAssignedUserId,
           type: 'task_assigned',
           title: 'New Task Assigned',
           message: `You have been assigned a new task: ${title}`,
