@@ -435,7 +435,10 @@ export default function Rooms() {
                           <Input
                             type="number"
                             {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value) || 2)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val === "" ? "" : parseInt(val));
+                            }}
                             data-testid="input-room-occupancy"
                           />
                         </FormControl>
@@ -735,7 +738,11 @@ export default function Rooms() {
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => deleteMutation.mutate(room.id)}
+                        onClick={() => {
+                          if (window.confirm("Are you sure you want to delete this room?")) {
+                            deleteMutation.mutate(room.id);
+                          }
+                        }}
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-room-${room.id}`}
                       >
