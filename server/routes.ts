@@ -4649,8 +4649,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const addOns = await storage.getAddOnsByMenuItem(item.id);
           
           // Format: "VariantName:Price,VariantName2:Price2"
-          variantsStr = variants.map(v => `${v.name}:${v.priceModifier || 0}`).join(',');
-          addOnsStr = addOns.map(a => `${a.name}:${a.price || 0}`).join(',');
+          // Database fields: variantName, actualPrice for variants; addOnName, addOnPrice for add-ons
+          variantsStr = variants.map(v => `${v.variantName}:${v.actualPrice || 0}`).join(',');
+          addOnsStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice || 0}`).join(',');
         } catch (err) {
           console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}:`, err);
         }
