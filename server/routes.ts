@@ -4779,13 +4779,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (admin.phone) {
             try {
               const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-              const roomNum = roomInfo ? `Room ${roomInfo.roomNumber}` : 'Café/Common';
-              const items = orderData.items ? orderData.items.map((item: any) => `${item.name} (${item.quantity}x)`).join(', ') : 'Items';
+              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
+              const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+              const hotelName = property?.name || 'Hotel';
+              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
               
               await sendCustomWhatsAppMessage({
                 countryCode: '91',
                 mobile: admin.phone,
-                message: `🔔 *New Food Order Alert*\n\nOrder #${order.id}\n${roomNum}\nGuest: ${guest?.fullName || 'Walk-in'}\nItems: ${items}\nAmount: ₹${orderData.totalAmount || 0}\n\nCheck the app for details.`
+                message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
               });
               console.log(`[WhatsApp] New order alert sent to ${admin.email}`);
             } catch (waError: any) {
@@ -4801,15 +4803,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(orderData.propertyId);
             if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
               const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-              const roomNum = roomInfo ? `Room ${roomInfo.roomNumber}` : 'Cafe/Common';
-              const items = orderData.items ? orderData.items.map((item: any) => `${item.name} (${item.quantity}x)`).join(', ') : 'Items';
+              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
+              const property = await storage.getProperty(orderData.propertyId);
+              const hotelName = property?.name || 'Hotel';
+              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
               
               for (const phone of foodOrderSettings.phoneNumbers) {
                 try {
                   await sendCustomWhatsAppMessage({
                     countryCode: '91',
                     mobile: phone,
-                    message: `*New Food Order*\n\nOrder #${order.id}\n${roomNum}\nGuest: ${guest?.fullName || 'Walk-in'}\nItems: ${items}\nAmount: Rs.${orderData.totalAmount || 0}\n\nCheck app for details.`
+                    message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
                   });
                   console.log(`[WhatsApp] Food order alert sent to configured number: ${phone}`);
                 } catch (waErr: any) {
