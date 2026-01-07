@@ -875,6 +875,25 @@ export const insertWhatsappNotificationSettingsSchema = createInsertSchema(whats
 export type WhatsappNotificationSettings = typeof whatsappNotificationSettings.$inferSelect;
 export type InsertWhatsappNotificationSettings = z.infer<typeof insertWhatsappNotificationSettingsSchema>;
 
+// Food Order WhatsApp Notification Settings table
+export const foodOrderWhatsappSettings = pgTable("food_order_whatsapp_settings", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  enabled: boolean("enabled").notNull().default(true),
+  phoneNumbers: text("phone_numbers").array(), // Array of phone numbers to notify
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFoodOrderWhatsappSettingsSchema = createInsertSchema(foodOrderWhatsappSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type FoodOrderWhatsappSettings = typeof foodOrderWhatsappSettings.$inferSelect;
+export type InsertFoodOrderWhatsappSettings = z.infer<typeof insertFoodOrderWhatsappSettingsSchema>;
+
 // Issue Reports table - matches actual database
 export const issueReports = pgTable("issue_reports", {
   id: serial("id").primaryKey(),
