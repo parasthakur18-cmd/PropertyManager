@@ -1196,15 +1196,23 @@ export default function ActiveBookings() {
           {checkoutDialog.booking && (() => {
             const booking = checkoutDialog.booking;
             
-            // Extended stay detection
+            // Extended stay detection - compare dates only (ignore time)
             const checkInDate = new Date(booking.checkInDate);
             const originalCheckOutDate = new Date(booking.checkOutDate);
             const today = new Date();
-            today.setHours(12, 0, 0, 0); // Normalize to noon for comparison
+            
+            // Normalize all dates to start of day for accurate comparison
+            const todayDateOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const checkoutDateOnly = new Date(originalCheckOutDate.getFullYear(), originalCheckOutDate.getMonth(), originalCheckOutDate.getDate());
             
             const bookedNights = booking.nightsStayed;
-            const actualNights = Math.max(1, Math.ceil((today.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
-            const extraNights = Math.max(0, actualNights - bookedNights);
+            
+            // Extended stay is only when today is AFTER the scheduled checkout date
+            // If today is Jan 7 and checkout is Jan 7, extraNights = 0
+            // If today is Jan 8 and checkout was Jan 7, extraNights = 1
+            const daysPastCheckout = Math.floor((todayDateOnly.getTime() - checkoutDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+            const extraNights = Math.max(0, daysPastCheckout);
+            const actualNights = bookedNights + extraNights;
             
             // Calculate room rate per night from actual booking charges (accounts for custom pricing)
             const baseRoomChargesForRate = parseFloat(booking.charges.roomCharges) || 0;
