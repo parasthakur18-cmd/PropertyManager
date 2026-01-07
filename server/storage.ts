@@ -30,6 +30,7 @@ import {
   featureSettings,
   otaIntegrations,
   whatsappNotificationSettings,
+  foodOrderWhatsappSettings,
   auditLogs,
   type User,
   type UpsertUser,
@@ -97,6 +98,8 @@ import {
   type InsertFeatureSettings,
   type WhatsappNotificationSettings,
   type InsertWhatsappNotificationSettings,
+  type FoodOrderWhatsappSettings,
+  type InsertFoodOrderWhatsappSettings,
   whatsappTemplateSettings,
   type WhatsappTemplateSetting,
   type InsertWhatsappTemplateSetting,
@@ -2950,7 +2953,29 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Food Order WhatsApp Settings
+  async getFoodOrderWhatsappSettings(propertyId: number): Promise<FoodOrderWhatsappSettings | undefined> {
+    const [settings] = await db.select().from(foodOrderWhatsappSettings).where(eq(foodOrderWhatsappSettings.propertyId, propertyId));
+    return settings;
+  }
 
+  async upsertFoodOrderWhatsappSettings(propertyId: number, data: { enabled: boolean; phoneNumbers: string[] }): Promise<FoodOrderWhatsappSettings> {
+    const existing = await this.getFoodOrderWhatsappSettings(propertyId);
+    if (existing) {
+      const [updated] = await db
+        .update(foodOrderWhatsappSettings)
+        .set({ enabled: data.enabled, phoneNumbers: data.phoneNumbers, updatedAt: new Date() })
+        .where(eq(foodOrderWhatsappSettings.propertyId, propertyId))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(foodOrderWhatsappSettings).values({
+      propertyId,
+      enabled: data.enabled,
+      phoneNumbers: data.phoneNumbers,
+    }).returning();
+    return created;
+  }
 
   async getPreBillByBooking(bookingId: number): Promise<PreBill | undefined> {
     const [preBill] = await db.select().from(preBills).where(eq(preBills.bookingId, bookingId)).orderBy(desc(preBills.createdAt)).limit(1);

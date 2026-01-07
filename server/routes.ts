@@ -12136,6 +12136,37 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     }
   });
 
+  // ===== FOOD ORDER WHATSAPP SETTINGS ROUTES =====
+  app.get("/api/food-order-whatsapp-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const settings = await storage.getFoodOrderWhatsappSettings(propertyId);
+      res.json(settings || { propertyId, enabled: false, phoneNumbers: [] });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/food-order-whatsapp-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const { enabled, phoneNumbers } = req.body;
+      
+      // Validate phone numbers array
+      const cleanedNumbers = (phoneNumbers || [])
+        .map((p: string) => p.replace(/\s+/g, '').trim())
+        .filter((p: string) => p.length >= 10);
+      
+      const settings = await storage.upsertFoodOrderWhatsappSettings(propertyId, {
+        enabled: enabled ?? true,
+        phoneNumbers: cleanedNumbers,
+      });
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ===== WHATSAPP TEMPLATE SETTINGS ROUTES =====
   // Get all template settings for a property
   app.get("/api/whatsapp-template-settings/:propertyId", isAuthenticated, async (req: any, res) => {
