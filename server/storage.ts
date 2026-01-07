@@ -2203,11 +2203,11 @@ export class DatabaseStorage implements IStorage {
       : null;
 
     const [totalRevenueResult] = propertyId 
-      ? await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      ? await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(eq(bookings.propertyId, propertyId))
-      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
           .from(bills);
 
     const [paidRevenueResult] = propertyId 
@@ -2215,7 +2215,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(and(eq(bills.paymentStatus, "paid"), eq(bookings.propertyId, propertyId)))
-      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
           .from(bills)
           .where(eq(bills.paymentStatus, "paid"));
 
@@ -2224,7 +2224,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(eq(bookings.propertyId, propertyId))
-      : await db.select({ total: sql<string>`COALESCE(SUM(room_charges), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.room_charges), 0)` })
           .from(bills);
 
     const [restaurantRevenueResult] = propertyId 
@@ -2232,7 +2232,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(eq(bookings.propertyId, propertyId))
-      : await db.select({ total: sql<string>`COALESCE(SUM(food_charges), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.food_charges), 0)` })
           .from(bills);
 
     const [extraServicesRevenueResult] = propertyId 
@@ -2240,7 +2240,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(eq(bookings.propertyId, propertyId))
-      : await db.select({ total: sql<string>`COALESCE(SUM(extra_charges), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.extra_charges), 0)` })
           .from(bills);
 
     const [bookingsCount] = propertyId 
@@ -2298,7 +2298,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(and(gte(bills.createdAt, currentMonth), eq(bookings.propertyId, propertyId)))
-      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
           .from(bills)
           .where(gte(bills.createdAt, currentMonth));
 
@@ -2311,7 +2311,7 @@ export class DatabaseStorage implements IStorage {
             eq(bills.paymentStatus, "paid"),
             eq(bookings.propertyId, propertyId)
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(total_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.total_amount), 0)` })
           .from(bills)
           .where(and(
             gte(bills.createdAt, currentMonth),
@@ -2356,7 +2356,7 @@ export class DatabaseStorage implements IStorage {
           .from(bills)
           .leftJoin(bookings, eq(bills.bookingId, bookings.id))
           .where(and(eq(bills.paymentStatus, "pending"), eq(bookings.propertyId, propertyId)))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)`, count: sql<number>`count(*)::int` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)`, count: sql<number>`count(*)::int` })
           .from(bills)
           .where(eq(bills.paymentStatus, "pending"));
 
@@ -2387,11 +2387,11 @@ export class DatabaseStorage implements IStorage {
             eq(bookings.propertyId, propertyId),
             sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} < CURRENT_DATE`
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
           .from(bills)
           .where(and(
             eq(bills.paymentStatus, "pending"),
-            sql`due_date IS NOT NULL AND due_date < CURRENT_DATE`
+            sql`bills.due_date IS NOT NULL AND bills.due_date < CURRENT_DATE`
           ));
 
     // Calculate aging buckets
@@ -2404,11 +2404,11 @@ export class DatabaseStorage implements IStorage {
             eq(bookings.propertyId, propertyId),
             sql`(${bills.dueDate} IS NULL OR ${bills.dueDate} >= CURRENT_DATE)`
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
           .from(bills)
           .where(and(
             eq(bills.paymentStatus, "pending"),
-            sql`(due_date IS NULL OR due_date >= CURRENT_DATE)`
+            sql`(bills.due_date IS NULL OR bills.due_date >= CURRENT_DATE)`
           ));
 
     const [day1to7Bucket] = propertyId 
@@ -2420,11 +2420,11 @@ export class DatabaseStorage implements IStorage {
             eq(bookings.propertyId, propertyId),
             sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
           .from(bills)
           .where(and(
             eq(bills.paymentStatus, "pending"),
-            sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
+            sql`bills.due_date IS NOT NULL AND bills.due_date BETWEEN CURRENT_DATE - INTERVAL '7 days' AND CURRENT_DATE - INTERVAL '1 day'`
           ));
 
     const [day8to30Bucket] = propertyId 
@@ -2436,11 +2436,11 @@ export class DatabaseStorage implements IStorage {
             eq(bookings.propertyId, propertyId),
             sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
           .from(bills)
           .where(and(
             eq(bills.paymentStatus, "pending"),
-            sql`due_date IS NOT NULL AND due_date BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
+            sql`bills.due_date IS NOT NULL AND bills.due_date BETWEEN CURRENT_DATE - INTERVAL '30 days' AND CURRENT_DATE - INTERVAL '8 days'`
           ));
 
     const [over30Bucket] = propertyId 
@@ -2452,11 +2452,11 @@ export class DatabaseStorage implements IStorage {
             eq(bookings.propertyId, propertyId),
             sql`${bills.dueDate} IS NOT NULL AND ${bills.dueDate} < CURRENT_DATE - INTERVAL '30 days'`
           ))
-      : await db.select({ total: sql<string>`COALESCE(SUM(balance_amount), 0)` })
+      : await db.select({ total: sql<string>`COALESCE(SUM(bills.balance_amount), 0)` })
           .from(bills)
           .where(and(
             eq(bills.paymentStatus, "pending"),
-            sql`due_date IS NOT NULL AND due_date < CURRENT_DATE - INTERVAL '30 days'`
+            sql`bills.due_date IS NOT NULL AND bills.due_date < CURRENT_DATE - INTERVAL '30 days'`
           ));
 
     // Property breakdown
