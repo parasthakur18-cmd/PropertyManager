@@ -4628,7 +4628,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
     try {
       const propertyIdStr = req.query.propertyId as string;
-      console.log('[MENU-EXPORT] propertyId query param:', propertyIdStr);
       if (!propertyIdStr || propertyIdStr === 'undefined' || propertyIdStr === 'null' || propertyIdStr === '0') {
         return res.status(400).json({ message: "Property ID is required. Please select a property first." });
       }
@@ -4636,9 +4635,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isNaN(propertyId) || propertyId <= 0) {
         return res.status(400).json({ message: "Invalid Property ID" });
       }
-      console.log('[MENU-EXPORT] Parsed propertyId:', propertyId);
 
-      // Get all menu items for this property
+      // Get all menu items for this property  
       const allItems = await storage.getAllMenuItems();
       const propertyItems = allItems.filter(item => item.propertyId === propertyId);
 
@@ -4646,30 +4644,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const categories = await storage.getMenuCategoriesByProperty(propertyId);
       const categoryMap = new Map(categories.map(c => [c.id, c.name]));
 
-      // Build CSV with variants and add-ons - includes sequence column
+      // Build CSV - simple version without variants/add-ons fetching
       const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
       const rows: string[][] = [];
 
       for (const item of propertyItems) {
-        // Get variants for this item
-        const variants = await storage.getVariantsByMenuItem(item.id);
-        const variantStr = variants.map(v => {
-          const basePrice = parseFloat(item.price?.toString() || "0");
-          const actualPrice = parseFloat(v.actualPrice?.toString() || "0");
-          const modifier = actualPrice - basePrice;
-          return `${v.variantName}:${modifier}`;
-        }).join(',');
-
-        // Get add-ons for this item
-        const addOns = await storage.getAddOnsByMenuItem(item.id);
-        const addOnStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice}`).join(',');
-
-        // Get category name from categoryId
+        // Get category name
         const categoryName = item.categoryId ? (categoryMap.get(item.categoryId) || item.category || '') : (item.category || '');
+
+        // Get variants and add-ons safely with try-catch for each item
+        let variantStr = '';
+        let addOnStr = '';
+        try {
+          const variants = await storage.getVariantsByMenuItem(Number(item.id));
+          variantStr = variants.map(v => {
+            const basePrice = parseFloat(item.price?.toString() || "0");
+            const actualPrice = parseFloat(v.actualPrice?.toString() || "0");
+            const modifier = actualPrice - basePrice;
+            return `${v.variantName}:${modifier}`;
+          }).join(',');
+        } catch (e) { /* skip variants on error */ }
+        
+        try {
+          const addOns = await storage.getAddOnsByMenuItem(Number(item.id));
+          addOnStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice}`).join(',');
+        } catch (e) { /* skip add-ons on error */ }
 
         rows.push([
           (item.displayOrder ?? 0).toString(),
-          item.name,
+          item.name || '',
           categoryName,
           item.price?.toString() || '0',
           item.description || '',
@@ -4682,9 +4685,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Sort by category then by sequence
       rows.sort((a, b) => {
-        const catCompare = a[2].localeCompare(b[2]);
+        const catCompare = (a[2] || '').localeCompare(b[2] || '');
         if (catCompare !== 0) return catCompare;
-        return parseInt(a[0]) - parseInt(b[0]);
+        return parseInt(a[0] || '0') - parseInt(b[0] || '0');
       });
 
       // Build CSV content
@@ -4697,7 +4700,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.setHeader('Content-Disposition', `attachment; filename="menu_export.csv"`);
       res.send(csvContent);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error('[MENU-EXPORT ERROR]', error);
+      res.status(500).json({ message: error.message || 'Export failed' });
     }
   });
 
