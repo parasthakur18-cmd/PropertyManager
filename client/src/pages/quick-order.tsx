@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { type MenuItem, type Room } from "@shared/schema";
@@ -29,6 +30,7 @@ export default function QuickOrder() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const { toast} = useToast();
 
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
@@ -104,17 +106,40 @@ export default function QuickOrder() {
     return item ? item.quantity : 0;
   };
 
-  // Filter menu items by search term
+  // Get unique categories from menu items
+  const categories = useMemo(() => {
+    if (!menuItems) return [];
+    const uniqueCategories = Array.from(new Set(menuItems.map(item => item.category || "Uncategorized")));
+    return uniqueCategories.sort();
+  }, [menuItems]);
+
+  // Filter menu items by search term and category, sort by sequence
   const filteredMenuItems = useMemo(() => {
     if (!menuItems) return [];
-    if (!searchTerm.trim()) return menuItems;
     
-    const searchLower = searchTerm.toLowerCase().trim();
-    return menuItems.filter(item => 
-      item.name.toLowerCase().includes(searchLower) ||
-      (item.description && item.description.toLowerCase().includes(searchLower))
-    );
-  }, [menuItems, searchTerm]);
+    let filtered = menuItems;
+    
+    // Filter by category
+    if (selectedCategoryFilter) {
+      filtered = filtered.filter(item => (item.category || "Uncategorized") === selectedCategoryFilter);
+    }
+    
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(item => 
+        item.name.toLowerCase().includes(searchLower) ||
+        (item.description && item.description.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    // Sort by displayOrder within each category
+    return filtered.sort((a, b) => {
+      const seqA = a.displayOrder ?? 9999;
+      const seqB = b.displayOrder ?? 9999;
+      return seqA - seqB;
+    });
+  }, [menuItems, searchTerm, selectedCategoryFilter]);
 
   const handleNextStep = () => {
     if (step === 1 && !orderType) {
@@ -497,6 +522,34 @@ export default function QuickOrder() {
                     </Button>
                   )}
                 </div>
+
+                {/* Quick Category Filter */}
+                {categories.length > 0 && (
+                  <div className="mt-4">
+                    <Label className="mb-2 block text-sm font-medium">Quick Category Filter</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge
+                        variant={selectedCategoryFilter === null ? "default" : "outline"}
+                        className="cursor-pointer hover-elevate"
+                        onClick={() => setSelectedCategoryFilter(null)}
+                        data-testid="badge-quick-category-all"
+                      >
+                        All Categories ({menuItems?.length || 0})
+                      </Badge>
+                      {categories.map((cat) => (
+                        <Badge
+                          key={cat}
+                          variant={selectedCategoryFilter === cat ? "default" : "outline"}
+                          className="cursor-pointer hover-elevate"
+                          onClick={() => setSelectedCategoryFilter(cat)}
+                          data-testid={`badge-quick-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
+                          {cat} ({menuItems?.filter(item => (item.category || "Uncategorized") === cat).length || 0})
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
