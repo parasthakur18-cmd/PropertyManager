@@ -4640,7 +4640,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns\n';
       for (const item of items) {
         const cat = item.categoryId ? (catMap.get(item.categoryId) || '') : '';
-        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"",""\n`;
+        
+        // Fetch variants and add-ons for this item
+        let variantsStr = '';
+        let addOnsStr = '';
+        try {
+          const variants = await storage.getMenuItemVariants(item.id);
+          const addOns = await storage.getMenuItemAddOns(item.id);
+          
+          // Format: "VariantName:Price,VariantName2:Price2"
+          variantsStr = variants.map(v => `${v.name}:${v.priceModifier || 0}`).join(',');
+          addOnsStr = addOns.map(a => `${a.name}:${a.price || 0}`).join(',');
+        } catch (err) {
+          console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}`);
+        }
+        
+        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"${variantsStr}","${addOnsStr}"\n`;
       }
 
       res.setHeader('Content-Type', 'text/csv');
