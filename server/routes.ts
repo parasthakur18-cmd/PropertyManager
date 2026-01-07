@@ -4624,84 +4624,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Export menu items to CSV
+  // Export menu items to CSV - Simple version
   app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
     try {
-      const propertyIdStr = req.query.propertyId as string;
-      if (!propertyIdStr || propertyIdStr === 'undefined' || propertyIdStr === 'null' || propertyIdStr === '0') {
-        return res.status(400).json({ message: "Property ID is required. Please select a property first." });
-      }
-      const propertyId = parseInt(propertyIdStr, 10);
-      if (isNaN(propertyId) || propertyId <= 0) {
-        return res.status(400).json({ message: "Invalid Property ID" });
+      const propertyId = parseInt(req.query.propertyId as string, 10);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "Property ID required" });
       }
 
-      // Get all menu items for this property  
+      // Simple query - get items directly
       const allItems = await storage.getAllMenuItems();
-      const propertyItems = allItems.filter(item => item.propertyId === propertyId);
-
-      // Get categories for this property
+      const items = allItems.filter(i => i.propertyId === propertyId);
       const categories = await storage.getMenuCategoriesByProperty(propertyId);
-      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+      const catMap = new Map(categories.map(c => [c.id, c.name]));
 
-      // Build CSV - simple version without variants/add-ons fetching
-      const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
-      const rows: string[][] = [];
-
-      for (const item of propertyItems) {
-        // Get category name
-        const categoryName = item.categoryId ? (categoryMap.get(item.categoryId) || item.category || '') : (item.category || '');
-
-        // Get variants and add-ons safely with try-catch for each item
-        let variantStr = '';
-        let addOnStr = '';
-        try {
-          const variants = await storage.getVariantsByMenuItem(Number(item.id));
-          variantStr = variants.map(v => {
-            const basePrice = parseFloat(item.price?.toString() || "0");
-            const actualPrice = parseFloat(v.actualPrice?.toString() || "0");
-            const modifier = actualPrice - basePrice;
-            return `${v.variantName}:${modifier}`;
-          }).join(',');
-        } catch (e) { /* skip variants on error */ }
-        
-        try {
-          const addOns = await storage.getAddOnsByMenuItem(Number(item.id));
-          addOnStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice}`).join(',');
-        } catch (e) { /* skip add-ons on error */ }
-
-        rows.push([
-          (item.displayOrder ?? 0).toString(),
-          item.name || '',
-          categoryName,
-          item.price?.toString() || '0',
-          item.description || '',
+      // Build simple CSV
+      let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns\n';
+      for (const item of items) {
+        const cat = item.categoryId ? (catMap.get(item.categoryId) || '') : '';
+        const seq = item.displayOrder || 0;
+        const row = [
+          seq,
+          `"${(item.name || '').replace(/"/g, '""')}"`,
+          `"${cat.replace(/"/g, '""')}"`,
+          item.price || 0,
+          `"${(item.description || '').replace(/"/g, '""')}"`,
           item.foodType === 'veg' ? 'True' : 'False',
           item.isAvailable ? 'True' : 'False',
-          variantStr,
-          addOnStr
-        ]);
+          '""',
+          '""'
+        ];
+        csv += row.join(',') + '\n';
       }
 
-      // Sort by category then by sequence
-      rows.sort((a, b) => {
-        const catCompare = (a[2] || '').localeCompare(b[2] || '');
-        if (catCompare !== 0) return catCompare;
-        return parseInt(a[0] || '0') - parseInt(b[0] || '0');
-      });
-
-      // Build CSV content
-      const csvContent = [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
-      ].join('\n');
-
       res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="menu_export.csv"`);
-      res.send(csvContent);
+      res.setHeader('Content-Disposition', 'attachment; filename="menu.csv"');
+      res.send(csv);
     } catch (error: any) {
-      console.error('[MENU-EXPORT ERROR]', error);
-      res.status(500).json({ message: error.message || 'Export failed' });
+      res.status(500).json({ message: 'Export failed: ' + error.message });
+    }
+  });
+
+  // Delete all menu items for a property
+  app.delete("/api/menu-items/delete-all", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.query.propertyId as string, 10);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      // Get all items for this property and delete them
+      const allItems = await storage.getAllMenuItems();
+      const itemsToDelete = allItems.filter(i => i.propertyId === propertyId);
+      
+      for (const item of itemsToDelete) {
+        await storage.deleteMenuItem(item.id);
+      }
+
+      res.json({ message: `Deleted ${itemsToDelete.length} menu items` });
+    } catch (error: any) {
+      res.status(500).json({ message: 'Delete failed: ' + error.message });
     }
   });
 

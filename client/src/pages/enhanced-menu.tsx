@@ -348,6 +348,22 @@ export default function EnhancedMenu() {
     setImportResult(null);
   };
 
+  const deleteAllMenuItems = async () => {
+    const propertyToDelete = selectedProperty || properties?.[0]?.id;
+    if (!propertyToDelete) {
+      toast({ title: "No property selected", variant: "destructive" });
+      return;
+    }
+    try {
+      const response = await apiRequest(`/api/menu-items/delete-all?propertyId=${propertyToDelete}`, "DELETE");
+      toast({ title: "Deleted", description: response.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+    } catch (error: any) {
+      toast({ title: "Delete Failed", description: error.message, variant: "destructive" });
+    }
+  };
+
   const bulkImportMutation = useMutation({
     mutationFn: async (data: { items: any[]; propertyId: number }) => {
       return await apiRequest("/api/menu-items/bulk-import", "POST", data);
@@ -696,6 +712,14 @@ export default function EnhancedMenu() {
                 <Button variant="outline" onClick={downloadAllMenuItems}>
                   <Download className="h-4 w-4 mr-2" />
                   Export Current Menu
+                </Button>
+                <Button variant="destructive" onClick={() => {
+                  if (confirm('Delete ALL menu items for this property? This cannot be undone.')) {
+                    deleteAllMenuItems();
+                  }
+                }}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete All Menu Items
                 </Button>
               </div>
 
