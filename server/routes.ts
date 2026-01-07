@@ -4625,36 +4625,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Export menu items to CSV - Simple version
-  app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
+  app.get("/api/menu-items/export/:propertyId", isAuthenticated, async (req, res) => {
     try {
-      const propertyId = parseInt(req.query.propertyId as string, 10);
+      const propertyId = parseInt(req.params.propertyId, 10);
       if (!propertyId || isNaN(propertyId)) {
         return res.status(400).json({ message: "Property ID required" });
       }
 
-      // Simple query - get items directly
       const allItems = await storage.getAllMenuItems();
       const items = allItems.filter(i => i.propertyId === propertyId);
       const categories = await storage.getMenuCategoriesByProperty(propertyId);
       const catMap = new Map(categories.map(c => [c.id, c.name]));
 
-      // Build simple CSV
       let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns\n';
       for (const item of items) {
         const cat = item.categoryId ? (catMap.get(item.categoryId) || '') : '';
-        const seq = item.displayOrder || 0;
-        const row = [
-          seq,
-          `"${(item.name || '').replace(/"/g, '""')}"`,
-          `"${cat.replace(/"/g, '""')}"`,
-          item.price || 0,
-          `"${(item.description || '').replace(/"/g, '""')}"`,
-          item.foodType === 'veg' ? 'True' : 'False',
-          item.isAvailable ? 'True' : 'False',
-          '""',
-          '""'
-        ];
-        csv += row.join(',') + '\n';
+        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"",""\n`;
       }
 
       res.setHeader('Content-Type', 'text/csv');
@@ -4666,14 +4652,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete all menu items for a property
-  app.delete("/api/menu-items/delete-all", isAuthenticated, async (req, res) => {
+  app.post("/api/menu-items/delete-all/:propertyId", isAuthenticated, async (req, res) => {
     try {
-      const propertyId = parseInt(req.query.propertyId as string, 10);
+      const propertyId = parseInt(req.params.propertyId, 10);
       if (!propertyId || isNaN(propertyId)) {
         return res.status(400).json({ message: "Property ID required" });
       }
 
-      // Get all items for this property and delete them
       const allItems = await storage.getAllMenuItems();
       const itemsToDelete = allItems.filter(i => i.propertyId === propertyId);
       

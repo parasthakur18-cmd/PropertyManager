@@ -317,28 +317,22 @@ export default function EnhancedMenu() {
     try {
       const propertyToExport = selectedProperty || properties?.[0]?.id;
       if (!propertyToExport) {
-        toast({ title: "No property selected", description: "Please select a property first", variant: "destructive" });
+        toast({ title: "No property selected", variant: "destructive" });
         return;
       }
       
-      const response = await fetch(`/api/menu-items/export?propertyId=${propertyToExport}`, {
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Export failed');
-      }
+      const response = await fetch(`/api/menu-items/export/${propertyToExport}`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Export failed');
       
       const blob = await response.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      const propertyName = properties?.find(p => p.id === propertyToExport)?.name || 'menu';
-      link.download = `${propertyName.replace(/\s+/g, '_')}_menu_export.csv`;
+      link.download = 'menu.csv';
       link.click();
       
-      toast({ title: "Export Complete", description: "Menu items downloaded successfully" });
+      toast({ title: "Downloaded" });
     } catch (error) {
-      toast({ title: "Export Failed", description: "Could not download menu items", variant: "destructive" });
+      toast({ title: "Export Failed", variant: "destructive" });
     }
   };
 
@@ -355,7 +349,7 @@ export default function EnhancedMenu() {
       return;
     }
     try {
-      const response = await apiRequest(`/api/menu-items/delete-all?propertyId=${propertyToDelete}`, "DELETE");
+      const response = await apiRequest(`/api/menu-items/delete-all/${propertyToDelete}`, "POST");
       toast({ title: "Deleted", description: response.message });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
