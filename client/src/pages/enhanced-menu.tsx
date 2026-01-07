@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle, Settings } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -75,6 +75,9 @@ export default function EnhancedMenu() {
   const [parsedItems, setParsedItems] = useState<any[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
+  const [whatsappNumbers, setWhatsappNumbers] = useState("");
   
   const { toast } = useToast();
 
@@ -97,6 +100,44 @@ export default function EnhancedMenu() {
   const { data: menuItems, isLoading: itemsLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
   });
+
+  // WhatsApp settings query - based on selected property
+  const settingsPropertyId = selectedProperty || properties?.[0]?.id;
+  const { data: whatsappSettings, refetch: refetchWhatsappSettings } = useQuery<{ enabled: boolean; phoneNumbers: string[] }>({
+    queryKey: ["/api/food-order-whatsapp-settings", settingsPropertyId],
+    enabled: !!settingsPropertyId,
+  });
+
+  // Load settings when dialog opens
+  const openSettingsDialog = () => {
+    if (whatsappSettings) {
+      setWhatsappEnabled(whatsappSettings.enabled ?? false);
+      setWhatsappNumbers((whatsappSettings.phoneNumbers ?? []).join(", "));
+    }
+    setIsSettingsOpen(true);
+  };
+
+  const saveWhatsappSettingsMutation = useMutation({
+    mutationFn: async (data: { enabled: boolean; phoneNumbers: string[] }) => {
+      return await apiRequest(`/api/food-order-whatsapp-settings/${settingsPropertyId}`, "PUT", data);
+    },
+    onSuccess: () => {
+      refetchWhatsappSettings();
+      toast({ title: "Settings Saved", description: "WhatsApp notification settings updated" });
+      setIsSettingsOpen(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Save Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleSaveWhatsappSettings = () => {
+    const numbers = whatsappNumbers
+      .split(",")
+      .map((n) => n.trim().replace(/\s+/g, ""))
+      .filter((n) => n.length >= 10);
+    saveWhatsappSettingsMutation.mutate({ enabled: whatsappEnabled, phoneNumbers: numbers });
+  };
 
   const filteredCategories = categories?.filter(
     (cat) => {
@@ -428,10 +469,16 @@ export default function EnhancedMenu() {
             Manage categories, items, variants, and add-ons for your restaurant menu
           </p>
         </div>
-        <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} data-testid="button-bulk-import">
-          <Upload className="h-4 w-4 mr-2" />
-          Bulk Import CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={openSettingsDialog} data-testid="button-order-settings">
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+          <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} data-testid="button-bulk-import">
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Import CSV
+          </Button>
+        </div>
       </div>
 
       {/* Filters Section */}
@@ -651,6 +698,63 @@ export default function EnhancedMenu() {
           }
         }}
       />
+
+      {/* WhatsApp Settings Dialog */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5 text-primary" />
+              Food Order Notifications
+            </DialogTitle>
+            <DialogDescription>
+              Configure WhatsApp notifications for new food orders
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="whatsapp-toggle">Enable WhatsApp Alerts</Label>
+                <p className="text-sm text-muted-foreground">
+                  Send notifications when new orders are placed
+                </p>
+              </div>
+              <Switch
+                id="whatsapp-toggle"
+                checked={whatsappEnabled}
+                onCheckedChange={setWhatsappEnabled}
+                data-testid="switch-whatsapp-enabled"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="whatsapp-numbers">Phone Numbers</Label>
+              <Textarea
+                id="whatsapp-numbers"
+                placeholder="Enter phone numbers separated by commas (e.g., 9876543210, 8765432109)"
+                value={whatsappNumbers}
+                onChange={(e) => setWhatsappNumbers(e.target.value)}
+                className="min-h-[80px]"
+                data-testid="textarea-whatsapp-numbers"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter 10-digit Indian phone numbers (without +91), separated by commas
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveWhatsappSettings}
+              disabled={saveWhatsappSettingsMutation.isPending}
+              data-testid="button-save-whatsapp-settings"
+            >
+              {saveWhatsappSettingsMutation.isPending ? "Saving..." : "Save Settings"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk Import Dialog */}
       <Dialog open={isBulkImportOpen} onOpenChange={(open) => {

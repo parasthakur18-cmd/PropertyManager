@@ -4778,6 +4778,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
+        
+        // Send to configured food order WhatsApp numbers
+        if (orderData.propertyId) {
+          try {
+            const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(orderData.propertyId);
+            if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
+              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+              const roomNum = roomInfo ? `Room ${roomInfo.roomNumber}` : 'Cafe/Common';
+              const items = orderData.items ? orderData.items.map((item: any) => `${item.name} (${item.quantity}x)`).join(', ') : 'Items';
+              
+              for (const phone of foodOrderSettings.phoneNumbers) {
+                try {
+                  await sendCustomWhatsAppMessage({
+                    countryCode: '91',
+                    mobile: phone,
+                    message: `*New Food Order*\n\nOrder #${order.id}\n${roomNum}\nGuest: ${guest?.fullName || 'Walk-in'}\nItems: ${items}\nAmount: Rs.${orderData.totalAmount || 0}\n\nCheck app for details.`
+                  });
+                  console.log(`[WhatsApp] Food order alert sent to configured number: ${phone}`);
+                } catch (waErr: any) {
+                  console.warn(`[WhatsApp] Failed to send to ${phone}:`, waErr.message);
+                }
+              }
+            }
+          } catch (foodWaErr: any) {
+            console.warn(`[WhatsApp] Food order settings fetch failed:`, foodWaErr.message);
+          }
+        }
       } catch (notifError: any) {
         console.error(`[NOTIFICATIONS] Failed to create order notification:`, notifError.message);
       }
