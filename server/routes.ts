@@ -1749,6 +1749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : null;
 
         if (!guest || (!room && groupRooms.length === 0)) {
+          console.warn(`[Active Bookings] Booking ${booking.id} filtered out: guest=${!!guest}, room=${!!room}, groupRooms=${groupRooms.length}, guestId=${booking.guestId}, roomId=${booking.roomId}, roomIds=${JSON.stringify(booking.roomIds)}`);
           return null;
         }
 
