@@ -321,8 +321,13 @@ export default function EnhancedMenu() {
         return;
       }
       
-      const response = await fetch(`/api/menu-items/export?propertyId=${propertyToExport}`);
-      if (!response.ok) throw new Error('Export failed');
+      const response = await fetch(`/api/menu-items/export?propertyId=${propertyToExport}`, {
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Export failed');
+      }
       
       const blob = await response.blob();
       const link = document.createElement('a');
