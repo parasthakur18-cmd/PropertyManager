@@ -4645,14 +4645,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let variantsStr = '';
         let addOnsStr = '';
         try {
-          const variants = await storage.getMenuItemVariants(item.id);
-          const addOns = await storage.getMenuItemAddOns(item.id);
+          const variants = await storage.getVariantsByMenuItem(item.id);
+          const addOns = await storage.getAddOnsByMenuItem(item.id);
           
           // Format: "VariantName:Price,VariantName2:Price2"
           variantsStr = variants.map(v => `${v.name}:${v.priceModifier || 0}`).join(',');
           addOnsStr = addOns.map(a => `${a.name}:${a.price || 0}`).join(',');
         } catch (err) {
-          console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}`);
+          console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}:`, err);
         }
         
         csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"${variantsStr}","${addOnsStr}"\n`;
