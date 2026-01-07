@@ -176,52 +176,48 @@ export default function EnhancedMenu() {
     if (lines.length < 2) return { items: [], errors: ['CSV file must have headers and at least one data row'] };
     const items: any[] = [];
     const errors: string[] = [];
+    
+    // Check if first column is sequence (number) or name (text) by looking at header
+    const headerValues = parseCSVLine(lines[0]);
+    const hasSequenceColumn = headerValues[0]?.toLowerCase().trim() === 'sequence';
+    
     for (let i = 1; i < lines.length; i++) {
       const values = parseCSVLine(lines[i]);
-      if (values.length < 4) {
-        errors.push(`Row ${i + 1}: Only found ${values.length} columns. Need at least 4 (sequence, name, category, price). Check if using comma separator.`);
-        continue;
-      }
-      const [sequence, name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
       
-      // Build specific missing fields message
-      const missingFields: string[] = [];
-      if (!sequence || sequence.trim() === '') missingFields.push('sequence');
-      if (!name || name.trim() === '') missingFields.push('name');
-      if (!categoryName || categoryName.trim() === '') missingFields.push('category');
-      if (!price || price.trim() === '') missingFields.push('price');
+      let sequence: number, name: string, categoryName: string, price: string, description: string, isVeg: string, isAvailable: string, variants: string, addOns: string;
       
-      if (missingFields.length > 0) {
-        errors.push(`Row ${i + 1}: Missing ${missingFields.join(', ')}. Found: sequence="${sequence || ''}", name="${name || ''}", category="${categoryName || ''}", price="${price || ''}"`);
-        continue;
+      if (hasSequenceColumn) {
+        // Format: sequence, name, category, price, ...
+        if (values.length < 4) { errors.push(`Row ${i + 1}: Need at least 4 columns`); continue; }
+        const seq = parseInt(values[0], 10);
+        sequence = isNaN(seq) ? i : seq;
+        [, name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
+      } else {
+        // Format: name, category, price, ... (no sequence - auto-number)
+        if (values.length < 3) { errors.push(`Row ${i + 1}: Need at least 3 columns (name, category, price)`); continue; }
+        sequence = i;
+        [name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
       }
-      const parsedSequence = parseInt(sequence, 10);
-      if (isNaN(parsedSequence)) {
-        errors.push(`Row ${i + 1}: Invalid sequence "${sequence}" - must be a number`);
-        continue;
-      }
-      const parsedPrice = parseFloat(price);
-      if (isNaN(parsedPrice)) {
-        errors.push(`Row ${i + 1}: Invalid price "${price}"`);
-        continue;
-      }
-      // Find categoryId by matching category name (case-insensitive) - or let backend create it
-      const matchedCategory = categories?.find(c => 
-        c.name.toLowerCase().trim() === categoryName.toLowerCase().trim()
-      );
       
-      // Note: Backend will auto-create missing categories, so we just pass the category name
+      if (!name || !name.trim()) { errors.push(`Row ${i + 1}: Missing name`); continue; }
+      if (!categoryName || !categoryName.trim()) { errors.push(`Row ${i + 1}: Missing category`); continue; }
+      
+      const parsedPrice = parseFloat(price || '0');
+      if (isNaN(parsedPrice)) { errors.push(`Row ${i + 1}: Invalid price "${price}"`); continue; }
+      
+      const matchedCategory = categories?.find(c => c.name.toLowerCase().trim() === categoryName.toLowerCase().trim());
+      
       items.push({
-        sequence: parsedSequence,
-        name, 
-        category: categoryName,
-        categoryId: matchedCategory?.id || null, // Backend will create category if null
+        sequence,
+        name: name.trim(), 
+        category: categoryName.trim(),
+        categoryId: matchedCategory?.id || null,
         price: parsedPrice, 
-        description: description || '',
+        description: (description || '').trim(),
         isVeg: isVeg?.toLowerCase() === 'true',
         isAvailable: isAvailable?.toLowerCase() !== 'false',
-        variants: variants || '', 
-        addOns: addOns || ''
+        variants: (variants || '').trim(), 
+        addOns: (addOns || '').trim()
       });
     }
     return { items, errors };
