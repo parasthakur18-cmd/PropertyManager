@@ -4628,13 +4628,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
     try {
       const propertyIdStr = req.query.propertyId as string;
-      if (!propertyIdStr || propertyIdStr === 'undefined' || propertyIdStr === 'null') {
-        return res.status(400).json({ message: "Property ID is required" });
+      console.log('[MENU-EXPORT] propertyId query param:', propertyIdStr);
+      if (!propertyIdStr || propertyIdStr === 'undefined' || propertyIdStr === 'null' || propertyIdStr === '0') {
+        return res.status(400).json({ message: "Property ID is required. Please select a property first." });
       }
       const propertyId = parseInt(propertyIdStr, 10);
-      if (isNaN(propertyId)) {
+      if (isNaN(propertyId) || propertyId <= 0) {
         return res.status(400).json({ message: "Invalid Property ID" });
       }
+      console.log('[MENU-EXPORT] Parsed propertyId:', propertyId);
 
       // Get all menu items for this property
       const allItems = await storage.getAllMenuItems();
