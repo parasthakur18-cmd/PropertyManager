@@ -29,6 +29,7 @@ interface ActiveBooking {
   source: string | null;
   isGroupBooking: boolean;
   roomIds: number[] | null;
+  dataIssues?: string[];
   guest: {
     id: number;
     fullName: string;
@@ -901,7 +902,7 @@ export default function ActiveBookings() {
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <User className="h-4 w-4" />
                       <CardTitle>{booking.guest.fullName}</CardTitle>
                       {booking.isGroupBooking && (
@@ -909,7 +910,21 @@ export default function ActiveBookings() {
                           Group
                         </Badge>
                       )}
+                      {booking.dataIssues && booking.dataIssues.length > 0 && (
+                        <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          Data Issue
+                        </Badge>
+                      )}
                     </div>
+                    {booking.dataIssues && booking.dataIssues.length > 0 && (
+                      <Alert variant="destructive" className="mt-2 py-2">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription className="text-xs">
+                          {booking.dataIssues.join(", ")}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     <div className="flex gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Phone className="h-3 w-3" />

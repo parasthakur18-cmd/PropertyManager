@@ -1748,9 +1748,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? allProperties.find(p => p.id === groupRooms[0].propertyId)
             : null;
 
-        if (!guest || (!room && groupRooms.length === 0)) {
-          console.warn(`[Active Bookings] Booking ${booking.id} filtered out: guest=${!!guest}, room=${!!room}, groupRooms=${groupRooms.length}, guestId=${booking.guestId}, roomId=${booking.roomId}, roomIds=${JSON.stringify(booking.roomIds)}`);
-          return null;
+        // Track data integrity issues instead of filtering out
+        const dataIssues: string[] = [];
+        if (!guest) {
+          dataIssues.push(`Guest record missing (ID: ${booking.guestId})`);
+          console.warn(`[Active Bookings] Booking ${booking.id}: Guest ${booking.guestId} not found`);
+        }
+        if (!room && groupRooms.length === 0) {
+          dataIssues.push(`Room record missing (ID: ${booking.roomId})`);
+          console.warn(`[Active Bookings] Booking ${booking.id}: Room ${booking.roomId} not found, roomIds=${JSON.stringify(booking.roomIds)}`);
         }
 
         // Calculate nights stayed (use checkout date, not current date)
@@ -1771,12 +1777,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               roomCharges += pricePerNight * nightsStayed;
             }
           }
-        } else {
+        } else if (room) {
           // Single room booking
           const customPrice = booking.customPrice ? parseFloat(String(booking.customPrice)) : null;
           const roomPrice = room.pricePerNight ? parseFloat(String(room.pricePerNight)) : 0;
           const pricePerNight = customPrice || roomPrice;
           roomCharges = pricePerNight * nightsStayed;
+        } else {
+          // Room missing - use custom price if available
+          const customPrice = booking.customPrice ? parseFloat(String(booking.customPrice)) : 0;
+          roomCharges = customPrice * nightsStayed;
         }
 
         const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
@@ -1803,13 +1813,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         return {
           ...booking,
-          guest,
+          guest: guest || { id: booking.guestId, fullName: "Unknown Guest", email: null, phone: null },
           room,
           rooms: groupRooms.length > 0 ? groupRooms : undefined,
           property,
           nightsStayed,
           orders: bookingOrders,
           extraServices: bookingExtras,
+          dataIssues: dataIssues.length > 0 ? dataIssues : undefined,
           charges: {
             roomCharges: roomCharges.toFixed(2),
             foodCharges: foodCharges.toFixed(2),
@@ -1822,7 +1833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             balanceAmount: balanceAmount.toFixed(2),
           },
         };
-      }).filter(Boolean);
+      });
 
       res.json(enrichedBookings);
     } catch (error: any) {
