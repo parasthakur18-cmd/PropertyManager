@@ -752,7 +752,8 @@ export default function EnhancedMenu() {
               {/* CSV Format Help */}
               <div className="text-sm text-muted-foreground">
                 <p className="font-medium mb-1">CSV Format:</p>
-                <p>name, category, price, description, isVeg (true/false), isAvailable (true/false), variants, addOns</p>
+                <p>sequence, name, category, price, description, isVeg (true/false), isAvailable (true/false), variants, addOns</p>
+                <p className="text-xs mt-1">Sequence: number for display order within category (1, 2, 3...)</p>
                 <p className="text-xs mt-1">Variants format: Name:Price,Name:Price (e.g., Half:150,Full:250)</p>
               </div>
             </div>

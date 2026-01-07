@@ -4627,17 +4627,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Export menu items to CSV
   app.get("/api/menu-items/export", isAuthenticated, async (req, res) => {
     try {
-      const propertyId = parseInt(req.query.propertyId as string);
-      if (!propertyId) {
+      const propertyIdStr = req.query.propertyId as string;
+      if (!propertyIdStr || propertyIdStr === 'undefined' || propertyIdStr === 'null') {
         return res.status(400).json({ message: "Property ID is required" });
+      }
+      const propertyId = parseInt(propertyIdStr, 10);
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid Property ID" });
       }
 
       // Get all menu items for this property
       const allItems = await storage.getAllMenuItems();
       const propertyItems = allItems.filter(item => item.propertyId === propertyId);
 
-      // Build CSV with variants and add-ons
-      const headers = ['name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+      // Get categories for this property
+      const categories = await storage.getMenuCategoriesByProperty(propertyId);
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      // Build CSV with variants and add-ons - includes sequence column
+      const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
       const rows: string[][] = [];
 
       for (const item of propertyItems) {
@@ -4654,20 +4662,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const addOns = await storage.getAddOnsByMenuItem(item.id);
         const addOnStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice}`).join(',');
 
+        // Get category name from categoryId
+        const categoryName = item.categoryId ? (categoryMap.get(item.categoryId) || item.category || '') : (item.category || '');
+
         rows.push([
+          (item.displayOrder ?? 0).toString(),
           item.name,
-          item.category || '',
+          categoryName,
           item.price?.toString() || '0',
           item.description || '',
-          item.isVeg ? 'True' : 'False',
+          item.foodType === 'veg' ? 'True' : 'False',
           item.isAvailable ? 'True' : 'False',
           variantStr,
           addOnStr
         ]);
       }
 
-      // Sort by category
-      rows.sort((a, b) => a[1].localeCompare(b[1]));
+      // Sort by category then by sequence
+      rows.sort((a, b) => {
+        const catCompare = a[2].localeCompare(b[2]);
+        if (catCompare !== 0) return catCompare;
+        return parseInt(a[0]) - parseInt(b[0]);
+      });
 
       // Build CSV content
       const csvContent = [
