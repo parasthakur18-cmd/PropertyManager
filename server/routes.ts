@@ -12568,7 +12568,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0") || 
                               totalAmount * 0.3; // Default 30%
         
-        // Check for auto-cancellation (after configured hours)
+        // Auto-cancellation is currently DISABLED
+        // Previously: Auto-cancel after configured hours if payment not received
+        // Reason: Admin requested to stop auto-cancellation
+        // To re-enable: uncomment the block below
+        /*
         if (hoursSinceCreation >= autoCancelHours) {
           await db.update(bookings).set({
             status: "cancelled",
@@ -12602,6 +12606,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
           continue;
         }
+        */
         
         // Check if we can send another reminder
         // Conditions: not exceeded max reminders AND enough time has passed since last reminder
