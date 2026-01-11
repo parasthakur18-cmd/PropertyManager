@@ -448,7 +448,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         // Check if user is deactivated
         if (dbUser.status === 'inactive') {
           console.log(`[isAuthenticated] Blocked deactivated user: ${userId}`);
-          req.session.destroy(() => {});
+          // Don't destroy session - let /api/auth/user detect deactivation and return proper response
           return res.status(403).json({ 
             message: "Your account has been deactivated. Please contact your administrator.",
             isDeactivated: true
@@ -486,8 +486,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
           // Check if user is deactivated
           if (dbUser.status === 'inactive') {
             console.log(`[isAuthenticated] Blocked deactivated OIDC user: ${userId}`);
-            req.logout(() => {});
-            req.session?.destroy(() => {});
+            // Don't destroy session - let /api/auth/user detect deactivation and return proper response
             return res.status(403).json({ 
               message: "Your account has been deactivated. Please contact your administrator.",
               isDeactivated: true
