@@ -11411,6 +11411,50 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
           n.type?.startsWith('error_') ||
           n.type?.startsWith('approval_')
         );
+      } else if (user?.role === 'admin') {
+        // For Admin users: Filter notifications by property access
+        // Get user's accessible property IDs
+        const userPropertyIds = new Set<number>();
+        if (user.primaryPropertyId) userPropertyIds.add(user.primaryPropertyId);
+        if (user.assignedPropertyIds) {
+          user.assignedPropertyIds.forEach((id: number) => userPropertyIds.add(id));
+        }
+        
+        // If user has specific property assignments, filter notifications
+        if (userPropertyIds.size > 0) {
+          const filteredNotifications: typeof userNotifications = [];
+          
+          for (const notification of userNotifications) {
+            // System notifications always show
+            if (!notification.relatedType || !notification.relatedId) {
+              filteredNotifications.push(notification);
+              continue;
+            }
+            
+            // For booking-related notifications, check property access
+            if (notification.relatedType === 'booking') {
+              const booking = await storage.getBooking(notification.relatedId);
+              if (booking && userPropertyIds.has(booking.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            // For order-related notifications, check property access
+            if (notification.relatedType === 'order') {
+              const order = await storage.getOrder(notification.relatedId);
+              if (order && userPropertyIds.has(order.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            // Other notifications (task, user, etc.) - show by default
+            filteredNotifications.push(notification);
+          }
+          
+          userNotifications = filteredNotifications;
+        }
       }
       
       res.json(userNotifications);
