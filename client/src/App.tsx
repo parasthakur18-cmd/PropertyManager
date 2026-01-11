@@ -72,6 +72,7 @@ import Register from "@/pages/register";
 import Login from "@/pages/login";
 import ReportIssue from "@/pages/report-issue";
 import OtaIntegrations from "@/pages/ota-integrations";
+import AcceptInvite from "@/pages/accept-invite";
 import Notifications from "@/pages/notifications";
 import AuditLogs from "@/pages/audit-logs";
 import Tasks from "@/pages/tasks";
@@ -116,6 +117,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
       <Route path="/signup" component={Register} />
       <Route path="/register" component={Register} />
       <Route path="/report-issue" component={ReportIssue} />
+      <Route path="/accept-invite" component={AcceptInvite} />
       
       {showDashboard ? (
         <>

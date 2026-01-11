@@ -1029,6 +1029,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Validate invitation token (public endpoint)
+  app.get("/api/staff-invitations/validate", async (req: any, res) => {
+    try {
+      const token = req.query.token as string;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.token, token));
+      
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ message: "This invitation has already been used" });
+      }
+      
+      if (new Date(invitation.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "This invitation has expired" });
+      }
+
+      // Get property name
+      const property = await storage.getProperty(invitation.propertyId);
+      
+      res.json({
+        email: invitation.email,
+        role: invitation.role,
+        propertyId: invitation.propertyId,
+        propertyName: property?.name || 'Property',
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Accept invitation and create account (public endpoint)
+  app.post("/api/staff-invitations/accept", async (req: any, res) => {
+    try {
+      const { token, password, firstName, lastName } = req.body;
+      
+      if (!token || !password || !firstName || !lastName) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+      
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.token, token));
+      
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ message: "This invitation has already been used" });
+      }
+      
+      if (new Date(invitation.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "This invitation has expired" });
+      }
+
+      // Check if user with this email already exists
+      const allUsers = await storage.getAllUsers();
+      const existingUser = allUsers.find(u => u.email?.toLowerCase() === invitation.email.toLowerCase());
+      
+      if (existingUser) {
+        return res.status(400).json({ message: "An account with this email already exists. Please log in instead." });
+      }
+
+      // Hash password and create user
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const newUser = await storage.createUser({
+        email: invitation.email,
+        firstName,
+        lastName,
+        role: invitation.role as "staff" | "manager" | "kitchen" | "admin",
+        password: hashedPassword,
+        status: 'active',
+        verificationStatus: 'approved',
+        assignedPropertyIds: [invitation.propertyId],
+      });
+
+      // Update invitation status to accepted
+      await db.update(staffInvitations)
+        .set({ status: 'accepted' })
+        .where(eq(staffInvitations.id, invitation.id));
+
+      // Get property name for response
+      const property = await storage.getProperty(invitation.propertyId);
+
+      res.json({
+        success: true,
+        message: "Account created successfully",
+        propertyName: property?.name,
+        role: invitation.role,
+      });
+    } catch (error: any) {
+      console.error("[INVITE] Accept error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ===== USER PERMISSIONS ROUTES =====
   
   // Get user permissions
