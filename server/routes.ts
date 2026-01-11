@@ -507,8 +507,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[AUTH] Auto-verified manager email: ${user?.email}`);
       }
       
-      // CHECK VERIFICATION STATUS - Block pending/rejected users (except super-admin)
+      // CHECK VERIFICATION STATUS - Block pending/rejected/deactivated users (except super-admin)
       if (user && user.role !== 'super-admin') {
+        // Check if user is deactivated (inactive status)
+        if (user.status === 'inactive') {
+          return res.status(403).json({ 
+            message: "Your account has been deactivated. Please contact your administrator.",
+            isDeactivated: true,
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+        
         if (user.verificationStatus === 'rejected') {
           return res.status(403).json({ 
             message: "Your account has been rejected. Please contact support.",
