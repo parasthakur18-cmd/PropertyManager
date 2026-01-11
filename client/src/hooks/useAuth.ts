@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@shared/schema";
 
-// Auth response type that includes pending/rejected status
+// Auth response type that includes pending/rejected/deactivated status
 interface AuthResponse {
   user: User | null;
   verificationStatus?: "pending" | "rejected" | "verified";
+  isDeactivated?: boolean;
   message?: string;
   pendingUser?: { email: string; firstName: string; lastName: string };
 }
@@ -26,12 +27,13 @@ async function fetchUserWithTimeout(): Promise<AuthResponse> {
       return { user: null };
     }
     
-    // Handle 403 - pending or rejected users
+    // Handle 403 - pending, rejected, or deactivated users
     if (res.status === 403) {
       const data = await res.json();
       return {
         user: null,
         verificationStatus: data.verificationStatus,
+        isDeactivated: data.isDeactivated,
         message: data.message,
         pendingUser: data.user,
       };
@@ -63,6 +65,7 @@ export function useAuth() {
     isLoading,
     isAuthenticated: !!data?.user,
     verificationStatus: data?.verificationStatus,
+    isDeactivated: data?.isDeactivated,
     pendingUser: data?.pendingUser,
     message: data?.message,
     isViewingAsUser: (data?.user as any)?.isViewingAsUser || false,
