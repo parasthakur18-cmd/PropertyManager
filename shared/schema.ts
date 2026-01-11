@@ -1329,3 +1329,62 @@ export const insertTaskReminderLogSchema = createInsertSchema(taskReminderLogs).
 
 export type TaskReminderLog = typeof taskReminderLogs.$inferSelect;
 export type InsertTaskReminderLog = z.infer<typeof insertTaskReminderLogSchema>;
+
+// ===== USER PERMISSIONS =====
+
+// User permissions table - granular permission control per user
+export const userPermissions = pgTable("user_permissions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // Module permissions - each is view/edit/none
+  bookings: varchar("bookings", { length: 20 }).notNull().default('none'), // none, view, edit
+  calendar: varchar("calendar", { length: 20 }).notNull().default('none'),
+  rooms: varchar("rooms", { length: 20 }).notNull().default('none'),
+  guests: varchar("guests", { length: 20 }).notNull().default('none'),
+  foodOrders: varchar("food_orders", { length: 20 }).notNull().default('none'),
+  menuManagement: varchar("menu_management", { length: 20 }).notNull().default('none'),
+  payments: varchar("payments", { length: 20 }).notNull().default('none'),
+  reports: varchar("reports", { length: 20 }).notNull().default('none'),
+  settings: varchar("settings", { length: 20 }).notNull().default('none'),
+  tasks: varchar("tasks", { length: 20 }).notNull().default('none'),
+  staff: varchar("staff", { length: 20 }).notNull().default('none'),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertUserPermissionsSchema = createInsertSchema(userPermissions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserPermissions = typeof userPermissions.$inferSelect;
+export type InsertUserPermissions = z.infer<typeof insertUserPermissionsSchema>;
+
+// Permission level types
+export type PermissionLevel = 'none' | 'view' | 'edit';
+
+// ===== STAFF INVITATIONS =====
+
+// Staff invitations table - for inviting staff to join a property
+export const staffInvitations = pgTable("staff_invitations", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  role: varchar("role", { length: 50 }).notNull().default('staff'), // staff, manager, kitchen
+  invitedBy: varchar("invited_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  inviteToken: varchar("invite_token", { length: 100 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default('pending'), // pending, accepted, expired, cancelled
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertStaffInvitationSchema = createInsertSchema(staffInvitations).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+});
+
+export type StaffInvitation = typeof staffInvitations.$inferSelect;
+export type InsertStaffInvitation = z.infer<typeof insertStaffInvitationSchema>;
