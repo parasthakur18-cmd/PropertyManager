@@ -11057,7 +11057,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user is deactivated
-      if (user[0].isActive === false) {
+      if (user[0].status === 'inactive') {
         console.log(`[EMAIL-LOGIN] Blocked deactivated user: ${email}`);
         return res.status(403).json({ 
           message: "Your account has been deactivated. Please contact your administrator.",

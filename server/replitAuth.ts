@@ -446,7 +446,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       const dbUser = await storage.getUser(userId);
       if (dbUser) {
         // Check if user is deactivated
-        if (dbUser.isActive === false) {
+        if (dbUser.status === 'inactive') {
           console.log(`[isAuthenticated] Blocked deactivated user: ${userId}`);
           req.session.destroy(() => {});
           return res.status(403).json({ 
@@ -484,7 +484,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
         const dbUser = await storage.getUser(userId);
         if (dbUser) {
           // Check if user is deactivated
-          if (dbUser.isActive === false) {
+          if (dbUser.status === 'inactive') {
             console.log(`[isAuthenticated] Blocked deactivated OIDC user: ${userId}`);
             req.logout(() => {});
             req.session?.destroy(() => {});
