@@ -1038,7 +1038,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Token is required" });
       }
 
-      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.token, token));
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.inviteToken, token));
       
       if (!invitation) {
         return res.status(404).json({ message: "Invitation not found" });
@@ -1079,7 +1079,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Password must be at least 6 characters" });
       }
 
-      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.token, token));
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.inviteToken, token));
       
       if (!invitation) {
         return res.status(404).json({ message: "Invitation not found" });
