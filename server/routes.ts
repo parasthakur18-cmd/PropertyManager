@@ -57,7 +57,7 @@ import {
   sendSelfCheckinLink,
   sendTaskReminder
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -833,6 +833,285 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await storage.deleteUser(id);
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Toggle user active status (activate/deactivate)
+  app.patch("/api/users/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body; // 'active' or 'inactive'
+      
+      if (!['active', 'inactive'].includes(status)) {
+        return res.status(400).json({ message: "Status must be 'active' or 'inactive'" });
+      }
+      
+      // Prevent self-deactivation
+      if (id === userId && status === 'inactive') {
+        return res.status(400).json({ message: "You cannot deactivate your own account" });
+      }
+      
+      // Prevent deactivating super-admin users (only for regular admins)
+      const targetUser = await storage.getUser(id);
+      if (targetUser?.role === 'super-admin' && currentUser?.role !== 'super-admin') {
+        return res.status(403).json({ message: "Cannot modify super-admin users" });
+      }
+      
+      // For regular admins, check if they have access to this user's properties
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        const hasAccess = targetUser?.assignedPropertyIds?.some((propId: any) => 
+          canAccessProperty(tenant, parseInt(propId))
+        ) || targetUser?.businessName === currentUser.businessName;
+        
+        if (!hasAccess) {
+          return res.status(403).json({ message: "You can only manage staff from your properties" });
+        }
+      }
+      
+      await db.update(users).set({ 
+        status,
+        updatedAt: new Date()
+      }).where(eq(users.id, id));
+      
+      console.log(`[USER] User ${id} status changed to: ${status} by ${userId}`);
+      res.json({ success: true, status });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== STAFF INVITATION ROUTES =====
+  
+  // Create staff invitation
+  app.post("/api/staff-invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { email, propertyId, role } = req.body;
+      
+      if (!email || !propertyId) {
+        return res.status(400).json({ message: "Email and property are required" });
+      }
+      
+      // Validate role
+      const validRoles = ['staff', 'manager', 'kitchen'];
+      if (role && !validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be staff, manager, or kitchen" });
+      }
+      
+      // Check if admin has access to this property
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        if (!canAccessProperty(tenant, propertyId)) {
+          return res.status(403).json({ message: "You don't have access to this property" });
+        }
+      }
+      
+      // Check if user already exists with this email
+      const allUsers = await storage.getAllUsers();
+      const existingUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+      if (existingUser) {
+        return res.status(400).json({ message: "A user with this email already exists" });
+      }
+      
+      // Check for existing pending invitation
+      const existingInvites = await db.select().from(staffInvitations)
+        .where(and(
+          eq(staffInvitations.email, email.toLowerCase()),
+          eq(staffInvitations.propertyId, propertyId),
+          eq(staffInvitations.status, 'pending')
+        ));
+      
+      if (existingInvites.length > 0) {
+        return res.status(400).json({ message: "An invitation is already pending for this email" });
+      }
+      
+      // Generate invite token
+      const inviteToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      
+      // Create invitation
+      const [invitation] = await db.insert(staffInvitations).values({
+        email: email.toLowerCase(),
+        propertyId,
+        role: role || 'staff',
+        invitedBy: userId,
+        inviteToken,
+        status: 'pending',
+        expiresAt,
+      }).returning();
+      
+      // Send invitation email
+      const property = await storage.getProperty(propertyId);
+      const inviteUrl = `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://hostezee.in'}/accept-invite?token=${inviteToken}`;
+      
+      try {
+        const { sendEmail } = await import("./email-service");
+        await sendEmail({
+          to: email,
+          subject: `You're invited to join ${property?.name || 'a property'} on Hostezee`,
+          html: `
+            <h2>You've been invited!</h2>
+            <p>${currentUser.firstName || 'An admin'} has invited you to join <strong>${property?.name || 'their property'}</strong> as a <strong>${role || 'staff'}</strong> member on Hostezee Property Management System.</p>
+            <p><a href="${inviteUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px;">Accept Invitation</a></p>
+            <p>This invitation expires in 7 days.</p>
+            <p>If you didn't expect this invitation, you can ignore this email.</p>
+          `,
+        });
+        console.log(`[INVITE] Invitation email sent to ${email}`);
+      } catch (emailError: any) {
+        console.error(`[INVITE] Failed to send invitation email:`, emailError.message);
+      }
+      
+      console.log(`[INVITE] Staff invitation created for ${email} to property ${propertyId}`);
+      res.status(201).json(invitation);
+    } catch (error: any) {
+      console.error("[INVITE] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get staff invitations for admin
+  app.get("/api/staff-invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      let invitations = await db.select().from(staffInvitations).orderBy(desc(staffInvitations.createdAt));
+      
+      // Filter by admin's properties
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        invitations = invitations.filter(inv => canAccessProperty(tenant, inv.propertyId));
+      }
+      
+      res.json(invitations);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Cancel invitation
+  app.delete("/api/staff-invitations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const invitationId = parseInt(req.params.id);
+      await db.delete(staffInvitations).where(eq(staffInvitations.id, invitationId));
+      
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== USER PERMISSIONS ROUTES =====
+  
+  // Get user permissions
+  app.get("/api/users/:id/permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      
+      // Get permissions or return defaults
+      const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, targetUserId));
+      
+      if (permissions) {
+        res.json(permissions);
+      } else {
+        // Return default permissions structure
+        res.json({
+          userId: targetUserId,
+          bookings: 'none',
+          calendar: 'none',
+          rooms: 'none',
+          guests: 'none',
+          foodOrders: 'none',
+          menuManagement: 'none',
+          payments: 'none',
+          reports: 'none',
+          settings: 'none',
+          tasks: 'none',
+          staff: 'none',
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Update user permissions
+  app.put("/api/users/:id/permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const permissions = req.body;
+      
+      // Validate permission levels
+      const validLevels = ['none', 'view', 'edit'];
+      const permissionFields = ['bookings', 'calendar', 'rooms', 'guests', 'foodOrders', 'menuManagement', 'payments', 'reports', 'settings', 'tasks', 'staff'];
+      
+      for (const field of permissionFields) {
+        if (permissions[field] && !validLevels.includes(permissions[field])) {
+          return res.status(400).json({ message: `Invalid permission level for ${field}` });
+        }
+      }
+      
+      // Check if permissions record exists
+      const [existing] = await db.select().from(userPermissions).where(eq(userPermissions.userId, targetUserId));
+      
+      if (existing) {
+        // Update existing
+        await db.update(userPermissions).set({
+          ...permissions,
+          updatedAt: new Date(),
+        }).where(eq(userPermissions.userId, targetUserId));
+      } else {
+        // Create new
+        await db.insert(userPermissions).values({
+          userId: targetUserId,
+          ...permissions,
+        });
+      }
+      
+      console.log(`[PERMISSIONS] Updated permissions for user ${targetUserId}`);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
