@@ -1105,7 +1105,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const bcrypt = await import("bcryptjs");
       const hashedPassword = await bcrypt.hash(password, 10);
       
-      const newUser = await storage.createUser({
+      // Generate a unique user ID
+      const uniqueId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      
+      const [newUser] = await db.insert(users).values({
+        id: uniqueId,
         email: invitation.email,
         firstName,
         lastName,
@@ -1114,7 +1118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'active',
         verificationStatus: 'approved',
         assignedPropertyIds: [invitation.propertyId],
-      });
+      }).returning();
 
       // Update invitation status to accepted
       await db.update(staffInvitations)
