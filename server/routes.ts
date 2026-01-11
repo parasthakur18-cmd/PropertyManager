@@ -509,8 +509,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // CHECK VERIFICATION STATUS - Block pending/rejected/deactivated users (except super-admin)
       if (user && user.role !== 'super-admin') {
-        // Check if user is deactivated (inactive status)
-        if (user.status === 'inactive') {
+        // Check if user is deactivated (inactive or suspended status)
+        if (user.status === 'inactive' || user.status === 'suspended') {
           return res.status(403).json({ 
             message: "Your account has been deactivated. Please contact your administrator.",
             isDeactivated: true,
@@ -11065,8 +11065,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check if user is deactivated
-      if (user[0].status === 'inactive') {
+      // Check if user is deactivated (inactive or suspended)
+      if (user[0].status === 'inactive' || user[0].status === 'suspended') {
         console.log(`[EMAIL-LOGIN] Blocked deactivated user: ${email}`);
         return res.status(403).json({ 
           message: "Your account has been deactivated. Please contact your administrator.",
