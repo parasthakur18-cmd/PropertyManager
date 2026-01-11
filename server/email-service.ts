@@ -148,14 +148,20 @@ export async function sendEmail(message: EmailMessage): Promise<EmailResponse> {
     }
 
     // Send email via AgentMail
-    const sendResponse = await client.inboxes.messages.send(inboxId, {
+    const sendResponse: any = await client.inboxes.messages.send(inboxId, {
       to: [message.to],
       subject: message.subject,
       html: message.html,
       text: message.text || message.subject,
     });
 
-    const messageId = sendResponse.body?.messageId || sendResponse.body?.id;
+    // Log the full response structure for debugging
+    console.log(`[EMAIL] AgentMail response:`, JSON.stringify(sendResponse, null, 2));
+    
+    // Extract message ID from various possible response structures
+    const messageId = sendResponse?.messageId || sendResponse?.id || 
+                     sendResponse?.body?.messageId || sendResponse?.body?.id ||
+                     sendResponse?.message?.id || `sent-${Date.now()}`;
     console.log(`[EMAIL] Sent to ${message.to} - Message ID: ${messageId}`);
     
     return {
