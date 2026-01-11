@@ -445,6 +445,15 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     try {
       const dbUser = await storage.getUser(userId);
       if (dbUser) {
+        // Check if user is deactivated
+        if (dbUser.isActive === false) {
+          console.log(`[isAuthenticated] Blocked deactivated user: ${userId}`);
+          req.session.destroy(() => {});
+          return res.status(403).json({ 
+            message: "Your account has been deactivated. Please contact your administrator.",
+            isDeactivated: true
+          });
+        }
         (req as any).user.role = dbUser.role;
         (req as any).user.assignedPropertyIds = dbUser.assignedPropertyIds;
       }
@@ -474,6 +483,16 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       if (userId) {
         const dbUser = await storage.getUser(userId);
         if (dbUser) {
+          // Check if user is deactivated
+          if (dbUser.isActive === false) {
+            console.log(`[isAuthenticated] Blocked deactivated OIDC user: ${userId}`);
+            req.logout(() => {});
+            req.session?.destroy(() => {});
+            return res.status(403).json({ 
+              message: "Your account has been deactivated. Please contact your administrator.",
+              isDeactivated: true
+            });
+          }
           user.id = dbUser.id;
           user.role = dbUser.role;
           user.assignedPropertyIds = dbUser.assignedPropertyIds;

@@ -55,6 +55,7 @@ import {
   SidebarGroupAction,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
@@ -184,15 +185,17 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const { setOpen, isMobile } = useSidebar();
+  const { hasAccess, isLoading: permissionsLoading } = usePermissions();
 
   // Always keep sidebar open
   useEffect(() => {
     setOpen(true);
   }, [setOpen]);
 
-  // Get menu items based on role
+  // Get menu items based on role AND permissions
   const getMenuConfig = () => {
-    if (user?.role === "admin") {
+    // Admin and super-admin have full access
+    if (user?.role === "admin" || user?.role === "super-admin") {
       return {
         mainItems: adminMainItems,
         bookingItems: adminBookingItems,
@@ -201,16 +204,6 @@ export function AppSidebar() {
         restaurantItems: adminRestaurantItems,
         adminItems: adminAdminItems,
         financeItems: adminFinanceItems,
-      };
-    } else if (user?.role === "manager") {
-      return {
-        mainItems: managerMainItems,
-        bookingItems: managerBookingItems,
-        roomItems: managerRoomItems,
-        guestItems: managerGuestItems,
-        restaurantItems: managerRestaurantItems,
-        adminItems: managerAdminItems,
-        financeItems: managerFinanceItems,
       };
     } else if (user?.role === "kitchen") {
       return {
@@ -223,15 +216,70 @@ export function AppSidebar() {
         financeItems: [],
       };
     } else {
-      // Staff
+      // Staff and manager - apply permission filtering
+      const mainItems = [
+        { title: "Dashboard", url: "/", icon: Home },
+        ...(hasAccess("tasks") ? [{ title: "Tasks", url: "/tasks", icon: ListTodo }] : []),
+        { title: "Notifications", url: "/notifications", icon: Bell },
+      ];
+
+      const bookingItems = hasAccess("bookings") ? [
+        { title: "Bookings", url: "/bookings", icon: Calendar },
+        { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
+      ] : [];
+
+      const calendarItems = hasAccess("calendar") ? [
+        { title: "Room Calendar", url: "/calendar", icon: CalendarDays },
+      ] : [];
+
+      const roomItems = hasAccess("rooms") ? [
+        { title: "Rooms", url: "/rooms", icon: Hotel },
+        { title: "QR Codes", url: "/qr-codes", icon: QrCode },
+        { title: "Add-ons", url: "/addons", icon: Plus },
+      ] : [];
+
+      const guestItems = hasAccess("guests") ? [
+        { title: "Guests", url: "/guests", icon: Users },
+      ] : [];
+
+      const restaurantItems = [
+        ...(hasAccess("foodOrders") ? [
+          { title: "Restaurant", url: "/restaurant", icon: UtensilsCrossed },
+          { title: "Kitchen", url: "/kitchen", icon: ChefHat },
+          { title: "Quick Order", url: "/quick-order", icon: Phone },
+          { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
+        ] : []),
+        ...(hasAccess("menuManagement") ? [
+          { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
+        ] : []),
+      ];
+
+      const adminItems = [
+        ...(hasAccess("staff") ? [
+          { title: "Users", url: "/users", icon: UserCog },
+        ] : []),
+        ...(hasAccess("settings") ? [
+          { title: "Settings", url: "/settings", icon: Settings },
+        ] : []),
+      ];
+
+      const financeItems = hasAccess("payments") ? [
+        { title: "Billing", url: "/billing", icon: Receipt },
+        { title: "Expenses", url: "/expenses", icon: FileText },
+        ...(hasAccess("reports") ? [
+          { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+          { title: "Analytics", url: "/analytics", icon: BarChart3 },
+        ] : []),
+      ] : [];
+
       return {
-        mainItems: staffMenuItems,
-        bookingItems: [],
-        roomItems: [],
-        guestItems: [],
-        restaurantItems: [],
-        adminItems: [],
-        financeItems: [],
+        mainItems,
+        bookingItems: [...bookingItems, ...calendarItems],
+        roomItems,
+        guestItems,
+        restaurantItems,
+        adminItems,
+        financeItems,
       };
     }
   };

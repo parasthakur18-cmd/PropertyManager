@@ -1142,7 +1142,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== USER PERMISSIONS ROUTES =====
   
-  // Get user permissions
+  // Get current user's permissions (for sidebar filtering)
+  app.get("/api/user-permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Get permissions for current user
+      const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, userId));
+      
+      if (permissions) {
+        res.json(permissions);
+      } else {
+        // Return default permissions structure (no access until explicitly granted)
+        res.json({
+          userId: userId,
+          bookings: 'none',
+          calendar: 'none',
+          rooms: 'none',
+          guests: 'none',
+          foodOrders: 'none',
+          menuManagement: 'none',
+          payments: 'none',
+          reports: 'none',
+          settings: 'none',
+          tasks: 'none',
+          staff: 'none',
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get user permissions (admin only)
   app.get("/api/users/:id/permissions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
@@ -11017,6 +11053,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ 
           message: "Your account is pending approval. You will be notified once approved.",
           verificationStatus: "pending"
+        });
+      }
+
+      // Check if user is deactivated
+      if (user[0].isActive === false) {
+        console.log(`[EMAIL-LOGIN] Blocked deactivated user: ${email}`);
+        return res.status(403).json({ 
+          message: "Your account has been deactivated. Please contact your administrator.",
+          isDeactivated: true
         });
       }
 
