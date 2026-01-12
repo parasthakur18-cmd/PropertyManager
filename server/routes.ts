@@ -1164,7 +1164,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, userId));
       
       if (permissions) {
-        res.json(permissions);
+        // Transform snake_case to camelCase for frontend
+        res.json({
+          userId: permissions.userId,
+          bookings: permissions.bookings,
+          calendar: permissions.calendar,
+          rooms: permissions.rooms,
+          guests: permissions.guests,
+          foodOrders: permissions.foodOrders,
+          menuManagement: permissions.menuManagement,
+          payments: permissions.payments,
+          reports: permissions.reports,
+          settings: permissions.settings,
+          tasks: permissions.tasks,
+          staff: permissions.staff,
+        });
       } else {
         // Return default permissions structure (no access until explicitly granted)
         res.json({
@@ -1203,7 +1217,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, targetUserId));
       
       if (permissions) {
-        res.json(permissions);
+        // Transform to consistent camelCase for frontend
+        res.json({
+          userId: permissions.userId,
+          bookings: permissions.bookings,
+          calendar: permissions.calendar,
+          rooms: permissions.rooms,
+          guests: permissions.guests,
+          foodOrders: permissions.foodOrders,
+          menuManagement: permissions.menuManagement,
+          payments: permissions.payments,
+          reports: permissions.reports,
+          settings: permissions.settings,
+          tasks: permissions.tasks,
+          staff: permissions.staff,
+        });
       } else {
         // Return default permissions structure
         res.json({
