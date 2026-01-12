@@ -17,6 +17,7 @@ import {
   communications,
   propertyLeases,
   leasePayments,
+  leaseHistory,
   propertyExpenses,
   expenseCategories,
   bankTransactions,
@@ -68,6 +69,8 @@ import {
   type InsertPropertyLease,
   type LeasePayment,
   type InsertLeasePayment,
+  type LeaseHistory,
+  type InsertLeaseHistory,
   type PropertyExpense,
   type InsertPropertyExpense,
   type ExpenseCategory,
@@ -257,6 +260,15 @@ export interface IStorage {
   getLeasePayments(leaseId: number): Promise<LeasePayment[]>;
   createLeasePayment(payment: InsertLeasePayment): Promise<LeasePayment>;
   deleteLeasePayment(id: number): Promise<void>;
+
+  // Lease History operations
+  getLeaseHistory(leaseId: number): Promise<LeaseHistory[]>;
+  createLeaseHistory(history: InsertLeaseHistory): Promise<LeaseHistory>;
+  
+  // Lease calculation helpers
+  calculateCurrentYearAmount(lease: PropertyLease): number;
+  calculateLeaseSummary(leaseId: number): Promise<any>;
+  updateLeaseCarryForward(leaseId: number): Promise<PropertyLease>;
 
   // Property Expense operations
   getAllExpenses(): Promise<PropertyExpense[]>;
@@ -1491,6 +1503,136 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLeasePayment(id: number): Promise<void> {
     await db.delete(leasePayments).where(eq(leasePayments.id, id));
+  }
+
+  // Lease History operations
+  async getLeaseHistory(leaseId: number): Promise<LeaseHistory[]> {
+    return await db.select().from(leaseHistory)
+      .where(eq(leaseHistory.leaseId, leaseId))
+      .orderBy(desc(leaseHistory.createdAt));
+  }
+
+  async createLeaseHistory(historyData: InsertLeaseHistory): Promise<LeaseHistory> {
+    const [history] = await db.insert(leaseHistory).values(historyData).returning();
+    return history;
+  }
+
+  // Calculate the current year amount based on increment settings
+  calculateCurrentYearAmount(lease: PropertyLease): number {
+    if (!lease.baseYearlyAmount || !lease.startDate) {
+      return parseFloat(lease.totalAmount || "0");
+    }
+
+    const baseAmount = parseFloat(lease.baseYearlyAmount);
+    const startDate = new Date(lease.startDate);
+    const now = new Date();
+    const yearsElapsed = Math.floor((now.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+
+    if (yearsElapsed <= 0 || !lease.yearlyIncrementValue) {
+      return baseAmount;
+    }
+
+    const incrementValue = parseFloat(lease.yearlyIncrementValue);
+    
+    if (lease.yearlyIncrementType === 'percentage') {
+      // Compound percentage increase
+      return baseAmount * Math.pow(1 + incrementValue / 100, yearsElapsed);
+    } else {
+      // Fixed amount increase
+      return baseAmount + (incrementValue * yearsElapsed);
+    }
+  }
+
+  // Calculate comprehensive lease summary with carry-forward
+  async calculateLeaseSummary(leaseId: number): Promise<any> {
+    const lease = await this.getLease(leaseId);
+    if (!lease) return null;
+
+    const payments = await this.getLeasePayments(leaseId);
+    const history = await this.getLeaseHistory(leaseId);
+
+    // Calculate total amount expected based on lease duration
+    const startDate = lease.startDate ? new Date(lease.startDate) : new Date();
+    const endDate = lease.endDate ? new Date(lease.endDate) : new Date();
+    const now = new Date();
+
+    // Calculate years and months in the lease
+    const leaseDurationMs = endDate.getTime() - startDate.getTime();
+    const leaseDurationYears = leaseDurationMs / (365.25 * 24 * 60 * 60 * 1000);
+    const leaseDurationMonths = leaseDurationYears * 12;
+
+    // Calculate expected payments up to current date
+    const elapsedMs = Math.min(now.getTime(), endDate.getTime()) - startDate.getTime();
+    const elapsedYears = Math.max(0, elapsedMs / (365.25 * 24 * 60 * 60 * 1000));
+    const elapsedMonths = elapsedYears * 12;
+
+    // Current year calculated amount
+    const currentYearAmount = lease.isOverridden 
+      ? parseFloat(lease.currentYearAmount || "0")
+      : this.calculateCurrentYearAmount(lease);
+
+    // Total payments made
+    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+
+    // Calculate expected amount till date (monthly basis)
+    const monthlyAmount = currentYearAmount / 12;
+    const expectedTillDate = monthlyAmount * Math.floor(elapsedMonths);
+
+    // Pending balance including carry-forward
+    const carryForward = parseFloat(lease.carryForwardAmount || "0");
+    const currentPending = expectedTillDate - totalPaid + carryForward;
+
+    // Total lease value (all years with increments)
+    let totalLeaseValue = 0;
+    if (lease.baseYearlyAmount) {
+      for (let year = 0; year < Math.ceil(leaseDurationYears); year++) {
+        if (lease.yearlyIncrementType === 'percentage') {
+          totalLeaseValue += parseFloat(lease.baseYearlyAmount) * Math.pow(1 + parseFloat(lease.yearlyIncrementValue || "0") / 100, year);
+        } else {
+          totalLeaseValue += parseFloat(lease.baseYearlyAmount) + (parseFloat(lease.yearlyIncrementValue || "0") * year);
+        }
+      }
+    } else {
+      totalLeaseValue = parseFloat(lease.totalAmount || "0");
+    }
+
+    return {
+      lease,
+      payments,
+      history,
+      summary: {
+        totalLeaseValue: totalLeaseValue.toFixed(2),
+        currentYearAmount: currentYearAmount.toFixed(2),
+        monthlyAmount: monthlyAmount.toFixed(2),
+        totalPaid: totalPaid.toFixed(2),
+        expectedTillDate: expectedTillDate.toFixed(2),
+        carryForward: carryForward.toFixed(2),
+        currentPending: Math.max(0, currentPending).toFixed(2),
+        paymentsCount: payments.length,
+        leaseDurationYears: leaseDurationYears.toFixed(1),
+        elapsedYears: elapsedYears.toFixed(1),
+        isOverridden: lease.isOverridden,
+      }
+    };
+  }
+
+  // Update carry-forward amount at the end of a period
+  async updateLeaseCarryForward(leaseId: number): Promise<PropertyLease> {
+    const summary = await this.calculateLeaseSummary(leaseId);
+    if (!summary) throw new Error("Lease not found");
+
+    const newCarryForward = parseFloat(summary.summary.currentPending);
+    
+    const [updatedLease] = await db
+      .update(propertyLeases)
+      .set({ 
+        carryForwardAmount: newCarryForward.toString(),
+        updatedAt: new Date() 
+      })
+      .where(eq(propertyLeases.id, leaseId))
+      .returning();
+
+    return updatedLease;
   }
 
   // Property Expense operations

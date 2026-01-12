@@ -6546,6 +6546,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lease Summary endpoint - comprehensive summary with carry-forward
+  app.get("/api/leases/:leaseId/summary", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await storage.calculateLeaseSummary(parseInt(req.params.leaseId));
+      if (!summary) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease History endpoint - get all changes to a lease
+  app.get("/api/leases/:leaseId/history", isAuthenticated, async (req, res) => {
+    try {
+      const history = await storage.getLeaseHistory(parseInt(req.params.leaseId));
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Override lease current year amount
+  app.post("/api/leases/:leaseId/override", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentYearAmount, reason } = req.body;
+      const leaseId = parseInt(req.params.leaseId);
+      
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Get current lease for history logging
+      const existingLease = await storage.getLease(leaseId);
+      if (!existingLease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+
+      // Log the override in history
+      await storage.createLeaseHistory({
+        leaseId,
+        changeType: 'override',
+        fieldChanged: 'currentYearAmount',
+        oldValue: existingLease.currentYearAmount?.toString() || existingLease.totalAmount?.toString(),
+        newValue: currentYearAmount.toString(),
+        changedBy: currentUser?.fullName || currentUser?.email || userId,
+        changeReason: reason || 'Admin override',
+      });
+
+      // Update the lease with override
+      const updatedLease = await storage.updateLease(leaseId, {
+        currentYearAmount: currentYearAmount.toString(),
+        isOverridden: true,
+      });
+
+      res.json(updatedLease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update carry-forward amount for a lease
+  app.post("/api/leases/:leaseId/carry-forward", isAuthenticated, async (req, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const updatedLease = await storage.updateLeaseCarryForward(leaseId);
+      res.json(updatedLease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Export lease ledger as CSV
+  app.get("/api/leases/:leaseId/export", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await storage.calculateLeaseSummary(parseInt(req.params.leaseId));
+      if (!summary) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+
+      const { lease, payments, summary: summaryData } = summary;
+      const property = await storage.getProperty(lease.propertyId);
+
+      // Build CSV content
+      let csv = "Lease Payment Ledger\n";
+      csv += `Property:,${property?.name || 'N/A'}\n`;
+      csv += `Landlord:,${lease.landlordName || 'N/A'}\n`;
+      csv += `Start Date:,${lease.startDate ? new Date(lease.startDate).toLocaleDateString() : 'N/A'}\n`;
+      csv += `End Date:,${lease.endDate ? new Date(lease.endDate).toLocaleDateString() : 'N/A'}\n`;
+      csv += `Duration:,${summaryData.leaseDurationYears} years\n`;
+      csv += `\n`;
+      csv += `Summary\n`;
+      csv += `Total Lease Value:,${summaryData.totalLeaseValue}\n`;
+      csv += `Current Year Amount:,${summaryData.currentYearAmount}\n`;
+      csv += `Monthly Amount:,${summaryData.monthlyAmount}\n`;
+      csv += `Total Paid:,${summaryData.totalPaid}\n`;
+      csv += `Expected Till Date:,${summaryData.expectedTillDate}\n`;
+      csv += `Carry Forward:,${summaryData.carryForward}\n`;
+      csv += `Current Pending:,${summaryData.currentPending}\n`;
+      csv += `\n`;
+      csv += `Payment History\n`;
+      csv += `Date,Amount,Method,Reference,Notes\n`;
+      
+      payments.forEach((p: any) => {
+        csv += `${p.paymentDate ? new Date(p.paymentDate).toLocaleDateString() : 'N/A'},`;
+        csv += `${p.amount},`;
+        csv += `${p.paymentMethod || 'N/A'},`;
+        csv += `${p.referenceNumber || 'N/A'},`;
+        csv += `"${(p.notes || '').replace(/"/g, '""')}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="lease_ledger_${lease.id}.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Expense Category endpoints
   app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
     try {
