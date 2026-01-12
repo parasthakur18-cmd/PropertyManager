@@ -39,7 +39,14 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **Staff Invitation System**: Admins can invite new staff members via email with role pre-assignment. Invitations expire in 7 days and can be cancelled before acceptance.
 -   **Granular Permission Matrix**: 11-module permission system (bookings, calendar, rooms, guests, food orders, menu management, payments, reports, settings, tasks, staff) with 'none', 'view', or 'edit' access levels.
 -   **User Status Control**: Admins can activate/deactivate staff accounts without deleting them, preserving history while restricting access.
--   **Attendance & Salary Management**: Tracks staff attendance, automates salary calculation with intelligent deductions, and allows for salary editing.
+-   **Enhanced Salary Management**: 
+    -   **Carry-Forward Tracking**: Automatically calculates and tracks pending salary amounts from previous months.
+    -   **Advance Type Classification**: Supports "Regular" and "Extra" advance types for better tracking.
+    -   **Attendance-Based Deductions**: Leave = no deduction (paid leave), Absent = full day deduction, Half-day = 0.5 day deduction.
+    -   **Payment Tracking**: Tracks payments made within each salary period.
+    -   **Detailed Salary Breakup**: Shows base salary, attendance deductions, regular/extra advances, previous pending, and total payable.
+    -   **Summary Dashboard**: Six summary cards showing Base Salary, Deductions, Advances, Previous Pending, Paid This Month, and Total Payable.
+-   **Attendance Tracking**: Tracks staff attendance with status options: Present, Absent, Leave, Half-day.
 -   **Performance Tracking**: Integrates performance scores into salary calculations.
 
 #### Advanced Controls

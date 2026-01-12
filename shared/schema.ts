@@ -718,6 +718,7 @@ export const salaryAdvances = pgTable("salary_advances", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }),
+  advanceType: varchar("advance_type", { length: 20 }).default("regular"), // 'regular' or 'extra'
 });
 
 export type SalaryAdvance = typeof salaryAdvances.$inferSelect;

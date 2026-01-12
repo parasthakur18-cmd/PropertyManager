@@ -2691,7 +2691,7 @@ export class DatabaseStorage implements IStorage {
     eventBus.emit('salary:deleted', { id });
   }
 
-  // Get detailed staff salaries with attendance deductions
+  // Get detailed staff salaries with attendance deductions and carry-forward
   async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]> {
     const staffList = await db.select().from(staffMembers).where(eq(staffMembers.propertyId, propertyId));
     
@@ -2719,13 +2719,13 @@ export class DatabaseStorage implements IStorage {
         const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
         const totalWorkingDays = attendanceList.length;
 
-        // Calculate deductions: 1 absent = 1 day deduction, 1 half-day = 0.5 day deduction
+        // Calculate deductions: absent = full day deduction, half-day = 0.5 day, leave = no deduction (paid leave)
         const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
         const dailyRate = baseSalaryNum / 30; // Assuming 30 days in a month
         const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
 
-        // Get all advances for this staff member in this period
-        const advances = await db
+        // Get all advances for this staff member in current period
+        const currentAdvances = await db
           .select()
           .from(salaryAdvances)
           .where(
@@ -2736,10 +2736,74 @@ export class DatabaseStorage implements IStorage {
             )
           );
 
-        const totalAdvances = advances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+        // Separate regular and extra advances
+        const regularAdvances = currentAdvances.filter(a => !a.advanceType || a.advanceType === 'regular');
+        const extraAdvances = currentAdvances.filter(a => a.advanceType === 'extra');
+        
+        const totalRegularAdvances = regularAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+        const totalExtraAdvances = extraAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+        const totalAdvances = totalRegularAdvances + totalExtraAdvances;
 
-        // Final salary calculation
-        const finalSalary = baseSalaryNum - attendanceDeductions - totalAdvances;
+        // Get all payments made for this staff member (linked to their salaries)
+        const staffSalaryRecords = await db
+          .select({ id: staffSalaries.id })
+          .from(staffSalaries)
+          .where(eq(staffSalaries.staffMemberId, staff.id));
+        const staffSalaryIdSet = new Set(staffSalaryRecords.map(s => s.id));
+
+        // Get payments in current period
+        const currentPayments = await db
+          .select()
+          .from(salaryPayments)
+          .where(
+            and(
+              gte(salaryPayments.paymentDate, startDate),
+              lte(salaryPayments.paymentDate, endDate)
+            )
+          );
+        const staffPaymentsThisMonth = currentPayments.filter(p => staffSalaryIdSet.has(p.salaryId));
+        const totalPaymentsMade = staffPaymentsThisMonth.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
+
+        // === CARRY FORWARD CALCULATION ===
+        // Get all advances taken before current month
+        const previousAdvances = await db
+          .select()
+          .from(salaryAdvances)
+          .where(
+            and(
+              eq(salaryAdvances.staffMemberId, staff.id),
+              lt(salaryAdvances.advanceDate, startDate)
+            )
+          );
+        const totalPreviousAdvances = previousAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+
+        // Get all payments made before current month
+        const previousPayments = await db
+          .select()
+          .from(salaryPayments)
+          .where(lt(salaryPayments.paymentDate, startDate));
+        const prevStaffPayments = previousPayments.filter(p => staffSalaryIdSet.has(p.salaryId));
+        const totalPreviousPayments = prevStaffPayments.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
+
+        // Calculate months of service before current month
+        const joiningDate = staff.joiningDate ? new Date(staff.joiningDate) : new Date(2024, 0, 1);
+        const monthsBeforeStart = Math.max(0, 
+          (startDate.getFullYear() - joiningDate.getFullYear()) * 12 + 
+          (startDate.getMonth() - joiningDate.getMonth())
+        );
+        
+        // Total salary owed before current month (based on base salary * months)
+        const totalPreviousSalaryOwed = monthsBeforeStart * baseSalaryNum;
+        
+        // Previous pending = what was owed - what was paid - advances already taken
+        const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
+
+        // Current month calculation
+        const currentMonthGross = baseSalaryNum - attendanceDeductions;
+        const currentMonthNet = currentMonthGross - totalAdvances;
+        
+        // Total payable = previous pending + current month net - payments already made this month
+        const totalPayable = previousPending + currentMonthNet - totalPaymentsMade;
 
         return {
           staffId: staff.id,
@@ -2753,15 +2817,34 @@ export class DatabaseStorage implements IStorage {
           totalWorkingDays,
           dailyRate: Math.round(dailyRate * 100) / 100,
           attendanceDeductions: Math.round(attendanceDeductions * 100) / 100,
+          // Advances breakdown
+          regularAdvances: Math.round(totalRegularAdvances * 100) / 100,
+          extraAdvances: Math.round(totalExtraAdvances * 100) / 100,
           totalAdvances: Math.round(totalAdvances * 100) / 100,
-          advances: advances.map(a => ({
+          advances: currentAdvances.map(a => ({
             id: a.id,
             amount: parseFloat(a.amount.toString()),
             date: a.advanceDate,
             reason: a.reason,
+            type: a.advanceType || 'regular',
           })),
-          finalSalary: Math.round(finalSalary * 100) / 100,
-          status: finalSalary > 0 ? 'pending' : finalSalary === 0 ? 'paid' : 'due',
+          // Payments
+          paymentsMade: Math.round(totalPaymentsMade * 100) / 100,
+          payments: staffPaymentsThisMonth.map(p => ({
+            id: p.id,
+            amount: parseFloat(p.amount.toString()),
+            date: p.paymentDate,
+            method: p.paymentMethod,
+            reference: p.referenceNumber,
+          })),
+          // Carry forward
+          previousPending: Math.round(previousPending * 100) / 100,
+          currentMonthGross: Math.round(currentMonthGross * 100) / 100,
+          currentMonthNet: Math.round(currentMonthNet * 100) / 100,
+          // Final totals
+          totalPayable: Math.round(totalPayable * 100) / 100,
+          finalSalary: Math.round(totalPayable * 100) / 100,
+          status: totalPayable <= 0 ? 'paid' : totalPayable < currentMonthNet ? 'partial' : 'pending',
         };
       })
     );

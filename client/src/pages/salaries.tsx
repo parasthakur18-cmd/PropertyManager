@@ -24,6 +24,7 @@ export default function SalariesPage() {
   const [advanceAmount, setAdvanceAmount] = useState<string>("");
   const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [advanceReason, setAdvanceReason] = useState("");
+  const [advanceType, setAdvanceType] = useState<string>("regular");
   const { toast } = useToast();
 
   // Parse selected month to get start and end dates
@@ -37,7 +38,7 @@ export default function SalariesPage() {
   });
 
   // Set default property
-  const propertyId = selectedPropertyId || (currentUser?.assignedPropertyIds?.[0] || 1);
+  const propertyId = selectedPropertyId || ((currentUser as any)?.assignedPropertyIds?.[0] || 1);
 
   // Fetch detailed staff salaries
   const { data: salaries = [], isLoading, error } = useQuery({
@@ -60,7 +61,7 @@ export default function SalariesPage() {
 
   // Mutation to add salary advance
   const addAdvanceMutation = useMutation({
-    mutationFn: async (data: { staffMemberId: number; amount: number; advanceDate: string; reason: string }) => {
+    mutationFn: async (data: { staffMemberId: number; amount: number; advanceDate: string; reason: string; advanceType: string }) => {
       return await apiRequest("/api/salary-advances", "POST", data);
     },
     onSuccess: () => {
@@ -70,6 +71,7 @@ export default function SalariesPage() {
       setAdvanceAmount("");
       setAdvanceDate(new Date().toISOString().split('T')[0]);
       setAdvanceReason("");
+      setAdvanceType("regular");
       toast({
         title: "Success",
         description: "Salary advance recorded successfully",
@@ -98,15 +100,18 @@ export default function SalariesPage() {
       amount: parseFloat(advanceAmount),
       advanceDate: advanceDate,
       reason: advanceReason,
+      advanceType: advanceType,
     });
   };
 
-  // Calculate totals
+  // Calculate totals including carry-forward
   const totals = {
-    totalBaseSalary: salaries.reduce((sum, s) => sum + s.baseSalary, 0),
-    totalDeductions: salaries.reduce((sum, s) => sum + s.attendanceDeductions, 0),
-    totalAdvances: salaries.reduce((sum, s) => sum + s.totalAdvances, 0),
-    totalFinalSalary: salaries.reduce((sum, s) => sum + s.finalSalary, 0),
+    totalBaseSalary: salaries.reduce((sum: number, s: any) => sum + (s.baseSalary || 0), 0),
+    totalDeductions: salaries.reduce((sum: number, s: any) => sum + (s.attendanceDeductions || 0), 0),
+    totalAdvances: salaries.reduce((sum: number, s: any) => sum + (s.totalAdvances || 0), 0),
+    totalPreviousPending: salaries.reduce((sum: number, s: any) => sum + (s.previousPending || 0), 0),
+    totalPayable: salaries.reduce((sum: number, s: any) => sum + (s.totalPayable || 0), 0),
+    totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
   return (
@@ -173,6 +178,21 @@ export default function SalariesPage() {
                   />
                 </div>
                 <div>
+                  <Label htmlFor="advance-type">Advance Type</Label>
+                  <Select value={advanceType} onValueChange={setAdvanceType}>
+                    <SelectTrigger data-testid="select-advance-type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="regular">Regular Advance</SelectItem>
+                      <SelectItem value="extra">Extra Advance</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Regular: Standard monthly advances. Extra: Additional advances beyond regular.
+                  </p>
+                </div>
+                <div>
                   <Label htmlFor="advance-reason">Reason (Optional)</Label>
                   <Textarea
                     id="advance-reason"
@@ -214,56 +234,82 @@ export default function SalariesPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Base Salary</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Base Salary</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-base-salary">
+            <div className="text-xl font-bold" data-testid="text-total-base-salary">
               ₹{totals.totalBaseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </div>
-            <p className="text-xs text-muted-foreground">{salaries.length} staff members</p>
+            <p className="text-xs text-muted-foreground">{salaries.length} staff</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Attendance Deductions</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Deductions</CardTitle>
             <TrendingDown className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600" data-testid="text-total-deductions">
+            <div className="text-xl font-bold text-red-600" data-testid="text-total-deductions">
               -₹{totals.totalDeductions.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </div>
-            <p className="text-xs text-muted-foreground">From absences & half-days</p>
+            <p className="text-xs text-muted-foreground">Absences & half-days</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Advances</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Advances</CardTitle>
             <AlertCircle className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600" data-testid="text-total-advances">
+            <div className="text-xl font-bold text-orange-600" data-testid="text-total-advances">
               -₹{totals.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </div>
-            <p className="text-xs text-muted-foreground">To be deducted from salary</p>
+            <p className="text-xs text-muted-foreground">This month</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Final Salary</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Previous Pending</CardTitle>
+            <Calendar className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-blue-600" data-testid="text-total-previous-pending">
+              ₹{totals.totalPreviousPending.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Carry forward</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Paid This Month</CardTitle>
+            <DollarSign className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-xl font-bold text-purple-600" data-testid="text-total-payments">
+              ₹{totals.totalPaymentsMade.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </div>
+            <p className="text-xs text-muted-foreground">Already paid</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+            <CardTitle className="text-sm font-medium">Total Payable</CardTitle>
             <Users className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600" data-testid="text-total-final-salary">
-              ₹{totals.totalFinalSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            <div className="text-xl font-bold text-green-700 dark:text-green-400" data-testid="text-total-payable">
+              ₹{totals.totalPayable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </div>
-            <p className="text-xs text-muted-foreground">To be paid to staff</p>
+            <p className="text-xs text-muted-foreground">To be paid</p>
           </CardContent>
         </Card>
       </div>
@@ -297,7 +343,7 @@ export default function SalariesPage() {
             </Card>
           ) : (
             <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
-              {salaries.map((staff) => (
+              {salaries.map((staff: any) => (
                 <Card key={staff.staffId} className="hover-elevate" data-testid={`card-staff-${staff.staffId}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -359,41 +405,77 @@ export default function SalariesPage() {
                       </div>
                     </div>
 
-                    {/* Deductions */}
+                    {/* Deductions & Advances */}
                     <div className="space-y-2 pb-4 border-b">
                       <div className="flex justify-between items-center">
                         <p className="text-sm text-muted-foreground">Attendance Deductions</p>
                         <p className="font-semibold text-red-600">
-                          -₹{staff.attendanceDeductions.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          -₹{(staff.attendanceDeductions || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
-                      {staff.advances.length > 0 && (
+                      {staff.advances && staff.advances.length > 0 && (
                         <div>
-                          <p className="text-sm text-muted-foreground mb-2">Advances Deducted ({staff.advances.length})</p>
-                          {staff.advances.map((adv) => (
-                            <div key={adv.id} className="ml-2 text-xs text-muted-foreground flex justify-between">
-                              <span>{adv.reason || 'Advance'} - {format(new Date(adv.date), 'MMM dd')}</span>
-                              <span>₹{adv.amount.toLocaleString('en-IN')}</span>
+                          <p className="text-sm text-muted-foreground mb-2">Advances This Month ({staff.advances.length})</p>
+                          {staff.advances.map((adv: any) => (
+                            <div key={adv.id} className="ml-2 text-xs flex justify-between items-center gap-2">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Badge variant={adv.type === 'extra' ? 'destructive' : 'outline'} className="text-xs px-1 py-0">
+                                  {adv.type === 'extra' ? 'Extra' : 'Regular'}
+                                </Badge>
+                                {adv.reason || 'Advance'} - {format(new Date(adv.date), 'MMM dd')}
+                              </span>
+                              <span className="text-orange-600 font-medium">₹{adv.amount.toLocaleString('en-IN')}</span>
                             </div>
                           ))}
                         </div>
                       )}
-                      <div className="flex justify-between items-center pt-2 border-t">
-                        <p className="text-sm font-semibold">Total Advances</p>
+                      <div className="flex justify-between items-center pt-2">
+                        <div className="flex gap-4 text-xs">
+                          <span>Regular: ₹{(staff.regularAdvances || 0).toLocaleString('en-IN')}</span>
+                          <span className="text-red-600">Extra: ₹{(staff.extraAdvances || 0).toLocaleString('en-IN')}</span>
+                        </div>
                         <p className="font-semibold text-orange-600">
-                          -₹{staff.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          -₹{(staff.totalAdvances || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
                     </div>
 
+                    {/* Carry Forward & Payments */}
+                    <div className="space-y-2 pb-4 border-b">
+                      {staff.previousPending > 0 && (
+                        <div className="flex justify-between items-center">
+                          <p className="text-sm text-blue-600 font-medium">Previous Pending (Carry Forward)</p>
+                          <p className="font-semibold text-blue-600">
+                            +₹{(staff.previousPending || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </p>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center">
+                        <p className="text-sm text-muted-foreground">Current Month Gross</p>
+                        <p className="font-semibold">
+                          ₹{(staff.currentMonthGross || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                      {staff.paymentsMade > 0 && (
+                        <div className="flex justify-between items-center">
+                          <p className="text-sm text-purple-600 font-medium">Already Paid This Month</p>
+                          <p className="font-semibold text-purple-600">
+                            -₹{(staff.paymentsMade || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Final Salary (Highlighted) */}
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border-2 border-green-200">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">FINAL PENDING SALARY</p>
-                      <p className="text-3xl font-bold text-green-700" data-testid={`text-final-salary-${staff.staffId}`}>
-                        ₹{staff.finalSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">TOTAL PAYABLE</p>
+                      <p className="text-3xl font-bold text-green-700 dark:text-green-400" data-testid={`text-final-salary-${staff.staffId}`}>
+                        ₹{(staff.totalPayable || staff.finalSalary || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {staff.baseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })} - {staff.attendanceDeductions.toLocaleString('en-IN', { maximumFractionDigits: 0 })} - {staff.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        {staff.previousPending > 0 && `Previous: ₹${(staff.previousPending || 0).toLocaleString('en-IN')} + `}
+                        Current: ₹{(staff.currentMonthNet || 0).toLocaleString('en-IN')}
+                        {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
                       </p>
                     </div>
                   </CardContent>
@@ -431,7 +513,7 @@ export default function SalariesPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {salaries.map((staff) => (
+                      {salaries.map((staff: any) => (
                         <tr key={staff.staffId} className="border-b hover-elevate" data-testid={`row-staff-${staff.staffId}`}>
                           <td className="p-3 font-medium">{staff.staffName}</td>
                           <td className="p-3 text-muted-foreground">{staff.jobTitle}</td>
@@ -484,7 +566,7 @@ export default function SalariesPage() {
                           -₹{totals.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td className="text-right p-3 text-green-700 text-base">
-                          ₹{totals.totalFinalSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          ₹{totals.totalPayable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td />
                       </tr>
