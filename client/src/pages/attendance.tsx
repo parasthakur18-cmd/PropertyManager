@@ -90,7 +90,9 @@ export default function Attendance() {
   }, [staffMembers, selectedPropertyId]);
 
   const monthString = selectedMonth.toISOString().slice(0, 7);
+  const rosterMonthString = rosterDate.slice(0, 7); // YYYY-MM from roster date
 
+  // Fetch attendance for selected month (stats tab)
   const { data: attendance = [] } = useQuery<any[]>({
     queryKey: ["/api/attendance", monthString],
     queryFn: async () => {
@@ -103,9 +105,6 @@ export default function Attendance() {
         const data = await response.json();
         console.log(`✅ [ATTENDANCE FETCH] Month: ${monthString}`);
         console.log(`📊 Total records: ${data.length}`);
-        data.forEach((record: any, idx: number) => {
-          console.log(`  Record ${idx + 1}: staff_id=${record.staff_id || record.staffId}, date=${record.attendance_date || record.attendanceDate}, status=${record.status}`);
-        });
         return data;
       } catch (error) {
         console.error(`❌ [ATTENDANCE ERROR]:`, error);
@@ -113,6 +112,28 @@ export default function Attendance() {
       }
     },
   });
+
+  // Fetch attendance for roster month (roster view)
+  const { data: rosterAttendance = [] } = useQuery<any[]>({
+    queryKey: ["/api/attendance", rosterMonthString],
+    queryFn: async () => {
+      try {
+        const response = await fetch(
+          `/api/attendance?month=${rosterMonthString}`,
+          { credentials: "include" }
+        );
+        if (!response.ok) throw new Error("Failed to fetch attendance");
+        return await response.json();
+      } catch (error) {
+        console.error(`❌ [ROSTER ATTENDANCE ERROR]:`, error);
+        throw error;
+      }
+    },
+    enabled: rosterMonthString !== monthString, // Only fetch if different month
+  });
+
+  // Combined attendance (use roster data if different month, otherwise use main attendance)
+  const combinedAttendance = rosterMonthString === monthString ? attendance : [...attendance, ...rosterAttendance];
 
   const { data: attendanceStats = [] } = useQuery<AttendanceStats[]>({
     queryKey: ["/api/attendance/stats", monthString],
@@ -198,7 +219,9 @@ export default function Attendance() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/attendance"] });
+      // Invalidate both the stats month and the roster month attendance
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance", monthString] });
+      queryClient.invalidateQueries({ queryKey: ["/api/attendance", rosterMonthString] });
       queryClient.invalidateQueries({ queryKey: ["/api/attendance/stats"] });
       toast({
         title: "Success",
@@ -287,21 +310,33 @@ export default function Attendance() {
     const staffIdStr = String(staffId);
     const dateStr = format(date, "yyyy-MM-dd");
     
-    return attendance.find(a => {
+    // Use rosterAttendance if different month, otherwise use main attendance
+    const dataSource = rosterMonthString === monthString ? attendance : rosterAttendance;
+    
+    return dataSource.find(a => {
       const recordStaffId = String(a.staffId);
-      const recordDateStr = format(new Date(a.attendanceDate), "yyyy-MM-dd");
+      const recordDateStr = typeof a.attendanceDate === 'string' 
+        ? a.attendanceDate 
+        : format(new Date(a.attendanceDate), "yyyy-MM-dd");
       return recordStaffId === staffIdStr && recordDateStr === dateStr;
     });
   };
 
-  // Get monthly attendance counts for a staff member
+  // Get monthly attendance counts for a staff member (based on rosterDate month)
   const getMonthlyAttendanceCounts = (staffId: string | number) => {
     const staffIdStr = String(staffId);
-    const monthStr = selectedMonth.toISOString().slice(0, 7);
+    // Use rosterDate to determine the month for roster view
+    const monthStr = rosterDate.slice(0, 7); // YYYY-MM format from rosterDate
     
-    const staffAttendance = attendance.filter(a => {
+    // Use rosterAttendance if different month, otherwise use main attendance
+    const dataSource = rosterMonthString === monthString ? attendance : rosterAttendance;
+    
+    const staffAttendance = dataSource.filter(a => {
       const recordStaffId = String(a.staffId);
-      const recordMonth = new Date(a.attendanceDate).toISOString().slice(0, 7);
+      const recordDate = a.attendanceDate;
+      const recordMonth = typeof recordDate === 'string' 
+        ? recordDate.slice(0, 7) 
+        : new Date(recordDate).toISOString().slice(0, 7);
       return recordStaffId === staffIdStr && recordMonth === monthStr;
     });
 
