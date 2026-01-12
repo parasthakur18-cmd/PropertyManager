@@ -162,8 +162,8 @@ export default function Attendance() {
         name: data.name,
         jobTitle: data.jobTitle,
         propertyId: parseInt(data.propertyId),
-        joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
-        baseSalary: data.baseSalary || 0,
+        joiningDate: data.joiningDate ? data.joiningDate : new Date().toISOString().split("T")[0],
+        baseSalary: String(data.baseSalary || 0),
       });
     },
     onSuccess: () => {
@@ -192,7 +192,7 @@ export default function Attendance() {
       return await apiRequest("/api/attendance", "POST", {
         staffMemberId: parseInt(data.staffMemberId, 10),
         propertyId: data.propertyId || null,
-        attendanceDate: new Date(data.attendanceDate),
+        attendanceDate: data.attendanceDate,
         status: data.status,
         remarks: data.remarks || null,
       });
@@ -219,13 +219,13 @@ export default function Attendance() {
   const editStaffMutation = useMutation({
     mutationFn: async (data: z.infer<typeof editStaffSchema>) => {
       const updateData: any = {
-        baseSalary: data.baseSalary,
+        baseSalary: String(data.baseSalary),
       };
       if (data.joiningDate) {
-        updateData.joiningDate = new Date(data.joiningDate);
+        updateData.joiningDate = data.joiningDate;
       }
       if (data.leavingDate) {
-        updateData.leavingDate = new Date(data.leavingDate);
+        updateData.leavingDate = data.leavingDate;
       }
       return await apiRequest(`/api/staff-members/${editingStaffId}`, "PATCH", updateData);
     },
@@ -292,6 +292,25 @@ export default function Attendance() {
       const recordDateStr = format(new Date(a.attendanceDate), "yyyy-MM-dd");
       return recordStaffId === staffIdStr && recordDateStr === dateStr;
     });
+  };
+
+  // Get monthly attendance counts for a staff member
+  const getMonthlyAttendanceCounts = (staffId: string | number) => {
+    const staffIdStr = String(staffId);
+    const monthStr = selectedMonth.toISOString().slice(0, 7);
+    
+    const staffAttendance = attendance.filter(a => {
+      const recordStaffId = String(a.staffId);
+      const recordMonth = new Date(a.attendanceDate).toISOString().slice(0, 7);
+      return recordStaffId === staffIdStr && recordMonth === monthStr;
+    });
+
+    return {
+      present: staffAttendance.filter(a => a.status === 'present').length,
+      absent: staffAttendance.filter(a => a.status === 'absent').length,
+      leave: staffAttendance.filter(a => a.status === 'leave').length,
+      halfDay: staffAttendance.filter(a => a.status === 'half-day').length,
+    };
   };
 
   const getStatusIcon = (status: string) => {
@@ -381,11 +400,34 @@ export default function Attendance() {
                         const currentStatus = dayAttendance?.status;
                         // If no record exists, staff is considered Present by default
                         const isDefaultPresent = !currentStatus;
+                        const monthlyCounts = getMonthlyAttendanceCounts(staff.id);
                         return (
                           <tr key={staff.id} className="border-b hover:bg-muted/50">
                             <td className="p-3">
-                              <div className="font-medium">{staff.name}</div>
-                              <div className="text-xs text-muted-foreground">{staff.jobTitle}</div>
+                              <div className="flex items-center gap-2">
+                                <div>
+                                  <div className="font-medium">{staff.name}</div>
+                                  <div className="text-xs text-muted-foreground">{staff.jobTitle}</div>
+                                </div>
+                                {/* Monthly attendance counts */}
+                                <div className="flex gap-1 ml-auto">
+                                  {monthlyCounts.absent > 0 && (
+                                    <Badge variant="destructive" className="text-xs px-1.5 py-0.5" title="Absent this month">
+                                      A:{monthlyCounts.absent}
+                                    </Badge>
+                                  )}
+                                  {monthlyCounts.leave > 0 && (
+                                    <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs px-1.5 py-0.5" title="Leave this month">
+                                      L:{monthlyCounts.leave}
+                                    </Badge>
+                                  )}
+                                  {monthlyCounts.halfDay > 0 && (
+                                    <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 text-xs px-1.5 py-0.5" title="Half-days this month">
+                                      H:{monthlyCounts.halfDay}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                             <td className="text-center p-2">
                               {isDefaultPresent ? (
