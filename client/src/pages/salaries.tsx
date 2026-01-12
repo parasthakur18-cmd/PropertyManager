@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
 export default function SalariesPage() {
@@ -35,6 +36,9 @@ export default function SalariesPage() {
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentMaxAmount, setPaymentMaxAmount] = useState<number>(0);
+  
+  // Payment history state
+  const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<number | null>(null);
   
   const { toast } = useToast();
 
@@ -78,6 +82,21 @@ export default function SalariesPage() {
   
   // Use effectivePropertyId or fallback for display purposes
   const propertyId = effectivePropertyId || 1;
+
+  // Fetch payment history for expanded staff member
+  const { data: paymentHistory = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["/api/salary-payments", expandedPaymentHistory],
+    queryFn: async () => {
+      if (!expandedPaymentHistory) return [];
+      const response = await fetch(
+        `/api/salary-payments?staffMemberId=${expandedPaymentHistory}`,
+        { credentials: "include" }
+      );
+      if (!response.ok) throw new Error("Failed to fetch payment history");
+      return response.json();
+    },
+    enabled: !!expandedPaymentHistory,
+  });
 
   // Mutation to add salary advance
   const addAdvanceMutation = useMutation({
@@ -659,6 +678,51 @@ export default function SalariesPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Payment History */}
+                    <Collapsible 
+                      open={expandedPaymentHistory === staff.staffId}
+                      onOpenChange={(open) => setExpandedPaymentHistory(open ? staff.staffId : null)}
+                    >
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="w-full mt-2" data-testid={`button-history-${staff.staffId}`}>
+                          <History className="h-4 w-4 mr-2" />
+                          Payment History
+                          {expandedPaymentHistory === staff.staffId ? (
+                            <ChevronUp className="h-4 w-4 ml-auto" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 ml-auto" />
+                          )}
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2">
+                        <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                          {historyLoading ? (
+                            <p className="text-sm text-muted-foreground text-center">Loading...</p>
+                          ) : paymentHistory.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center">No payment records found</p>
+                          ) : (
+                            paymentHistory.map((payment: any) => (
+                              <div key={payment.id} className="flex justify-between items-center p-2 bg-background rounded border">
+                                <div>
+                                  <p className="text-sm font-medium">₹{parseFloat(payment.amount).toLocaleString('en-IN')}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {payment.paymentDate ? format(new Date(payment.paymentDate), 'MMM dd, yyyy') : 'N/A'}
+                                    {payment.paymentMethod && ` • ${payment.paymentMethod.replace('_', ' ')}`}
+                                  </p>
+                                  {payment.notes && (
+                                    <p className="text-xs text-muted-foreground mt-1">{payment.notes}</p>
+                                  )}
+                                </div>
+                                <Badge variant="outline" className="bg-green-50 text-green-600">
+                                  Paid
+                                </Badge>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </CardContent>
                 </Card>
               ))}

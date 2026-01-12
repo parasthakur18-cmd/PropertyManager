@@ -7162,6 +7162,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/salary-payments - Get salary payment history
+  app.get("/api/salary-payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { staffMemberId, propertyId, startDate, endDate } = req.query;
+
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      let payments;
+      if (staffMemberId) {
+        payments = await storage.getPaymentsByStaffMember(
+          parseInt(staffMemberId as string),
+          propertyId ? parseInt(propertyId as string) : undefined
+        );
+      } else if (propertyId) {
+        payments = await storage.getPaymentsByProperty(
+          parseInt(propertyId as string),
+          startDate ? new Date(startDate as string) : undefined,
+          endDate ? new Date(endDate as string) : undefined
+        );
+      } else {
+        return res.status(400).json({ message: "staffMemberId or propertyId required" });
+      }
+
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // POST /api/salary-payments - Record a salary payment
   app.post("/api/salary-payments", isAuthenticated, async (req, res) => {
     try {

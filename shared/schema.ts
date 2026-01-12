@@ -731,12 +731,17 @@ export type InsertSalaryAdvance = z.infer<typeof insertSalaryAdvanceSchema>;
 // Salary Payments table - matches actual database
 export const salaryPayments = pgTable("salary_payments", {
   id: serial("id").primaryKey(),
-  salaryId: integer("salary_id").notNull().references(() => staffSalaries.id, { onDelete: 'cascade' }),
+  salaryId: integer("salary_id").references(() => staffSalaries.id, { onDelete: 'cascade' }),
+  staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   paymentDate: timestamp("payment_date"),
   paymentMethod: varchar("payment_method", { length: 50 }),
   referenceNumber: varchar("reference_number", { length: 100 }),
   paidBy: varchar("paid_by"),
+  recordedBy: varchar("recorded_by"),
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });

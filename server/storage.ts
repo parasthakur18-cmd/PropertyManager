@@ -2900,6 +2900,31 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(salaryPayments.paymentDate));
   }
 
+  async getPaymentsByStaffMember(staffMemberId: number, propertyId?: number): Promise<SalaryPayment[]> {
+    const conditions = [eq(salaryPayments.staffMemberId, staffMemberId)];
+    if (propertyId) {
+      conditions.push(eq(salaryPayments.propertyId, propertyId));
+    }
+    return await db
+      .select()
+      .from(salaryPayments)
+      .where(and(...conditions))
+      .orderBy(desc(salaryPayments.paymentDate));
+  }
+
+  async getPaymentsByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<SalaryPayment[]> {
+    const conditions = [eq(salaryPayments.propertyId, propertyId)];
+    if (startDate && endDate) {
+      conditions.push(gte(salaryPayments.paymentDate, startDate));
+      conditions.push(lte(salaryPayments.paymentDate, endDate));
+    }
+    return await db
+      .select()
+      .from(salaryPayments)
+      .where(and(...conditions))
+      .orderBy(desc(salaryPayments.paymentDate));
+  }
+
   async createSalaryPayment(payment: InsertSalaryPayment): Promise<SalaryPayment> {
     const [created] = await db.insert(salaryPayments).values(payment).returning();
     eventBus.emit('salary-payment:created', created);
