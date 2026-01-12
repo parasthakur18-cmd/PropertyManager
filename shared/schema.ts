@@ -562,6 +562,14 @@ export const propertyLeases = pgTable("property_leases", {
   landlordContact: varchar("landlord_contact", { length: 255 }),
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
+  // New fields for carry-forward and yearly increment system
+  leaseDurationYears: integer("lease_duration_years"),
+  baseYearlyAmount: decimal("base_yearly_amount", { precision: 10, scale: 2 }),
+  yearlyIncrementType: varchar("yearly_increment_type", { length: 20 }), // 'percentage' or 'fixed'
+  yearlyIncrementValue: decimal("yearly_increment_value", { precision: 10, scale: 2 }),
+  currentYearAmount: decimal("current_year_amount", { precision: 10, scale: 2 }),
+  isOverridden: boolean("is_overridden").default(false),
+  carryForwardAmount: decimal("carry_forward_amount", { precision: 10, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -573,6 +581,26 @@ export const insertPropertyLeaseSchema = createInsertSchema(propertyLeases).omit
   updatedAt: true,
 });
 export type InsertPropertyLease = z.infer<typeof insertPropertyLeaseSchema>;
+
+// Lease History table - tracks all edits and changes to lease terms
+export const leaseHistory = pgTable("lease_history", {
+  id: serial("id").primaryKey(),
+  leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
+  changeType: varchar("change_type", { length: 50 }).notNull(), // 'create', 'update', 'override', 'payment'
+  fieldChanged: varchar("field_changed", { length: 100 }),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  changedBy: varchar("changed_by", { length: 255 }),
+  changeReason: text("change_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type LeaseHistory = typeof leaseHistory.$inferSelect;
+export const insertLeaseHistorySchema = createInsertSchema(leaseHistory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertLeaseHistory = z.infer<typeof insertLeaseHistorySchema>;
 
 // Lease Payments table - matches actual database
 export const leasePayments = pgTable("lease_payments", {
