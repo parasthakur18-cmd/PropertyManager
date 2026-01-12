@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -218,6 +218,90 @@ export default function SalariesPage() {
     totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
+  // Export salary report as CSV
+  const exportSalaryReport = () => {
+    if (salaries.length === 0) {
+      toast({ title: "No data", description: "No salary data to export", variant: "destructive" });
+      return;
+    }
+
+    const headers = [
+      "Staff Name",
+      "Job Title",
+      "Base Salary",
+      "Present Days",
+      "Absent Days",
+      "Leave Days",
+      "Half Days",
+      "Attendance Deductions",
+      "Regular Advances",
+      "Extra Advances",
+      "Total Advances",
+      "Previous Pending",
+      "Current Month Gross",
+      "Payments Made",
+      "Total Payable",
+      "Status"
+    ];
+
+    const rows = salaries.map((s: any) => [
+      s.staffName,
+      s.jobTitle,
+      s.baseSalary,
+      s.presentDays,
+      s.absentDays,
+      s.leaveDays || 0,
+      s.halfDays || 0,
+      s.attendanceDeductions,
+      s.regularAdvances || 0,
+      s.extraAdvances || 0,
+      s.totalAdvances,
+      s.previousPending || 0,
+      s.currentMonthGross || 0,
+      s.paymentsMade || 0,
+      s.totalPayable,
+      s.status
+    ]);
+
+    // Add totals row
+    rows.push([
+      "TOTAL",
+      "",
+      totals.totalBaseSalary,
+      "",
+      "",
+      "",
+      "",
+      totals.totalDeductions,
+      "",
+      "",
+      totals.totalAdvances,
+      totals.totalPreviousPending,
+      "",
+      totals.totalPaymentsMade,
+      totals.totalPayable,
+      ""
+    ]);
+
+    const csvContent = [
+      `Salary Report - ${format(startDate, 'MMMM yyyy')}`,
+      "",
+      headers.join(","),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Salary_Report_${format(startDate, 'yyyy_MM')}.csv`;
+    link.click();
+
+    toast({
+      title: "Export Complete",
+      description: `Salary report for ${format(startDate, 'MMMM yyyy')} downloaded`,
+    });
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -232,14 +316,20 @@ export default function SalariesPage() {
             </p>
           </div>
           
-          {/* Add Advance Button */}
-          <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-advance">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Advance
-              </Button>
-            </DialogTrigger>
+          {/* Action Buttons */}
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" onClick={exportSalaryReport} data-testid="button-export-report">
+              <Download className="h-4 w-4 mr-2" />
+              Export Report
+            </Button>
+            
+            <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-advance">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Advance
+                </Button>
+              </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Record Salary Advance</DialogTitle>
@@ -395,6 +485,7 @@ export default function SalariesPage() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Month & Property Selection */}
