@@ -7162,6 +7162,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/salary-payments - Record a salary payment
+  app.post("/api/salary-payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { staffMemberId, amount, paymentDate, paymentMethod, notes, periodStart, periodEnd } = req.body;
+
+      if (!staffMemberId || !amount || !paymentDate || !periodStart || !periodEnd) {
+        return res.status(400).json({ message: "staffMemberId, amount, paymentDate, periodStart, and periodEnd are required" });
+      }
+
+      // Get staff member to find propertyId
+      const staffMember = await storage.getStaffMember(staffMemberId);
+      if (!staffMember) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      const payment = await storage.createSalaryPayment({
+        staffMemberId,
+        propertyId: staffMember.propertyId,
+        amount: String(amount),
+        paymentDate: new Date(paymentDate),
+        paymentMethod: paymentMethod || 'cash',
+        notes: notes || null,
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+        recordedBy: user.claims?.sub || user.id || String(user.userId),
+      });
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCreate(
+        "salary_payment",
+        String(payment.id),
+        user,
+        payment,
+        { action: "salary_payment_recorded", staffMemberId, amount }
+      );
+
+      res.status(201).json(payment);
+    } catch (error: any) {
+      console.error("Error recording salary payment:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Advance endpoints
   app.get("/api/advances", isAuthenticated, async (req: any, res) => {
     try {

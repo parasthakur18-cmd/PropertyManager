@@ -301,7 +301,7 @@ export default function SalariesPage() {
           
           {/* Payment Dialog */}
           <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Record Salary Payment</DialogTitle>
                 <DialogDescription>
