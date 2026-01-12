@@ -968,7 +968,7 @@ export default function Enquiries() {
 
       {/* Message Dialog */}
       <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Send Message to {selectedEnquiry?.guestName}</DialogTitle>
             <DialogDescription>

@@ -410,7 +410,7 @@ export default function Leases() {
                 Add Lease
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create New Lease</DialogTitle>
               </DialogHeader>

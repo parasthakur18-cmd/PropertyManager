@@ -718,7 +718,7 @@ export default function MenuManagement() {
         }
         setIsBulkImportOpen(open);
       }}>
-        <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-primary" />
@@ -729,7 +729,7 @@ export default function MenuManagement() {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
             {/* Property Selection */}
             <div className="space-y-2">
               <Label>Target Property</Label>

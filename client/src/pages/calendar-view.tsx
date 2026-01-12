@@ -831,7 +831,7 @@ export default function CalendarView() {
 
       {/* Create Booking Dialog */}
       <Dialog open={showCreateBooking} onOpenChange={setShowCreateBooking}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-create-booking">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-create-booking">
           <DialogHeader>
             <DialogTitle>Create New Booking</DialogTitle>
             <DialogDescription>

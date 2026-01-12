@@ -2000,7 +2000,7 @@ export default function Bookings() {
 
       {/* QR Code Dialog */}
       <Dialog open={qrModalOpen} onOpenChange={setQrModalOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Guest Check-in QR Code</DialogTitle>
             <DialogDescription>
@@ -2051,7 +2051,7 @@ export default function Bookings() {
 
       {/* Cancellation Dialog */}
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-        <DialogContent className="max-w-md" data-testid="dialog-cancel-booking">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-cancel-booking">
           <DialogHeader>
             <DialogTitle>Cancel Booking</DialogTitle>
             <DialogDescription>

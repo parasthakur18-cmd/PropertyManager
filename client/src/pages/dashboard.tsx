@@ -1488,7 +1488,7 @@ export default function Dashboard() {
           setCashReceived("0");
         }
       }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Split Payment Checkout</DialogTitle>
           </DialogHeader>
@@ -1940,7 +1940,7 @@ export default function Dashboard() {
 
       {/* Quick Expense Dialog */}
       <Dialog open={quickExpenseOpen} onOpenChange={setQuickExpenseOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />

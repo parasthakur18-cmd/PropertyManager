@@ -627,7 +627,7 @@ export default function UsersManagement() {
 
       {/* Permissions Dialog */}
       <Dialog open={!!permissionsUser} onOpenChange={(open) => !open && setPermissionsUser(null)}>
-        <DialogContent className="max-w-2xl" data-testid="dialog-permissions">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="dialog-permissions">
           <DialogHeader>
             <DialogTitle>User Permissions</DialogTitle>
             <DialogDescription>

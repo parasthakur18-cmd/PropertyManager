@@ -1259,7 +1259,7 @@ export default function SuperAdmin() {
 
         {/* Approval Dialog */}
         <Dialog open={approvalDialog} onOpenChange={setApprovalDialog}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserCheck className="h-5 w-5 text-green-600" />
@@ -1330,7 +1330,7 @@ export default function SuperAdmin() {
 
         {/* Rejection Dialog */}
         <Dialog open={rejectionDialog} onOpenChange={setRejectionDialog}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <UserX className="h-5 w-5 text-red-600" />
@@ -2559,7 +2559,7 @@ export default function SuperAdmin() {
 
         {/* Send Email Dialog */}
         <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5 text-teal-600" />
@@ -2622,7 +2622,7 @@ export default function SuperAdmin() {
 
         {/* Broadcast Email Dialog */}
         <Dialog open={broadcastDialog} onOpenChange={setBroadcastDialog}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Megaphone className="h-5 w-5 text-purple-600" />

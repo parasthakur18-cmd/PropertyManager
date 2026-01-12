@@ -329,7 +329,7 @@ export default function Guests() {
 
       {/* ID Proof Viewer Modal */}
       <Dialog open={isIdViewerOpen} onOpenChange={setIsIdViewerOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>ID Proof - {selectedGuestForId?.fullName}</DialogTitle>
           </DialogHeader>

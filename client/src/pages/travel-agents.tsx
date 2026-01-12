@@ -304,7 +304,7 @@ export default function TravelAgents() {
 
       {/* Add Agent Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent data-testid="dialog-add-agent">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-add-agent">
           <DialogHeader>
             <DialogTitle>Add New Travel Agent</DialogTitle>
             <DialogDescription>
@@ -399,7 +399,7 @@ export default function TravelAgents() {
 
       {/* Edit Agent Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent data-testid="dialog-edit-agent">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-edit-agent">
           <DialogHeader>
             <DialogTitle>Edit Travel Agent</DialogTitle>
             <DialogDescription>

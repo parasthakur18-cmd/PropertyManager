@@ -216,7 +216,7 @@ export default function OtaIntegrations() {
                       Add OTA
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-lg">
+                  <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Connect Beds24 Channel Manager</DialogTitle>
                       <DialogDescription>
