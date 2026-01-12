@@ -189,7 +189,12 @@ export default function Dashboard() {
   });
 
   const { data: vendors } = useQuery<any[]>({
-    queryKey: ["/api/vendors"],
+    queryKey: ["/api/vendors", selectedPropertyId],
+    queryFn: () => 
+      selectedPropertyId 
+        ? fetch(`/api/vendors?propertyId=${selectedPropertyId}`, { credentials: "include" }).then(r => r.json())
+        : Promise.resolve([]),
+    enabled: !!selectedPropertyId,
   });
 
   const createExpenseMutation = useMutation({
@@ -2004,7 +2009,6 @@ export default function Dashboard() {
                 <option value="">Miscellaneous (No specific vendor)</option>
                 {vendors
                   ?.filter((v: any) => 
-                    v.propertyId === selectedPropertyId && 
                     v.isActive !== false &&
                     (!expenseCategory || v.category?.toLowerCase() === expenseCategory?.toLowerCase())
                   )
@@ -2014,7 +2018,10 @@ export default function Dashboard() {
                 }
               </select>
               <p className="text-xs text-muted-foreground">
-                {expenseCategory ? `Showing vendors for "${expenseCategory}"` : "Select category first to filter vendors"}
+                {expenseCategory 
+                  ? `Showing vendors for "${expenseCategory}"` 
+                  : "Select category first to filter vendors"
+                }
               </p>
             </div>
             <div className="space-y-2">
