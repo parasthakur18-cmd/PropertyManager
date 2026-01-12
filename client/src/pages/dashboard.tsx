@@ -2008,10 +2008,14 @@ export default function Dashboard() {
               >
                 <option value="">Miscellaneous (No specific vendor)</option>
                 {vendors
-                  ?.filter((v: any) => 
-                    v.isActive !== false &&
-                    (!expenseCategory || v.category?.toLowerCase() === expenseCategory?.toLowerCase())
-                  )
+                  ?.filter((v: any) => {
+                    if (v.isActive === false) return false;
+                    if (!expenseCategory) return true;
+                    if (!v.category) return true;
+                    const vendorCat = v.category.toLowerCase().replace(/ies$/, 'y').replace(/s$/, '');
+                    const expenseCat = expenseCategory.toLowerCase().replace(/ies$/, 'y').replace(/s$/, '');
+                    return vendorCat.includes(expenseCat) || expenseCat.includes(vendorCat);
+                  })
                   .map((v: any) => (
                     <option key={v.id} value={v.name}>{v.name}</option>
                   ))
