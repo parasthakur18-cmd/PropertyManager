@@ -34,7 +34,7 @@ export function usePermissions() {
   const { user, isAuthenticated } = useAuth();
   
   const { data: permissions, isLoading } = useQuery<UserPermissions>({
-    queryKey: ["/api/user-permissions", user?.id],
+    queryKey: ["/api/user-permissions"],
     enabled: isAuthenticated && !!user?.id && user?.role !== "admin" && user?.role !== "super-admin",
   });
 
