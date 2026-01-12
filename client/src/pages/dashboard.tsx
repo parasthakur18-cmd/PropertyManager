@@ -1979,7 +1979,7 @@ export default function Dashboard() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Category</label>
+              <label className="text-sm font-medium">Category *</label>
               <select
                 value={expenseCategory}
                 onChange={(e) => setExpenseCategory(e.target.value)}
@@ -1990,13 +1990,13 @@ export default function Dashboard() {
                 {expenseCategories?.map((cat: any) => (
                   <option key={cat.id} value={cat.name}>{cat.name}</option>
                 ))}
-                <option value="Maintenance">Maintenance</option>
-                <option value="Utilities">Utilities</option>
-                <option value="Supplies">Supplies</option>
-                <option value="Groceries">Groceries</option>
-                <option value="Staff Salary">Staff Salary</option>
-                <option value="Other">Other</option>
+                {(!expenseCategories || expenseCategories.length === 0) && (
+                  <option value="Other">Other</option>
+                )}
               </select>
+              <p className="text-xs text-muted-foreground">
+                Manage categories in Settings → Expenses
+              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Vendor</label>
