@@ -7,9 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -25,6 +25,17 @@ export default function SalariesPage() {
   const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [advanceReason, setAdvanceReason] = useState("");
   const [advanceType, setAdvanceType] = useState<string>("regular");
+  
+  // Payment dialog state
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [paymentStaffId, setPaymentStaffId] = useState<number | null>(null);
+  const [paymentStaffName, setPaymentStaffName] = useState<string>("");
+  const [paymentAmount, setPaymentAmount] = useState<string>("");
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentMaxAmount, setPaymentMaxAmount] = useState<number>(0);
+  
   const { toast } = useToast();
 
   // Parse selected month to get start and end dates
@@ -43,13 +54,11 @@ export default function SalariesPage() {
   const firstPropertyId = userData?.assignedPropertyIds?.[0];
   const effectivePropertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null);
   
-  console.log("[SALARY PAGE] userData:", userData, "userLoading:", userLoading, "firstPropertyId:", firstPropertyId, "effectivePropertyId:", effectivePropertyId);
 
   // Fetch detailed staff salaries - only when we have a valid property ID
   const { data: salaries = [], isLoading, error } = useQuery({
     queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, startDate.toISOString(), endDate.toISOString()],
     queryFn: async () => {
-      console.log("[SALARY PAGE] Fetching salaries for propertyId:", effectivePropertyId);
       if (!effectivePropertyId) return [];
       const response = await fetch(
         `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
@@ -62,7 +71,6 @@ export default function SalariesPage() {
         throw new Error("Failed to fetch salary details");
       }
       const data = await response.json();
-      console.log("[SALARY PAGE] Fetched salaries:", data);
       return data;
     },
     enabled: !!effectivePropertyId && !userLoading,
@@ -113,6 +121,71 @@ export default function SalariesPage() {
       advanceDate: advanceDate,
       reason: advanceReason,
       advanceType: advanceType,
+    });
+  };
+
+  // Mutation to record salary payment
+  const recordPaymentMutation = useMutation({
+    mutationFn: async (data: { staffMemberId: number; amount: number; paymentDate: string; paymentMethod: string; notes: string; periodStart: string; periodEnd: string }) => {
+      return await apiRequest("/api/salary-payments", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      setIsPaymentDialogOpen(false);
+      setPaymentStaffId(null);
+      setPaymentStaffName("");
+      setPaymentAmount("");
+      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentMethod("cash");
+      setPaymentNotes("");
+      toast({
+        title: "Success",
+        description: "Salary payment recorded successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to record payment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openPaymentDialog = (staff: any) => {
+    setPaymentStaffId(staff.staffId);
+    setPaymentStaffName(staff.staffName);
+    setPaymentAmount(staff.totalPayable.toFixed(2));
+    setPaymentMaxAmount(staff.totalPayable);
+    setIsPaymentDialogOpen(true);
+  };
+
+  const handleRecordPayment = () => {
+    if (!paymentStaffId || !paymentAmount) {
+      toast({
+        title: "Error",
+        description: "Please enter a payment amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    const amount = parseFloat(paymentAmount);
+    if (amount <= 0) {
+      toast({
+        title: "Error",
+        description: "Payment amount must be greater than 0",
+        variant: "destructive",
+      });
+      return;
+    }
+    recordPaymentMutation.mutate({
+      staffMemberId: paymentStaffId,
+      amount: amount,
+      paymentDate: paymentDate,
+      paymentMethod: paymentMethod,
+      notes: paymentNotes,
+      periodStart: startDate.toISOString(),
+      periodEnd: endDate.toISOString(),
     });
   };
 
@@ -221,6 +294,84 @@ export default function SalariesPage() {
                   data-testid="button-submit-advance"
                 >
                   {addAdvanceMutation.isPending ? "Recording..." : "Record Advance"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          {/* Payment Dialog */}
+          <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Record Salary Payment</DialogTitle>
+                <DialogDescription>
+                  Record payment for {paymentStaffName}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="bg-muted p-3 rounded-md">
+                  <p className="text-sm text-muted-foreground">Staff Member</p>
+                  <p className="font-semibold">{paymentStaffName}</p>
+                  <p className="text-sm text-muted-foreground mt-2">Total Payable</p>
+                  <p className="font-semibold text-lg text-green-600">₹{paymentMaxAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</p>
+                </div>
+                <div>
+                  <Label htmlFor="payment-amount">Payment Amount (₹)</Label>
+                  <Input
+                    id="payment-amount"
+                    type="number"
+                    placeholder="Enter payment amount"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    max={paymentMaxAmount}
+                    data-testid="input-payment-amount"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You can pay full or partial amount
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="payment-date">Payment Date</Label>
+                  <Input
+                    id="payment-date"
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    data-testid="input-payment-date"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="payment-method">Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger data-testid="select-payment-method">
+                      <SelectValue placeholder="Select method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="payment-notes">Notes (Optional)</Label>
+                  <Textarea
+                    id="payment-notes"
+                    placeholder="Enter any notes"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    data-testid="input-payment-notes"
+                  />
+                </div>
+                <Button 
+                  onClick={handleRecordPayment} 
+                  disabled={recordPaymentMutation.isPending}
+                  className="w-full"
+                  data-testid="button-submit-payment"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  {recordPaymentMutation.isPending ? "Recording..." : "Record Payment"}
                 </Button>
               </div>
             </DialogContent>
@@ -489,6 +640,24 @@ export default function SalariesPage() {
                         Current: ₹{(staff.currentMonthNet || 0).toLocaleString('en-IN')}
                         {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
                       </p>
+                      
+                      {/* Pay Button */}
+                      {staff.totalPayable > 0 && (
+                        <Button 
+                          onClick={() => openPaymentDialog(staff)}
+                          className="w-full mt-4"
+                          data-testid={`button-pay-salary-${staff.staffId}`}
+                        >
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Pay Salary
+                        </Button>
+                      )}
+                      {staff.totalPayable <= 0 && (
+                        <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
+                          <Check className="h-5 w-5" />
+                          <span className="font-semibold">Fully Paid</span>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -522,6 +691,7 @@ export default function SalariesPage() {
                         <th className="text-right p-3 font-semibold">Advances</th>
                         <th className="text-right p-3 font-semibold text-green-600">Final Salary</th>
                         <th className="text-center p-3 font-semibold">Status</th>
+                        <th className="text-center p-3 font-semibold">Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -560,6 +730,23 @@ export default function SalariesPage() {
                               {staff.status}
                             </Badge>
                           </td>
+                          <td className="text-center p-3">
+                            {staff.totalPayable > 0 ? (
+                              <Button 
+                                size="sm"
+                                onClick={() => openPaymentDialog(staff)}
+                                data-testid={`button-pay-table-${staff.staffId}`}
+                              >
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                Pay
+                              </Button>
+                            ) : (
+                              <Badge variant="outline" className="bg-green-50 text-green-600">
+                                <Check className="h-3 w-3 mr-1" />
+                                Paid
+                              </Badge>
+                            )}
+                          </td>
                         </tr>
                       ))}
                       {/* Totals Row */}
@@ -580,6 +767,7 @@ export default function SalariesPage() {
                         <td className="text-right p-3 text-green-700 text-base">
                           ₹{totals.totalPayable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
+                        <td />
                         <td />
                       </tr>
                     </tbody>
