@@ -6465,18 +6465,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/leases", isAuthenticated, async (req, res) => {
     try {
-      console.log("[LEASE CREATE] Request body:", JSON.stringify(req.body, null, 2));
       const { insertPropertyLeaseSchema } = await import("@shared/schema");
-      const validatedData = insertPropertyLeaseSchema.parse(req.body);
-      console.log("[LEASE CREATE] Validated data:", JSON.stringify(validatedData, null, 2));
+      
+      // Convert date strings to Date objects before validation
+      const processedBody = {
+        ...req.body,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+      };
+      
+      const validatedData = insertPropertyLeaseSchema.parse(processedBody);
       const lease = await storage.createLease(validatedData);
       res.status(201).json(lease);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        console.log("[LEASE CREATE] Validation errors:", JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
-      console.log("[LEASE CREATE] Error:", error.message);
       res.status(500).json({ message: error.message });
     }
   });
