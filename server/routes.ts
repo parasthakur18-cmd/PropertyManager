@@ -6525,6 +6525,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const paymentData = {
         ...req.body,
         leaseId: parseInt(req.params.leaseId),
+        paymentDate: req.body.paymentDate ? new Date(req.body.paymentDate) : undefined,
       };
       const validatedData = insertLeasePaymentSchema.parse(paymentData);
       const payment = await storage.createLeasePayment(validatedData);
