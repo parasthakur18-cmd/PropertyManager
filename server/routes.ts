@@ -6763,19 +6763,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       const { propertyId } = req.query;
+      
+      // Get tenant context for property filtering
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const tenant = currentUser ? getTenantContext(currentUser) : null;
 
       let staffMembers;
       if (propertyId) {
         staffMembers = await storage.getStaffMembersByProperty(parseInt(propertyId as string));
-      } else if (user.role === 'manager') {
-        const propertyIds = user.assignedPropertyIds || [];
-        if (propertyIds.length === 0) {
-          return res.json([]);
-        }
-        const allMembers = await storage.getAllStaffMembers();
-        staffMembers = allMembers.filter(m => propertyIds.includes(m.propertyId));
       } else {
-        staffMembers = await storage.getAllStaffMembers();
+        const allMembers = await storage.getAllStaffMembers();
+        // Apply tenant filtering for non-super-admin users
+        if (tenant && !tenant.isSuperAdmin) {
+          staffMembers = allMembers.filter(m => m.propertyId && canAccessProperty(tenant, m.propertyId));
+        } else {
+          staffMembers = allMembers;
+        }
       }
 
       res.json(staffMembers);
