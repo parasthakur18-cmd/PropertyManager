@@ -6637,17 +6637,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       csv += `Start Date:,${lease.startDate ? new Date(lease.startDate).toLocaleDateString() : 'N/A'}\n`;
       csv += `End Date:,${lease.endDate ? new Date(lease.endDate).toLocaleDateString() : 'N/A'}\n`;
       csv += `Duration:,${summaryData.leaseDurationYears} years\n`;
+      csv += `Current Year:,Year ${summaryData.currentYearNumber}\n`;
       csv += `\n`;
       csv += `Summary\n`;
       csv += `Total Lease Value:,${summaryData.totalLeaseValue}\n`;
-      csv += `Current Year Amount:,${summaryData.currentYearAmount}\n`;
+      csv += `Current Year Amount (Year ${summaryData.currentYearNumber}):,${summaryData.currentYearAmount}\n`;
       csv += `Monthly Amount:,${summaryData.monthlyAmount}\n`;
       csv += `Total Paid:,${summaryData.totalPaid}\n`;
-      csv += `Expected Till Date:,${summaryData.expectedTillDate}\n`;
-      csv += `Carry Forward:,${summaryData.carryForward}\n`;
-      csv += `Current Pending:,${summaryData.currentPending}\n`;
+      csv += `Carry Forward (Previous Years):,${summaryData.carryForward}\n`;
+      csv += `Total Pending:,${summaryData.totalPending}\n`;
       csv += `\n`;
-      csv += `Payment History\n`;
+      
+      // Year-by-Year Breakdown
+      if (summaryData.yearlyBreakdown && summaryData.yearlyBreakdown.length > 0) {
+        csv += `Year-by-Year Breakdown\n`;
+        csv += `Year,Period,Amount Due,Amount Paid,Balance,Status\n`;
+        summaryData.yearlyBreakdown.forEach((yr: any) => {
+          csv += `Year ${yr.year},`;
+          csv += `${yr.startDate} to ${yr.endDate},`;
+          csv += `${yr.amountDue},`;
+          csv += `${yr.amountPaid},`;
+          csv += `${yr.balance},`;
+          csv += `${yr.isCurrentYear ? 'Current' : (yr.isCompleted ? 'Completed' : 'Upcoming')}\n`;
+        });
+        csv += `\n`;
+      }
+      
+      csv += `Payment History (${payments.length} payments)\n`;
       csv += `Date,Amount,Method,Reference,Notes\n`;
       
       payments.forEach((p: any) => {
