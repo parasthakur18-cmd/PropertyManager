@@ -33,20 +33,21 @@ export default function SalariesPage() {
   const endDate = endOfMonth(startDate);
 
   // Fetch user to get properties
-  const { data: currentUser } = useQuery({
+  const { data: currentUser, isLoading: userLoading } = useQuery({
     queryKey: ["/api/auth/user"],
   });
 
-  // Set default property - ensure it's a number
+  // Set default property - ensure it's a number and wait for user data
   const firstPropertyId = (currentUser as any)?.assignedPropertyIds?.[0];
-  const propertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : 1);
+  const effectivePropertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null);
 
-  // Fetch detailed staff salaries
+  // Fetch detailed staff salaries - only when we have a valid property ID
   const { data: salaries = [], isLoading, error } = useQuery({
-    queryKey: ["/api/staff-salaries/detailed", propertyId, startDate, endDate],
+    queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, startDate.toISOString(), endDate.toISOString()],
     queryFn: async () => {
+      if (!effectivePropertyId) return [];
       const response = await fetch(
-        `/api/staff-salaries/detailed?propertyId=${propertyId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
+        `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
         { credentials: "include" }
       );
       if (!response.ok) {
@@ -57,8 +58,11 @@ export default function SalariesPage() {
       }
       return response.json();
     },
-    enabled: !!propertyId,
+    enabled: !!effectivePropertyId && !userLoading,
   });
+  
+  // Use effectivePropertyId or fallback for display purposes
+  const propertyId = effectivePropertyId || 1;
 
   // Mutation to add salary advance
   const addAdvanceMutation = useMutation({
