@@ -1543,7 +1543,7 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Calculate comprehensive lease summary with carry-forward
+  // Calculate comprehensive lease summary with proper year-by-year carry-forward
   async calculateLeaseSummary(leaseId: number): Promise<any> {
     const lease = await this.getLease(leaseId);
     if (!lease) return null;
@@ -1551,49 +1551,111 @@ export class DatabaseStorage implements IStorage {
     const payments = await this.getLeasePayments(leaseId);
     const history = await this.getLeaseHistory(leaseId);
 
-    // Calculate total amount expected based on lease duration
     const startDate = lease.startDate ? new Date(lease.startDate) : new Date();
     const endDate = lease.endDate ? new Date(lease.endDate) : new Date();
     const now = new Date();
 
-    // Calculate years and months in the lease
+    // Calculate lease duration
     const leaseDurationMs = endDate.getTime() - startDate.getTime();
     const leaseDurationYears = leaseDurationMs / (365.25 * 24 * 60 * 60 * 1000);
-    const leaseDurationMonths = leaseDurationYears * 12;
 
-    // Calculate expected payments up to current date
-    const elapsedMs = Math.min(now.getTime(), endDate.getTime()) - startDate.getTime();
-    const elapsedYears = Math.max(0, elapsedMs / (365.25 * 24 * 60 * 60 * 1000));
-    const elapsedMonths = elapsedYears * 12;
+    // Calculate completed years and current year progress
+    const elapsedMs = Math.max(0, Math.min(now.getTime(), endDate.getTime()) - startDate.getTime());
+    const elapsedYears = elapsedMs / (365.25 * 24 * 60 * 60 * 1000);
+    const completedYears = Math.floor(elapsedYears);
+    const currentYearNumber = completedYears + 1; // Year 1, 2, 3, etc.
 
-    // Current year calculated amount
-    const currentYearAmount = lease.isOverridden 
-      ? parseFloat(lease.currentYearAmount || "0")
-      : this.calculateCurrentYearAmount(lease);
+    // Base values
+    const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
+    const incrementValue = parseFloat(lease.yearlyIncrementValue || "0");
+    const isPercentage = lease.yearlyIncrementType === 'percentage';
 
-    // Total payments made
-    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+    // Helper to calculate amount for a specific year (0-indexed)
+    const getYearAmount = (yearIndex: number): number => {
+      if (lease.isOverridden && yearIndex === completedYears) {
+        return parseFloat(lease.currentYearAmount || "0");
+      }
+      if (isPercentage) {
+        return baseAmount * Math.pow(1 + incrementValue / 100, yearIndex);
+      } else {
+        return baseAmount + (incrementValue * yearIndex);
+      }
+    };
 
-    // Calculate expected amount till date (monthly basis)
+    // Calculate total amount due for all COMPLETED years (carry-forward calculation)
+    let totalDueForCompletedYears = 0;
+    for (let year = 0; year < completedYears; year++) {
+      totalDueForCompletedYears += getYearAmount(year);
+    }
+
+    // Calculate payments made in completed years vs current year
+    let paymentsTillEndOfLastYear = 0;
+    let paymentsInCurrentYear = 0;
+    const currentYearStart = new Date(startDate);
+    currentYearStart.setFullYear(startDate.getFullYear() + completedYears);
+
+    payments.forEach(p => {
+      const paymentDate = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
+      const amount = parseFloat(p.amount || "0");
+      if (paymentDate < currentYearStart) {
+        paymentsTillEndOfLastYear += amount;
+      } else {
+        paymentsInCurrentYear += amount;
+      }
+    });
+
+    // Carry-forward = What was due in previous years minus what was paid in those years
+    const carryForward = Math.max(0, totalDueForCompletedYears - paymentsTillEndOfLastYear);
+
+    // Current year amount
+    const currentYearAmount = getYearAmount(completedYears);
     const monthlyAmount = currentYearAmount / 12;
-    const expectedTillDate = monthlyAmount * Math.floor(elapsedMonths);
 
-    // Pending balance including carry-forward
-    const carryForward = parseFloat(lease.carryForwardAmount || "0");
-    const currentPending = expectedTillDate - totalPaid + carryForward;
+    // Current year progress (how many months into current year)
+    const currentYearProgress = elapsedYears - completedYears; // 0.0 to 1.0
+    const monthsIntoCurrentYear = currentYearProgress * 12;
+    const expectedCurrentYearTillDate = monthlyAmount * Math.floor(monthsIntoCurrentYear);
+
+    // Current year pending (what's due this year till now minus what's paid this year)
+    const currentYearPending = Math.max(0, expectedCurrentYearTillDate - paymentsInCurrentYear);
+
+    // Total pending = carry-forward + current year pending
+    const totalPending = carryForward + currentYearPending;
+
+    // Total paid overall
+    const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
 
     // Total lease value (all years with increments)
     let totalLeaseValue = 0;
-    if (lease.baseYearlyAmount) {
-      for (let year = 0; year < Math.ceil(leaseDurationYears); year++) {
-        if (lease.yearlyIncrementType === 'percentage') {
-          totalLeaseValue += parseFloat(lease.baseYearlyAmount) * Math.pow(1 + parseFloat(lease.yearlyIncrementValue || "0") / 100, year);
-        } else {
-          totalLeaseValue += parseFloat(lease.baseYearlyAmount) + (parseFloat(lease.yearlyIncrementValue || "0") * year);
-        }
-      }
-    } else {
-      totalLeaseValue = parseFloat(lease.totalAmount || "0");
+    for (let year = 0; year < Math.ceil(leaseDurationYears); year++) {
+      totalLeaseValue += getYearAmount(year);
+    }
+
+    // Year-by-year breakdown for detailed view
+    const yearlyBreakdown = [];
+    for (let year = 0; year < Math.min(currentYearNumber, Math.ceil(leaseDurationYears)); year++) {
+      const yearStart = new Date(startDate);
+      yearStart.setFullYear(startDate.getFullYear() + year);
+      const yearEnd = new Date(yearStart);
+      yearEnd.setFullYear(yearEnd.getFullYear() + 1);
+      
+      const yearPayments = payments.filter(p => {
+        const paymentDate = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
+        return paymentDate >= yearStart && paymentDate < yearEnd;
+      });
+      const yearPaid = yearPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+      const yearDue = getYearAmount(year);
+      
+      yearlyBreakdown.push({
+        year: year + 1,
+        startDate: yearStart.toISOString().split('T')[0],
+        endDate: new Date(yearEnd.getTime() - 1).toISOString().split('T')[0],
+        amountDue: yearDue.toFixed(2),
+        amountPaid: yearPaid.toFixed(2),
+        balance: (yearDue - yearPaid).toFixed(2),
+        isCurrentYear: year === completedYears,
+        isCompleted: year < completedYears,
+      });
     }
 
     return {
@@ -1603,15 +1665,18 @@ export class DatabaseStorage implements IStorage {
       summary: {
         totalLeaseValue: totalLeaseValue.toFixed(2),
         currentYearAmount: currentYearAmount.toFixed(2),
+        currentYearNumber,
         monthlyAmount: monthlyAmount.toFixed(2),
         totalPaid: totalPaid.toFixed(2),
-        expectedTillDate: expectedTillDate.toFixed(2),
         carryForward: carryForward.toFixed(2),
-        currentPending: Math.max(0, currentPending).toFixed(2),
+        currentYearPending: currentYearPending.toFixed(2),
+        totalPending: totalPending.toFixed(2),
         paymentsCount: payments.length,
         leaseDurationYears: leaseDurationYears.toFixed(1),
         elapsedYears: elapsedYears.toFixed(1),
+        completedYears,
         isOverridden: lease.isOverridden,
+        yearlyBreakdown,
       }
     };
   }

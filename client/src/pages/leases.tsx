@@ -981,7 +981,7 @@ export default function Leases() {
                     <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.totalLeaseValue).toLocaleString()}</p>
                   </div>
                   <div className="p-4 rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">Current Year Amount</p>
+                    <p className="text-sm text-muted-foreground">Year {leaseSummary.summary.currentYearNumber} Amount</p>
                     <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.currentYearAmount).toLocaleString()}</p>
                     {leaseSummary.summary.isOverridden && (
                       <Badge variant="secondary" className="mt-1 text-xs">Overridden</Badge>
@@ -996,15 +996,48 @@ export default function Leases() {
                     <p className="text-xl font-semibold font-mono text-green-600 dark:text-green-400">₹{parseFloat(leaseSummary.summary.totalPaid).toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">{leaseSummary.summary.paymentsCount} payments</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30">
-                    <p className="text-sm text-muted-foreground">Current Pending</p>
-                    <p className="text-xl font-semibold font-mono text-orange-600 dark:text-orange-400">₹{parseFloat(leaseSummary.summary.currentPending).toLocaleString()}</p>
-                  </div>
                   <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30">
-                    <p className="text-sm text-muted-foreground">Carry Forward</p>
+                    <p className="text-sm text-muted-foreground">Carry Forward (Previous Years)</p>
                     <p className="text-xl font-semibold font-mono text-red-600 dark:text-red-400">₹{parseFloat(leaseSummary.summary.carryForward).toLocaleString()}</p>
                   </div>
+                  <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                    <p className="text-sm text-muted-foreground">Total Pending</p>
+                    <p className="text-xl font-semibold font-mono text-orange-600 dark:text-orange-400">₹{parseFloat(leaseSummary.summary.totalPending).toLocaleString()}</p>
+                  </div>
                 </div>
+
+                {leaseSummary.summary.yearlyBreakdown && leaseSummary.summary.yearlyBreakdown.length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Year-by-Year Breakdown</h4>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className="text-left p-2">Year</th>
+                            <th className="text-right p-2">Due</th>
+                            <th className="text-right p-2">Paid</th>
+                            <th className="text-right p-2">Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leaseSummary.summary.yearlyBreakdown.map((yr: any) => (
+                            <tr key={yr.year} className={yr.isCurrentYear ? "bg-blue-50 dark:bg-blue-950/30" : ""}>
+                              <td className="p-2">
+                                Year {yr.year}
+                                {yr.isCurrentYear && <Badge variant="outline" className="ml-2 text-xs">Current</Badge>}
+                              </td>
+                              <td className="text-right p-2 font-mono">₹{parseFloat(yr.amountDue).toLocaleString()}</td>
+                              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{parseFloat(yr.amountPaid).toLocaleString()}</td>
+                              <td className={`text-right p-2 font-mono ${parseFloat(yr.balance) > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                                ₹{parseFloat(yr.balance).toLocaleString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-2">Lease Details</h4>
@@ -1018,8 +1051,8 @@ export default function Leases() {
                       <span>{leaseSummary.summary.elapsedYears} years</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Expected Till Date:</span>
-                      <span className="font-mono">₹{parseFloat(leaseSummary.summary.expectedTillDate).toLocaleString()}</span>
+                      <span className="text-muted-foreground">Current Year:</span>
+                      <span>Year {leaseSummary.summary.currentYearNumber}</span>
                     </div>
                   </div>
                 </div>
