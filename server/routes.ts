@@ -7144,6 +7144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const start = new Date(startDate as string);
       const end = new Date(endDate as string);
 
+      console.log(`[SALARY DEBUG] Fetching salaries for propertyId: ${propId}, start: ${start.toISOString()}, end: ${end.toISOString()}`);
+
       // Check user access to property
       if (user.role === 'manager') {
         const assignedProps = user.assignedPropertyIds || [];
@@ -7153,6 +7155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const detailedSalaries = await storage.getDetailedStaffSalaries(propId, start, end);
+      console.log(`[SALARY DEBUG] Returned ${detailedSalaries.length} staff salary records`);
       res.json(detailedSalaries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

@@ -37,8 +37,9 @@ export default function SalariesPage() {
     queryKey: ["/api/auth/user"],
   });
 
-  // Set default property
-  const propertyId = selectedPropertyId || ((currentUser as any)?.assignedPropertyIds?.[0] || 1);
+  // Set default property - ensure it's a number
+  const firstPropertyId = (currentUser as any)?.assignedPropertyIds?.[0];
+  const propertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : 1);
 
   // Fetch detailed staff salaries
   const { data: salaries = [], isLoading, error } = useQuery({
