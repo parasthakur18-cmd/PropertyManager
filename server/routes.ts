@@ -7356,11 +7356,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
 
-      // Validate the request data
+      // Validate the request data - attendanceDate should be string YYYY-MM-DD format
       const validatedData = insertAttendanceRecordSchema.parse({
         staffId: parseInt(req.body.staffMemberId, 10),
         propertyId: req.body.propertyId ? parseInt(req.body.propertyId, 10) : null,
-        attendanceDate: new Date(req.body.attendanceDate),
+        attendanceDate: req.body.attendanceDate, // Keep as string for Drizzle date type
         status: req.body.status,
         remarks: req.body.remarks || null,
       });
