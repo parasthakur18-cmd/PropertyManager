@@ -967,14 +967,14 @@ export default function Leases() {
           setIsSummaryDialogOpen(open);
           if (!open) setLeaseForSummary(null);
         }}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Lease Payment Summary</DialogTitle>
             </DialogHeader>
             {isSummaryLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading summary...</div>
             ) : leaseSummary ? (
-              <div className="space-y-6">
+              <div className="space-y-6 overflow-y-auto flex-1 pr-2">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-lg bg-muted/50">
                     <p className="text-sm text-muted-foreground">Total Lease Value</p>
