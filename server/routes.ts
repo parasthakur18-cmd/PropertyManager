@@ -6814,8 +6814,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
 
+      // Convert date strings to Date objects before validation
+      const bodyData = {
+        ...req.body,
+        joiningDate: req.body.joiningDate ? new Date(req.body.joiningDate) : null,
+        leavingDate: req.body.leavingDate ? new Date(req.body.leavingDate) : null,
+      };
+
       const { insertStaffMemberSchema } = await import("@shared/schema");
-      const validatedData = insertStaffMemberSchema.parse(req.body);
+      const validatedData = insertStaffMemberSchema.parse(bodyData);
 
       if (user.role === 'manager') {
         const propertyIds = user.assignedPropertyIds || [];
