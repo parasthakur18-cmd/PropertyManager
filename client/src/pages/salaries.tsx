@@ -38,13 +38,18 @@ export default function SalariesPage() {
   });
 
   // Set default property - ensure it's a number and wait for user data
-  const firstPropertyId = (currentUser as any)?.assignedPropertyIds?.[0];
+  // Note: currentUser may be { user: {...}, verificationStatus: "..." } structure
+  const userData = (currentUser as any)?.user || currentUser;
+  const firstPropertyId = userData?.assignedPropertyIds?.[0];
   const effectivePropertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null);
+  
+  console.log("[SALARY PAGE] userData:", userData, "userLoading:", userLoading, "firstPropertyId:", firstPropertyId, "effectivePropertyId:", effectivePropertyId);
 
   // Fetch detailed staff salaries - only when we have a valid property ID
   const { data: salaries = [], isLoading, error } = useQuery({
     queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, startDate.toISOString(), endDate.toISOString()],
     queryFn: async () => {
+      console.log("[SALARY PAGE] Fetching salaries for propertyId:", effectivePropertyId);
       if (!effectivePropertyId) return [];
       const response = await fetch(
         `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
@@ -56,7 +61,9 @@ export default function SalariesPage() {
         }
         throw new Error("Failed to fetch salary details");
       }
-      return response.json();
+      const data = await response.json();
+      console.log("[SALARY PAGE] Fetched salaries:", data);
+      return data;
     },
     enabled: !!effectivePropertyId && !userLoading,
   });
