@@ -13,7 +13,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type PropertyLease, type Property } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, IndianRupee, Calendar, CreditCard, Edit } from "lucide-react";
+import { Plus, IndianRupee, Calendar, CreditCard, Edit, ChevronDown, History } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -53,6 +54,66 @@ const editAmountFormSchema = z.object({
   totalAmount: z.string().min(1, "Amount is required"),
 });
 
+function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: number; isExpanded: boolean; onToggle: () => void }) {
+  const { data: payments = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/leases", leaseId, "payments"],
+    enabled: isExpanded,
+  });
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={onToggle}>
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-between"
+          data-testid={`button-toggle-history-${leaseId}`}
+        >
+          <span className="flex items-center">
+            <History className="h-4 w-4 mr-2" />
+            Payment History
+          </span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2">
+        {isLoading ? (
+          <div className="text-sm text-muted-foreground text-center py-2">Loading payments...</div>
+        ) : payments.length === 0 ? (
+          <div className="text-sm text-muted-foreground text-center py-2">No payments recorded</div>
+        ) : (
+          <div className="space-y-2">
+            {payments.map((payment: any) => (
+              <div key={payment.id} className="text-sm border rounded-md p-2 bg-muted/50" data-testid={`payment-item-${payment.id}`}>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-green-600 dark:text-green-400">
+                    ₹{parseFloat(payment.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {format(new Date(payment.paymentDate), "MMM d, yyyy")}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center mt-1">
+                  <Badge variant="secondary" className="text-xs">
+                    {payment.paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 
+                     payment.paymentMethod === 'check' ? 'Check' : 
+                     payment.paymentMethod === 'online' ? 'Online' : 'Cash'}
+                  </Badge>
+                  {payment.notes && (
+                    <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                      {payment.notes}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export default function Leases() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -61,6 +122,20 @@ export default function Leases() {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isEditAmountDialogOpen, setIsEditAmountDialogOpen] = useState(false);
   const [leaseToEdit, setLeaseToEdit] = useState<PropertyLease | null>(null);
+  const [expandedLeases, setExpandedLeases] = useState<Set<number>>(new Set());
+
+  // Toggle expanded state for payment history
+  const toggleLeaseExpanded = (leaseId: number) => {
+    setExpandedLeases(prev => {
+      const next = new Set(prev);
+      if (next.has(leaseId)) {
+        next.delete(leaseId);
+      } else {
+        next.add(leaseId);
+      }
+      return next;
+    });
+  };
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -456,6 +531,8 @@ export default function Leases() {
                         </Button>
                       )}
                     </div>
+
+                    <LeasePaymentHistory leaseId={lease.id} isExpanded={expandedLeases.has(lease.id)} onToggle={() => toggleLeaseExpanded(lease.id)} />
                   </CardContent>
                 </Card>
               );
