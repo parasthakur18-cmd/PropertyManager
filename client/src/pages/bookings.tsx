@@ -273,7 +273,15 @@ export default function Bookings() {
     // Filter rooms based on availability
     const availableRooms = rooms.filter(room => {
       const roomAvail = availability.find(a => a.roomId === room.id);
-      if (!roomAvail) return false;
+      
+      // If room is not in availability response, treat it as available
+      // (absence of data should not mean unavailable)
+      if (!roomAvail) {
+        if (import.meta.env.DEV) {
+          console.debug(`[Availability] Room ${room.roomNumber} not in availability response - treating as available`);
+        }
+        return true;
+      }
       
       // For regular rooms, check if available > 0
       // For dormitory rooms, check if remainingBeds > 0
