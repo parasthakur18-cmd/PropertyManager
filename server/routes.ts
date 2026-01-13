@@ -8797,7 +8797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if user already exists
       const allUsers = await storage.getAllUsers();
-      const userExists = allUsers.some((u) => u.email.toLowerCase() === email.toLowerCase());
+      const userExists = allUsers.some((u) => u.email && u.email.toLowerCase() === email.toLowerCase());
 
       if (userExists) {
         return res.status(400).json({ message: "Email already registered" });
