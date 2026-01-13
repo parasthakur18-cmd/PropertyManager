@@ -8587,16 +8587,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { insertVendorTransactionSchema } = await import("@shared/schema");
-      const validatedData = insertVendorTransactionSchema.parse({
+      
+      // Pre-process data to ensure correct types
+      const dataToValidate = {
         ...req.body,
         vendorId: parseInt(req.params.vendorId),
         createdBy: user.firstName || user.email || user.id,
-      });
+        amount: req.body.amount?.toString() || '0',
+        transactionDate: req.body.transactionDate ? new Date(req.body.transactionDate) : new Date(),
+      };
+      
+      console.log('[VendorTx] Data to validate:', JSON.stringify(dataToValidate, null, 2));
+      
+      const validatedData = insertVendorTransactionSchema.parse(dataToValidate);
       
       const transaction = await storage.createVendorTransaction(validatedData);
+      
+      // Record payment to wallet if it's a payment transaction
+      if (validatedData.transactionType === 'payment' && validatedData.propertyId && validatedData.paymentMethod) {
+        try {
+          await storage.recordVendorPaymentToWallet(
+            validatedData.propertyId,
+            transaction.id,
+            parseFloat(validatedData.amount?.toString() || '0'),
+            validatedData.paymentMethod,
+            `Vendor: ${req.body.vendorName || 'Unknown'}`,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded vendor payment #${transaction.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record vendor payment to wallet:`, walletError);
+        }
+      }
+      
       res.status(201).json(transaction);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
+        console.log('[VendorTx] Zod validation errors:', JSON.stringify(error.errors, null, 2));
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: error.message });
