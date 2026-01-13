@@ -213,12 +213,16 @@ export default function Vendors() {
         amount: data.amount,
         transactionDate: new Date(data.transactionDate).toISOString(),
         propertyId: selectedProperty,
+        vendorName: selectedVendor.name,
       });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendor?.id, "transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
       setIsTransactionDialogOpen(false);
       transactionForm.reset({
         transactionType: "credit",
@@ -232,7 +236,9 @@ export default function Vendors() {
       });
       toast({
         title: transactionType === "credit" ? "Credit recorded" : "Payment recorded",
-        description: `Transaction has been recorded successfully.`,
+        description: transactionType === "payment" 
+          ? "Payment has been recorded and wallet updated." 
+          : "Transaction has been recorded successfully.",
       });
     },
     onError: (error: any) => {

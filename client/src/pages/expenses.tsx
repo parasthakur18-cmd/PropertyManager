@@ -109,6 +109,7 @@ export default function Expenses() {
       amount: "",
       expenseDate: new Date().toISOString().split("T")[0],
       description: "",
+      paymentMethod: "cash",
     },
   });
 
@@ -131,6 +132,7 @@ export default function Expenses() {
         amount: data.amount,
         expenseDate: new Date(data.expenseDate).toISOString(),
         description: data.description || null,
+        paymentMethod: data.paymentMethod || 'cash',
         isRecurring: false,
       });
       return response.json();
@@ -139,6 +141,9 @@ export default function Expenses() {
       queryClient.invalidateQueries({ 
         predicate: (query) => query.queryKey[0] === "/api/expenses" 
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
       setIsExpenseDialogOpen(false);
       expenseForm.reset({
         propertyId: 0,
@@ -146,10 +151,11 @@ export default function Expenses() {
         amount: "",
         expenseDate: new Date().toISOString().split("T")[0],
         description: "",
+        paymentMethod: "cash",
       });
       toast({
         title: "Expense recorded",
-        description: "Property expense has been recorded successfully.",
+        description: "Property expense has been recorded and wallet updated.",
       });
     },
     onError: (error: any) => {
