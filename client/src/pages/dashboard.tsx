@@ -2142,8 +2142,8 @@ export default function Dashboard() {
                 data-testid="select-quick-expense-vendor"
               >
                 <option value="">Miscellaneous (No specific vendor)</option>
-                {vendors
-                  ?.filter((v: any) => {
+                {Array.isArray(vendors) && vendors
+                  .filter((v: any) => {
                     if (v.isActive === false) return false;
                     if (!expenseCategory) return true;
                     if (!v.category) return true;
