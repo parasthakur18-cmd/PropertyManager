@@ -1323,6 +1323,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Data fix endpoint: Consolidate rooms into a single property
+  app.post("/api/admin/fix-room-properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser || currentUser.role !== "super_admin") {
+        return res.status(403).send("Only super admins can run this fix");
+      }
+
+      const { targetPropertyId } = req.body;
+      if (!targetPropertyId) {
+        return res.status(400).send("targetPropertyId is required");
+      }
+
+      // Find all rooms that might belong to Woodpecker (1001-1011 and 2001+)
+      const allRooms = await storage.getRooms();
+      const roomsToMove = allRooms.filter(r => 
+        r.roomNumber.startsWith("100") || 
+        r.roomNumber.startsWith("101") || 
+        r.roomNumber.startsWith("200")
+      );
+
+      console.log(`[Fix] Found ${roomsToMove.length} rooms to consolidate to property ${targetPropertyId}`);
+
+      for (const room of roomsToMove) {
+        await storage.updateRoom(room.id, { propertyId: targetPropertyId });
+      }
+
+      res.json({ 
+        success: true, 
+        message: `Successfully moved ${roomsToMove.length} rooms to property ID ${targetPropertyId}`,
+        movedRoomNumbers: roomsToMove.map(r => r.roomNumber)
+      });
+    } catch (error: any) {
+      console.error("[Fix Error]", error);
+      res.status(500).send(error.message);
+    }
+  });
+
   // Properties
   app.get("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
