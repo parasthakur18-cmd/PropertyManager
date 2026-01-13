@@ -34,6 +34,14 @@ The frontend is built with React 18, TypeScript (Vite), Wouter for routing, TanS
 -   **Financial Tracking**: Manages property leases, payments, expenses, P&L reports, pending payments, detailed bill management, and Excel export.
 -   **Payment Systems**: RazorPay integration for payment links, split payments, and real-time dashboard notifications. Includes configurable advance payment booking confirmation with auto-expiry and WhatsApp notifications.
 -   **SaaS Subscription System**: Monetization infrastructure with 4 pricing tiers, monthly/yearly billing, Razorpay integration, and subscription analytics in Super Admin dashboard.
+-   **Multi-Wallet/Multi-Account System**: Complete financial account management with:
+    -   **Multiple Payment Accounts**: Supports Cash Counter, UPI wallets (GPay, PhonePe, Paytm), and multiple bank accounts per property.
+    -   **Auto-Split Revenue**: Automatically records transactions to appropriate wallets based on payment mode (booking payments, food orders, expenses, vendor payments, salary).
+    -   **Balance Tracking**: Tracks Revenue vs Collected vs Pending Receivable with current balance per wallet.
+    -   **Daily Closing**: End-of-day locking with opening/closing balance carry-forward for each wallet.
+    -   **Transaction Logs**: Complete audit trail with wallet-wise transaction history, filtering, and search.
+    -   **Financial Reports**: Downloadable Cash Book, Bank Book, and Daily Summary reports with date range selection and CSV export.
+    -   **Mismatch Alerts**: Automated warnings for negative balances, late day closings, and sequential closing issues.
 
 #### Staff Management
 -   **Staff Invitation System**: Admins can invite new staff members via email with role pre-assignment. Invitations expire in 7 days and can be cancelled before acceptance.
