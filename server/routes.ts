@@ -14076,6 +14076,136 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   
   console.log("[TASK-REMINDER] Daily task reminder job started - checks every 15 minutes, sends at 10 AM");
 
+  // =====================================
+  // Auto-Close Day at Midnight Job
+  // =====================================
+  async function autoCloseDayAtMidnight() {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      
+      // Only run between 00:00 - 00:15 (midnight window)
+      if (currentHour !== 0 || currentMinute >= 15) {
+        return;
+      }
+      
+      console.log(`[AUTO-CLOSE] Running auto-close day job at ${format(now, "HH:mm")}`);
+      
+      // Get yesterday's date (we're closing yesterday at midnight)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const closingDateStr = format(yesterday, "yyyy-MM-dd");
+      
+      // Get all properties
+      const allProperties = await db.select().from(properties);
+      
+      for (const property of allProperties) {
+        // Check if already closed for yesterday
+        const existingClosing = await db.select()
+          .from(dailyClosings)
+          .where(
+            and(
+              eq(dailyClosings.propertyId, property.id),
+              eq(dailyClosings.closingDate, closingDateStr)
+            )
+          )
+          .limit(1);
+        
+        if (existingClosing.length > 0) {
+          continue; // Already closed
+        }
+        
+        // Get all wallets for this property
+        const propertyWallets = await db.select()
+          .from(wallets)
+          .where(eq(wallets.propertyId, property.id));
+        
+        if (propertyWallets.length === 0) {
+          continue; // No wallets to close
+        }
+        
+        // Calculate day's totals
+        let totalRevenue = 0;
+        let totalCollected = 0;
+        let totalExpenses = 0;
+        let totalPending = 0;
+        
+        // Get yesterday's transactions
+        const dayStart = new Date(yesterday);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(yesterday);
+        dayEnd.setHours(23, 59, 59, 999);
+        
+        const dayTransactions = await db.select()
+          .from(walletTransactions)
+          .where(
+            and(
+              eq(walletTransactions.propertyId, property.id),
+              gte(walletTransactions.transactionDate, dayStart),
+              lte(walletTransactions.transactionDate, dayEnd)
+            )
+          );
+        
+        for (const tx of dayTransactions) {
+          const amount = parseFloat(tx.amount?.toString() || '0');
+          if (tx.transactionType === 'credit') {
+            totalCollected += amount;
+            totalRevenue += amount;
+          } else {
+            totalExpenses += amount;
+          }
+        }
+        
+        // Create wallet snapshots
+        const walletSnapshots = propertyWallets.map(w => ({
+          walletId: w.id,
+          walletName: w.name,
+          openingBalance: parseFloat(w.openingBalance?.toString() || '0'),
+          closingBalance: parseFloat(w.currentBalance?.toString() || '0'),
+          credits: 0,
+          debits: 0
+        }));
+        
+        // Create auto-closing record
+        await db.insert(dailyClosings).values({
+          propertyId: property.id,
+          closingDate: closingDateStr,
+          totalRevenue: totalRevenue.toString(),
+          totalCollected: totalCollected.toString(),
+          totalExpenses: totalExpenses.toString(),
+          totalPendingReceivable: totalPending.toString(),
+          walletSnapshots: walletSnapshots,
+          status: 'closed',
+          closedAt: now,
+          notes: 'Auto-closed at midnight'
+        });
+        
+        // Update wallet opening balances for new day
+        for (const wallet of propertyWallets) {
+          await db.update(wallets)
+            .set({ openingBalance: wallet.currentBalance })
+            .where(eq(wallets.id, wallet.id));
+        }
+        
+        console.log(`[AUTO-CLOSE] Auto-closed day for property ${property.name} (${closingDateStr})`);
+      }
+    } catch (error) {
+      console.error("[AUTO-CLOSE] Error in auto-close job:", error);
+    }
+  }
+  
+  // Run auto-close check after 10 seconds, then every 15 minutes
+  setTimeout(() => {
+    autoCloseDayAtMidnight();
+  }, 10000);
+  
+  setInterval(() => {
+    autoCloseDayAtMidnight();
+  }, 15 * 60 * 1000); // Every 15 minutes
+  
+  console.log("[AUTO-CLOSE] Auto-close day job started - checks every 15 minutes, runs at midnight");
+
   const httpServer = createServer(app);
   return httpServer;
 }
