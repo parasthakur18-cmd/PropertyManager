@@ -3274,19 +3274,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const bill = await storage.createOrUpdateBill(billData);
 
-      // Record payment to wallet if paid
+      // Record payment to wallet if paid - handle split payments
       if (paymentStatus === "paid" && booking.propertyId && balanceAmount > 0) {
         try {
           const guest = await storage.getGuest(booking.guestId);
-          await storage.recordBillPaymentToWallet(
-            booking.propertyId,
-            bill.id,
-            balanceAmount,
-            paymentMethod || 'cash',
-            `Checkout payment - ${guest?.fullName || 'Guest'} (Bill #${bill.id})`,
-            (req as any).user?.claims?.sub || (req as any).user?.id || null
-          );
-          console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
+          const guestName = guest?.fullName || 'Guest';
+          
+          // Handle split payments (cash + online)
+          if (splitPaymentMethods && splitPaymentMethods.length > 0) {
+            for (const splitPayment of splitPaymentMethods) {
+              if (splitPayment.amount > 0) {
+                await storage.recordBillPaymentToWallet(
+                  booking.propertyId,
+                  bill.id,
+                  splitPayment.amount,
+                  splitPayment.method,
+                  `Checkout payment - ${guestName} (Bill #${bill.id}) - ${splitPayment.method.toUpperCase()}`,
+                  (req as any).user?.claims?.sub || (req as any).user?.id || null
+                );
+                console.log(`[Wallet] Recorded checkout ${splitPayment.method} payment ₹${splitPayment.amount} for bill #${bill.id}`);
+              }
+            }
+          } else {
+            // Single payment method
+            await storage.recordBillPaymentToWallet(
+              booking.propertyId,
+              bill.id,
+              balanceAmount,
+              paymentMethod || 'cash',
+              `Checkout payment - ${guestName} (Bill #${bill.id})`,
+              (req as any).user?.claims?.sub || (req as any).user?.id || null
+            );
+            console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
+          }
         } catch (walletError) {
           console.log(`[Wallet] Could not record checkout payment to wallet:`, walletError);
         }
