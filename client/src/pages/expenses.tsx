@@ -14,7 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap, TrendingUp, AlertTriangle, Award } from "lucide-react";
+import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap, TrendingUp, AlertTriangle, Award, Banknote, Building2, CreditCard, Wallet, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpenseTrends } from "@/components/expense-trends";
@@ -32,6 +32,7 @@ const expenseFormSchema = insertPropertyExpenseSchema.extend({
   propertyId: z.number().min(1, "Property is required"),
   expenseDate: z.string().min(1, "Date is required"),
   categoryId: z.number().min(1, "Category is required"),
+  paymentMethod: z.string().optional(),
 });
 
 const categoryFormSchema = z.object({
@@ -65,6 +66,28 @@ export default function Expenses() {
   const { data: rooms = [] } = useQuery<any[]>({
     queryKey: ["/api/rooms"],
   });
+
+  // Fetch wallets to show available balances
+  const { data: wallets = [] } = useQuery<Array<{id: number; name: string; type: string; currentBalance: string}>>({
+    queryKey: ["/api/wallets", selectedProperty],
+    queryFn: async () => {
+      if (!selectedProperty) return [];
+      const response = await fetch(`/api/wallets?propertyId=${selectedProperty}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedProperty,
+  });
+
+  // Helper to get wallet balance by payment method type
+  const getWalletBalance = (method: string): number => {
+    const lowerMethod = (method || '').toLowerCase();
+    let walletType = 'cash';
+    if (lowerMethod.includes('bank') || lowerMethod.includes('cheque') || lowerMethod.includes('transfer')) walletType = 'bank';
+    else if (lowerMethod.includes('upi')) walletType = 'upi';
+    const wallet = wallets.find(w => w.type === walletType);
+    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+  };
 
   const { data: expenses = [], isLoading } = useQuery<PropertyExpense[]>({
     queryKey: ["/api/expenses", selectedProperty],
@@ -579,6 +602,87 @@ export default function Expenses() {
                           <FormMessage />
                         </FormItem>
                       )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
+                      name="paymentMethod"
+                      render={({ field }) => {
+                        const expenseAmount = parseFloat(expenseForm.watch("amount") || "0");
+                        const selectedBalance = getWalletBalance(field.value || "cash");
+                        const isInsufficient = expenseAmount > selectedBalance && expenseAmount > 0;
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>Payment Method</FormLabel>
+                            <Select value={field.value || ""} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-payment-method">
+                                  <SelectValue placeholder="Select payment method" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="cash">
+                                  <div className="flex items-center justify-between w-full gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Banknote className="h-4 w-4" />
+                                      <span>Cash</span>
+                                    </div>
+                                    <span className={`text-xs ${getWalletBalance('cash') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                      ₹{getWalletBalance('cash').toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="bank_transfer">
+                                  <div className="flex items-center justify-between w-full gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Building2 className="h-4 w-4" />
+                                      <span>Bank Transfer</span>
+                                    </div>
+                                    <span className={`text-xs ${getWalletBalance('bank') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                      ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="upi">
+                                  <div className="flex items-center justify-between w-full gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <CreditCard className="h-4 w-4" />
+                                      <span>UPI</span>
+                                    </div>
+                                    <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                      ₹{getWalletBalance('upi').toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="cheque">
+                                  <div className="flex items-center justify-between w-full gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Wallet className="h-4 w-4" />
+                                      <span>Cheque</span>
+                                    </div>
+                                    <span className={`text-xs ${getWalletBalance('cheque') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                      ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {isInsufficient && (
+                              <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                                <div className="flex items-start gap-2">
+                                  <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
+                                  <div className="text-xs text-yellow-700 dark:text-yellow-400">
+                                    <p className="font-medium">Insufficient balance!</p>
+                                    <p>Available: ₹{selectedBalance.toLocaleString('en-IN')} | Expense: ₹{expenseAmount.toLocaleString('en-IN')}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
 
                     <div className="flex justify-end gap-2 pt-4">

@@ -14,7 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVendorSchema, insertVendorTransactionSchema, type Vendor, type VendorTransaction, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye } from "lucide-react";
+import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye, Banknote, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -85,6 +85,28 @@ export default function Vendors() {
     },
     enabled: !!selectedVendor,
   });
+
+  // Fetch wallets to show available balances
+  const { data: wallets = [] } = useQuery<Array<{id: number; name: string; type: string; currentBalance: string}>>({
+    queryKey: ["/api/wallets", selectedProperty],
+    queryFn: async () => {
+      if (!selectedProperty) return [];
+      const response = await fetch(`/api/wallets?propertyId=${selectedProperty}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedProperty,
+  });
+
+  // Helper to get wallet balance by payment method type
+  const getWalletBalance = (method: string): number => {
+    const lowerMethod = (method || '').toLowerCase();
+    let walletType = 'cash';
+    if (lowerMethod.includes('bank') || lowerMethod.includes('cheque') || lowerMethod.includes('transfer')) walletType = 'bank';
+    else if (lowerMethod.includes('upi')) walletType = 'upi';
+    const wallet = wallets.find(w => w.type === walletType);
+    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+  };
 
   const vendorForm = useForm({
     resolver: zodResolver(vendorFormSchema),
@@ -774,24 +796,82 @@ export default function Vendors() {
                 <FormField
                   control={transactionForm.control}
                   name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Method</FormLabel>
-                      <Select value={field.value || ""} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-payment-method">
-                            <SelectValue placeholder="Select method" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {paymentMethods.map((method) => (
-                            <SelectItem key={method} value={method}>{method}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const paymentAmount = parseFloat(transactionForm.watch("amount") || "0");
+                    const selectedBalance = getWalletBalance(field.value || "cash");
+                    const isInsufficient = paymentAmount > selectedBalance && paymentAmount > 0;
+                    
+                    return (
+                      <FormItem>
+                        <FormLabel>Payment Method</FormLabel>
+                        <Select value={field.value || ""} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-payment-method">
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Cash">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Banknote className="h-4 w-4" />
+                                  <span>Cash</span>
+                                </div>
+                                <span className={`text-xs ${getWalletBalance('cash') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('cash').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Bank Transfer">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Building2 className="h-4 w-4" />
+                                  <span>Bank Transfer</span>
+                                </div>
+                                <span className={`text-xs ${getWalletBalance('bank') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="UPI">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2">
+                                  <CreditCard className="h-4 w-4" />
+                                  <span>UPI</span>
+                                </div>
+                                <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('upi').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="Cheque">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2">
+                                  <Wallet className="h-4 w-4" />
+                                  <span>Cheque</span>
+                                </div>
+                                <span className={`text-xs ${getWalletBalance('cheque') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInsufficient && (
+                          <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-yellow-700 dark:text-yellow-400">
+                                <p className="font-medium">Insufficient balance!</p>
+                                <p>Available: ₹{selectedBalance.toLocaleString('en-IN')} | Paying: ₹{paymentAmount.toLocaleString('en-IN')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               )}
 
