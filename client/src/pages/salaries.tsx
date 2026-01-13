@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -97,6 +97,31 @@ export default function SalariesPage() {
     },
     enabled: !!expandedPaymentHistory,
   });
+
+  // Fetch wallets to show available balances
+  const { data: wallets = [] } = useQuery<Array<{id: number; name: string; type: string; currentBalance: string}>>({
+    queryKey: ["/api/wallets", effectivePropertyId],
+    queryFn: async () => {
+      if (!effectivePropertyId) return [];
+      const response = await fetch(`/api/wallets?propertyId=${effectivePropertyId}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!effectivePropertyId,
+  });
+
+  // Helper to get wallet balance by payment method type
+  const getWalletBalance = (method: string): number => {
+    let walletType = 'cash';
+    if (method.includes('bank') || method.includes('cheque')) walletType = 'bank';
+    else if (method.includes('upi')) walletType = 'upi';
+    const wallet = wallets.find(w => w.type === walletType);
+    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+  };
+
+  const selectedWalletBalance = getWalletBalance(paymentMethod);
+  const paymentAmountNum = parseFloat(paymentAmount) || 0;
+  const isInsufficientBalance = paymentAmountNum > selectedWalletBalance;
 
   // Mutation to add salary advance
   const addAdvanceMutation = useMutation({
@@ -456,12 +481,64 @@ export default function SalariesPage() {
                       <SelectValue placeholder="Select method" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                      <SelectItem value="upi">UPI</SelectItem>
-                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="cash">
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <div className="flex items-center gap-2">
+                            <Banknote className="h-4 w-4" />
+                            <span>Cash</span>
+                          </div>
+                          <span className={`text-xs ${getWalletBalance('cash') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            ₹{getWalletBalance('cash').toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="bank_transfer">
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            <span>Bank Transfer</span>
+                          </div>
+                          <span className={`text-xs ${getWalletBalance('bank') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="upi">
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4" />
+                            <span>UPI</span>
+                          </div>
+                          <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            ₹{getWalletBalance('upi').toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="cheque">
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <div className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4" />
+                            <span>Cheque</span>
+                          </div>
+                          <span className={`text-xs ${getWalletBalance('cheque') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                            ₹{getWalletBalance('bank').toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </SelectItem>
                     </SelectContent>
                   </Select>
+                  {isInsufficientBalance && paymentAmountNum > 0 && (
+                    <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
+                        <div className="text-xs text-yellow-700 dark:text-yellow-400">
+                          <p className="font-medium">Insufficient balance!</p>
+                          <p>Available: ₹{selectedWalletBalance.toLocaleString('en-IN')} | Paying: ₹{paymentAmountNum.toLocaleString('en-IN')}</p>
+                          <p className="mt-1">Wallet balance will become negative if you proceed.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="payment-notes">Notes (Optional)</Label>
