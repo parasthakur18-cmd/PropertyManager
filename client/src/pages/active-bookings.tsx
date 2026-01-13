@@ -1663,11 +1663,20 @@ export default function ActiveBookings() {
 
                 <div className="bg-primary/10 p-3 rounded-md">
                   <div className="flex justify-between gap-4 items-center">
-                    <span className="font-semibold">Balance Due:</span>
+                    <span className="font-semibold">
+                      {paymentMethod === "split" && parseFloat(cashAmount || "0") > 0 
+                        ? "Online Payment:" 
+                        : "Balance Due:"}
+                    </span>
                     <span className={`font-mono text-xl font-bold whitespace-nowrap ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       ₹{Math.max(0, remainingBalance).toFixed(2)}
                     </span>
                   </div>
+                  {paymentMethod === "split" && parseFloat(cashAmount || "0") > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + Online: ₹{Math.max(0, remainingBalance).toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 {/* Payment Status - Mark as Paid or Pending */}
