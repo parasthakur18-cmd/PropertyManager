@@ -38,6 +38,7 @@ import {
   Bell,
   Store,
   ListTodo,
+  Wallet,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -108,6 +109,7 @@ const adminFinanceItems = [
   { title: "Leases", url: "/leases", icon: IndianRupee },
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Vendors", url: "/vendors", icon: Store },
+  { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "Financials", url: "/financials", icon: TrendingUp },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
@@ -155,6 +157,7 @@ const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Vendors", url: "/vendors", icon: Store },
+  { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
 ];
 
