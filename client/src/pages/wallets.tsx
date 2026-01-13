@@ -52,6 +52,8 @@ export default function Wallets() {
   const [reportStartDate, setReportStartDate] = useState<string>(new Date(new Date().setDate(1)).toISOString().split("T")[0]);
   const [reportEndDate, setReportEndDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isOpeningBalanceDialogOpen, setIsOpeningBalanceDialogOpen] = useState(false);
+  const [openingBalances, setOpeningBalances] = useState<Record<number, string>>({});
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -289,6 +291,66 @@ export default function Wallets() {
       });
     },
   });
+
+  const setOpeningBalanceMutation = useMutation({
+    mutationFn: async (balances: Record<number, number>) => {
+      const promises = Object.entries(balances).map(async ([walletId, amount]) => {
+        if (amount > 0) {
+          const response = await apiRequest(`/api/wallets/${walletId}/opening-balance`, "POST", {
+            propertyId: selectedProperty,
+            amount,
+            description: `Opening balance set on ${format(new Date(), "dd MMM yyyy")}`,
+          });
+          return response.json();
+        }
+        return null;
+      });
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions", selectedProperty] });
+      setIsOpeningBalanceDialogOpen(false);
+      setOpeningBalances({});
+      toast({
+        title: "Opening balances set",
+        description: "Wallet opening balances have been recorded successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to set opening balances",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOpenOpeningBalanceDialog = () => {
+    const balances: Record<number, string> = {};
+    wallets.forEach(w => {
+      balances[w.id] = "";
+    });
+    setOpeningBalances(balances);
+    setIsOpeningBalanceDialogOpen(true);
+  };
+
+  const handleSetOpeningBalances = () => {
+    const numericBalances: Record<number, number> = {};
+    Object.entries(openingBalances).forEach(([id, value]) => {
+      const amount = parseFloat(value || "0");
+      if (amount > 0) {
+        numericBalances[parseInt(id)] = amount;
+      }
+    });
+    
+    if (Object.keys(numericBalances).length === 0) {
+      toast({ title: "Please enter at least one opening balance", variant: "destructive" });
+      return;
+    }
+    
+    setOpeningBalanceMutation.mutate(numericBalances);
+  };
 
   const handleEditWallet = (wallet: WalletType) => {
     setEditingWallet(wallet);
@@ -561,6 +623,16 @@ export default function Wallets() {
               <Lock className="h-4 w-4 mr-2" />
               Close Day
             </Button>
+            {wallets.length > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={handleOpenOpeningBalanceDialog}
+                data-testid="button-set-opening-balance"
+              >
+                <Banknote className="h-4 w-4 mr-2" />
+                Set Opening Balance
+              </Button>
+            )}
           </div>
 
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
@@ -1260,6 +1332,66 @@ export default function Wallets() {
             >
               <Lock className="h-4 w-4 mr-2" />
               Close Day
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isOpeningBalanceDialogOpen} onOpenChange={setIsOpeningBalanceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Opening Balance</DialogTitle>
+            <DialogDescription>
+              Set the opening balance for each wallet. This will record a credit transaction to bring the wallet to your desired starting balance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Enter the amount you want to <strong>add</strong> to each wallet as opening balance. Leave empty or 0 to skip a wallet.
+              </p>
+            </div>
+            {wallets.map((wallet) => {
+              const Icon = getWalletIcon(wallet.type);
+              return (
+                <div key={wallet.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" />
+                    <span className="font-medium">{wallet.name}</span>
+                    <Badge className={getWalletTypeColor(wallet.type)} variant="secondary">
+                      {wallet.type.toUpperCase()}
+                    </Badge>
+                    <span className="text-sm text-muted-foreground ml-auto">
+                      Current: ₹{parseFloat(wallet.currentBalance?.toString() || "0").toLocaleString()}
+                    </span>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter opening balance amount"
+                    value={openingBalances[wallet.id] || ""}
+                    onChange={(e) => setOpeningBalances(prev => ({
+                      ...prev,
+                      [wallet.id]: e.target.value
+                    }))}
+                    data-testid={`input-opening-balance-${wallet.id}`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsOpeningBalanceDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSetOpeningBalances}
+              disabled={setOpeningBalanceMutation.isPending}
+              data-testid="button-save-opening-balance"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Set Opening Balances
             </Button>
           </DialogFooter>
         </DialogContent>
