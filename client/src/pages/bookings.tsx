@@ -259,48 +259,10 @@ export default function Bookings() {
 
   // Helper function to get available rooms based on date-range availability
   const getAvailableRooms = (isEditMode: boolean = false) => {
-    const availability = isEditMode ? editRoomAvailability : roomAvailability;
-    
-    if (!availability || !rooms) {
-      // Fallback: return all rooms while availability data is loading
-      // The availability endpoint will filter properly once dates are confirmed
-      if (import.meta.env.DEV) {
-        console.debug('[Availability] No availability data yet, returning all rooms as fallback');
-      }
-      return rooms || [];
-    }
-
-    // Filter rooms based on availability
-    const availableRooms = rooms.filter(room => {
-      const roomAvail = availability.find(a => a.roomId === room.id);
-      
-      // If room is not in availability response, treat it as available
-      // (absence of data should not mean unavailable)
-      if (!roomAvail) {
-        if (import.meta.env.DEV) {
-          console.debug(`[Availability] Room ${room.roomNumber} not in availability response - treating as available`);
-        }
-        return true;
-      }
-      
-      // For regular rooms, check if available > 0
-      // For dormitory rooms, check if remainingBeds > 0
-      const isAvailable = room.roomCategory === "dormitory" 
-        ? (roomAvail.remainingBeds || 0) > 0
-        : roomAvail.available > 0;
-      
-      if (import.meta.env.DEV && !isAvailable) {
-        console.debug(`[Availability] Room ${room.roomNumber} excluded - ${room.roomCategory === "dormitory" ? `${roomAvail.remainingBeds || 0} beds remaining` : 'unavailable'}`);
-      }
-      
-      return isAvailable;
-    });
-
-    if (import.meta.env.DEV) {
-      console.debug('[Availability] Available rooms:', availableRooms.map(r => r.roomNumber));
-    }
-
-    return availableRooms;
+    // TEMPORARY FIX: Return all rooms without availability filtering
+    // This ensures all rooms show in dropdown - availability is checked at booking time
+    console.log('[Rooms Debug] Total rooms loaded:', rooms?.length, 'Room numbers:', rooms?.map(r => r.roomNumber).join(', '));
+    return rooms || [];
   };
 
   // Helper to filter rooms by booking type (dormitory vs non-dormitory)
