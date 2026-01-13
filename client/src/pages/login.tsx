@@ -10,6 +10,7 @@ import { Building2, Mail, Phone, LogIn, ArrowRight, Clock, XCircle, Loader2 } fr
 import { SiGoogle } from "react-icons/si";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { queryClient } from "@/lib/queryClient";
+import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
 
 export default function Login() {
   const [, setLocation] = useLocation();
@@ -287,13 +288,8 @@ export default function Login() {
       {/* Navigation Header */}
       <header className="fixed top-0 left-0 right-0 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-800/50 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => setLocation("/")}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-lg">
-              <Building2 className="h-6 w-6" />
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">
-              Hostezee
-            </h1>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setLocation("/")}>
+            <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
           </div>
           <div className="flex gap-3">
             <Button

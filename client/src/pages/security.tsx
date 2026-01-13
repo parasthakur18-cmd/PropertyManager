@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { Building2, ArrowLeft, Shield, Lock, CheckCircle, AlertCircle, Key, Eye, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { ArrowLeft, Shield, Lock, CheckCircle, AlertCircle, Key, Eye, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
 
 export default function Security() {
   const [, setLocation] = useLocation();
@@ -33,11 +34,8 @@ export default function Security() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white shadow-lg">
-              <Building2 className="h-6 w-6" />
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-teal-600 to-cyan-600 bg-clip-text text-transparent">Hostezee</h1>
+          <div className="flex items-center gap-2">
+            <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
           </div>
           <Button variant="ghost" onClick={() => setLocation("/")} data-testid="button-back" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
