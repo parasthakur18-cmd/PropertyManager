@@ -1422,3 +1422,126 @@ export const insertStaffInvitationSchema = createInsertSchema(staffInvitations).
 
 export type StaffInvitation = typeof staffInvitations.$inferSelect;
 export type InsertStaffInvitation = z.infer<typeof insertStaffInvitationSchema>;
+
+// ===== MULTI-WALLET / ACCOUNT SYSTEM =====
+
+// Wallet types for categorization
+export type WalletType = 'cash' | 'bank' | 'upi' | 'ota_settlement' | 'other';
+
+// Wallets/Accounts table - multiple accounts per property
+export const wallets = pgTable("wallets", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 100 }).notNull(), // "Cash Counter", "HDFC Salary Account", "GPay", etc.
+  type: varchar("type", { length: 30 }).notNull(), // cash, bank, upi, ota_settlement, other
+  bankName: varchar("bank_name", { length: 100 }), // For bank accounts: HDFC, SBI, ICICI
+  accountNumber: varchar("account_number", { length: 50 }), // Last 4 digits for display
+  ifscCode: varchar("ifsc_code", { length: 20 }),
+  upiId: varchar("upi_id", { length: 100 }), // For UPI wallets
+  currentBalance: decimal("current_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  openingBalance: decimal("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  isDefault: boolean("is_default").default(false), // Default wallet for this type
+  isActive: boolean("is_active").default(true),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWalletSchema = createInsertSchema(wallets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Wallet = typeof wallets.$inferSelect;
+export type InsertWallet = z.infer<typeof insertWalletSchema>;
+
+// Transaction types for wallet movements
+export type TransactionType = 'credit' | 'debit';
+export type TransactionSource = 
+  | 'booking_payment' 
+  | 'food_order_payment' 
+  | 'addon_payment'
+  | 'expense' 
+  | 'vendor_payment' 
+  | 'salary_payment' 
+  | 'salary_advance'
+  | 'lease_payment'
+  | 'transfer_in'
+  | 'transfer_out'
+  | 'adjustment'
+  | 'opening_balance'
+  | 'day_closing_carry_forward';
+
+// Wallet Transactions - detailed log of all money movements
+export const walletTransactions = pgTable("wallet_transactions", {
+  id: serial("id").primaryKey(),
+  walletId: integer("wallet_id").notNull().references(() => wallets.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  transactionType: varchar("transaction_type", { length: 20 }).notNull(), // credit, debit
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  balanceAfter: decimal("balance_after", { precision: 12, scale: 2 }).notNull(),
+  source: varchar("source", { length: 50 }).notNull(), // booking_payment, expense, vendor_payment, etc.
+  sourceId: integer("source_id"), // Reference to booking/order/expense/vendor_transaction ID
+  description: text("description"),
+  referenceNumber: varchar("reference_number", { length: 100 }), // UTR, cheque no, receipt no
+  transactionDate: date("transaction_date").notNull(),
+  dayClosingId: integer("day_closing_id"), // Links to daily closing if locked
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertWalletTransactionSchema = createInsertSchema(walletTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type WalletTransaction = typeof walletTransactions.$inferSelect;
+export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
+
+// Daily Closing - locks day's transactions and stores final balances
+export const dailyClosings = pgTable("daily_closings", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  closingDate: date("closing_date").notNull(),
+  
+  // Summary amounts
+  totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalCollected: decimal("total_collected", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalExpenses: decimal("total_expenses", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalPendingReceivable: decimal("total_pending_receivable", { precision: 12, scale: 2 }).notNull().default("0"),
+  
+  // Wallet-wise closing balances (JSON array)
+  walletBalances: jsonb("wallet_balances").notNull().default([]), // [{walletId, name, type, openingBalance, closingBalance}]
+  
+  // Breakdowns
+  revenueBreakdown: jsonb("revenue_breakdown").default({}), // {room: X, food: Y, addons: Z}
+  collectionBreakdown: jsonb("collection_breakdown").default({}), // {cash: X, upi: Y, bank: Z}
+  expenseBreakdown: jsonb("expense_breakdown").default({}), // {salary: X, vendor: Y, maintenance: Z}
+  
+  // Transaction counts
+  bookingsCount: integer("bookings_count").default(0),
+  checkInsCount: integer("check_ins_count").default(0),
+  checkOutsCount: integer("check_outs_count").default(0),
+  foodOrdersCount: integer("food_orders_count").default(0),
+  expenseEntriesCount: integer("expense_entries_count").default(0),
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("open"), // open, closed
+  closedBy: varchar("closed_by").references(() => users.id),
+  closedAt: timestamp("closed_at"),
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDailyClosingSchema = createInsertSchema(dailyClosings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  closedAt: true,
+});
+
+export type DailyClosing = typeof dailyClosings.$inferSelect;
+export type InsertDailyClosing = z.infer<typeof insertDailyClosingSchema>;
