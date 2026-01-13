@@ -3274,6 +3274,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const bill = await storage.createOrUpdateBill(billData);
 
+      // Record payment to wallet if paid
+      if (paymentStatus === "paid" && booking.propertyId && balanceAmount > 0) {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          await storage.recordBillPaymentToWallet(
+            booking.propertyId,
+            bill.id,
+            balanceAmount,
+            paymentMethod || 'cash',
+            `Checkout payment - ${guest?.fullName || 'Guest'} (Bill #${bill.id})`,
+            (req as any).user?.claims?.sub || (req as any).user?.id || null
+          );
+          console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record checkout payment to wallet:`, walletError);
+        }
+      }
+
       // Create notification for bill/checkout
       try {
         const allUsers = await storage.getAllUsers();
@@ -4469,6 +4487,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
             
+            // Record advance payment to wallet
+            try {
+              const guest = await storage.getGuest(booking.guestId);
+              await storage.recordBillPaymentToWallet(
+                booking.propertyId,
+                bookingId,
+                amountInRupees,
+                'razorpay_online',
+                `Advance payment - ${guest?.fullName || 'Guest'} (Booking #${bookingId})`,
+                null
+              );
+              console.log(`[Wallet] Recorded advance payment ₹${amountInRupees} for booking #${bookingId}`);
+            } catch (walletError) {
+              console.log(`[Wallet] Could not record advance payment to wallet:`, walletError);
+            }
+            
             // Send WhatsApp confirmation to guest - check template controls first
             const guest = await storage.getGuest(booking.guestId);
             const property = await storage.getProperty(booking.propertyId);
@@ -4553,6 +4587,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }).where(eq(bills.id, bill.id));
 
               console.log(`[RazorPay] ✅ Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
+
+              // Record payment to wallet
+              try {
+                const guest = await storage.getGuest(booking.guestId);
+                await storage.recordBillPaymentToWallet(
+                  booking.propertyId,
+                  bill.id,
+                  amountInRupees,
+                  'razorpay_online',
+                  `Online payment - ${guest?.fullName || 'Guest'} (Bill #${bill.id})`,
+                  null
+                );
+                console.log(`[Wallet] Recorded RazorPay payment ₹${amountInRupees} for bill #${bill.id}`);
+              } catch (walletError) {
+                console.log(`[Wallet] Could not record RazorPay payment to wallet:`, walletError);
+              }
 
               // Send confirmation to guest via WhatsApp
               const guest = await storage.getGuest(booking.guestId);
@@ -6519,16 +6569,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/leases/:leaseId/payments", isAuthenticated, async (req, res) => {
+  app.post("/api/leases/:leaseId/payments", isAuthenticated, async (req: any, res) => {
     try {
       const { insertLeasePaymentSchema } = await import("@shared/schema");
+      const leaseId = parseInt(req.params.leaseId);
       const paymentData = {
         ...req.body,
-        leaseId: parseInt(req.params.leaseId),
+        leaseId,
         paymentDate: req.body.paymentDate ? new Date(req.body.paymentDate) : undefined,
       };
       const validatedData = insertLeasePaymentSchema.parse(paymentData);
       const payment = await storage.createLeasePayment(validatedData);
+      
+      // Record lease payment to wallet if property and amount are provided
+      const lease = await storage.getLease(leaseId);
+      if (lease?.propertyId && payment.amount) {
+        try {
+          await storage.recordLeasePaymentToWallet(
+            lease.propertyId,
+            payment.id,
+            parseFloat(payment.amount.toString()),
+            payment.paymentMethod || 'cash',
+            `Lease payment - ${lease.lessorName || 'Lease'}`,
+            req.user?.claims?.sub || req.user?.id || null
+          );
+          console.log(`[Wallet] Recorded lease payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record lease payment to wallet:`, walletError);
+        }
+      }
+      
       res.status(201).json(payment);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -6973,7 +7043,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/expenses", isAuthenticated, async (req, res) => {
+  app.post("/api/expenses", isAuthenticated, async (req: any, res) => {
     try {
       const { insertPropertyExpenseSchema } = await import("@shared/schema");
       
@@ -6985,6 +7055,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const validatedData = insertPropertyExpenseSchema.parse(transformedData);
       const expense = await storage.createExpense(validatedData);
+      
+      // Record expense to wallet if property and amount are provided
+      if (expense.propertyId && expense.amount) {
+        const userId = req.user?.claims?.sub || req.user?.id || null;
+        try {
+          await storage.recordExpenseToWallet(
+            expense.propertyId,
+            expense.id,
+            parseFloat(expense.amount.toString()),
+            expense.paymentMethod || 'cash',
+            expense.description || `Expense: ${expense.vendorName || 'Unknown'}`,
+            userId
+          );
+          console.log(`[Wallet] Recorded expense #${expense.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record expense to wallet:`, walletError);
+        }
+      }
+      
       res.status(201).json(expense);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -7583,6 +7672,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recordedBy: user.claims?.sub || user.id || String(user.userId),
       });
 
+      // Record salary payment to wallet
+      if (staffMember.propertyId) {
+        try {
+          await storage.recordSalaryPaymentToWallet(
+            staffMember.propertyId,
+            payment.id,
+            parseFloat(amount.toString()),
+            paymentMethod || 'cash',
+            staffMember.name || 'Staff',
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary payment to wallet:`, walletError);
+        }
+      }
+
       const { AuditService } = await import("./auditService");
       await AuditService.logCreate(
         "salary_payment",
@@ -7637,6 +7743,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { insertSalaryAdvanceSchema } = await import("@shared/schema");
       const validatedData = insertSalaryAdvanceSchema.parse(req.body);
       const advance = await storage.createAdvance(validatedData);
+
+      // Record salary advance to wallet if we have property and amount
+      if (advance.propertyId && advance.amount) {
+        try {
+          // Get staff name for description
+          let staffName = 'Staff';
+          if (advance.staffMemberId) {
+            const staff = await storage.getStaffMember(advance.staffMemberId);
+            staffName = staff?.name || 'Staff';
+          }
+          await storage.recordSalaryAdvanceToWallet(
+            advance.propertyId,
+            advance.id,
+            parseFloat(advance.amount.toString()),
+            'cash',
+            staffName,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary advance #${advance.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary advance to wallet:`, walletError);
+        }
+      }
 
       const { AuditService } = await import("./auditService");
       await AuditService.logCreate(
@@ -8005,6 +8134,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const advance = await storage.createAdvance(advanceData as any);
 
+      // Record salary advance to wallet
+      const staffMember = await storage.getStaffMember(advance.staffMemberId!);
+      if (staffMember?.propertyId && advance.amount) {
+        try {
+          await storage.recordSalaryAdvanceToWallet(
+            staffMember.propertyId,
+            advance.id,
+            parseFloat(advance.amount.toString()),
+            'cash',
+            staffMember.name || 'Staff',
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary advance #${advance.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary advance to wallet:`, walletError);
+        }
+      }
+
       res.status(201).json(advance);
     } catch (error: any) {
       console.error('[SALARY ADVANCE ERROR]:', error);
@@ -8058,6 +8205,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         salaryId: parseInt(req.params.salaryId),
       });
       const payment = await storage.createSalaryPayment(validatedData);
+
+      // Record salary payment to wallet if we have property and amount
+      if (payment.propertyId && payment.amount) {
+        try {
+          let staffName = 'Staff';
+          if (payment.staffMemberId) {
+            const staff = await storage.getStaffMember(payment.staffMemberId);
+            staffName = staff?.name || 'Staff';
+          }
+          await storage.recordSalaryPaymentToWallet(
+            payment.propertyId,
+            payment.id,
+            parseFloat(payment.amount.toString()),
+            payment.paymentMethod || 'cash',
+            staffName,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary payment to wallet:`, walletError);
+        }
+      }
 
       const { AuditService } = await import("./auditService");
       await AuditService.logCreate(

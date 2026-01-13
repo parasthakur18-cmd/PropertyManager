@@ -437,6 +437,16 @@ export interface IStorage {
   // Wallet balance utilities
   getPropertyWalletSummary(propertyId: number): Promise<{ totalBalance: number; wallets: Wallet[] }>;
   initializeDefaultWallets(propertyId: number): Promise<Wallet[]>;
+  
+  // Wallet integration helpers
+  getWalletByPaymentMethod(propertyId: number, paymentMethod: string): Promise<Wallet | null>;
+  recordBillPaymentToWallet(propertyId: number, billId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordFoodOrderPaymentToWallet(propertyId: number, orderId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordExpenseToWallet(propertyId: number, expenseId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordSalaryPaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, staffName: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordSalaryAdvanceToWallet(propertyId: number, advanceId: number, amount: number, paymentMethod: string, staffName: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordLeasePaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordVendorPaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, vendorName: string, userId: string | null): Promise<WalletTransaction | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4068,6 +4078,225 @@ export class DatabaseStorage implements IStorage {
     }
     
     return created;
+  }
+
+  // ===== WALLET INTEGRATION HELPERS =====
+  
+  async getWalletByPaymentMethod(propertyId: number, paymentMethod: string): Promise<Wallet | null> {
+    const propertyWallets = await this.getWalletsByProperty(propertyId);
+    if (propertyWallets.length === 0) return null;
+    
+    // Map payment method to wallet type
+    let walletType: string;
+    const method = (paymentMethod || '').toLowerCase();
+    
+    if (method.includes('cash')) {
+      walletType = 'cash';
+    } else if (method.includes('upi') || method.includes('phonepe') || method.includes('gpay') || method.includes('paytm')) {
+      walletType = 'upi';
+    } else if (method.includes('bank') || method.includes('neft') || method.includes('rtgs') || method.includes('imps') || method.includes('cheque') || method.includes('card') || method.includes('razorpay')) {
+      walletType = 'bank';
+    } else {
+      // Default to cash if unknown
+      walletType = 'cash';
+    }
+    
+    // Find matching wallet, prefer default
+    const matchingWallet = propertyWallets.find(w => w.type === walletType && w.isDefault) 
+      || propertyWallets.find(w => w.type === walletType)
+      || propertyWallets.find(w => w.isDefault)
+      || propertyWallets[0];
+    
+    return matchingWallet || null;
+  }
+
+  async recordBillPaymentToWallet(
+    propertyId: number,
+    billId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordPaymentToWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'booking_payment',
+      billId,
+      description,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordFoodOrderPaymentToWallet(
+    propertyId: number,
+    orderId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordPaymentToWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'food_order_payment',
+      orderId,
+      description,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordExpenseToWallet(
+    propertyId: number,
+    expenseId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordExpenseFromWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'expense',
+      expenseId,
+      description,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordSalaryPaymentToWallet(
+    propertyId: number,
+    paymentId: number,
+    amount: number,
+    paymentMethod: string,
+    staffName: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordExpenseFromWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'salary_payment',
+      paymentId,
+      `Salary payment - ${staffName}`,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordSalaryAdvanceToWallet(
+    propertyId: number,
+    advanceId: number,
+    amount: number,
+    paymentMethod: string,
+    staffName: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordExpenseFromWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'salary_advance',
+      advanceId,
+      `Salary advance - ${staffName}`,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordLeasePaymentToWallet(
+    propertyId: number,
+    paymentId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordExpenseFromWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'lease_payment',
+      paymentId,
+      description,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordVendorPaymentToWallet(
+    propertyId: number,
+    paymentId: number,
+    amount: number,
+    paymentMethod: string,
+    vendorName: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    
+    return this.recordExpenseFromWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'vendor_payment',
+      paymentId,
+      `Vendor payment - ${vendorName}`,
+      null,
+      new Date(),
+      userId
+    );
   }
 }
 
