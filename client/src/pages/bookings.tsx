@@ -258,10 +258,8 @@ export default function Bookings() {
   });
 
   // Helper function to get available rooms based on date-range availability
+  // Returns ALL rooms - availability is validated at booking time to prevent double-booking
   const getAvailableRooms = (isEditMode: boolean = false) => {
-    // TEMPORARY FIX: Return all rooms without availability filtering
-    // This ensures all rooms show in dropdown - availability is checked at booking time
-    console.log('[Rooms Debug] Total rooms loaded:', rooms?.length, 'Room numbers:', rooms?.map(r => r.roomNumber).join(', '));
     return rooms || [];
   };
 
