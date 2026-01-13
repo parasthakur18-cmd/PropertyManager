@@ -4094,7 +4094,8 @@ export class DatabaseStorage implements IStorage {
       walletType = 'cash';
     } else if (method.includes('upi') || method.includes('phonepe') || method.includes('gpay') || method.includes('paytm')) {
       walletType = 'upi';
-    } else if (method.includes('bank') || method.includes('neft') || method.includes('rtgs') || method.includes('imps') || method.includes('cheque') || method.includes('card') || method.includes('razorpay')) {
+    } else if (method.includes('bank') || method.includes('neft') || method.includes('rtgs') || method.includes('imps') || method.includes('cheque') || method.includes('card') || method.includes('razorpay') || method === 'online') {
+      // "online" payments go to bank wallet by default
       walletType = 'bank';
     } else {
       // Default to cash if unknown
