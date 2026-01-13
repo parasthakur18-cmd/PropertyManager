@@ -6931,6 +6931,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Set opening balance for wallet (adds a credit transaction)
+  app.post("/api/wallets/:id/opening-balance", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, description } = req.body;
+      const userId = req.session?.userId || null;
+      
+      if (!amount || parseFloat(amount) <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+      
+      // Record as a credit transaction with source "opening_balance"
+      const transaction = await storage.recordPaymentToWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        'opening_balance',
+        null,
+        description || 'Opening balance',
+        null,
+        new Date(),
+        userId
+      );
+      
+      console.log(`[Wallet] Set opening balance ₹${amount} for wallet #${walletId}`);
+      res.json(transaction);
+    } catch (error: any) {
+      console.error('[Wallet] Error setting opening balance:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ===== DAILY CLOSING =====
 
   // Get daily closings for property
