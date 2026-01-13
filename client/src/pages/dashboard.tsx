@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -194,6 +194,26 @@ export default function Dashboard() {
       selectedPropertyId 
         ? fetch(`/api/vendors?propertyId=${selectedPropertyId}`, { credentials: "include" }).then(r => r.json())
         : Promise.resolve([]),
+    enabled: !!selectedPropertyId,
+  });
+
+  // Wallet summary query for dashboard
+  interface WalletData {
+    id: number;
+    name: string;
+    type: string;
+    currentBalance: string;
+  }
+  interface WalletSummary {
+    totalBalance: number;
+    wallets: WalletData[];
+  }
+  const { data: walletSummary } = useQuery<WalletSummary>({
+    queryKey: ["/api/wallets/summary", selectedPropertyId],
+    queryFn: () =>
+      selectedPropertyId
+        ? fetch(`/api/wallets/summary?propertyId=${selectedPropertyId}`, { credentials: "include" }).then(r => r.json())
+        : Promise.resolve({ totalBalance: 0, wallets: [] }),
     enabled: !!selectedPropertyId,
   });
 
@@ -637,6 +657,117 @@ export default function Dashboard() {
       })}
     </div>
   );
+
+  // Wallet Balance Cards Section
+  const getWalletIcon = (type: string) => {
+    switch (type) {
+      case 'cash': return Banknote;
+      case 'upi': return Smartphone;
+      case 'bank': return CreditCard;
+      default: return Wallet;
+    }
+  };
+
+  const getWalletColor = (type: string) => {
+    switch (type) {
+      case 'cash': return 'from-green-500 to-emerald-500';
+      case 'upi': return 'from-purple-500 to-violet-500';
+      case 'bank': return 'from-blue-500 to-cyan-500';
+      default: return 'from-slate-500 to-slate-600';
+    }
+  };
+
+  const renderWalletBalances = () => {
+    if (!selectedPropertyId || !walletSummary?.wallets?.length) return null;
+
+    return (
+      <div className="hidden lg:block mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-semibold">Wallet Balances</h3>
+          </div>
+          <Badge variant="outline" className="font-mono">
+            Total: ₹{walletSummary.totalBalance.toLocaleString('en-IN')}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          {walletSummary.wallets.map((wallet) => {
+            const Icon = getWalletIcon(wallet.type);
+            const colorClass = getWalletColor(wallet.type);
+            const balance = parseFloat(wallet.currentBalance || '0');
+            const isNegative = balance < 0;
+            
+            return (
+              <Card key={wallet.id} className="relative overflow-hidden group hover:shadow-lg transition-all" data-testid={`card-wallet-${wallet.id}`}>
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`p-2 rounded-lg bg-gradient-to-br ${colorClass} text-white`}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground capitalize">{wallet.type}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate mb-1">{wallet.name}</p>
+                      <p className={`text-2xl font-bold font-mono ${isNegative ? 'text-destructive' : 'text-foreground'}`}>
+                        ₹{balance.toLocaleString('en-IN')}
+                      </p>
+                      {isNegative && (
+                        <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                          <AlertCircle className="h-3 w-3" /> Negative balance
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMobileWalletBalances = () => {
+    if (!selectedPropertyId || !walletSummary?.wallets?.length) return null;
+
+    return (
+      <div className="lg:hidden mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Wallet className="h-4 w-4 text-primary" />
+            <h3 className="text-sm font-semibold">Wallets</h3>
+          </div>
+          <Badge variant="outline" className="text-xs font-mono">
+            ₹{walletSummary.totalBalance.toLocaleString('en-IN')}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {walletSummary.wallets.map((wallet) => {
+            const Icon = getWalletIcon(wallet.type);
+            const colorClass = getWalletColor(wallet.type);
+            const balance = parseFloat(wallet.currentBalance || '0');
+            const isNegative = balance < 0;
+            
+            return (
+              <Card key={wallet.id} className="p-3" data-testid={`card-wallet-mobile-${wallet.id}`}>
+                <div className="flex flex-col items-center text-center">
+                  <div className={`p-2 rounded-lg bg-gradient-to-br ${colorClass} text-white mb-2`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <p className="text-xs text-muted-foreground capitalize">{wallet.type}</p>
+                  <p className={`text-sm font-bold font-mono ${isNegative ? 'text-destructive' : ''}`}>
+                    ₹{balance.toLocaleString('en-IN')}
+                  </p>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const renderMobileContent = () => {
     switch (mobileTab) {
@@ -1197,6 +1328,10 @@ export default function Dashboard() {
         {/* Analytics Cards */}
         {renderAnalyticsCards()}
         {renderMobileAnalyticsCards()}
+        
+        {/* Wallet Balance Cards */}
+        {renderWalletBalances()}
+        {renderMobileWalletBalances()}
         
         {/* Desktop: 4-Column Full Section Layout */}
         <div className="hidden lg:grid lg:grid-cols-4 gap-4">

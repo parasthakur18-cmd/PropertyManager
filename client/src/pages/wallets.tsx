@@ -48,7 +48,10 @@ export default function Wallets() {
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<WalletType | null>(null);
   const [editingWallet, setEditingWallet] = useState<WalletType | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "closings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "closings" | "reports">("overview");
+  const [reportStartDate, setReportStartDate] = useState<string>(new Date(new Date().setDate(1)).toISOString().split("T")[0]);
+  const [reportEndDate, setReportEndDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -506,6 +509,7 @@ export default function Wallets() {
               <TabsTrigger value="overview" data-testid="tab-overview">Wallets</TabsTrigger>
               <TabsTrigger value="transactions" data-testid="tab-transactions">Transactions</TabsTrigger>
               <TabsTrigger value="closings" data-testid="tab-closings">Daily Closings</TabsTrigger>
+              <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-4">
@@ -713,6 +717,195 @@ export default function Wallets() {
                       </div>
                     </ScrollArea>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="reports" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Financial Reports</CardTitle>
+                  <CardDescription>Download Cash Book, Bank Book, and Daily Summary reports</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium">Start Date</label>
+                      <Input 
+                        type="date" 
+                        value={reportStartDate} 
+                        onChange={(e) => setReportStartDate(e.target.value)}
+                        data-testid="input-report-start-date"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">End Date</label>
+                      <Input 
+                        type="date" 
+                        value={reportEndDate} 
+                        onChange={(e) => setReportEndDate(e.target.value)}
+                        data-testid="input-report-end-date"
+                      />
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-green-500/10">
+                          <Banknote className="h-5 w-5 text-green-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium">Cash Book</h4>
+                          <p className="text-sm text-muted-foreground">All cash transactions</p>
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full" 
+                        variant="outline"
+                        disabled={isDownloading}
+                        onClick={async () => {
+                          setIsDownloading(true);
+                          try {
+                            const response = await fetch(
+                              `/api/reports/cash-book?propertyId=${selectedProperty}&startDate=${reportStartDate}&endDate=${reportEndDate}`
+                            );
+                            const data = await response.json();
+                            
+                            let csv = "Date,Type,Amount,Description,Reference,Balance After\n";
+                            data.transactions.forEach((t: any) => {
+                              csv += `${format(new Date(t.transactionDate), "yyyy-MM-dd")},${t.transactionType},${t.amount},"${t.description || ''}",${t.referenceNumber || ''},${t.balanceAfter || ''}\n`;
+                            });
+                            csv += `\nOpening Balance,${data.openingBalance}\n`;
+                            csv += `Closing Balance,${data.closingBalance}\n`;
+                            csv += `Total Credits,${data.summary.totalCredits}\n`;
+                            csv += `Total Debits,${data.summary.totalDebits}\n`;
+                            
+                            const blob = new Blob([csv], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `cash-book-${reportStartDate}-to-${reportEndDate}.csv`;
+                            a.click();
+                            toast({ title: "Cash Book downloaded successfully" });
+                          } catch (error) {
+                            toast({ title: "Failed to download report", variant: "destructive" });
+                          } finally {
+                            setIsDownloading(false);
+                          }
+                        }}
+                        data-testid="button-download-cash-book"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download CSV
+                      </Button>
+                    </Card>
+
+                    <Card className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-blue-500/10">
+                          <CreditCard className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium">Bank Book</h4>
+                          <p className="text-sm text-muted-foreground">All bank transactions</p>
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full" 
+                        variant="outline"
+                        disabled={isDownloading}
+                        onClick={async () => {
+                          setIsDownloading(true);
+                          try {
+                            const response = await fetch(
+                              `/api/reports/bank-book?propertyId=${selectedProperty}&startDate=${reportStartDate}&endDate=${reportEndDate}`
+                            );
+                            const data = await response.json();
+                            
+                            let csv = "Date,Type,Amount,Description,Reference,Account,Balance After\n";
+                            data.transactions.forEach((t: any) => {
+                              csv += `${format(new Date(t.transactionDate), "yyyy-MM-dd")},${t.transactionType},${t.amount},"${t.description || ''}",${t.referenceNumber || ''},${t.walletName || ''},${t.balanceAfter || ''}\n`;
+                            });
+                            csv += `\nOpening Balance,${data.openingBalance}\n`;
+                            csv += `Closing Balance,${data.closingBalance}\n`;
+                            csv += `Total Credits,${data.summary.totalCredits}\n`;
+                            csv += `Total Debits,${data.summary.totalDebits}\n`;
+                            
+                            const blob = new Blob([csv], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `bank-book-${reportStartDate}-to-${reportEndDate}.csv`;
+                            a.click();
+                            toast({ title: "Bank Book downloaded successfully" });
+                          } catch (error) {
+                            toast({ title: "Failed to download report", variant: "destructive" });
+                          } finally {
+                            setIsDownloading(false);
+                          }
+                        }}
+                        data-testid="button-download-bank-book"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download CSV
+                      </Button>
+                    </Card>
+
+                    <Card className="p-4">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-purple-500/10">
+                          <Wallet className="h-5 w-5 text-purple-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium">Daily Summary</h4>
+                          <p className="text-sm text-muted-foreground">Today's wallet status</p>
+                        </div>
+                      </div>
+                      <Button 
+                        className="w-full" 
+                        variant="outline"
+                        disabled={isDownloading}
+                        onClick={async () => {
+                          setIsDownloading(true);
+                          try {
+                            const response = await fetch(
+                              `/api/reports/daily-summary?propertyId=${selectedProperty}&date=${reportEndDate}`
+                            );
+                            const data = await response.json();
+                            
+                            let csv = "Wallet Name,Type,Current Balance,Day Credits,Day Debits,Transaction Count\n";
+                            data.wallets.forEach((w: any) => {
+                              csv += `${w.walletName},${w.walletType},${w.currentBalance},${w.dayCredits},${w.dayDebits},${w.transactionCount}\n`;
+                            });
+                            csv += `\nTotal Credits,${data.totals.totalCredits}\n`;
+                            csv += `Total Debits,${data.totals.totalDebits}\n`;
+                            csv += `Net Change,${data.totals.netChange}\n`;
+                            csv += `Total Balance,${data.totals.totalBalance}\n`;
+                            csv += `Day Closed,${data.isDayClosed ? 'Yes' : 'No'}\n`;
+                            
+                            const blob = new Blob([csv], { type: 'text/csv' });
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `daily-summary-${reportEndDate}.csv`;
+                            a.click();
+                            toast({ title: "Daily Summary downloaded successfully" });
+                          } catch (error) {
+                            toast({ title: "Failed to download report", variant: "destructive" });
+                          } finally {
+                            setIsDownloading(false);
+                          }
+                        }}
+                        data-testid="button-download-daily-summary"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download CSV
+                      </Button>
+                    </Card>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

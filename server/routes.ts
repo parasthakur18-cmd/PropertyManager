@@ -6964,6 +6964,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== WALLET REPORTS =====
+  
+  // Get Cash Book report (all cash wallet transactions)
+  app.get("/api/reports/cash-book", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, startDate, endDate } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1)); // First of month
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      // Get cash wallet(s)
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      const cashWallets = allWallets.filter(w => w.type === 'cash');
+      
+      if (cashWallets.length === 0) {
+        return res.json({ transactions: [], openingBalance: 0, closingBalance: 0, summary: { totalCredits: 0, totalDebits: 0 } });
+      }
+      
+      // Get transactions for cash wallets
+      const allTransactions: any[] = [];
+      for (const wallet of cashWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        allTransactions.push(...txns.map(t => ({ ...t, walletName: wallet.name })));
+      }
+      
+      // Filter by date range
+      const filtered = allTransactions.filter(t => {
+        const txnDate = new Date(t.transactionDate);
+        return txnDate >= start && txnDate <= end;
+      }).sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
+      
+      // Calculate summary
+      const totalCredits = filtered.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const totalDebits = filtered.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const closingBalance = cashWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+      const openingBalance = closingBalance - totalCredits + totalDebits;
+      
+      res.json({
+        walletType: 'cash',
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        transactions: filtered,
+        openingBalance,
+        closingBalance,
+        summary: { totalCredits, totalDebits }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get Bank Book report (all bank wallet transactions)
+  app.get("/api/reports/bank-book", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, startDate, endDate } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      // Get bank wallet(s)
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      const bankWallets = allWallets.filter(w => w.type === 'bank');
+      
+      if (bankWallets.length === 0) {
+        return res.json({ transactions: [], openingBalance: 0, closingBalance: 0, summary: { totalCredits: 0, totalDebits: 0 } });
+      }
+      
+      const allTransactions: any[] = [];
+      for (const wallet of bankWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        allTransactions.push(...txns.map(t => ({ ...t, walletName: wallet.name, accountNumber: wallet.accountNumber })));
+      }
+      
+      const filtered = allTransactions.filter(t => {
+        const txnDate = new Date(t.transactionDate);
+        return txnDate >= start && txnDate <= end;
+      }).sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
+      
+      const totalCredits = filtered.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const totalDebits = filtered.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const closingBalance = bankWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+      const openingBalance = closingBalance - totalCredits + totalDebits;
+      
+      res.json({
+        walletType: 'bank',
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        transactions: filtered,
+        openingBalance,
+        closingBalance,
+        summary: { totalCredits, totalDebits }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get Daily Summary report
+  app.get("/api/reports/daily-summary", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, date } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const reportDate = date ? new Date(date as string) : new Date();
+      reportDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(reportDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      // Get all wallets
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      
+      // Get transactions for the day
+      const walletSummaries = [];
+      let totalDayCredits = 0;
+      let totalDayDebits = 0;
+      
+      for (const wallet of allWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        const dayTxns = txns.filter(t => {
+          const txnDate = new Date(t.transactionDate);
+          return txnDate >= reportDate && txnDate < nextDay;
+        });
+        
+        const credits = dayTxns.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+        const debits = dayTxns.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+        
+        totalDayCredits += credits;
+        totalDayDebits += debits;
+        
+        walletSummaries.push({
+          walletId: wallet.id,
+          walletName: wallet.name,
+          walletType: wallet.type,
+          currentBalance: parseFloat(wallet.currentBalance?.toString() || '0'),
+          dayCredits: credits,
+          dayDebits: debits,
+          transactionCount: dayTxns.length,
+        });
+      }
+      
+      // Check if day is closed
+      const dayStatus = await storage.getDayStatus(propertyIdNum, reportDate);
+      
+      res.json({
+        date: reportDate.toISOString(),
+        isDayClosed: !dayStatus.isOpen,
+        wallets: walletSummaries,
+        totals: {
+          totalCredits: totalDayCredits,
+          totalDebits: totalDayDebits,
+          netChange: totalDayCredits - totalDayDebits,
+          totalBalance: allWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0),
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Expense Category endpoints
   app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
     try {
