@@ -475,6 +475,65 @@ export default function Wallets() {
             </Card>
           </div>
 
+          {/* Mismatch Alerts Section */}
+          {(() => {
+            const alerts: { type: 'warning' | 'error'; message: string }[] = [];
+            
+            // Check for negative balances
+            wallets.forEach(w => {
+              const balance = parseFloat(w.currentBalance?.toString() || '0');
+              if (balance < 0) {
+                alerts.push({ type: 'error', message: `${w.name} has negative balance: ₹${balance.toLocaleString()}` });
+              }
+            });
+            
+            // Check if day is not closed (after business hours)
+            const currentHour = new Date().getHours();
+            if (dayStatus?.isOpen && currentHour >= 22) {
+              alerts.push({ type: 'warning', message: 'Day is still open. Consider closing for accurate records.' });
+            }
+            
+            // Check for yesterday's day not closed
+            if (dayStatus?.lastClosingDate) {
+              const lastClosing = new Date(dayStatus.lastClosingDate);
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              yesterday.setHours(0, 0, 0, 0);
+              lastClosing.setHours(0, 0, 0, 0);
+              
+              if (lastClosing < yesterday) {
+                alerts.push({ type: 'warning', message: 'Previous days have not been closed. Please close days in sequence.' });
+              }
+            }
+            
+            if (alerts.length === 0) return null;
+            
+            return (
+              <div className="space-y-2" data-testid="wallet-alerts">
+                {alerts.map((alert, idx) => (
+                  <div 
+                    key={idx}
+                    className={`flex items-center gap-2 p-3 rounded-lg ${
+                      alert.type === 'error' 
+                        ? 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800' 
+                        : 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800'
+                    }`}
+                    data-testid={`alert-${alert.type}-${idx}`}
+                  >
+                    <AlertTriangle className={`h-4 w-4 flex-shrink-0 ${
+                      alert.type === 'error' ? 'text-red-600' : 'text-amber-600'
+                    }`} />
+                    <span className={`text-sm ${
+                      alert.type === 'error' ? 'text-red-700 dark:text-red-400' : 'text-amber-700 dark:text-amber-400'
+                    }`}>
+                      {alert.message}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
           <div className="flex flex-wrap gap-2">
             {wallets.length === 0 && (
               <Button 
