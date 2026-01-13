@@ -1233,8 +1233,7 @@ export const insertSubscriptionPaymentSchema = createInsertSchema(subscriptionPa
 export type SubscriptionPayment = typeof subscriptionPayments.$inferSelect;
 export type InsertSubscriptionPayment = z.infer<typeof insertSubscriptionPaymentSchema>;
 
-// Subscription status types
-export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'past_due' | 'trialing';
+// Billing cycle type (SubscriptionStatus already defined above)
 export type BillingCycle = 'monthly' | 'yearly';
 
 // ===== ACTIVITY LOGS & AUDIT TRAIL =====

@@ -6682,6 +6682,218 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===== WALLET / ACCOUNT MANAGEMENT =====
+
+  // Get wallets for a property
+  app.get("/api/wallets", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const walletList = await storage.getWalletsByProperty(parseInt(propertyId as string));
+      res.json(walletList);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get wallet summary for property
+  app.get("/api/wallets/summary", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const summary = await storage.getPropertyWalletSummary(parseInt(propertyId as string));
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get single wallet
+  app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.getWallet(parseInt(req.params.id));
+      if (!wallet) {
+        return res.status(404).json({ message: "Wallet not found" });
+      }
+      res.json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Create new wallet
+  app.post("/api/wallets", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.createWallet(req.body);
+      res.status(201).json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update wallet
+  app.patch("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.updateWallet(parseInt(req.params.id), req.body);
+      res.json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete wallet
+  app.delete("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteWallet(parseInt(req.params.id));
+      res.json({ message: "Wallet deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Initialize default wallets for a property
+  app.post("/api/wallets/initialize", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.body;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const wallets = await storage.initializeDefaultWallets(propertyId);
+      res.json(wallets);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get wallet transactions
+  app.get("/api/wallets/:id/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const transactions = await storage.getWalletTransactions(parseInt(req.params.id));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all transactions for a property
+  app.get("/api/wallet-transactions", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const transactions = await storage.getTransactionsByProperty(parseInt(propertyId as string));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Record payment to wallet (credit)
+  app.post("/api/wallets/:id/credit", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, source, sourceId, description, referenceNumber, transactionDate } = req.body;
+      const userId = req.session?.userId || null;
+      
+      const transaction = await storage.recordPaymentToWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        source || 'manual',
+        sourceId || null,
+        description || '',
+        referenceNumber || null,
+        transactionDate ? new Date(transactionDate) : new Date(),
+        userId
+      );
+      res.json(transaction);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Record expense from wallet (debit)
+  app.post("/api/wallets/:id/debit", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, source, sourceId, description, referenceNumber, transactionDate } = req.body;
+      const userId = req.session?.userId || null;
+      
+      const transaction = await storage.recordExpenseFromWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        source || 'manual',
+        sourceId || null,
+        description || '',
+        referenceNumber || null,
+        transactionDate ? new Date(transactionDate) : new Date(),
+        userId
+      );
+      res.json(transaction);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== DAILY CLOSING =====
+
+  // Get daily closings for property
+  app.get("/api/daily-closings", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const closings = await storage.getDailyClosingsByProperty(parseInt(propertyId as string));
+      res.json(closings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get day status (is day open/closed)
+  app.get("/api/daily-closings/status", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, date } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const dateObj = date ? new Date(date as string) : new Date();
+      const status = await storage.getDayStatus(parseInt(propertyId as string), dateObj);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Close day for property
+  app.post("/api/daily-closings/close", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, closingDate } = req.body;
+      const userId = req.session?.userId;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const dateObj = closingDate ? new Date(closingDate) : new Date();
+      const closing = await storage.closeDayForProperty(
+        parseInt(propertyId),
+        dateObj,
+        userId || 'system'
+      );
+      res.json(closing);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Expense Category endpoints
   app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
     try {

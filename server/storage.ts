@@ -33,6 +33,9 @@ import {
   whatsappNotificationSettings,
   foodOrderWhatsappSettings,
   auditLogs,
+  wallets,
+  walletTransactions,
+  dailyClosings,
   type User,
   type UpsertUser,
   type Property,
@@ -115,6 +118,12 @@ import {
   userSessions,
   type UserSession,
   type InsertUserSession,
+  type Wallet,
+  type InsertWallet,
+  type WalletTransaction,
+  type InsertWalletTransaction,
+  type DailyClosing,
+  type InsertDailyClosing,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
@@ -402,6 +411,32 @@ export interface IStorage {
   deactivateSession(sessionToken: string): Promise<void>;
   deactivateAllUserSessions(userId: string): Promise<void>;
   cleanupExpiredSessions(): Promise<number>;
+
+  // Wallet operations
+  getWalletsByProperty(propertyId: number): Promise<Wallet[]>;
+  getWallet(id: number): Promise<Wallet | undefined>;
+  createWallet(wallet: InsertWallet): Promise<Wallet>;
+  updateWallet(id: number, wallet: Partial<InsertWallet>): Promise<Wallet>;
+  deleteWallet(id: number): Promise<void>;
+  getDefaultWalletByType(propertyId: number, type: string): Promise<Wallet | undefined>;
+  
+  // Wallet Transaction operations
+  getWalletTransactions(walletId: number, startDate?: Date, endDate?: Date): Promise<WalletTransaction[]>;
+  getTransactionsByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<WalletTransaction[]>;
+  createWalletTransaction(transaction: InsertWalletTransaction): Promise<WalletTransaction>;
+  recordPaymentToWallet(propertyId: number, walletId: number, amount: number, source: string, sourceId: number | null, description: string, referenceNumber: string | null, transactionDate: Date, createdBy: string | null): Promise<WalletTransaction>;
+  recordExpenseFromWallet(propertyId: number, walletId: number, amount: number, source: string, sourceId: number | null, description: string, referenceNumber: string | null, transactionDate: Date, createdBy: string | null): Promise<WalletTransaction>;
+  
+  // Daily Closing operations
+  getDailyClosingsByProperty(propertyId: number): Promise<DailyClosing[]>;
+  getDailyClosing(propertyId: number, date: Date): Promise<DailyClosing | undefined>;
+  createDailyClosing(closing: InsertDailyClosing): Promise<DailyClosing>;
+  closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string): Promise<DailyClosing>;
+  getDayStatus(propertyId: number, date: Date): Promise<{ isOpen: boolean; closing: DailyClosing | null }>;
+  
+  // Wallet balance utilities
+  getPropertyWalletSummary(propertyId: number): Promise<{ totalBalance: number; wallets: Wallet[] }>;
+  initializeDefaultWallets(propertyId: number): Promise<Wallet[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3742,6 +3777,297 @@ export class DatabaseStorage implements IStorage {
       )
       .returning();
     return result.length;
+  }
+
+  // ===== WALLET OPERATIONS =====
+  
+  async getWalletsByProperty(propertyId: number): Promise<Wallet[]> {
+    return await db.select().from(wallets)
+      .where(eq(wallets.propertyId, propertyId))
+      .orderBy(wallets.type, wallets.name);
+  }
+
+  async getWallet(id: number): Promise<Wallet | undefined> {
+    const [wallet] = await db.select().from(wallets).where(eq(wallets.id, id));
+    return wallet;
+  }
+
+  async createWallet(wallet: InsertWallet): Promise<Wallet> {
+    const [created] = await db.insert(wallets).values(wallet).returning();
+    return created;
+  }
+
+  async updateWallet(id: number, wallet: Partial<InsertWallet>): Promise<Wallet> {
+    const [updated] = await db.update(wallets)
+      .set({ ...wallet, updatedAt: new Date() })
+      .where(eq(wallets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWallet(id: number): Promise<void> {
+    await db.delete(wallets).where(eq(wallets.id, id));
+  }
+
+  async getDefaultWalletByType(propertyId: number, type: string): Promise<Wallet | undefined> {
+    const [wallet] = await db.select().from(wallets)
+      .where(and(
+        eq(wallets.propertyId, propertyId),
+        eq(wallets.type, type),
+        eq(wallets.isDefault, true)
+      ));
+    return wallet;
+  }
+
+  // ===== WALLET TRANSACTION OPERATIONS =====
+
+  async getWalletTransactions(walletId: number, startDate?: Date, endDate?: Date): Promise<WalletTransaction[]> {
+    let query = db.select().from(walletTransactions)
+      .where(eq(walletTransactions.walletId, walletId))
+      .orderBy(desc(walletTransactions.transactionDate), desc(walletTransactions.createdAt));
+    
+    return await query;
+  }
+
+  async getTransactionsByProperty(propertyId: number, startDate?: Date, endDate?: Date): Promise<WalletTransaction[]> {
+    return await db.select().from(walletTransactions)
+      .where(eq(walletTransactions.propertyId, propertyId))
+      .orderBy(desc(walletTransactions.transactionDate), desc(walletTransactions.createdAt));
+  }
+
+  async createWalletTransaction(transaction: InsertWalletTransaction): Promise<WalletTransaction> {
+    const [created] = await db.insert(walletTransactions).values(transaction).returning();
+    return created;
+  }
+
+  async recordPaymentToWallet(
+    propertyId: number, 
+    walletId: number, 
+    amount: number, 
+    source: string, 
+    sourceId: number | null, 
+    description: string, 
+    referenceNumber: string | null,
+    transactionDate: Date,
+    createdBy: string | null
+  ): Promise<WalletTransaction> {
+    // Get current balance
+    const wallet = await this.getWallet(walletId);
+    if (!wallet) throw new Error('Wallet not found');
+    
+    const currentBalance = parseFloat(wallet.currentBalance?.toString() || '0');
+    const newBalance = currentBalance + amount;
+    
+    // Update wallet balance
+    await this.updateWallet(walletId, { currentBalance: newBalance.toString() });
+    
+    // Create transaction record
+    const transaction = await this.createWalletTransaction({
+      walletId,
+      propertyId,
+      transactionType: 'credit',
+      amount: amount.toString(),
+      balanceAfter: newBalance.toString(),
+      source,
+      sourceId,
+      description,
+      referenceNumber,
+      transactionDate: transactionDate.toISOString().split('T')[0],
+      createdBy
+    });
+    
+    return transaction;
+  }
+
+  async recordExpenseFromWallet(
+    propertyId: number, 
+    walletId: number, 
+    amount: number, 
+    source: string, 
+    sourceId: number | null, 
+    description: string, 
+    referenceNumber: string | null,
+    transactionDate: Date,
+    createdBy: string | null
+  ): Promise<WalletTransaction> {
+    // Get current balance
+    const wallet = await this.getWallet(walletId);
+    if (!wallet) throw new Error('Wallet not found');
+    
+    const currentBalance = parseFloat(wallet.currentBalance?.toString() || '0');
+    const newBalance = currentBalance - amount;
+    
+    // Update wallet balance
+    await this.updateWallet(walletId, { currentBalance: newBalance.toString() });
+    
+    // Create transaction record
+    const transaction = await this.createWalletTransaction({
+      walletId,
+      propertyId,
+      transactionType: 'debit',
+      amount: amount.toString(),
+      balanceAfter: newBalance.toString(),
+      source,
+      sourceId,
+      description,
+      referenceNumber,
+      transactionDate: transactionDate.toISOString().split('T')[0],
+      createdBy
+    });
+    
+    return transaction;
+  }
+
+  // ===== DAILY CLOSING OPERATIONS =====
+
+  async getDailyClosingsByProperty(propertyId: number): Promise<DailyClosing[]> {
+    return await db.select().from(dailyClosings)
+      .where(eq(dailyClosings.propertyId, propertyId))
+      .orderBy(desc(dailyClosings.closingDate));
+  }
+
+  async getDailyClosing(propertyId: number, date: Date): Promise<DailyClosing | undefined> {
+    const dateStr = date.toISOString().split('T')[0];
+    const [closing] = await db.select().from(dailyClosings)
+      .where(and(
+        eq(dailyClosings.propertyId, propertyId),
+        eq(dailyClosings.closingDate, dateStr)
+      ));
+    return closing;
+  }
+
+  async createDailyClosing(closing: InsertDailyClosing): Promise<DailyClosing> {
+    const [created] = await db.insert(dailyClosings).values(closing).returning();
+    return created;
+  }
+
+  async closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string): Promise<DailyClosing> {
+    const dateStr = closingDate.toISOString().split('T')[0];
+    
+    // Get all wallets and their current balances
+    const propertyWallets = await this.getWalletsByProperty(propertyId);
+    const walletBalances = propertyWallets.map(w => ({
+      walletId: w.id,
+      name: w.name,
+      type: w.type,
+      openingBalance: w.openingBalance,
+      closingBalance: w.currentBalance
+    }));
+    
+    // Calculate totals for the day
+    const dayTransactions = await db.select().from(walletTransactions)
+      .where(and(
+        eq(walletTransactions.propertyId, propertyId),
+        eq(walletTransactions.transactionDate, dateStr)
+      ));
+    
+    let totalCollected = 0;
+    let totalExpenses = 0;
+    const collectionBreakdown: Record<string, number> = {};
+    const expenseBreakdown: Record<string, number> = {};
+    
+    for (const tx of dayTransactions) {
+      const amount = parseFloat(tx.amount?.toString() || '0');
+      if (tx.transactionType === 'credit') {
+        totalCollected += amount;
+        const wallet = propertyWallets.find(w => w.id === tx.walletId);
+        if (wallet) {
+          collectionBreakdown[wallet.type] = (collectionBreakdown[wallet.type] || 0) + amount;
+        }
+      } else {
+        totalExpenses += amount;
+        expenseBreakdown[tx.source] = (expenseBreakdown[tx.source] || 0) + amount;
+      }
+    }
+    
+    // Check if closing already exists
+    let existing = await this.getDailyClosing(propertyId, closingDate);
+    
+    if (existing) {
+      // Update existing
+      const [updated] = await db.update(dailyClosings)
+        .set({
+          totalCollected: totalCollected.toString(),
+          totalExpenses: totalExpenses.toString(),
+          walletBalances,
+          collectionBreakdown,
+          expenseBreakdown,
+          status: 'closed',
+          closedBy,
+          closedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(dailyClosings.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    // Create new closing
+    const closing = await this.createDailyClosing({
+      propertyId,
+      closingDate: dateStr,
+      totalRevenue: '0',
+      totalCollected: totalCollected.toString(),
+      totalExpenses: totalExpenses.toString(),
+      totalPendingReceivable: '0',
+      walletBalances,
+      collectionBreakdown,
+      expenseBreakdown,
+      status: 'closed',
+      closedBy
+    });
+    
+    // Update closing timestamp
+    await db.update(dailyClosings)
+      .set({ closedAt: new Date() })
+      .where(eq(dailyClosings.id, closing.id));
+    
+    // Set new opening balances for next day
+    for (const wallet of propertyWallets) {
+      await this.updateWallet(wallet.id, { 
+        openingBalance: wallet.currentBalance 
+      });
+    }
+    
+    return closing;
+  }
+
+  async getDayStatus(propertyId: number, date: Date): Promise<{ isOpen: boolean; closing: DailyClosing | null }> {
+    const closing = await this.getDailyClosing(propertyId, date);
+    return {
+      isOpen: !closing || closing.status === 'open',
+      closing: closing || null
+    };
+  }
+
+  // ===== WALLET UTILITIES =====
+
+  async getPropertyWalletSummary(propertyId: number): Promise<{ totalBalance: number; wallets: Wallet[] }> {
+    const propertyWallets = await this.getWalletsByProperty(propertyId);
+    const totalBalance = propertyWallets.reduce((sum, w) => 
+      sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+    return { totalBalance, wallets: propertyWallets };
+  }
+
+  async initializeDefaultWallets(propertyId: number): Promise<Wallet[]> {
+    // Check if wallets already exist for this property
+    const existing = await this.getWalletsByProperty(propertyId);
+    if (existing.length > 0) return existing;
+    
+    // Create default wallets
+    const defaultWallets = [
+      { propertyId, name: 'Cash Counter', type: 'cash', isDefault: true },
+      { propertyId, name: 'Primary UPI', type: 'upi', isDefault: true },
+      { propertyId, name: 'Primary Bank Account', type: 'bank', isDefault: true },
+    ];
+    
+    const created: Wallet[] = [];
+    for (const w of defaultWallets) {
+      const wallet = await this.createWallet(w as InsertWallet);
+      created.push(wallet);
+    }
+    
+    return created;
   }
 }
 
