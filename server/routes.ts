@@ -5273,6 +5273,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reorder menu items (drag-and-drop)
+  app.post("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { category, itemIds } = req.body;
+      
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return res.status(400).json({ message: "Item IDs array is required" });
+      }
+
+      // Update displayOrder for each item based on its position in the array
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        await storage.updateMenuItem(itemId, { displayOrder: i });
+      }
+
+      res.json({ message: "Menu order updated successfully", category, itemCount: itemIds.length });
+    } catch (error: any) {
+      console.error("[REORDER] Error:", error);
+      res.status(500).json({ message: 'Reorder failed: ' + error.message });
+    }
+  });
+
   // Orders
   app.get("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
