@@ -976,10 +976,11 @@ export default function MenuManagement() {
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex flex-col gap-1">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
+                            className="h-8 w-8"
                             disabled={index === 0 || reorderMutation.isPending}
                             onClick={() => handleMoveItem(category, categoryItems, item.id, 'up')}
                             data-testid={`button-move-up-${item.id}`}
@@ -987,8 +988,9 @@ export default function MenuManagement() {
                             <ChevronUp className="h-4 w-4" />
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="icon"
+                            className="h-8 w-8"
                             disabled={index === categoryItems.length - 1 || reorderMutation.isPending}
                             onClick={() => handleMoveItem(category, categoryItems, item.id, 'down')}
                             data-testid={`button-move-down-${item.id}`}
