@@ -397,27 +397,15 @@ export default function MenuManagement() {
 
   // Handle move up/down for menu items
   const handleMoveItem = (category: string, categoryItems: MenuItem[], itemId: number, direction: 'up' | 'down') => {
-    console.log('[REORDER] Button clicked:', { category, itemId, direction, itemCount: categoryItems.length });
-    
     const currentIndex = categoryItems.findIndex(item => item.id === itemId);
-    if (currentIndex === -1) {
-      console.log('[REORDER] Item not found in category');
-      return;
-    }
+    if (currentIndex === -1) return;
     
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    
-    // Check bounds
-    if (newIndex < 0 || newIndex >= categoryItems.length) {
-      console.log('[REORDER] Out of bounds:', { currentIndex, newIndex });
-      return;
-    }
+    if (newIndex < 0 || newIndex >= categoryItems.length) return;
     
     // Create new order by swapping items
     const newOrder = [...categoryItems];
     [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-    
-    console.log('[REORDER] Calling mutation with:', { category, itemIds: newOrder.map(item => item.id) });
     
     // Save the new order to the backend
     reorderMutation.mutate({
@@ -989,30 +977,24 @@ export default function MenuManagement() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-0.5">
-                          <button
-                            type="button"
-                            className="h-7 w-7 rounded border flex items-center justify-center hover:bg-accent disabled:opacity-50"
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             disabled={index === 0 || reorderMutation.isPending}
-                            onClick={() => {
-                              console.log('[CLICK] Move up clicked for item', item.id);
-                              handleMoveItem(category, categoryItems, item.id, 'up');
-                            }}
+                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'up')}
                             data-testid={`button-move-up-${item.id}`}
                           >
                             <ChevronUp className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className="h-7 w-7 rounded border flex items-center justify-center hover:bg-accent disabled:opacity-50"
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             disabled={index === categoryItems.length - 1 || reorderMutation.isPending}
-                            onClick={() => {
-                              console.log('[CLICK] Move down clicked for item', item.id);
-                              handleMoveItem(category, categoryItems, item.id, 'down');
-                            }}
+                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'down')}
                             data-testid={`button-move-down-${item.id}`}
                           >
                             <ChevronDown className="h-4 w-4" />
-                          </button>
+                          </Button>
                         </div>
                         <CardTitle className="text-lg">{item.name}</CardTitle>
                       </div>
