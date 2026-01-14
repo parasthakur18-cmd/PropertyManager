@@ -990,21 +990,29 @@ export default function MenuManagement() {
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-0.5">
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
                             disabled={index === 0 || reorderMutation.isPending}
-                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'up')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              alert(`Moving item ${item.id} UP`);
+                              handleMoveItem(category, categoryItems, item.id, 'up');
+                            }}
                             data-testid={`button-move-up-${item.id}`}
                           >
                             <ChevronUp className="h-4 w-4" />
                           </Button>
                           <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
                             disabled={index === categoryItems.length - 1 || reorderMutation.isPending}
-                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'down')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              alert(`Moving item ${item.id} DOWN`);
+                              handleMoveItem(category, categoryItems, item.id, 'down');
+                            }}
                             data-testid={`button-move-down-${item.id}`}
                           >
                             <ChevronDown className="h-4 w-4" />
