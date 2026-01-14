@@ -962,39 +962,97 @@ export default function MenuManagement() {
         </div>
       </div>
 
-      {/* Menu Items by Category with Drag-and-Drop */}
+      {/* Menu Items by Category with Up/Down Reordering */}
       <div className="space-y-8">
         {groupedItems && Object.entries(groupedItems).map(([category, categoryItems]) => (
           <div key={category}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold font-serif">{category}</h2>
-              <p className="text-sm text-muted-foreground flex items-center gap-1">
-                <GripVertical className="h-4 w-4" />
-                Drag items to reorder
+              <p className="text-sm text-muted-foreground">
+                Use arrows to reorder items
               </p>
             </div>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={(event) => handleDragEnd(event, category, categoryItems)}
-            >
-              <SortableContext
-                items={categoryItems.map(item => item.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {categoryItems.map((item) => (
-                    <SortableMenuItem
-                      key={item.id}
-                      item={item}
-                      onEdit={handleEdit}
-                      onDelete={setDeletingItem}
-                      onToggleAvailability={handleToggleAvailability}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {categoryItems.map((item, index) => (
+                <Card key={item.id} className={!item.isAvailable ? "opacity-60" : ""} data-testid={`card-item-${item.id}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            disabled={index === 0 || reorderMutation.isPending}
+                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'up')}
+                            data-testid={`button-move-up-${item.id}`}
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            disabled={index === categoryItems.length - 1 || reorderMutation.isPending}
+                            onClick={() => handleMoveItem(category, categoryItems, item.id, 'down')}
+                            data-testid={`button-move-down-${item.id}`}
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <CardTitle className="text-lg">{item.name}</CardTitle>
+                      </div>
+                      <Badge variant="secondary" className="font-mono">₹{item.price}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {item.description && (
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                        {item.description}
+                      </p>
+                    )}
+                    {item.preparationTime && (
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Prep time: ~{item.preparationTime} min
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between mb-3 p-2 bg-muted/50 rounded">
+                      <Label htmlFor={`available-${item.id}`} className="text-sm font-medium cursor-pointer">
+                        {item.isAvailable ? "Available" : "Unavailable"}
+                      </Label>
+                      <Switch
+                        id={`available-${item.id}`}
+                        checked={item.isAvailable}
+                        onCheckedChange={() => handleToggleAvailability(item)}
+                        data-testid={`switch-availability-${item.id}`}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleEdit(item)}
+                        data-testid={`button-edit-${item.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeletingItem(item)}
+                        data-testid={`button-delete-${item.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         ))}
       </div>

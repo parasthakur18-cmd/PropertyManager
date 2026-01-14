@@ -5273,7 +5273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Reorder menu items (drag-and-drop)
+  // Reorder menu items (up/down buttons)
   app.post("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
     try {
       const { category, itemIds } = req.body;
@@ -5282,12 +5282,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Item IDs array is required" });
       }
 
-      // Update displayOrder for each item based on its position in the array
-      for (let i = 0; i < itemIds.length; i++) {
-        const itemId = itemIds[i];
-        await storage.updateMenuItem(itemId, { displayOrder: i });
-      }
+      console.log("[REORDER] Updating order for category:", category, "items:", itemIds);
 
+      // Use the dedicated reorderMenuItems function for proper batch update
+      const updates = itemIds.map((id: number, index: number) => ({
+        id,
+        displayOrder: index
+      }));
+      
+      await storage.reorderMenuItems(updates);
+
+      console.log("[REORDER] Successfully updated", itemIds.length, "items");
       res.json({ message: "Menu order updated successfully", category, itemCount: itemIds.length });
     } catch (error: any) {
       console.error("[REORDER] Error:", error);
