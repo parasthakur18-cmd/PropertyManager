@@ -397,17 +397,27 @@ export default function MenuManagement() {
 
   // Handle move up/down for menu items
   const handleMoveItem = (category: string, categoryItems: MenuItem[], itemId: number, direction: 'up' | 'down') => {
+    console.log('[REORDER] Button clicked:', { category, itemId, direction, itemCount: categoryItems.length });
+    
     const currentIndex = categoryItems.findIndex(item => item.id === itemId);
-    if (currentIndex === -1) return;
+    if (currentIndex === -1) {
+      console.log('[REORDER] Item not found in category');
+      return;
+    }
     
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     
     // Check bounds
-    if (newIndex < 0 || newIndex >= categoryItems.length) return;
+    if (newIndex < 0 || newIndex >= categoryItems.length) {
+      console.log('[REORDER] Out of bounds:', { currentIndex, newIndex });
+      return;
+    }
     
     // Create new order by swapping items
     const newOrder = [...categoryItems];
     [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
+    
+    console.log('[REORDER] Calling mutation with:', { category, itemIds: newOrder.map(item => item.id) });
     
     // Save the new order to the backend
     reorderMutation.mutate({
