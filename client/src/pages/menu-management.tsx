@@ -1,23 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, GripVertical, ArrowUpDown } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,103 +233,6 @@ function generateCSVTemplate() {
   return csvContent;
 }
 
-// Sortable Menu Item Component for drag-and-drop
-function SortableMenuItem({ 
-  item, 
-  onEdit, 
-  onDelete, 
-  onToggleAvailability 
-}: { 
-  item: MenuItem; 
-  onEdit: (item: MenuItem) => void;
-  onDelete: (item: MenuItem) => void;
-  onToggleAvailability: (item: MenuItem) => void;
-}) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 1000 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} className="relative">
-      <Card className={`${!item.isAvailable ? "opacity-60" : ""} ${isDragging ? "ring-2 ring-primary shadow-lg" : ""}`} data-testid={`card-item-${item.id}`}>
-        <CardHeader>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-muted touch-none"
-                {...attributes}
-                {...listeners}
-                data-testid={`drag-handle-${item.id}`}
-              >
-                <GripVertical className="h-5 w-5 text-muted-foreground" />
-              </button>
-              <CardTitle className="text-lg">{item.name}</CardTitle>
-            </div>
-            <Badge variant="secondary" className="font-mono">₹{item.price}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {item.description && (
-            <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-              {item.description}
-            </p>
-          )}
-          {item.preparationTime && (
-            <p className="text-xs text-muted-foreground mb-3">
-              Prep time: ~{item.preparationTime} min
-            </p>
-          )}
-
-          <div className="flex items-center justify-between mb-3 p-2 bg-muted/50 rounded">
-            <Label htmlFor={`available-${item.id}`} className="text-sm font-medium cursor-pointer">
-              {item.isAvailable ? "Available" : "Unavailable"}
-            </Label>
-            <Switch
-              id={`available-${item.id}`}
-              checked={item.isAvailable}
-              onCheckedChange={() => onToggleAvailability(item)}
-              data-testid={`switch-availability-${item.id}`}
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => onEdit(item)}
-              data-testid={`button-edit-${item.id}`}
-            >
-              <Pencil className="h-4 w-4 mr-2" />
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onDelete(item)}
-              data-testid={`button-delete-${item.id}`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 export default function MenuManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -357,22 +243,8 @@ export default function MenuManagement() {
   const [parsedItems, setParsedItems] = useState<any[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
-  const [isReorderMode, setIsReorderMode] = useState(false);
-  const [localMenuItems, setLocalMenuItems] = useState<MenuItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  
-  // DnD sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
   const { data: menuItems, isLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
@@ -502,7 +374,7 @@ export default function MenuManagement() {
     },
   });
 
-  // Reorder mutation for drag-and-drop
+  // Reorder mutation for up/down buttons
   const reorderMutation = useMutation({
     mutationFn: async (data: { category: string; itemIds: number[] }) => {
       return await apiRequest("/api/menu-items/reorder", "POST", data);
@@ -511,7 +383,7 @@ export default function MenuManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       toast({
         title: "Success",
-        description: "Menu order saved successfully",
+        description: "Menu order updated",
       });
     },
     onError: (error: Error) => {
@@ -523,23 +395,25 @@ export default function MenuManagement() {
     },
   });
 
-  // Handle drag end event
-  const handleDragEnd = (event: DragEndEvent, category: string, categoryItems: MenuItem[]) => {
-    const { active, over } = event;
+  // Handle move up/down for menu items
+  const handleMoveItem = (category: string, categoryItems: MenuItem[], itemId: number, direction: 'up' | 'down') => {
+    const currentIndex = categoryItems.findIndex(item => item.id === itemId);
+    if (currentIndex === -1) return;
     
-    if (!over || active.id === over.id) return;
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     
-    const oldIndex = categoryItems.findIndex(item => item.id === active.id);
-    const newIndex = categoryItems.findIndex(item => item.id === over.id);
+    // Check bounds
+    if (newIndex < 0 || newIndex >= categoryItems.length) return;
     
-    if (oldIndex !== -1 && newIndex !== -1) {
-      const newOrder = arrayMove(categoryItems, oldIndex, newIndex);
-      // Save the new order to the backend
-      reorderMutation.mutate({
-        category,
-        itemIds: newOrder.map(item => item.id),
-      });
-    }
+    // Create new order by swapping items
+    const newOrder = [...categoryItems];
+    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
+    
+    // Save the new order to the backend
+    reorderMutation.mutate({
+      category,
+      itemIds: newOrder.map(item => item.id),
+    });
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
