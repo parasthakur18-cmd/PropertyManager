@@ -989,34 +989,30 @@ export default function MenuManagement() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <div className="flex flex-col gap-0.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 w-7 p-0"
+                          <button
+                            type="button"
+                            className="h-7 w-7 rounded border flex items-center justify-center hover:bg-accent disabled:opacity-50"
                             disabled={index === 0 || reorderMutation.isPending}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              alert(`Moving item ${item.id} UP`);
+                            onClick={() => {
+                              console.log('[CLICK] Move up clicked for item', item.id);
                               handleMoveItem(category, categoryItems, item.id, 'up');
                             }}
                             data-testid={`button-move-up-${item.id}`}
                           >
                             <ChevronUp className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 w-7 p-0"
+                          </button>
+                          <button
+                            type="button"
+                            className="h-7 w-7 rounded border flex items-center justify-center hover:bg-accent disabled:opacity-50"
                             disabled={index === categoryItems.length - 1 || reorderMutation.isPending}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              alert(`Moving item ${item.id} DOWN`);
+                            onClick={() => {
+                              console.log('[CLICK] Move down clicked for item', item.id);
                               handleMoveItem(category, categoryItems, item.id, 'down');
                             }}
                             data-testid={`button-move-down-${item.id}`}
                           >
                             <ChevronDown className="h-4 w-4" />
-                          </Button>
+                          </button>
                         </div>
                         <CardTitle className="text-lg">{item.name}</CardTitle>
                       </div>
