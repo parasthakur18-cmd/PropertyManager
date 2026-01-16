@@ -8896,11 +8896,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public Registration endpoint - Multi-tenant aware
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, businessName, businessLocation, firstName, lastName, phone } = req.body;
+      // Accept multiple field name variations for flexibility
+      const email = req.body.email;
+      const password = req.body.password;
+      const businessName = req.body.businessName || req.body.business_name || req.body.hotelName;
+      const businessLocation = req.body.businessLocation || req.body.business_location || req.body.location || req.body.city;
+      const firstName = req.body.firstName || req.body.first_name;
+      const lastName = req.body.lastName || req.body.last_name;
+      const phone = req.body.phone;
 
       // Validate input
       if (!email || !password || !businessName || !businessLocation) {
-        return res.status(400).json({ message: "Email, password, business name, and location are required" });
+        return res.status(400).json({ 
+          message: "Email, password, business name, and location are required",
+          received: {
+            email: !!email,
+            password: !!password,
+            businessName: !!businessName,
+            businessLocation: !!businessLocation
+          }
+        });
       }
 
       if (password.length < 8) {
