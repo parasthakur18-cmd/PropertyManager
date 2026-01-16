@@ -2459,6 +2459,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bedsBookedType: typeof data.bedsBooked
       });
       
+      // Check room availability before creating booking
+      const checkIn = new Date(data.checkInDate);
+      const checkOut = new Date(data.checkOutDate);
+      
+      // Get all rooms to check
+      const roomIdsToCheck: number[] = [];
+      if (data.roomId) {
+        roomIdsToCheck.push(data.roomId);
+      }
+      if (data.roomIds && data.roomIds.length > 0) {
+        roomIdsToCheck.push(...data.roomIds);
+      }
+      
+      // Check each room for conflicts
+      for (const roomId of roomIdsToCheck) {
+        const existingBookings = await storage.getBookingsByRoom(roomId);
+        const conflictingBooking = existingBookings.find(b => {
+          // Skip cancelled or checked-out bookings
+          if (b.status === 'cancelled' || b.status === 'checked-out') {
+            return false;
+          }
+          
+          const existingCheckIn = new Date(b.checkInDate);
+          const existingCheckOut = new Date(b.checkOutDate);
+          
+          // Check for date overlap
+          const hasOverlap = checkIn < existingCheckOut && checkOut > existingCheckIn;
+          return hasOverlap;
+        });
+        
+        if (conflictingBooking) {
+          const room = await storage.getRoom(roomId);
+          return res.status(400).json({ 
+            message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}. Please select different dates or a different room.`
+          });
+        }
+      }
+      
       // Validate travel agent belongs to same property as booking
       if (data.travelAgentId) {
         // Determine booking property from roomId, roomIds, or propertyId
