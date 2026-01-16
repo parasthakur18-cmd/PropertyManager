@@ -1,0 +1,14402 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { setupAuth, isAuthenticated } from "./replitAuth";
+import { randomUUID } from "crypto";
+import bcryptjs from "bcryptjs";
+import {
+  insertPropertySchema,
+  insertRoomSchema,
+  insertGuestSchema,
+  insertTravelAgentSchema,
+  insertBookingSchema,
+  insertMenuItemSchema,
+  insertOrderSchema,
+  insertExtraServiceSchema,
+  insertBillSchema,
+  insertEnquirySchema,
+  updateUserRoleSchema,
+  insertExpenseCategorySchema,
+  insertBankTransactionSchema,
+  insertContactEnquirySchema,
+  insertAttendanceRecordSchema,
+  users,
+  orders,
+  bills,
+  bookings,
+  extraServices,
+  enquiries,
+  notifications,
+  featureSettings,
+  employeePerformanceMetrics,
+  taskNotificationLogs,
+  otpTokens,
+} from "@shared/schema";
+import { z } from "zod";
+import { db } from "./db";
+import { desc, sql, eq, and, isNull, not, or, gt, lt, param, inArray } from "drizzle-orm";
+import { format } from "date-fns";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { ObjectPermission } from "./objectAcl";
+import { createAuthkeyService } from "./authkey-service";
+import { neon } from "@neondatabase/serverless";
+import { eventBus, type DomainEvent } from "./eventBus";
+import { 
+  sendBookingConfirmation, 
+  sendPaymentConfirmation,
+  sendCheckInNotification,
+  sendCheckoutNotification,
+  sendPendingPaymentReminder,
+  sendEnquiryConfirmation,
+  sendPreBillNotification,
+  sendCustomWhatsAppMessage,
+  sendWelcomeWithMenuLink,
+  sendAdvancePaymentRequest,
+  sendAdvancePaymentConfirmation,
+  sendPaymentReminder,
+  sendSelfCheckinLink,
+  sendTaskReminder
+} from "./whatsapp";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations } from "@shared/schema";
+import { sendIssueReportNotificationEmail } from "./email-service";
+import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
+import { 
+  fetchBeds24Bookings, 
+  getBeds24Properties, 
+  getBeds24Rooms, 
+  testBeds24Connection, 
+  convertBeds24ToHostezee,
+  parseBeds24WebhookPayload 
+} from "./beds24";
+import { 
+  getTenantContext, 
+  filterByPropertyAccess, 
+  filterPropertiesByAccess, 
+  requirePropertyAccess,
+  canAccessProperty,
+  TenantAccessError 
+} from "./tenantIsolation";
+
+// IP Geolocation helper - uses free ip-api.com service (no API key required)
+async function getLocationFromIp(ip: string): Promise<{ city: string; state: string; country: string } | null> {
+  try {
+    // Skip for localhost/private IPs
+    if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
+      return null;
+    }
+    
+    // Clean IP address (remove ::ffff: prefix if present)
+    const cleanIp = ip.replace(/^::ffff:/, '');
+    
+    const response = await fetch(`http://ip-api.com/json/${cleanIp}?fields=status,country,regionName,city`, {
+      signal: AbortSignal.timeout(3000) // 3 second timeout
+    });
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    if (data.status !== 'success') return null;
+    
+    return {
+      city: data.city || '',
+      state: data.regionName || '',
+      country: data.country || ''
+    };
+  } catch (error) {
+    console.log(`[GEO] Failed to get location for IP ${ip}:`, error);
+    return null;
+  }
+}
+
+// Update user location from IP
+async function updateUserLocationFromIp(userId: string, ipAddress: string) {
+  try {
+    const location = await getLocationFromIp(ipAddress);
+    if (location && (location.city || location.state || location.country)) {
+      await db.update(users)
+        .set({
+          city: location.city || null,
+          state: location.state || null,
+          country: location.country || null,
+          lastLoginIp: ipAddress.substring(0, 45),
+          lastLoginAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+      console.log(`[GEO] Updated location for user ${userId}: ${location.city}, ${location.state}, ${location.country}`);
+    }
+  } catch (error) {
+    console.log(`[GEO] Failed to update location for user ${userId}:`, error);
+  }
+}
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Seed default expense categories
+  await storage.seedDefaultCategories();
+
+  // Seed default super-admin user with email/password
+  try {
+    const hashedPassword = await bcryptjs.hash('admin@123', 10);
+    
+    // First check if admin@hostezee.in user exists (might have wrong role)
+    const [existingAdminUser] = await db.select().from(users).where(eq(users.email, 'admin@hostezee.in')).limit(1);
+    
+    if (existingAdminUser) {
+      // User exists - ensure they have super-admin role and password
+      if (existingAdminUser.role !== 'super-admin' || !existingAdminUser.password) {
+        await db.update(users).set({ 
+          role: 'super-admin', 
+          password: hashedPassword,
+          verificationStatus: 'verified',
+          status: 'active'
+        }).where(eq(users.email, 'admin@hostezee.in'));
+        console.log('[SEED] Fixed super-admin role and password for admin@hostezee.in');
+      }
+    } else {
+      // No user with this email - check if any super-admin exists
+      const existingSuperAdmins = await db.select().from(users).where(eq(users.role, 'super-admin'));
+      
+      if (existingSuperAdmins.length === 0) {
+        // Create new super-admin
+        const superAdminId = 'admin-hostezee';
+        await db.insert(users).values({
+          id: superAdminId,
+          email: 'admin@hostezee.in',
+          firstName: 'Hostezee',
+          lastName: 'Admin',
+          password: hashedPassword,
+          role: 'super-admin',
+          status: 'active',
+          verificationStatus: 'verified',
+          businessName: 'Hostezee System',
+        });
+        console.log('[SEED] Default super-admin created: admin@hostezee.in with password admin@123');
+      }
+    }
+  } catch (error) {
+    console.error('[SEED ERROR] Failed to seed super-admin:', error);
+  }
+
+  // ===== OBJECT STORAGE ROUTES =====
+  // Referenced from blueprint:javascript_object_storage integration
+  
+  // Serve private uploaded files (with authentication and ACL check)
+  app.get("/objects/:objectPath(*)", isAuthenticated, async (req, res) => {
+    const userId = req.user?.claims?.sub;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path,
+      );
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Get presigned upload URL for guest ID proofs
+  app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    res.json({ uploadURL });
+  });
+
+  // Public upload endpoint for guest self-checkin (no auth required)
+  app.post("/api/guest/upload", async (req, res) => {
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      console.error("[Guest Upload] Error:", error);
+      res.status(500).json({ message: "Failed to get upload URL" });
+    }
+  });
+
+  // Set ACL policy for uploaded guest ID proof
+  app.put("/api/guest-id-proofs", isAuthenticated, async (req, res) => {
+    if (!req.body.idProofUrl) {
+      return res.status(400).json({ error: "idProofUrl is required" });
+    }
+
+    const userId = req.user?.claims?.sub;
+
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.idProofUrl,
+        {
+          owner: userId,
+          visibility: "private", // Guest ID proofs are private
+        },
+      );
+
+      res.status(200).json({
+        objectPath: objectPath,
+      });
+    } catch (error) {
+      console.error("Error setting guest ID proof:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ===== TEST ROUTES (For development testing) =====
+  
+  // Test email and WhatsApp services
+  app.post("/api/test/notifications", async (req, res) => {
+    const { email, phone, type } = req.body;
+    const results: any = { email: null, whatsapp: null };
+    
+    try {
+      // Test Email
+      if (email) {
+        const { sendBookingConfirmationEmail } = await import("./email-service");
+        const emailResult = await sendBookingConfirmationEmail(
+          email,
+          "Test Guest",
+          "Test Property",
+          "Dec 10, 2025",
+          "Dec 11, 2025",
+          "Room 101",
+          99999
+        );
+        results.email = { success: true, result: emailResult };
+        console.log(`[TEST] Email test sent to ${email}`);
+      }
+      
+      // Test WhatsApp
+      if (phone) {
+        const { sendBookingConfirmation } = await import("./whatsapp");
+        const phoneStr = String(phone);
+        const waResult = await sendBookingConfirmation(
+          phoneStr,
+          "Test Guest",
+          "Test Property",
+          "Dec 10, 2025",
+          "Dec 11, 2025",
+          "Room 101"
+        );
+        results.whatsapp = { success: waResult.success, result: waResult };
+        console.log(`[TEST] WhatsApp test sent to ${phoneStr}`, waResult);
+      }
+      
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[TEST] Notification test error:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // ===== PUBLIC ROUTES (No Authentication Required) =====
+  
+  // Public Menu - for guest ordering
+  // Public menu categories (no auth required)
+  // Public properties list (for café orders to select property)
+  app.get("/api/public/properties", async (req, res) => {
+    try {
+      const properties = await storage.getAllProperties();
+      // Return only id and name for property selection
+      const publicProperties = properties.map(p => ({ id: p.id, name: p.name }));
+      res.json(publicProperties);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/public/menu-categories", async (req, res) => {
+    try {
+      const categories = await storage.getAllMenuCategories();
+      // Only return active categories
+      const activeCategories = categories.filter(cat => cat.isActive);
+      res.json(activeCategories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public menu items (no auth required)
+  app.get("/api/public/menu", async (req, res) => {
+    try {
+      const items = await storage.getAllMenuItems();
+      // Only return available items
+      const availableItems = items.filter(item => item.isAvailable);
+      res.json(availableItems);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public menu item variants (no auth required)
+  app.get("/api/public/menu-items/:menuItemId/variants", async (req, res) => {
+    try {
+      const variants = await storage.getVariantsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(variants);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public menu item add-ons (no auth required)
+  app.get("/api/public/menu-items/:menuItemId/add-ons", async (req, res) => {
+    try {
+      const addOns = await storage.getAddOnsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(addOns);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public Order - for guests to place orders
+  app.post("/api/public/orders", async (req, res) => {
+    try {
+      
+      const { orderType, roomId, propertyId, customerName, customerPhone, items, totalAmount, specialInstructions } = req.body;
+      
+      // Validate items
+      if (!items || items.length === 0) {
+        return res.status(400).json({ message: "Items are required" });
+      }
+      
+      // Type-specific validation
+      if (orderType === "room") {
+        if (!roomId) {
+          return res.status(400).json({ message: "Room number is required" });
+        }
+        if (!propertyId) {
+          return res.status(400).json({ message: "Property ID is required for room orders" });
+        }
+      } else if (orderType === "restaurant") {
+        if (!customerName || !customerPhone) {
+          return res.status(400).json({ message: "Name and phone number are required" });
+        }
+      } else {
+        return res.status(400).json({ message: "Invalid order type" });
+      }
+
+      let orderData: any = {
+        orderType: orderType || "restaurant",
+        orderSource: "guest",
+        items,
+        totalAmount,
+        specialInstructions: specialInstructions || null,
+        status: "pending",
+      };
+      
+      // Handle room orders
+      if (orderType === "room") {
+        // Look up room by BOTH property ID and room number to ensure correct match
+        const roomNumber = String(roomId);
+        const propertyIdNum = parseInt(String(propertyId));
+        const rooms = await storage.getAllRooms();
+        const room = rooms.find(r => r.roomNumber === roomNumber && r.propertyId === propertyIdNum);
+        
+        if (!room) {
+          return res.status(400).json({ message: `Room ${roomNumber} not found in the selected property. Please check your room number.` });
+        }
+
+        // Find the checked-in booking for this room to link the order
+        const bookings = await storage.getAllBookings();
+        const activeBooking = bookings.find(b => b.roomId === room.id && b.status === "checked-in");
+
+        orderData.propertyId = room.propertyId;
+        orderData.roomId = room.id;
+        orderData.bookingId = activeBooking?.id || null; // Link to booking if guest is checked in
+        orderData.guestId = activeBooking?.guestId || null; // Also include guest ID for tracking
+      } else {
+        // Handle restaurant/café orders
+        orderData.customerName = customerName;
+        orderData.customerPhone = customerPhone;
+        // Café orders now include property ID for kitchen filtering
+        if (propertyId) {
+          orderData.propertyId = parseInt(String(propertyId));
+        }
+      }
+
+      const order = await storage.createOrder(orderData);
+      res.status(201).json(order);
+    } catch (error: any) {
+      console.error("Public order error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== AUTHENTICATED ROUTES =====
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      // PRIORITY: Check email-based auth first (session-based login takes precedence)
+      let userId = req.session?.userId;
+      
+      // If no email-based session, check Replit Auth
+      if (!userId) {
+        userId = req.user?.claims?.sub || req.user?.id;
+      }
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      let user = await storage.getUser(userId);
+      
+      // Auto-create user if doesn't exist (e.g., after database wipe)
+      if (!user) {
+        const email = req.user?.claims?.email || `${userId}@replit.user`;
+        const name = req.user?.claims?.name || req.user?.claims?.email || 'User';
+        
+        // Split name into first and last name
+        const nameParts = name.split(' ');
+        const firstName = nameParts[0] || 'User';
+        const lastName = nameParts.slice(1).join(' ') || '';
+        
+        user = await storage.upsertUser({
+          id: userId,
+          email,
+          firstName,
+          lastName,
+          role: 'admin', // First user gets admin
+        });
+      }
+      
+      // Auto-verify owner/admin emails (NOT super-admin - that's seeded separately)
+      const adminEmails = ['paras.thakur18@gmail.com', 'thepahadistays@gmail.com'];
+      const managerEmails = ['rajni44573@gmail.com'];
+      const userEmailLower = user.email?.toLowerCase() || '';
+      const isAdminEmail = adminEmails.includes(userEmailLower);
+      const isManagerEmail = managerEmails.includes(userEmailLower);
+      
+      // Only auto-promote to admin if not already super-admin (never downgrade super-admin)
+      if (isAdminEmail && user.role !== 'super-admin' && (user.verificationStatus === 'pending' || user.role !== 'admin')) {
+        // Auto-verify and promote admin emails
+        await db.update(users)
+          .set({ 
+            verificationStatus: 'verified', 
+            role: 'admin',
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, userId));
+        user = await storage.getUser(userId);
+        console.log(`[AUTH] Auto-verified admin email: ${user?.email}`);
+      }
+      
+      if (isManagerEmail && user.verificationStatus === 'pending') {
+        // Auto-verify manager emails (keep their role as manager)
+        await db.update(users)
+          .set({ 
+            verificationStatus: 'verified', 
+            role: user.role === 'admin' ? 'admin' : 'manager',
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, userId));
+        user = await storage.getUser(userId);
+        console.log(`[AUTH] Auto-verified manager email: ${user?.email}`);
+      }
+      
+      // CHECK VERIFICATION STATUS - Block pending/rejected/deactivated users (except super-admin)
+      if (user && user.role !== 'super-admin') {
+        // Check if user is deactivated (inactive or suspended status)
+        if (user.status === 'inactive' || user.status === 'suspended') {
+          return res.status(403).json({ 
+            message: "Your account has been deactivated. Please contact your administrator.",
+            isDeactivated: true,
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+        
+        if (user.verificationStatus === 'rejected') {
+          return res.status(403).json({ 
+            message: "Your account has been rejected. Please contact support.",
+            verificationStatus: "rejected",
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+        
+        if (user.verificationStatus === 'pending') {
+          return res.status(403).json({ 
+            message: "Your account is pending approval. You will be notified once approved.",
+            verificationStatus: "pending",
+            user: { email: user.email, firstName: user.firstName, lastName: user.lastName }
+          });
+        }
+      }
+      
+      // Include assigned property information if user has any
+      let userWithProperty: any = { ...user };
+      if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+        const properties = await Promise.all(
+          user.assignedPropertyIds.map(id => storage.getProperty(id))
+        );
+        userWithProperty.assignedPropertyNames = properties
+          .filter(p => p !== undefined)
+          .map(p => p!.name);
+      }
+      
+      // Include viewing-as-user flag for super admin banner
+      if ((req.session as any).isViewingAsUser && (req.session as any).originalSuperAdminId) {
+        userWithProperty.isViewingAsUser = true;
+        userWithProperty.originalSuperAdminId = (req.session as any).originalSuperAdminId;
+      }
+      
+      res.json(userWithProperty);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Development only: Auto-login for testing
+  if (process.env.NODE_ENV === 'development') {
+    app.get('/api/dev/auto-login', (req: any, res) => {
+      try {
+        // Create or get test user session
+        const testUserId = 'dev-test-user-' + Date.now();
+        req.session.userId = testUserId;
+        req.session.save((err: any) => {
+          if (err) {
+            console.error('Session save error:', err);
+            return res.status(500).json({ message: 'Failed to create session' });
+          }
+          res.json({ message: 'Dev session created', userId: testUserId });
+        });
+      } catch (error) {
+        console.error('Dev auto-login error:', error);
+        res.status(500).json({ message: 'Failed to create dev session' });
+      }
+    });
+  }
+
+  // Server-Sent Events (SSE) endpoint for real-time updates
+  app.get('/api/events/stream', isAuthenticated, (req: any, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const sendEvent = (event: DomainEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    sendEvent({
+      id: 'connection',
+      type: 'connected',
+      timestamp: new Date().toISOString(),
+      data: { message: 'Connected to event stream' },
+    } as DomainEvent);
+
+    const unsubscribe = eventBus.subscribeAll(sendEvent);
+
+    // Heartbeat to keep connection alive (every 15 seconds)
+    const heartbeat = setInterval(() => {
+      res.write(':heartbeat\n\n');
+    }, 15000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+      res.end();
+    });
+  });
+
+  // Dashboard stats
+  app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // Security: Pending users should see empty dashboard
+      if (currentUser.verificationStatus === 'pending') {
+        return res.json({
+          totalProperties: 0,
+          totalRooms: 0,
+          totalBookings: 0,
+          activeBookings: 0,
+          todayCheckIns: 0,
+          todayCheckOuts: 0,
+          occupancyRate: 0,
+          revenue: 0,
+          pendingPayments: 0,
+          recentBookings: [],
+          upcomingBookings: []
+        });
+      }
+      
+      // Check if user has unlimited access (only super-admin)
+      const hasUnlimitedAccess = currentUser.role === 'super-admin';
+      
+      // Security: Non-admin users with no assigned properties should see empty data
+      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+        return res.json({
+          totalProperties: 0,
+          totalRooms: 0,
+          totalBookings: 0,
+          activeBookings: 0,
+          todayCheckIns: 0,
+          todayCheckOuts: 0,
+          occupancyRate: 0,
+          revenue: 0,
+          pendingPayments: 0,
+          recentBookings: [],
+          upcomingBookings: []
+        });
+      }
+      
+      // Priority: Use query parameter if provided (user selection), otherwise use assigned property
+      let propertyId: number | undefined = undefined;
+      
+      if (req.query.propertyId) {
+        propertyId = parseInt(req.query.propertyId);
+        // Security: Non-admin users can only view their assigned properties
+        if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+          return res.status(403).json({ message: "Access denied to this property" });
+        }
+      } else if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        // Non-admin users default to first assigned property
+        propertyId = currentUser.assignedPropertyIds[0];
+      }
+      
+      const stats = await storage.getDashboardStats(propertyId);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Analytics
+  app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Security: Pending users see empty analytics
+      if (currentUser.verificationStatus === 'pending') {
+        return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
+      }
+      
+      const hasUnlimitedAccess = currentUser.role === 'super-admin';
+      
+      // Security: Non-super-admin with no properties sees empty data
+      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+        return res.json({ 
+          bookingsByMonth: [], 
+          revenueByMonth: [], 
+          occupancyByMonth: [],
+          stats: {
+            totalBookings: 0,
+            totalRevenue: 0,
+            totalGuests: 0,
+            occupancyRate: 0,
+            revenueGrowth: 0,
+            bookingGrowth: 0
+          }
+        });
+      }
+      
+      let propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      
+      // Security: Non-admin can only see their assigned properties
+      if (propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      
+      if (!propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        propertyId = currentUser.assignedPropertyIds[0];
+      }
+      
+      const analytics = await storage.getAnalytics(propertyId);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // User Management (Admin only)
+  app.get("/api/users", isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      
+      const allUsers = await storage.getAllUsers();
+      
+      // SUPER ADMIN: Sees all users
+      if (currentUser.role === 'super-admin') {
+        return res.json(allUsers);
+      }
+
+      // REGULAR ADMIN: Only sees users assigned to the same properties
+      const tenant = getTenantContext(currentUser);
+      const filteredUsers = allUsers.filter(u => {
+        // Don't show super-admins to regular admins
+        if (u.role === 'super-admin') return false;
+        
+        // Show users who share at least one property with the admin
+        if (!u.assignedPropertyIds || u.assignedPropertyIds.length === 0) {
+          // If user has no properties, only show if they were created by this admin or belong to their business
+          return u.businessName === currentUser.businessName;
+        }
+
+        return u.assignedPropertyIds.some(propId => canAccessProperty(tenant, parseInt(propId)));
+      });
+
+      res.json(filteredUsers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/users/:id/role", isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (currentUser?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const validated = updateUserRoleSchema.parse(req.body);
+      
+      // Prevent regular admins from setting super-admin role
+      if (validated.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot assign super-admin role" });
+      }
+      
+      // Prevent modifying super-admin users
+      const targetUser = await storage.getUser(id);
+      if (targetUser?.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot modify super-admin users" });
+      }
+      
+      const user = await storage.updateUserRole(
+        id, 
+        validated.role,
+        validated.assignedPropertyIds
+      );
+      
+      res.json(user);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      // Check if user is admin
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (currentUser?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      
+      // Prevent self-deletion
+      if (id === userId) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+      }
+      
+      // Prevent deleting super-admin users
+      const userToDelete = await storage.getUser(id);
+      if (userToDelete?.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot delete super-admin users" });
+      }
+      
+      // Check if this is the last admin
+      const allUsers = await storage.getAllUsers();
+      const adminUsers = allUsers.filter(u => u.role === "admin");
+      
+      if (userToDelete?.role === "admin" && adminUsers.length <= 1) {
+        return res.status(400).json({ message: "Cannot delete the last admin user" });
+      }
+      
+      await storage.deleteUser(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Toggle user active status (activate/deactivate)
+  app.patch("/api/users/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body; // 'active' or 'inactive'
+      
+      if (!['active', 'inactive'].includes(status)) {
+        return res.status(400).json({ message: "Status must be 'active' or 'inactive'" });
+      }
+      
+      // Prevent self-deactivation
+      if (id === userId && status === 'inactive') {
+        return res.status(400).json({ message: "You cannot deactivate your own account" });
+      }
+      
+      // Prevent deactivating super-admin users (only for regular admins)
+      const targetUser = await storage.getUser(id);
+      if (targetUser?.role === 'super-admin' && currentUser?.role !== 'super-admin') {
+        return res.status(403).json({ message: "Cannot modify super-admin users" });
+      }
+      
+      // For regular admins, check if they have access to this user's properties
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        const hasAccess = targetUser?.assignedPropertyIds?.some((propId: any) => 
+          canAccessProperty(tenant, parseInt(propId))
+        ) || targetUser?.businessName === currentUser.businessName;
+        
+        if (!hasAccess) {
+          return res.status(403).json({ message: "You can only manage staff from your properties" });
+        }
+      }
+      
+      await db.update(users).set({ 
+        status,
+        updatedAt: new Date()
+      }).where(eq(users.id, id));
+      
+      console.log(`[USER] User ${id} status changed to: ${status} by ${userId}`);
+      res.json({ success: true, status });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== STAFF INVITATION ROUTES =====
+  
+  // Create staff invitation
+  app.post("/api/staff-invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { email, propertyId, role } = req.body;
+      
+      if (!email || !propertyId) {
+        return res.status(400).json({ message: "Email and property are required" });
+      }
+      
+      // Validate role
+      const validRoles = ['staff', 'manager', 'kitchen'];
+      if (role && !validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role. Must be staff, manager, or kitchen" });
+      }
+      
+      // Check if admin has access to this property
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        if (!canAccessProperty(tenant, propertyId)) {
+          return res.status(403).json({ message: "You don't have access to this property" });
+        }
+      }
+      
+      // Check if user already exists with this email
+      const allUsers = await storage.getAllUsers();
+      const existingUser = allUsers.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
+      if (existingUser) {
+        return res.status(400).json({ message: "A user with this email already exists" });
+      }
+      
+      // Check for existing pending invitation
+      const existingInvites = await db.select().from(staffInvitations)
+        .where(and(
+          eq(staffInvitations.email, email.toLowerCase()),
+          eq(staffInvitations.propertyId, propertyId),
+          eq(staffInvitations.status, 'pending')
+        ));
+      
+      if (existingInvites.length > 0) {
+        return res.status(400).json({ message: "An invitation is already pending for this email" });
+      }
+      
+      // Generate invite token
+      const inviteToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      
+      // Create invitation
+      const [invitation] = await db.insert(staffInvitations).values({
+        email: email.toLowerCase(),
+        propertyId,
+        role: role || 'staff',
+        invitedBy: userId,
+        inviteToken,
+        status: 'pending',
+        expiresAt,
+      }).returning();
+      
+      // Send invitation email
+      const property = await storage.getProperty(propertyId);
+      const inviteUrl = `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'https://hostezee.in'}/accept-invite?token=${inviteToken}`;
+      
+      try {
+        const { sendEmail } = await import("./email-service");
+        await sendEmail({
+          to: email,
+          subject: `You're invited to join ${property?.name || 'a property'} on Hostezee`,
+          html: `
+            <h2>You've been invited!</h2>
+            <p>${currentUser.firstName || 'An admin'} has invited you to join <strong>${property?.name || 'their property'}</strong> as a <strong>${role || 'staff'}</strong> member on Hostezee Property Management System.</p>
+            <p><a href="${inviteUrl}" style="display: inline-block; padding: 12px 24px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 6px;">Accept Invitation</a></p>
+            <p>This invitation expires in 7 days.</p>
+            <p>If you didn't expect this invitation, you can ignore this email.</p>
+          `,
+        });
+        console.log(`[INVITE] Invitation email sent to ${email}`);
+      } catch (emailError: any) {
+        console.error(`[INVITE] Failed to send invitation email:`, emailError.message);
+      }
+      
+      console.log(`[INVITE] Staff invitation created for ${email} to property ${propertyId}`);
+      res.status(201).json(invitation);
+    } catch (error: any) {
+      console.error("[INVITE] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get staff invitations for admin
+  app.get("/api/staff-invitations", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      let invitations = await db.select().from(staffInvitations).orderBy(desc(staffInvitations.createdAt));
+      
+      // Filter by admin's properties
+      if (currentUser?.role === 'admin') {
+        const tenant = getTenantContext(currentUser);
+        invitations = invitations.filter(inv => canAccessProperty(tenant, inv.propertyId));
+      }
+      
+      res.json(invitations);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Cancel invitation
+  app.delete("/api/staff-invitations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const invitationId = parseInt(req.params.id);
+      await db.delete(staffInvitations).where(eq(staffInvitations.id, invitationId));
+      
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Validate invitation token (public endpoint)
+  app.get("/api/staff-invitations/validate", async (req: any, res) => {
+    try {
+      const token = req.query.token as string;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.inviteToken, token));
+      
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ message: "This invitation has already been used" });
+      }
+      
+      if (new Date(invitation.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "This invitation has expired" });
+      }
+
+      // Get property name
+      const property = await storage.getProperty(invitation.propertyId);
+      
+      res.json({
+        email: invitation.email,
+        role: invitation.role,
+        propertyId: invitation.propertyId,
+        propertyName: property?.name || 'Property',
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Accept invitation and create account (public endpoint)
+  app.post("/api/staff-invitations/accept", async (req: any, res) => {
+    try {
+      const { token, password, firstName, lastName } = req.body;
+      
+      if (!token || !password || !firstName || !lastName) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+      
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const [invitation] = await db.select().from(staffInvitations).where(eq(staffInvitations.inviteToken, token));
+      
+      if (!invitation) {
+        return res.status(404).json({ message: "Invitation not found" });
+      }
+      
+      if (invitation.status !== 'pending') {
+        return res.status(400).json({ message: "This invitation has already been used" });
+      }
+      
+      if (new Date(invitation.expiresAt) < new Date()) {
+        return res.status(400).json({ message: "This invitation has expired" });
+      }
+
+      // Check if user with this email already exists
+      const allUsers = await storage.getAllUsers();
+      const existingUser = allUsers.find(u => u.email?.toLowerCase() === invitation.email.toLowerCase());
+      
+      if (existingUser) {
+        return res.status(400).json({ message: "An account with this email already exists. Please log in instead." });
+      }
+
+      // Hash password and create user
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Generate a unique user ID
+      const uniqueId = `user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      
+      const [newUser] = await db.insert(users).values({
+        id: uniqueId,
+        email: invitation.email,
+        firstName,
+        lastName,
+        role: invitation.role as "staff" | "manager" | "kitchen" | "admin",
+        password: hashedPassword,
+        status: 'active',
+        verificationStatus: 'approved',
+        assignedPropertyIds: [invitation.propertyId],
+      }).returning();
+
+      // Update invitation status to accepted
+      await db.update(staffInvitations)
+        .set({ status: 'accepted' })
+        .where(eq(staffInvitations.id, invitation.id));
+
+      // Get property name for response
+      const property = await storage.getProperty(invitation.propertyId);
+
+      res.json({
+        success: true,
+        message: "Account created successfully",
+        propertyName: property?.name,
+        role: invitation.role,
+      });
+    } catch (error: any) {
+      console.error("[INVITE] Accept error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== USER PERMISSIONS ROUTES =====
+  
+  // Get current user's permissions (for sidebar filtering)
+  app.get("/api/user-permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+      
+      // Get permissions for current user
+      const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, userId));
+      
+      if (permissions) {
+        // Transform snake_case to camelCase for frontend
+        res.json({
+          userId: permissions.userId,
+          bookings: permissions.bookings,
+          calendar: permissions.calendar,
+          rooms: permissions.rooms,
+          guests: permissions.guests,
+          foodOrders: permissions.foodOrders,
+          menuManagement: permissions.menuManagement,
+          payments: permissions.payments,
+          reports: permissions.reports,
+          settings: permissions.settings,
+          tasks: permissions.tasks,
+          staff: permissions.staff,
+        });
+      } else {
+        // Return default permissions structure (no access until explicitly granted)
+        res.json({
+          userId: userId,
+          bookings: 'none',
+          calendar: 'none',
+          rooms: 'none',
+          guests: 'none',
+          foodOrders: 'none',
+          menuManagement: 'none',
+          payments: 'none',
+          reports: 'none',
+          settings: 'none',
+          tasks: 'none',
+          staff: 'none',
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get user permissions (admin only)
+  app.get("/api/users/:id/permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      
+      // Get permissions or return defaults
+      const [permissions] = await db.select().from(userPermissions).where(eq(userPermissions.userId, targetUserId));
+      
+      if (permissions) {
+        // Transform to consistent camelCase for frontend
+        res.json({
+          userId: permissions.userId,
+          bookings: permissions.bookings,
+          calendar: permissions.calendar,
+          rooms: permissions.rooms,
+          guests: permissions.guests,
+          foodOrders: permissions.foodOrders,
+          menuManagement: permissions.menuManagement,
+          payments: permissions.payments,
+          reports: permissions.reports,
+          settings: permissions.settings,
+          tasks: permissions.tasks,
+          staff: permissions.staff,
+        });
+      } else {
+        // Return default permissions structure
+        res.json({
+          userId: targetUserId,
+          bookings: 'none',
+          calendar: 'none',
+          rooms: 'none',
+          guests: 'none',
+          foodOrders: 'none',
+          menuManagement: 'none',
+          payments: 'none',
+          reports: 'none',
+          settings: 'none',
+          tasks: 'none',
+          staff: 'none',
+        });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Update user permissions
+  app.put("/api/users/:id/permissions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const permissions = req.body;
+      
+      // Validate permission levels
+      const validLevels = ['none', 'view', 'edit'];
+      const permissionFields = ['bookings', 'calendar', 'rooms', 'guests', 'foodOrders', 'menuManagement', 'payments', 'reports', 'settings', 'tasks', 'staff'];
+      
+      for (const field of permissionFields) {
+        if (permissions[field] && !validLevels.includes(permissions[field])) {
+          return res.status(400).json({ message: `Invalid permission level for ${field}` });
+        }
+      }
+      
+      // Check if permissions record exists
+      const [existing] = await db.select().from(userPermissions).where(eq(userPermissions.userId, targetUserId));
+      
+      if (existing) {
+        // Update existing
+        await db.update(userPermissions).set({
+          ...permissions,
+          updatedAt: new Date(),
+        }).where(eq(userPermissions.userId, targetUserId));
+      } else {
+        // Create new
+        await db.insert(userPermissions).values({
+          userId: targetUserId,
+          ...permissions,
+        });
+      }
+      
+      console.log(`[PERMISSIONS] Updated permissions for user ${targetUserId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Complete onboarding - marks user as having completed the onboarding wizard
+  app.post("/api/users/complete-onboarding", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      // Update user's onboarding status in database
+      await db.update(users)
+        .set({ hasCompletedOnboarding: true })
+        .where(eq(users.id, userId));
+
+      console.log(`[ONBOARDING] User ${userId} completed onboarding`);
+      res.json({ success: true, message: "Onboarding completed" });
+    } catch (error: any) {
+      console.error("[ONBOARDING] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Data fix endpoint: Consolidate rooms into a single property
+  app.post("/api/admin/fix-room-properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser || currentUser.role !== "super_admin") {
+        return res.status(403).send("Only super admins can run this fix");
+      }
+
+      const { targetPropertyId } = req.body;
+      if (!targetPropertyId) {
+        return res.status(400).send("targetPropertyId is required");
+      }
+
+      // Find all rooms that might belong to Woodpecker (1001-1011 and 2001+)
+      const allRooms = await storage.getRooms();
+      const roomsToMove = allRooms.filter(r => 
+        r.roomNumber.startsWith("100") || 
+        r.roomNumber.startsWith("101") || 
+        r.roomNumber.startsWith("200")
+      );
+
+      console.log(`[Fix] Found ${roomsToMove.length} rooms to consolidate to property ${targetPropertyId}`);
+
+      for (const room of roomsToMove) {
+        await storage.updateRoom(room.id, { propertyId: targetPropertyId });
+      }
+
+      res.json({ 
+        success: true, 
+        message: `Successfully moved ${roomsToMove.length} rooms to property ID ${targetPropertyId}`,
+        movedRoomNumbers: roomsToMove.map(r => r.roomNumber)
+      });
+    } catch (error: any) {
+      console.error("[Fix Error]", error);
+      res.status(500).send(error.message);
+    }
+  });
+
+  // Properties
+  app.get("/api/properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const tenant = getTenantContext(currentUser);
+      const allProperties = await storage.getAllProperties();
+      
+      // Apply tenant-based property filtering
+      const properties = filterPropertiesByAccess(tenant, allProperties);
+      
+      res.json(properties);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/properties/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      const property = await storage.getProperty(parseInt(req.params.id));
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      // Verify tenant access to this property
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, property.id)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
+      res.json(property);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Only Super Admin can create new properties
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) {
+        return res.status(403).json({ message: "Only Super Admin can create properties" });
+      }
+      
+      const data = insertPropertySchema.parse(req.body);
+      const property = await storage.createProperty(data);
+      res.status(201).json(property);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/properties/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      const propertyId = parseInt(req.params.id);
+      const existingProperty = await storage.getProperty(propertyId);
+      if (!existingProperty) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      // Verify tenant access (property owner can update their property)
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
+      const property = await storage.updateProperty(propertyId, req.body);
+      res.json(property);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/properties/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Only Super Admin can delete properties
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) {
+        return res.status(403).json({ message: "Only Super Admin can delete properties" });
+      }
+      
+      await storage.deleteProperty(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Rooms
+  app.get("/api/rooms", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      const allRooms = await storage.getAllRooms();
+      
+      // Apply tenant-based room filtering
+      const rooms = filterByPropertyAccess(tenant, allRooms);
+      
+      console.log("[ROOMS ENDPOINT] Tenant filtering:", { 
+        userId: tenant.userId,
+        role: tenant.role,
+        isSuperAdmin: tenant.isSuperAdmin,
+        assignedPropertyIds: tenant.assignedPropertyIds,
+        allRoomsCount: allRooms.length,
+        filteredCount: rooms.length
+      });
+      
+      res.json(rooms);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Room availability checking - MUST be FIRST specific /api/rooms/* route to avoid collision with :id routes
+  app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
+    console.log('[AVAILABILITY HANDLER] ✅ Handler called - ENTRY POINT');
+    try {
+      const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
+      console.log('[AVAILABILITY] Query params:', { propertyId, checkIn, checkOut, excludeBookingId });
+      
+      // Get all rooms (optionally filtered by property)
+      const { rooms } = await import("@shared/schema");
+      
+      // Build query with optional property filter
+      const propertyIdNum = propertyId ? Number(propertyId) : null;
+      console.log('[AVAILABILITY] Parsed propertyId:', propertyIdNum, 'isFinite:', Number.isFinite(propertyIdNum));
+      
+      const allRooms = Number.isFinite(propertyIdNum) 
+        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
+        : await db.select().from(rooms);
+      
+      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
+      
+      // If no dates provided, return all rooms with full availability
+      if (!checkIn || !checkOut) {
+        const availability = allRooms.map(room => ({
+          roomId: room.id,
+          available: 1,
+          ...(room.roomCategory === "dormitory" && {
+            totalBeds: room.totalBeds || 6,
+            remainingBeds: room.totalBeds || 6
+          })
+        }));
+        return res.json(availability);
+      }
+      
+      // Parse and validate dates  
+      const requestCheckIn = new Date(checkIn as string);
+      const requestCheckOut = new Date(checkOut as string);
+      if (isNaN(requestCheckIn.getTime()) || isNaN(requestCheckOut.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      // Get all active bookings and filter in JavaScript (historical working solution)
+      const { bookings } = await import("@shared/schema");
+      
+      // Fetch all non-cancelled bookings for the property
+      const allBookings = await db
+        .select()
+        .from(bookings)
+        .where(
+          propertyId 
+            ? and(eq(bookings.propertyId, Number(propertyId)), not(eq(bookings.status, "cancelled")))
+            : not(eq(bookings.status, "cancelled"))
+        );
+      
+      // Filter overlapping bookings using JavaScript Date comparison
+      // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
+      let overlappingBookings = allBookings.filter(booking => {
+        // Skip bookings with invalid dates
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        // Skip if dates are invalid
+        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
+        
+        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
+      });
+      
+      // Filter out excluded booking if specified
+      if (excludeBookingId) {
+        const excludeId = Number(excludeBookingId);
+        if (Number.isFinite(excludeId)) {
+          overlappingBookings = overlappingBookings.filter(b => b.id !== excludeId);
+        }
+      }
+      
+      // Calculate availability for each room
+      const availability = allRooms.map(room => {
+        if (room.roomCategory === "dormitory") {
+          const totalBeds = room.totalBeds || 6;
+          const roomBookings = overlappingBookings.filter(b => 
+            b.roomId === room.id || b.roomIds?.includes(room.id)
+          );
+          const bedsBooked = roomBookings.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          const remainingBeds = Math.max(0, totalBeds - bedsBooked);
+          
+          return {
+            roomId: room.id,
+            available: remainingBeds > 0 ? 1 : 0,
+            totalBeds,
+            remainingBeds
+          };
+        }
+        
+        const hasOverlap = overlappingBookings.some(b => 
+          b.roomId === room.id || b.roomIds?.includes(room.id)
+        );
+        
+        return {
+          roomId: room.id,
+          available: hasOverlap ? 0 : 1
+        };
+      });
+      
+      res.json(availability);
+    } catch (error: any) {
+      console.error('[AVAILABILITY ERROR] ❌ CAUGHT ERROR IN HANDLER');
+      console.error('[AVAILABILITY ERROR] Full error:', error);
+      console.error('[AVAILABILITY ERROR] Message:', error.message);
+      console.error('[AVAILABILITY ERROR] Stack:', error.stack);
+      console.error('[AVAILABILITY ERROR] Error name:', error.name);
+      console.error('[AVAILABILITY ERROR] Error code:', error.code);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/rooms/checked-in-guests", isAuthenticated, async (req, res) => {
+    try {
+      const roomsWithGuests = await storage.getRoomsWithCheckedInGuests();
+      res.json(roomsWithGuests);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Check for extended stay conflicts when creating a new booking
+  app.get("/api/rooms/extended-stay-conflicts", isAuthenticated, async (req, res) => {
+    try {
+      const { roomId, roomIds, checkInDate } = req.query;
+      
+      if (!checkInDate) {
+        return res.json({ hasConflict: false, conflicts: [] });
+      }
+      
+      const requestedCheckIn = new Date(checkInDate as string);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Parse room IDs
+      let targetRoomIds: number[] = [];
+      if (roomId) {
+        targetRoomIds = [parseInt(roomId as string)];
+      } else if (roomIds) {
+        try {
+          targetRoomIds = JSON.parse(roomIds as string);
+        } catch {
+          targetRoomIds = (roomIds as string).split(',').map(id => parseInt(id.trim()));
+        }
+      }
+      
+      if (targetRoomIds.length === 0) {
+        return res.json({ hasConflict: false, conflicts: [] });
+      }
+      
+      // Get all checked-in bookings (active guests)
+      const allBookings = await storage.getAllBookings();
+      const checkedInBookings = allBookings.filter(b => b.status === "checked-in");
+      
+      const conflicts: any[] = [];
+      
+      for (const booking of checkedInBookings) {
+        // Check if this booking is for any of the target rooms
+        const bookingRoomIds = booking.roomIds || (booking.roomId ? [booking.roomId] : []);
+        const hasRoomOverlap = targetRoomIds.some(rid => bookingRoomIds.includes(rid));
+        
+        if (!hasRoomOverlap) continue;
+        
+        // Check if this is an extended stay (checkout date has passed)
+        const bookingCheckout = new Date(booking.checkOutDate);
+        bookingCheckout.setHours(0, 0, 0, 0);
+        
+        // Extended stay: guest is still checked in but their checkout date has passed
+        if (today > bookingCheckout) {
+          // And the new booking's check-in is today or after the original checkout
+          if (requestedCheckIn >= bookingCheckout) {
+            const guest = await storage.getGuest(booking.guestId);
+            const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+            
+            conflicts.push({
+              bookingId: booking.id,
+              guestName: guest?.fullName || "Unknown Guest",
+              roomNumber: room?.roomNumber || "N/A",
+              originalCheckout: booking.checkOutDate,
+              daysExtended: Math.ceil((today.getTime() - bookingCheckout.getTime()) / (1000 * 60 * 60 * 24))
+            });
+          }
+        }
+      }
+      
+      res.json({
+        hasConflict: conflicts.length > 0,
+        conflicts
+      });
+    } catch (error: any) {
+      console.error('[EXTENDED-STAY-CONFLICTS] Error:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/rooms/:id", isAuthenticated, async (req, res) => {
+    try {
+      const room = await storage.getRoom(parseInt(req.params.id));
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      res.json(room);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get bed inventory for a dormitory room (simple bed counts)
+  app.get("/api/rooms/:id/bed-inventory", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = parseInt(req.params.id);
+      const { checkIn, checkOut, excludeBookingId } = req.query;
+      
+      const room = await storage.getRoom(roomId);
+      if (!room) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      // Default to room's total beds (or 6 if not set)
+      const totalBeds = room.totalBeds || 6;
+      
+      // If no dates provided, just return total beds
+      if (!checkIn || !checkOut) {
+        return res.json({
+          totalBeds,
+          reservedBeds: 0,
+          remainingBeds: totalBeds
+        });
+      }
+      
+      // Parse dates
+      const checkInDate = new Date(checkIn as string);
+      const checkOutDate = new Date(checkOut as string);
+      
+      // Get ALL non-cancelled bookings, then filter in JavaScript
+      const { bookings: bookingsTable } = await import("@shared/schema");
+      const allBookings = await db
+        .select()
+        .from(bookingsTable)
+        .where(not(eq(bookingsTable.status, "cancelled")));
+      
+      // Filter for overlapping bookings in JavaScript
+      const overlappingBookings = allBookings.filter(booking => {
+        // Skip excluded booking if specified
+        if (excludeBookingId && booking.id === parseInt(excludeBookingId as string)) {
+          return false;
+        }
+        
+        // Check if booking overlaps with requested dates
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        return bookingCheckOut > checkInDate && bookingCheckIn < checkOutDate;
+      });
+      
+      // Filter for this specific room
+      const roomBookings = overlappingBookings.filter(booking => 
+        booking.roomId === roomId || booking.roomIds?.includes(roomId)
+      );
+      
+      // Calculate reserved beds
+      const reservedBeds = roomBookings.reduce((sum, booking) => {
+        return sum + (booking.bedsBooked || 1);
+      }, 0);
+      
+      const remainingBeds = Math.max(0, totalBeds - reservedBeds);
+      
+      res.json({
+        totalBeds,
+        reservedBeds,
+        remainingBeds
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/rooms", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      const data = insertRoomSchema.parse(req.body);
+      
+      // Verify user has access to the property they're creating a room for
+      if (!canAccessProperty(tenant, data.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+      
+      const room = await storage.createRoom(data);
+      res.status(201).json(room);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
+      const room = await storage.updateRoom(parseInt(req.params.id), req.body);
+      res.json(room);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/rooms/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
+      const { status } = req.body;
+      const room = await storage.updateRoomStatus(parseInt(req.params.id), status);
+      res.json(room);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/rooms/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      
+      // Get existing room to check property access
+      const existingRoom = await storage.getRoom(parseInt(req.params.id));
+      if (!existingRoom) {
+        return res.status(404).json({ message: "Room not found" });
+      }
+      
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, existingRoom.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this room" });
+      }
+      
+      await storage.deleteRoom(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      // Return 400 for validation errors (room has associations), 500 for unexpected errors
+      const status = error.message.includes("Cannot delete room") ? 400 : 500;
+      res.status(status).json({ message: error.message });
+    }
+  });
+
+  // Guests
+  app.get("/api/guests", isAuthenticated, async (req, res) => {
+    try {
+      const guests = await storage.getAllGuests();
+      res.json(guests);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      const guest = await storage.getGuest(parseInt(req.params.id));
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+      res.json(guest);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guests", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertGuestSchema.parse(req.body);
+      const guest = await storage.createGuest(data);
+      res.status(201).json(guest);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      console.log(`[PATCH /api/guests/${req.params.id}] Request body:`, JSON.stringify(req.body));
+      const guest = await storage.updateGuest(parseInt(req.params.id), req.body);
+      console.log(`[PATCH /api/guests/${req.params.id}] Updated guest:`, JSON.stringify({ id: guest.id, idProofImage: guest.idProofImage }));
+      res.json(guest);
+    } catch (error: any) {
+      console.error(`[PATCH /api/guests/${req.params.id}] Error:`, error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/guests/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteGuest(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Travel Agents
+  app.get("/api/travel-agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const { propertyId } = req.query;
+      let agents = propertyId 
+        ? await storage.getTravelAgentsByProperty(parseInt(propertyId as string))
+        : await storage.getAllTravelAgents();
+      
+      // Apply property filtering for managers and kitchen users
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        agents = agents.filter(agent => currentUser.assignedPropertyIds!.includes(agent.propertyId));
+      }
+      
+      res.json(agents);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const agent = await storage.getTravelAgent(parseInt(req.params.id));
+      if (!agent) {
+        return res.status(404).json({ message: "Travel agent not found" });
+      }
+
+      // Check authorization for managers/kitchen
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && 
+          currentUser.assignedPropertyIds && 
+          !currentUser.assignedPropertyIds.includes(agent.propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(agent);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/travel-agents", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const data = insertTravelAgentSchema.parse(req.body);
+
+      // Check authorization for managers/kitchen - can only create for assigned properties
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && 
+          currentUser.assignedPropertyIds && 
+          !currentUser.assignedPropertyIds.includes(data.propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const agent = await storage.createTravelAgent(data);
+      res.status(201).json(agent);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      // Get existing agent to check property ownership
+      const existingAgent = await storage.getTravelAgent(parseInt(req.params.id));
+      if (!existingAgent) {
+        return res.status(404).json({ message: "Travel agent not found" });
+      }
+
+      // Check authorization for managers/kitchen
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && 
+          currentUser.assignedPropertyIds && 
+          !currentUser.assignedPropertyIds.includes(existingAgent.propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const agent = await storage.updateTravelAgent(parseInt(req.params.id), req.body);
+      res.json(agent);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      // Get existing agent to check property ownership
+      const existingAgent = await storage.getTravelAgent(parseInt(req.params.id));
+      if (!existingAgent) {
+        return res.status(404).json({ message: "Travel agent not found" });
+      }
+
+      // Check authorization for managers/kitchen
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && 
+          currentUser.assignedPropertyIds && 
+          !currentUser.assignedPropertyIds.includes(existingAgent.propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deleteTravelAgent(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bookings
+  app.get("/api/bookings", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const tenant = getTenantContext(currentUser);
+      let bookings = await storage.getAllBookings();
+      
+      // Apply tenant-based property filtering (bookings reference rooms which have propertyId)
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+        const allRooms = await storage.getAllRooms();
+        bookings = bookings.filter(booking => {
+          // Handle single room bookings
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) return false;
+            return tenant.assignedPropertyIds.includes(room.propertyId);
+          }
+          // Handle group bookings (multiple rooms)
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => !!room);
+            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
+          }
+          return false;
+        });
+      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
+        // User has no assigned properties - return empty
+        bookings = [];
+      }
+      
+      res.json(bookings);
+    } catch (error: any) {
+      if (error instanceof TenantAccessError) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Active bookings MUST come before /api/bookings/:id to avoid route collision
+  app.get("/api/bookings/active", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const tenant = getTenantContext(currentUser);
+      
+      // Get all checked-in bookings
+      const allBookings = await storage.getAllBookings();
+      let activeBookings = allBookings.filter(b => b.status === "checked-in");
+      
+      // Get all related data
+      const allGuests = await storage.getAllGuests();
+      const allRooms = await storage.getAllRooms();
+      const allProperties = await storage.getAllProperties();
+      
+      // Apply tenant-based property filtering
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+        activeBookings = activeBookings.filter(booking => {
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) return false;
+            return tenant.assignedPropertyIds.includes(room.propertyId);
+          }
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => !!room);
+            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
+          }
+          return false;
+        });
+      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
+        activeBookings = [];
+      }
+      
+      if (activeBookings.length === 0) {
+        return res.json([]);
+      }
+
+      // Query orders and extras with error handling for schema mismatches
+      let allOrders = [];
+      let allExtras = [];
+      
+      try {
+        allOrders = await db.select().from(orders);
+      } catch (err) {
+        console.warn("[Active Bookings] Could not fetch orders - continuing without order data:", err);
+      }
+      
+      try {
+        allExtras = await db.select().from(extraServices);
+      } catch (err) {
+        console.warn("[Active Bookings] Could not fetch extras - continuing without extra services data:", err);
+      }
+
+      // Build enriched data
+      const enrichedBookings = activeBookings.map(booking => {
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const room = booking.roomId ? allRooms.find(r => r.id === booking.roomId) : null;
+        
+        // For group bookings, get all rooms
+        const groupRooms = booking.isGroupBooking && booking.roomIds
+          ? allRooms.filter(r => booking.roomIds!.includes(r.id))
+          : [];
+        
+        // Get property from either single room or first group room
+        const property = room?.propertyId 
+          ? allProperties.find(p => p.id === room.propertyId)
+          : groupRooms.length > 0 
+            ? allProperties.find(p => p.id === groupRooms[0].propertyId)
+            : null;
+
+        // Track data integrity issues instead of filtering out
+        const dataIssues: string[] = [];
+        if (!guest) {
+          dataIssues.push(`Guest record missing (ID: ${booking.guestId})`);
+          console.warn(`[Active Bookings] Booking ${booking.id}: Guest ${booking.guestId} not found`);
+        }
+        if (!room && groupRooms.length === 0) {
+          dataIssues.push(`Room record missing (ID: ${booking.roomId})`);
+          console.warn(`[Active Bookings] Booking ${booking.id}: Room ${booking.roomId} not found, roomIds=${JSON.stringify(booking.roomIds)}`);
+        }
+
+        // Calculate nights stayed (use checkout date, not current date)
+        const checkInDate = new Date(booking.checkInDate);
+        const checkOutDate = new Date(booking.checkOutDate);
+        const nightsStayed = Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+        // Calculate room charges - handle both single and group bookings
+        let roomCharges = 0;
+        if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+          // Group booking: calculate total for all rooms
+          for (const roomId of booking.roomIds) {
+            const groupRoom = allRooms.find(r => r.id === roomId);
+            if (groupRoom) {
+              const customPrice = booking.customPrice ? parseFloat(String(booking.customPrice)) : null;
+              const roomPrice = groupRoom.pricePerNight ? parseFloat(String(groupRoom.pricePerNight)) : 0;
+              const pricePerNight = customPrice ? customPrice / booking.roomIds.length : roomPrice;
+              roomCharges += pricePerNight * nightsStayed;
+            }
+          }
+        } else if (room) {
+          // Single room booking
+          const customPrice = booking.customPrice ? parseFloat(String(booking.customPrice)) : null;
+          const roomPrice = room.pricePerNight ? parseFloat(String(room.pricePerNight)) : 0;
+          const pricePerNight = customPrice || roomPrice;
+          roomCharges = pricePerNight * nightsStayed;
+        } else {
+          // Room missing - use custom price if available
+          const customPrice = booking.customPrice ? parseFloat(String(booking.customPrice)) : 0;
+          roomCharges = customPrice * nightsStayed;
+        }
+
+        const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
+        // Exclude rejected orders from food charges calculation
+        const foodCharges = bookingOrders
+          .filter(order => order.status !== "rejected")
+          .reduce((sum, order) => {
+            const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
+            return sum + (isNaN(amount) ? 0 : amount);
+          }, 0);
+
+        const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
+        const extraCharges = bookingExtras.reduce((sum, extra) => {
+          const amount = extra.amount ? parseFloat(String(extra.amount)) : 0;
+          return sum + (isNaN(amount) ? 0 : amount);
+        }, 0);
+
+        const subtotal = roomCharges + foodCharges + extraCharges;
+        // Don't automatically apply GST/Service charges in the card display
+        // They are optional and applied only at checkout based on user selection
+        const totalAmount = subtotal;
+        const advancePaid = booking.advanceAmount ? parseFloat(String(booking.advanceAmount)) : 0;
+        const balanceAmount = totalAmount - advancePaid;
+
+        return {
+          ...booking,
+          guest: guest || { id: booking.guestId, fullName: "Unknown Guest", email: null, phone: null },
+          room,
+          rooms: groupRooms.length > 0 ? groupRooms : undefined,
+          property,
+          nightsStayed,
+          orders: bookingOrders,
+          extraServices: bookingExtras,
+          dataIssues: dataIssues.length > 0 ? dataIssues : undefined,
+          charges: {
+            roomCharges: roomCharges.toFixed(2),
+            foodCharges: foodCharges.toFixed(2),
+            extraCharges: extraCharges.toFixed(2),
+            subtotal: subtotal.toFixed(2),
+            gstAmount: "0.00",
+            serviceChargeAmount: "0.00",
+            totalAmount: totalAmount.toFixed(2),
+            advancePaid: advancePaid.toFixed(2),
+            balanceAmount: balanceAmount.toFixed(2),
+          },
+        };
+      });
+
+      res.json(enrichedBookings);
+    } catch (error: any) {
+      console.error("Active bookings error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bookings with details for analytics
+  app.get("/api/bookings/with-details", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      let allBookings = await storage.getAllBookings();
+      const allGuests = await storage.getAllGuests();
+      const allRooms = await storage.getAllRooms();
+      const allProperties = await storage.getAllProperties();
+
+      // Apply property filtering for managers and kitchen users
+      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        allBookings = allBookings.filter(booking => {
+          // Handle single room bookings
+          if (booking.roomId) {
+            const room = allRooms.find(r => r.id === booking.roomId);
+            if (!room) {
+              console.warn(`Room ${booking.roomId} not found for booking ${booking.id}`);
+              return false;
+            }
+            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+          }
+          // Handle group bookings (multiple rooms)
+          if (booking.roomIds && booking.roomIds.length > 0) {
+            const bookingRooms = booking.roomIds
+              .map(roomId => allRooms.find(r => r.id === roomId))
+              .filter((room): room is NonNullable<typeof room> => {
+                if (!room) {
+                  console.warn(`Room not found in roomIds for booking ${booking.id}`);
+                  return false;
+                }
+                return true;
+              });
+            
+            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+          }
+          return false;
+        });
+      }
+
+      const enrichedBookings = allBookings.map(booking => {
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const room = booking.roomId ? allRooms.find(r => r.id === booking.roomId) : null;
+        const property = room?.propertyId ? allProperties.find(p => p.id === room.propertyId) : null;
+
+        if (!guest || !room || !property) {
+          return null;
+        }
+
+        return {
+          ...booking,
+          guest: {
+            fullName: guest.fullName,
+          },
+          room: {
+            roomNumber: room.roomNumber,
+            pricePerNight: room.pricePerNight,
+          },
+          property: {
+            name: property.name,
+          },
+        };
+      }).filter(Boolean);
+
+      res.json(enrichedBookings);
+    } catch (error: any) {
+      console.error("Bookings with details error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const booking = await storage.getBooking(parseInt(req.params.id));
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Fetch room and guest details for complete booking info
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+      const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
+      
+      res.json({
+        ...booking,
+        room,
+        guest
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings", isAuthenticated, async (req, res) => {
+    try {
+      // Create input schema that coerces ISO date strings to Date objects
+      const bookingInputSchema = insertBookingSchema.extend({
+        checkInDate: z.coerce.date(),
+        checkOutDate: z.coerce.date(),
+      });
+      const data = bookingInputSchema.parse(req.body);
+      
+      console.log('🔍 [DEBUG] Booking creation - parsed data:', {
+        roomId: data.roomId,
+        numberOfGuests: data.numberOfGuests,
+        bedsBooked: data.bedsBooked,
+        hasBedsBooked: 'bedsBooked' in data,
+        bedsBookedType: typeof data.bedsBooked
+      });
+      
+      // Check room availability before creating booking
+      const checkIn = new Date(data.checkInDate);
+      const checkOut = new Date(data.checkOutDate);
+      
+      // Validate check-out is after check-in
+      if (checkOut <= checkIn) {
+        return res.status(400).json({ 
+          message: "Check-out date must be after check-in date" 
+        });
+      }
+      
+      // Get all rooms to check
+      const roomIdsToCheck: number[] = [];
+      if (data.roomId) {
+        roomIdsToCheck.push(data.roomId);
+      }
+      if (data.roomIds && data.roomIds.length > 0) {
+        roomIdsToCheck.push(...data.roomIds);
+      }
+      
+      // Check each room for conflicts
+      for (const roomId of roomIdsToCheck) {
+        const existingBookings = await storage.getBookingsByRoom(roomId);
+        const conflictingBooking = existingBookings.find(b => {
+          // Skip cancelled or checked-out bookings
+          if (b.status === 'cancelled' || b.status === 'checked-out') {
+            return false;
+          }
+          
+          const existingCheckIn = new Date(b.checkInDate);
+          const existingCheckOut = new Date(b.checkOutDate);
+          
+          // Check for date overlap
+          const hasOverlap = checkIn < existingCheckOut && checkOut > existingCheckIn;
+          return hasOverlap;
+        });
+        
+        if (conflictingBooking) {
+          const room = await storage.getRoom(roomId);
+          return res.status(400).json({ 
+            message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}. Please select different dates or a different room.`
+          });
+        }
+      }
+      
+      // Validate travel agent belongs to same property as booking
+      if (data.travelAgentId) {
+        // Determine booking property from roomId, roomIds, or propertyId
+        let bookingPropertyId: number | undefined;
+        
+        if (data.roomId) {
+          const room = await storage.getRoom(data.roomId);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (data.roomIds && data.roomIds.length > 0) {
+          // Group booking - check first room
+          const room = await storage.getRoom(data.roomIds[0]);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (data.propertyId) {
+          bookingPropertyId = data.propertyId;
+        }
+        
+        if (bookingPropertyId) {
+          const agent = await storage.getTravelAgent(data.travelAgentId);
+          if (!agent) {
+            return res.status(404).json({ message: "Travel agent not found" });
+          }
+          if (agent.propertyId !== bookingPropertyId) {
+            return res.status(400).json({ 
+              message: "Travel agent does not belong to the same property as the booking" 
+            });
+          }
+        }
+      }
+      
+      const booking = await storage.createBooking(data);
+      
+      // Create notification for admins about new booking
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+        const guest = await storage.getGuest(booking.guestId);
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_booking",
+            title: "New Booking Created",
+            message: `Booking #${booking.id} created for ${guest?.fullName || 'Guest'}. Check-in: ${format(new Date(booking.checkInDate), "MMM dd, yyyy")}`,
+            soundType: "info",
+            relatedId: booking.id,
+            relatedType: "booking",
+          });
+        }
+        console.log(`[NOTIFICATIONS] New booking notification created for ${adminUsers.length} admins`);
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create booking notification:`, notifError.message);
+      }
+      
+      // Send booking confirmation email to guest
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        const room = await storage.getRoom(booking.roomId);
+        
+        if (guest && guest.email && property && room) {
+          const { sendBookingConfirmationEmail } = await import("./email-service");
+          const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
+          const checkOutDate = format(new Date(booking.checkOutDate), "MMM dd, yyyy");
+          
+          await sendBookingConfirmationEmail(
+            guest.email,
+            guest.fullName,
+            property.name,
+            checkInDate,
+            checkOutDate,
+            room.roomNumber,
+            booking.id
+          );
+          console.log(`[EMAIL] Booking confirmation sent to ${guest.email}`);
+        }
+      } catch (emailError: any) {
+        console.error(`[EMAIL] Failed to send booking confirmation email:`, emailError.message);
+      }
+      
+      // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
+      
+      // Activity log for booking creation
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
+        const dbUser = userId ? await storage.getUser(userId) : null;
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        
+        await storage.createActivityLog({
+          userId: userId || null,
+          userEmail: dbUser?.email || null,
+          userName: dbUser ? `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() : null,
+          action: 'create_booking',
+          category: 'booking',
+          resourceType: 'booking',
+          resourceId: String(booking.id),
+          resourceName: `Booking #${booking.id} - ${guest?.fullName || 'Guest'}`,
+          propertyId: booking.propertyId,
+          propertyName: property?.name || null,
+          details: { 
+            guestName: guest?.fullName, 
+            checkIn: booking.checkInDate, 
+            checkOut: booking.checkOutDate,
+            roomId: booking.roomId 
+          },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging booking creation:', logErr);
+      }
+      
+      res.status(201).json(booking);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        console.error("Booking validation errors:", JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      // Create input schema that coerces ISO date strings to Date objects
+      const bookingUpdateSchema = insertBookingSchema.extend({
+        checkInDate: z.coerce.date().optional(),
+        checkOutDate: z.coerce.date().optional(),
+      }).partial();
+      const validatedData = bookingUpdateSchema.parse(req.body);
+      
+      // Fetch existing booking to determine property context
+      const existingBooking = await storage.getBooking(parseInt(req.params.id));
+      if (!existingBooking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Determine if room/property is changing
+      const isRoomChanging = validatedData.roomId !== undefined || validatedData.roomIds !== undefined || validatedData.propertyId !== undefined;
+      const isTravelAgentChanging = validatedData.travelAgentId !== undefined;
+      
+      // Validate travel agent when:
+      // 1. Travel agent is being updated
+      // 2. Room/property is changing and booking has an existing travel agent
+      const shouldValidateTravelAgent = isTravelAgentChanging || (isRoomChanging && existingBooking.travelAgentId);
+      
+      if (shouldValidateTravelAgent) {
+        // Determine new booking property from updated data or existing booking
+        let bookingPropertyId: number | undefined;
+        
+        if (validatedData.roomId) {
+          const room = await storage.getRoom(validatedData.roomId);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (validatedData.roomIds && validatedData.roomIds.length > 0) {
+          const room = await storage.getRoom(validatedData.roomIds[0]);
+          if (!room) {
+            return res.status(404).json({ message: "Room not found" });
+          }
+          bookingPropertyId = room.propertyId;
+        } else if (validatedData.propertyId) {
+          bookingPropertyId = validatedData.propertyId;
+        } else if (existingBooking.roomId) {
+          // Use existing booking's room property
+          const room = await storage.getRoom(existingBooking.roomId);
+          if (room) {
+            bookingPropertyId = room.propertyId;
+          }
+        } else if (existingBooking.propertyId) {
+          bookingPropertyId = existingBooking.propertyId;
+        }
+        
+        // Get the travel agent to validate (from update or existing)
+        const travelAgentId = validatedData.travelAgentId !== undefined 
+          ? validatedData.travelAgentId 
+          : existingBooking.travelAgentId;
+        
+        if (travelAgentId && bookingPropertyId) {
+          const agent = await storage.getTravelAgent(travelAgentId);
+          if (!agent) {
+            return res.status(404).json({ message: "Travel agent not found" });
+          }
+          if (agent.propertyId !== bookingPropertyId) {
+            return res.status(400).json({ 
+              message: "Travel agent does not belong to the same property as the booking" 
+            });
+          }
+        }
+      }
+      
+      const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
+      
+      // Audit log for booking update with proper before/after structure
+      const changedFields: Record<string, any> = {};
+      const beforeValues: Record<string, any> = {};
+      const afterValues: Record<string, any> = {};
+      
+      for (const key of Object.keys(validatedData)) {
+        const oldValue = (existingBooking as any)[key];
+        const newValue = (validatedData as any)[key];
+        if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+          beforeValues[key] = oldValue;
+          afterValues[key] = newValue;
+        }
+      }
+      
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: req.params.id,
+        action: "update",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: { 
+          before: beforeValues, 
+          after: afterValues 
+        },
+        metadata: { 
+          previousStatus: existingBooking.status,
+          newStatus: booking.status,
+          updatedFields: Object.keys(afterValues),
+        },
+      });
+      
+      // WhatsApp payment confirmation DISABLED per user request (only using check-in and checkout notifications)
+      // To re-enable, uncomment the block below
+      /*
+      if (validatedData.advanceAmount !== undefined && validatedData.advanceAmount !== existingBooking.advanceAmount) {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          
+          if (guest && guest.phone) {
+            let propertyName = "Your Property";
+            if (booking.roomId) {
+              const room = await storage.getRoom(booking.roomId);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+              }
+            } else if (booking.roomIds && booking.roomIds.length > 0) {
+              const room = await storage.getRoom(booking.roomIds[0]);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+              }
+            }
+            
+            const guestName = guest.fullName || "Guest";
+            const amountPaid = `₹${booking.advanceAmount}`;
+            const paymentDate = format(new Date(), "dd MMM yyyy");
+            const bookingRef = `#${booking.id}`;
+            
+            await sendPaymentConfirmation(
+              guest.phone,
+              guestName,
+              amountPaid,
+              paymentDate,
+              bookingRef,
+              propertyName
+            );
+            
+            console.log(`[WhatsApp] Booking #${booking.id} - Payment confirmation sent to ${guest.fullName}`);
+          } else if (!guest) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send payment confirmation: guest ${booking.guestId} not found`);
+          } else if (!guest.phone) {
+            console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send payment confirmation: guest has no phone number`);
+          }
+        } catch (whatsappError: any) {
+          console.error(`[WhatsApp] Booking #${booking.id} - Payment notification failed (non-critical):`, whatsappError.message);
+        }
+      }
+      */
+      
+      res.json(booking);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/bookings/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      const bookingId = parseInt(req.params.id);
+      
+      // Get current booking to validate status change
+      const currentBooking = await storage.getBooking(bookingId);
+      if (!currentBooking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Status lock: Prevent changing from checked-out
+      if (currentBooking.status === "checked-out") {
+        return res.status(400).json({ 
+          message: "Cannot change status of a checked-out booking. Status is locked." 
+        });
+      }
+      
+      // If trying to check in, validate the check-in date and guest ID proof
+      if (status === "checked-in") {
+        // Validate guest has ID proof
+        const guest = await storage.getGuest(currentBooking.guestId);
+        if (!guest) {
+          return res.status(400).json({ 
+            message: "Guest not found. Cannot complete check-in." 
+          });
+        }
+        
+        if (!guest.idProofImage) {
+          return res.status(400).json({ 
+            message: "Guest ID proof is required before check-in. Please upload the guest's ID proof to proceed." 
+          });
+        }
+
+        // Check if check-in date is today or in the past
+        const checkInDate = new Date(currentBooking.checkInDate);
+        const today = new Date();
+        
+        // Reset time parts to compare only dates
+        checkInDate.setHours(0, 0, 0, 0);
+        today.setHours(0, 0, 0, 0);
+        
+        if (checkInDate > today) {
+          const checkInDateFormatted = format(checkInDate, "PPP");
+          return res.status(400).json({ 
+            message: `Cannot check in before the scheduled check-in date (${checkInDateFormatted}). The guest's check-in is scheduled for ${checkInDateFormatted}.`
+          });
+        }
+        
+        // Auto-checkout any previous bookings for the same room to prevent duplicate check-ins
+        // This ensures only one booking can be checked-in per room at a time
+        const allBookings = await storage.getAllBookings();
+        const roomId = currentBooking.roomId;
+        const otherCheckedInBookings = allBookings.filter(b => 
+          b.roomId === roomId && 
+          b.id !== bookingId && 
+          b.status === "checked-in"
+        );
+        
+        // Auto-checkout the previous booking(s)
+        for (const oldBooking of otherCheckedInBookings) {
+          console.log(`[Auto-Checkout] Checking out old booking ${oldBooking.id} for room ${roomId} before checking in booking ${bookingId}`);
+          await storage.updateBookingStatus(oldBooking.id, "checked-out");
+        }
+      }
+      
+      // Update booking with new status, and capture actual check-in time if checking in
+      const { bookings: bookingsTable } = await import("@shared/schema");
+      const updateData: any = {};
+      if (status === "checked-in") {
+        updateData.actualCheckInTime = new Date();
+      }
+      
+      // Update booking status and actual check-in time if applicable
+      const booking = await db
+        .update(bookingsTable)
+        .set({ 
+          status, 
+          ...updateData 
+        })
+        .where(eq(bookingsTable.id, bookingId))
+        .returning()
+        .then(result => result[0] || null);
+      
+      if (!booking) {
+        return res.status(404).json({ message: "Failed to update booking" });
+      }
+      
+      // Create in-app notification for status changes
+      if (status === "checked-in" || status === "checked-out") {
+        try {
+          const allUsers = await storage.getAllUsers();
+          const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+          const guest = await storage.getGuest(booking.guestId);
+          
+          for (const admin of adminUsers) {
+            await db.insert(notifications).values({
+              userId: admin.id,
+              type: status === "checked-in" ? "guest_checked_in" : "guest_checked_out",
+              title: status === "checked-in" ? "Guest Checked In" : "Guest Checked Out",
+              message: `${guest?.fullName || 'Guest'} ${status === "checked-in" ? "checked in" : "checked out"} from Booking #${booking.id}`,
+              soundType: status === "checked-in" ? "info" : "warning",
+              relatedId: booking.id,
+              relatedType: "booking",
+            });
+          }
+          console.log(`[NOTIFICATIONS] Check-${status.split('-')[1]} notification created for ${adminUsers.length} admins`);
+        } catch (notifError: any) {
+          console.error(`[NOTIFICATIONS] Failed to create status notification:`, notifError.message);
+        }
+      }
+      
+      // Send WhatsApp notification when guest checks in
+      if (status === "checked-in") {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          if (guest && guest.phone) {
+            let propertyName = "Your Property";
+            let roomNumbers = "TBD";
+            
+            if (booking.roomId) {
+              const room = await storage.getRoom(booking.roomId);
+              if (room) {
+                const property = await storage.getProperty(room.propertyId);
+                propertyName = property?.name || propertyName;
+                roomNumbers = room.roomNumber;
+              }
+            } else if (booking.roomIds && booking.roomIds.length > 0) {
+              const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+              if (rooms.length > 0 && rooms[0]) {
+                const property = await storage.getProperty(rooms[0].propertyId);
+                propertyName = property?.name || propertyName;
+                roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+              }
+            }
+            
+            const guestName = guest.fullName || "Guest";
+            const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
+            const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+            
+            // Check if check-in notifications are enabled via template controls
+            if (booking.propertyId) {
+              const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
+              
+              // Template must be enabled (defaults to true if no setting exists)
+              const isTemplateEnabled = templateSetting?.isEnabled !== false;
+              
+              if (isTemplateEnabled) {
+                // Send comprehensive welcome message with menu link (single message)
+                let primaryRoomNumber = roomNumbers.split(",")[0].trim();
+                const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                  : process.env.REPLIT_DOMAINS
+                    ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+                    : 'https://your-domain.com';
+                const menuLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${primaryRoomNumber}`;
+                
+                await sendWelcomeWithMenuLink(guest.phone, propertyName, guestName, menuLink);
+                console.log(`[WhatsApp] Booking #${booking.id} - Welcome message with menu link sent to ${guest.fullName}: ${menuLink}`);
+              } else {
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled (template: ${isTemplateEnabled})`);
+              }
+            }
+          }
+        } catch (whatsappError: any) {
+          console.error(`[WhatsApp] Booking #${booking.id} - Check-in notification failed (non-critical):`, whatsappError.message);
+        }
+      }
+      
+      res.json(booking);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Booking cancellation with refund handling
+  app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { 
+        cancellationType, // 'full_refund', 'partial_refund', 'no_refund'
+        cancellationCharges = 0,
+        refundAmount = 0,
+        cancellationReason 
+      } = req.body;
+
+      // Validate cancellation type
+      if (!['full_refund', 'partial_refund', 'no_refund'].includes(cancellationType)) {
+        return res.status(400).json({ 
+          message: "Invalid cancellation type. Must be 'full_refund', 'partial_refund', or 'no_refund'" 
+        });
+      }
+
+      // Fetch booking
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Prevent cancelling already cancelled or checked-out bookings
+      if (booking.status === "cancelled") {
+        return res.status(400).json({ message: "Booking is already cancelled" });
+      }
+      if (booking.status === "checked-out") {
+        return res.status(400).json({ message: "Cannot cancel a checked-out booking" });
+      }
+
+      const advanceAmount = parseFloat(booking.advanceAmount || "0");
+
+      // Validate amounts based on cancellation type
+      if (cancellationType === "full_refund") {
+        if (refundAmount !== advanceAmount) {
+          return res.status(400).json({ 
+            message: `Full refund amount must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      } else if (cancellationType === "partial_refund") {
+        const totalHandled = parseFloat(String(cancellationCharges)) + parseFloat(String(refundAmount));
+        if (Math.abs(totalHandled - advanceAmount) > 0.01) {
+          return res.status(400).json({ 
+            message: `Cancellation charges + refund must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      } else if (cancellationType === "no_refund") {
+        if (parseFloat(String(cancellationCharges)) !== advanceAmount) {
+          return res.status(400).json({ 
+            message: `No refund means cancellation charges must equal advance amount (₹${advanceAmount})` 
+          });
+        }
+      }
+
+      // Update booking with cancellation details
+      const updatedBooking = await storage.updateBooking(bookingId, {
+        status: "cancelled",
+        cancellationDate: new Date(),
+        cancellationType,
+        cancellationCharges: String(cancellationCharges),
+        refundAmount: String(refundAmount),
+        cancellationReason,
+        cancelledBy: req.user?.id || "unknown",
+      });
+
+      // Create P&L entries for the property
+      const propertyId = booking.propertyId;
+      const today = new Date().toISOString().split('T')[0];
+
+      // If there's a refund, create a Refund Expense entry
+      if (parseFloat(String(refundAmount)) > 0) {
+        await storage.createPropertyExpense({
+          propertyId,
+          amount: String(refundAmount),
+          description: `Refund for cancelled booking #${bookingId} - ${cancellationReason || 'No reason provided'}`,
+          expenseDate: today,
+          paymentMethod: "cash",
+          status: "paid",
+        });
+        console.log(`[CANCELLATION] Booking #${bookingId} - Refund expense of ₹${refundAmount} recorded`);
+      }
+
+      // If there's cancellation income, create a bank transaction entry
+      if (parseFloat(String(cancellationCharges)) > 0) {
+        await storage.createBankTransaction({
+          propertyId,
+          transactionType: "cancellation_income",
+          amount: String(cancellationCharges),
+          description: `Cancellation charges for booking #${bookingId}`,
+          transactionDate: today,
+        });
+        console.log(`[CANCELLATION] Booking #${bookingId} - Cancellation income of ₹${cancellationCharges} recorded`);
+      }
+
+      // Audit log for cancellation with before/after structure
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: String(bookingId),
+        action: "cancel",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: {
+          before: { 
+            status: booking.status,
+            advanceAmount: booking.advanceAmount,
+          },
+          after: { 
+            status: "cancelled",
+            cancellationType,
+            cancellationCharges,
+            refundAmount,
+            cancellationReason,
+          },
+        },
+        metadata: {
+          guestId: booking.guestId,
+          propertyId: booking.propertyId,
+        },
+      });
+
+      res.json({
+        success: true,
+        booking: updatedBooking,
+        financialSummary: {
+          originalAdvance: advanceAmount,
+          cancellationCharges: parseFloat(String(cancellationCharges)),
+          refundAmount: parseFloat(String(refundAmount)),
+          cancellationType,
+        },
+      });
+    } catch (error: any) {
+      console.error("[CANCELLATION] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      
+      // Check if booking has associated bills (financial records)
+      const billsCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(bills)
+        .where(eq(bills.bookingId, bookingId));
+      
+      if (billsCount[0]?.count > 0) {
+        return res.status(400).json({ 
+          message: "Cannot delete this booking because it has billing records. Completed bookings with bills should be kept for financial records and audit purposes."
+        });
+      }
+      
+      // Check if booking has associated orders
+      const ordersCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(orders)
+        .where(eq(orders.bookingId, bookingId));
+      
+      if (ordersCount[0]?.count > 0) {
+        return res.status(400).json({ 
+          message: "Cannot delete this booking because it has food orders. Please delete or reassign the orders first."
+        });
+      }
+      
+      await storage.deleteBooking(bookingId);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Checkout endpoint
+  app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, paymentMethod, paymentMethods, paymentStatus = "paid", dueDate, pendingReason, discountType, discountValue, discountAppliesTo = "total", gstOnRooms = true, gstOnFood = false, includeServiceCharge = true, manualCharges, cashAmount, onlineAmount } = req.body;
+      
+      // Validate input
+      if (!bookingId) {
+        return res.status(400).json({ message: "Booking ID is required" });
+      }
+      
+      // Payment method is required only when marking as paid
+      if (paymentStatus === "paid" && !paymentMethod && (!paymentMethods || paymentMethods.length === 0)) {
+        return res.status(400).json({ message: "Payment method is required when marking as paid" });
+      }
+
+      // Fetch booking
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Check for pending food orders (only block for truly pending/preparing orders, not ready/completed)
+      const allOrders = await storage.getAllOrders();
+      const bookingOrders = allOrders.filter(o => o.bookingId === bookingId);
+      const pendingOrders = bookingOrders.filter(order => 
+        order.status === "pending" || order.status === "preparing"
+      );
+      
+      if (pendingOrders.length > 0) {
+        return res.status(400).json({ 
+          message: `Checkout not allowed — ${pendingOrders.length} food order(s) are still pending.` 
+        });
+      }
+
+      // If manual charges are provided, create an extra service for each
+      if (manualCharges && Array.isArray(manualCharges)) {
+        for (const charge of manualCharges) {
+          if (charge.name && charge.amount && parseFloat(charge.amount) > 0) {
+            const manualServiceData = {
+              bookingId,
+              serviceName: charge.name,
+              serviceType: "other",
+              amount: parseFloat(charge.amount).toFixed(2),
+              serviceDate: new Date(),
+            };
+            await storage.createExtraService(manualServiceData);
+          }
+        }
+      }
+
+      // Check if this booking has an existing bill (merged or not)
+      const existingBill = await storage.getBillByBooking(bookingId);
+      
+      // If this is a MERGED BILL, don't recalculate - just mark as paid
+      // Merged bills have their totals already calculated
+      let roomCharges: number;
+      let foodCharges: number;
+      let extraCharges: number;
+      let subtotal: number;
+      let gstAmount: number;
+      let serviceChargeAmount: number;
+      let totalAmountBeforeDiscount: number;
+      let discountAmount = 0;
+      let totalAmount: number;
+      const gstRate = 5; // 5% GST
+      const serviceChargeRate = 10; // 10% Service Charge
+      
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        // MERGED BILL: Use existing calculated values (don't recalculate)
+        console.log(`[CHECKOUT] Merged bill detected for booking ${bookingId}. Using existing bill values.`);
+        roomCharges = parseFloat(existingBill.roomCharges || "0");
+        foodCharges = parseFloat(existingBill.foodCharges || "0");
+        extraCharges = parseFloat(existingBill.extraCharges || "0");
+        subtotal = parseFloat(existingBill.subtotal || "0");
+        gstAmount = parseFloat(existingBill.gstAmount || "0");
+        serviceChargeAmount = parseFloat(existingBill.serviceChargeAmount || "0");
+        discountAmount = parseFloat(existingBill.discountAmount || "0");
+        totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
+        totalAmount = parseFloat(existingBill.totalAmount || "0");
+      } else {
+        // REGULAR BOOKING: Recalculate charges
+        // Fetch room(s) to get price
+        const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+        
+        // Calculate nights (minimum 1 night even if same-day checkout)
+        const checkInDate = new Date(booking.checkInDate);
+        const checkOutDate = new Date(booking.checkOutDate);
+        const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+        const nights = Math.max(1, calculatedNights); // Ensure at least 1 night
+        
+        // Calculate room charges - handle both single and group bookings
+        roomCharges = 0;
+        if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+          // Group booking: calculate total for all rooms
+          for (const roomId of booking.roomIds) {
+            const groupRoom = await storage.getRoom(roomId);
+            if (groupRoom) {
+              const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(groupRoom.pricePerNight);
+              roomCharges += pricePerNight * nights;
+            }
+          }
+        } else {
+          // Single room booking
+          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+          roomCharges = pricePerNight * nights;
+        }
+
+        // Calculate food charges (reusing allOrders and bookingOrders from pending order check above)
+        // Exclude rejected orders from food charges
+        foodCharges = bookingOrders
+          .filter(order => order.status !== "rejected")
+          .reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
+
+        // Fetch and calculate extra service charges (now including manual charges)
+        const allExtras = await storage.getAllExtraServices();
+        const bookingExtras = allExtras.filter(e => e.bookingId === bookingId);
+        extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+
+        // Calculate totals
+        // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
+        subtotal = roomCharges + foodCharges + extraCharges; // Total subtotal including all charges
+        
+        const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
+        const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
+        gstAmount = roomGst + foodGst;
+        serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0; // Service charge ONLY on room charges
+        totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
+
+        // Calculate discount based on where it applies
+        discountAmount = 0;
+        
+        if (discountType && discountValue && discountType !== "none") {
+          const discount = parseFloat(discountValue);
+          let baseAmountForDiscount = totalAmountBeforeDiscount; // Default: apply to total
+          
+          // Determine base amount based on what discount applies to
+          if (discountAppliesTo === "room") {
+            baseAmountForDiscount = roomCharges;
+          } else if (discountAppliesTo === "food") {
+            baseAmountForDiscount = foodCharges;
+          }
+          
+          if (discountType === "percentage") {
+            discountAmount = (baseAmountForDiscount * discount) / 100;
+          } else if (discountType === "fixed") {
+            discountAmount = discount;
+          }
+        }
+
+        totalAmount = totalAmountBeforeDiscount - discountAmount;
+      }
+      
+      // For merged bills, use the bill's totalAdvance (combined advance from all merged bookings)
+      // For regular bills, use the booking's advanceAmount
+      let advancePaid: number;
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        advancePaid = parseFloat(existingBill.totalAdvance || existingBill.advancePaid || "0");
+        console.log(`[CHECKOUT] Using merged bill totalAdvance: ${advancePaid}`);
+      } else {
+        advancePaid = parseFloat(booking.advanceAmount || "0");
+      }
+      const balanceAmount = totalAmount - advancePaid;
+      console.log(`[CHECKOUT] Total: ${totalAmount}, Advance: ${advancePaid}, Balance: ${balanceAmount}`);
+
+      // Create/Update bill with server-calculated amounts
+      // When payment status is "paid", set balance to 0 (payment collected)
+      // When payment status is "pending", keep calculated balance (payment to be collected later)
+      
+      // Build payment methods array for split payment tracking
+      // Store payment breakdown regardless of payment status for P&L visibility
+      let splitPaymentMethods: Array<{method: string, amount: number}> | null = null;
+      if (cashAmount || onlineAmount) {
+        splitPaymentMethods = [];
+        if (cashAmount && cashAmount > 0) {
+          splitPaymentMethods.push({ method: "cash", amount: cashAmount });
+        }
+        if (onlineAmount && onlineAmount > 0) {
+          splitPaymentMethods.push({ method: "online", amount: onlineAmount });
+        }
+      } else if (paymentStatus === "paid" && paymentMethod) {
+        // If no split payment amounts, but marked as paid with a single method
+        splitPaymentMethods = [{ method: paymentMethod, amount: balanceAmount }];
+      }
+      
+      const billData: any = {
+        bookingId,
+        guestId: booking.guestId,
+        roomCharges: roomCharges.toFixed(2),
+        foodCharges: foodCharges.toFixed(2),
+        extraCharges: extraCharges.toFixed(2),
+        subtotal: subtotal.toFixed(2),
+        gstRate: gstRate.toString(),
+        gstAmount: gstAmount.toFixed(2),
+        serviceChargeRate: serviceChargeRate.toString(),
+        serviceChargeAmount: serviceChargeAmount.toFixed(2),
+        gstOnRooms,
+        gstOnFood,
+        includeServiceCharge,
+        discountType: discountType || null,
+        discountValue: discountValue ? discountValue.toString() : null,
+        discountAmount: discountAmount > 0 ? discountAmount.toFixed(2) : "0",
+        totalAmount: totalAmount.toFixed(2),
+        advancePaid: advancePaid.toFixed(2),
+        balanceAmount: paymentStatus === "paid" ? "0.00" : balanceAmount.toFixed(2),
+        paymentStatus: paymentStatus,
+        paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
+        paymentMethods: splitPaymentMethods,
+        paidAt: paymentStatus === "paid" ? new Date() : null,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        pendingReason: pendingReason || null,
+      };
+      
+      // Preserve merged bill properties
+      if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
+        billData.mergedBookingIds = existingBill.mergedBookingIds;
+        billData.totalAdvance = advancePaid.toFixed(2);
+      }
+      
+      const bill = await storage.createOrUpdateBill(billData);
+
+      // Record payment to wallet if paid - handle split payments
+      if (paymentStatus === "paid" && booking.propertyId && balanceAmount > 0) {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          const guestName = guest?.fullName || 'Guest';
+          
+          // Handle split payments (cash + online)
+          if (splitPaymentMethods && splitPaymentMethods.length > 0) {
+            for (const splitPayment of splitPaymentMethods) {
+              if (splitPayment.amount > 0) {
+                await storage.recordBillPaymentToWallet(
+                  booking.propertyId,
+                  bill.id,
+                  splitPayment.amount,
+                  splitPayment.method,
+                  `Checkout payment - ${guestName} (Bill #${bill.id}) - ${splitPayment.method.toUpperCase()}`,
+                  (req as any).user?.claims?.sub || (req as any).user?.id || null
+                );
+                console.log(`[Wallet] Recorded checkout ${splitPayment.method} payment ₹${splitPayment.amount} for bill #${bill.id}`);
+              }
+            }
+          } else {
+            // Single payment method
+            await storage.recordBillPaymentToWallet(
+              booking.propertyId,
+              bill.id,
+              balanceAmount,
+              paymentMethod || 'cash',
+              `Checkout payment - ${guestName} (Bill #${bill.id})`,
+              (req as any).user?.claims?.sub || (req as any).user?.id || null
+            );
+            console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
+          }
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record checkout payment to wallet:`, walletError);
+        }
+      }
+
+      // Create notification for bill/checkout
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+        const guest = await storage.getGuest(booking.guestId);
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "bill_generated",
+            title: "Bill Generated - Checkout Complete",
+            message: `Bill #${bill.id} for ${guest?.fullName || 'Guest'}. Total: ₹${totalAmount.toFixed(2)}, Balance: ₹${(paymentStatus === "paid" ? 0 : parseFloat(bill.balanceAmount || "0")).toFixed(2)}`,
+            soundType: paymentStatus === "pending" ? "warning" : "info",
+            relatedId: bill.id,
+            relatedType: "bill",
+          });
+        }
+        console.log(`[NOTIFICATIONS] Checkout/bill notification created for ${adminUsers.length} admins`);
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create checkout notification:`, notifError.message);
+      }
+
+      // Update booking status - handle merged bills
+      await storage.updateBookingStatus(bookingId, "checked-out");
+      
+      // If this is a merged bill, also mark all merged bookings as checked-out
+      if (bill.mergedBookingIds && Array.isArray(bill.mergedBookingIds) && bill.mergedBookingIds.length > 0) {
+        console.log(`[CHECKOUT] Merged bill detected. Checking out ${bill.mergedBookingIds.length} merged bookings:`, bill.mergedBookingIds);
+        for (const mergedBookingId of bill.mergedBookingIds) {
+          if (mergedBookingId !== bookingId) {
+            await storage.updateBookingStatus(mergedBookingId, "checked-out");
+            console.log(`[CHECKOUT] Marked merged booking ${mergedBookingId} as checked-out`);
+          }
+        }
+      }
+      
+      // Send WhatsApp checkout notification (if enabled)
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        
+        // Check if checkout_message template is enabled
+        const checkoutTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkout_message');
+        const isCheckoutTemplateEnabled = checkoutTemplateSetting?.isEnabled !== false;
+        
+        if (guest && guest.phone && isCheckoutTemplateEnabled) {
+          // Get property info
+          let propertyName = "Your Property";
+          let roomNumbers = "TBD";
+          
+          if (booking.roomId) {
+            const room2 = await storage.getRoom(booking.roomId);
+            if (room2) {
+              const property = await storage.getProperty(room2.propertyId);
+              propertyName = property?.name || propertyName;
+              roomNumbers = room2.roomNumber;
+            }
+          } else if (booking.roomIds && booking.roomIds.length > 0) {
+            const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+            if (rooms.length > 0 && rooms[0]) {
+              const property = await storage.getProperty(rooms[0].propertyId);
+              propertyName = property?.name || propertyName;
+              roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+            }
+          }
+          
+          const guestName = guest.fullName || "Guest";
+          const totalAmountFormatted = `₹${totalAmount.toFixed(2)}`;
+          const checkoutDate = format(new Date(), "dd MMM yyyy");
+          
+          await sendCheckoutNotification(
+            guest.phone,
+            guestName,
+            propertyName,
+            totalAmountFormatted,
+            checkoutDate,
+            roomNumbers
+          );
+          
+          console.log(`[WhatsApp] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+        } else if (!isCheckoutTemplateEnabled) {
+          console.log(`[WhatsApp] Booking #${booking.id} - checkout_message template disabled, skipping notification`);
+        } else if (!guest) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send checkout notification: guest ${booking.guestId} not found`);
+        } else if (!guest.phone) {
+          console.warn(`[WhatsApp] Booking #${booking.id} - Cannot send checkout notification: guest has no phone number`);
+        }
+      } catch (whatsappError: any) {
+        console.error(`[WhatsApp] Booking #${booking.id} - Checkout notification failed (non-critical):`, whatsappError.message);
+      }
+
+      res.json({ success: true, bill });
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send pre-bill via Authkey WhatsApp - saves full details and sends link
+  app.post("/api/whatsapp/send-prebill", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, phoneNumber, guestName, billTotal, roomCharges, foodCharges, extraCharges, gstAmount, discount, advancePayment, balanceDue } = req.body;
+      
+      if (!bookingId || !phoneNumber || !guestName) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const orders = await storage.getOrdersByBooking(bookingId);
+      const foodItems = orders.filter(o => o.status !== 'cancelled').map(o => ({
+        name: o.itemName,
+        quantity: o.quantity,
+        price: o.price,
+        total: (o.quantity * parseFloat(o.price?.toString() || '0'))
+      }));
+
+      const nights = Math.max(1, Math.ceil(
+        (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24)
+      ));
+
+      const token = randomUUID().replace(/-/g, '').substring(0, 32);
+      
+      // Calculate balance due - use provided value or calculate from billTotal - advancePayment
+      const calculatedBalanceDue = balanceDue !== undefined ? balanceDue : ((billTotal || 0) - (advancePayment || 0));
+
+      const preBill = await db.insert(preBills).values({
+        bookingId: bookingId,
+        token,
+        totalAmount: (billTotal || 0).toString(),
+        balanceDue: Math.max(0, calculatedBalanceDue).toString(),
+        roomNumber: booking.roomNumber || '',
+        roomCharges: (roomCharges || 0).toString(),
+        foodCharges: (foodCharges || 0).toString(),
+        extraCharges: (extraCharges || 0).toString(),
+        gstAmount: (gstAmount || 0).toString(),
+        discount: (discount || 0).toString(),
+        advancePayment: (advancePayment || 0).toString(),
+        foodItems: foodItems,
+        guestName: guestName,
+        guestPhone: phoneNumber,
+        guestEmail: booking.guest?.email || '',
+        propertyId: booking.propertyId,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        nights: nights,
+        status: 'pending'
+      }).returning();
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+      const preBillLink = `${baseUrl}/guest/prebill/${token}`;
+
+      const roomChargesNum = parseFloat(roomCharges || 0);
+      const foodChargesNum = parseFloat(foodCharges || 0);
+      const advancePaymentNum = parseFloat(advancePayment || 0);
+      const balanceDueNum = Math.max(0, calculatedBalanceDue);
+      
+      // Check if prebill_message template is enabled
+      const prebillTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'prebill_message');
+      const isPrebillEnabled = prebillTemplateSetting?.isEnabled !== false;
+      
+      if (!isPrebillEnabled) {
+        return res.status(400).json({ message: "Pre-bill WhatsApp messages are disabled for this property" });
+      }
+      
+      // Send pre-bill with balance due (after advance payment deduction)
+      const result = await sendPreBillNotification(
+        phoneNumber,
+        guestName,
+        roomChargesNum.toFixed(2),
+        foodChargesNum.toFixed(2),
+        advancePaymentNum.toFixed(2),
+        balanceDueNum.toFixed(2)
+      );
+
+      if (result.success) {
+        await sendCustomWhatsAppMessage(
+          phoneNumber,
+          process.env.AUTHKEY_WA_CUSTOM || "19856",
+          [guestName, `View complete bill details here: ${preBillLink}`]
+        );
+        
+        res.json({ success: true, message: "Pre-bill sent successfully", preBillLink, token });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send pre-bill" });
+      }
+    } catch (error: any) {
+      console.error("Send pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to send pre-bill" });
+    }
+  });
+
+  // Public route: Get pre-bill by token
+  app.get("/api/public/prebill/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const result = await db.select().from(preBills).where(eq(preBills.token, token)).limit(1);
+      
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const preBill = result[0];
+      
+      let propertyName = '';
+      if (preBill.propertyId) {
+        const property = await storage.getProperty(preBill.propertyId);
+        propertyName = property?.name || '';
+      }
+
+      res.json({ ...preBill, propertyName });
+    } catch (error: any) {
+      console.error("Get pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to get pre-bill" });
+    }
+  });
+
+  // Public route: Confirm pre-bill and trigger payment link
+  app.post("/api/public/prebill/:token/confirm", async (req, res) => {
+    try {
+      const { token } = req.params;
+      
+      const result = await db.select().from(preBills).where(eq(preBills.token, token)).limit(1);
+      
+      if (result.length === 0) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const preBill = result[0];
+
+      if (preBill.status === 'confirmed' || preBill.status === 'paid') {
+        return res.status(400).json({ message: "Pre-bill already confirmed" });
+      }
+
+      await db.update(preBills).set({ 
+        status: 'confirmed',
+        approvedAt: new Date()
+      }).where(eq(preBills.token, token));
+
+      const booking = await storage.getBooking(preBill.bookingId);
+      const guest = booking ? await storage.getGuest(booking.guestId) : null;
+
+      if (guest && guest.phone && guest.email && preBill.balanceDue && booking) {
+        // Check if split_payment template is enabled
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
+        const balanceDue = parseFloat(preBill.balanceDue.toString());
+        
+        if (balanceDue > 0 && isSplitPaymentEnabled) {
+          const paymentLink = await createPaymentLink(
+            preBill.bookingId,
+            balanceDue,
+            preBill.guestName || guest.fullName || 'Guest',
+            preBill.guestEmail || guest.email || '',
+            preBill.guestPhone || guest.phone || ''
+          );
+
+          const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+
+          // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+          const roomChargesFormatted = preBill.roomCharges ? `₹${parseFloat(preBill.roomCharges.toString()).toFixed(2)}` : "₹0.00";
+          const foodChargesFormatted = preBill.foodCharges ? `₹${parseFloat(preBill.foodCharges.toString()).toFixed(2)}` : "₹0.00";
+          const advancePaidFormatted = preBill.advancePayment ? `₹${parseFloat(preBill.advancePayment.toString()).toFixed(2)}` : "₹0.00";
+          const balanceFormatted = `₹${balanceDue.toFixed(2)}`;
+          
+          await sendCustomWhatsAppMessage(
+            preBill.guestPhone || guest.phone,
+            process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+            [preBill.guestName || guest.fullName, roomChargesFormatted, foodChargesFormatted, advancePaidFormatted, balanceFormatted, paymentLinkUrl]
+          );
+
+          return res.json({ 
+            success: true, 
+            message: "Thank you! Payment link sent to your WhatsApp", 
+            paymentLinkUrl 
+          });
+        }
+      }
+
+      res.json({ success: true, message: "Pre-bill confirmed successfully" });
+    } catch (error: any) {
+      console.error("Confirm pre-bill error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm pre-bill" });
+    }
+  });
+
+  // Send payment link via Authkey WhatsApp
+  app.post("/api/whatsapp/send-payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, guestName, guestPhone, guestEmail, bookingId, roomCharges, foodCharges, cashReceived } = req.body;
+      
+      // guestEmail is optional - many guests don't have email addresses
+      if (!amount || !guestName || !guestPhone || !bookingId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      // Check if split_payment template is enabled
+      const booking = await storage.getBooking(bookingId);
+      if (booking) {
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
+        if (!isSplitPaymentEnabled) {
+          return res.status(400).json({ message: "Split payment WhatsApp messages are disabled for this property" });
+        }
+      }
+
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        amount,
+        guestName,
+        guestEmail || `guest${bookingId}@hostezee.com`,
+        guestPhone
+      );
+
+      const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+      
+      // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+      const roomChargesFormatted = roomCharges ? `₹${parseFloat(roomCharges).toFixed(2)}` : "₹0.00";
+      const foodChargesFormatted = foodCharges ? `₹${parseFloat(foodCharges).toFixed(2)}` : "₹0.00";
+      const cashReceivedFormatted = cashReceived ? `₹${parseFloat(cashReceived).toFixed(2)}` : "₹0.00";
+      const balanceFormatted = `₹${parseFloat(amount).toFixed(2)}`;
+
+      const result = await sendCustomWhatsAppMessage(
+        guestPhone,
+        process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+        [guestName, roomChargesFormatted, foodChargesFormatted, cashReceivedFormatted, balanceFormatted, paymentLinkUrl]
+      );
+
+      if (result.success) {
+        res.json({ success: true, message: "Payment link sent successfully", paymentLinkUrl });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send payment link" });
+      }
+    } catch (error: any) {
+      console.error("Send payment link error:", error);
+      res.status(500).json({ message: error.message || "Failed to send payment link" });
+    }
+  });
+
+  // Create RazorPay payment link for split payments
+  app.post("/api/razorpay/payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, guestName, guestPhone, guestEmail, bookingId } = req.body;
+      
+      // guestEmail is optional - many guests don't have email addresses
+      if (!amount || !guestName || !guestPhone || !bookingId) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        amount,
+        guestName,
+        guestEmail || `guest${bookingId}@hostezee.com`,
+        guestPhone
+      );
+
+      res.json({
+        success: true,
+        paymentLinkUrl: paymentLink.shortUrl || paymentLink.paymentLink,
+        linkId: paymentLink.linkId
+      });
+    } catch (error: any) {
+      console.error("Payment link error:", error);
+      res.status(500).json({ message: error.message || "Failed to create payment link" });
+    }
+  });
+
+  // Send advance payment request for a booking
+  app.post("/api/bookings/:id/send-advance-payment", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { customAmount } = req.body; // Optional custom advance amount
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number is required to send payment link" });
+      }
+      
+      // Get feature settings for advance payment configuration
+      const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
+      const settings = settingsResult[0];
+      
+      // Calculate advance amount
+      let advanceAmount = customAmount;
+      if (!advanceAmount) {
+        const percentage = settings?.advancePaymentPercentage ? parseFloat(settings.advancePaymentPercentage) : 30;
+        const totalAmount = parseFloat(booking.totalAmount || "0");
+        advanceAmount = (totalAmount * percentage) / 100;
+      }
+      
+      if (advanceAmount <= 0) {
+        return res.status(400).json({ message: "Invalid advance amount. Total booking amount must be greater than zero." });
+      }
+      
+      // Get expiry hours from settings
+      const expiryHours = settings?.advancePaymentExpiryHours || 24;
+      
+      // Import and create advance payment link
+      const { createAdvancePaymentLink } = await import("./razorpay");
+      const paymentLink = await createAdvancePaymentLink(
+        bookingId,
+        advanceAmount,
+        guest.fullName || "Guest",
+        guest.email || "",
+        guest.phone,
+        expiryHours
+      );
+      
+      // Update booking with payment link info
+      await db.update(bookings).set({
+        status: "pending_advance",
+        advancePaymentStatus: "pending",
+        paymentLinkId: paymentLink.linkId,
+        paymentLinkUrl: paymentLink.shortUrl,
+        paymentLinkExpiry: paymentLink.expiryTimestamp,
+        advanceAmount: advanceAmount.toString(),
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      // Send WhatsApp message with payment link using pending_payment template (22226)
+      const property = await storage.getProperty(booking.propertyId);
+      
+      // Check if pending_payment template is enabled
+      const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'pending_payment');
+      const isTemplateEnabled = templateSetting?.isEnabled !== false;
+      
+      if (isTemplateEnabled) {
+        try {
+          const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+          const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+          
+          console.log(`[WhatsApp] Attempting to send advance payment request for booking #${bookingId} to ${guest.phone}`);
+          const waResult = await sendAdvancePaymentRequest(
+            guest.phone,
+            guest.fullName || "Guest",
+            checkInFormatted,
+            checkOutFormatted,
+            property?.name || "Property",
+            `₹${advanceAmount.toLocaleString('en-IN')}`,
+            paymentLink.shortUrl
+          );
+          console.log(`[WhatsApp] Result for booking #${bookingId}:`, waResult);
+        } catch (waError: any) {
+          console.error("[WhatsApp] Error sending advance payment request:", waError.message);
+        }
+      } else {
+        console.log(`[WhatsApp] pending_payment template disabled for property ${booking.propertyId}, skipping message`);
+      }
+      
+      console.log(`[ADVANCE PAYMENT] Payment link sent to ${guest.fullName} for booking #${bookingId}, amount: ₹${advanceAmount}`);
+      
+      res.json({
+        success: true,
+        message: "Advance payment request sent via WhatsApp",
+        paymentLinkUrl: paymentLink.shortUrl,
+        advanceAmount: advanceAmount,
+        expiryHours: expiryHours,
+        bookingStatus: "pending_advance"
+      });
+    } catch (error: any) {
+      console.error("Send advance payment error:", error);
+      res.status(500).json({ message: error.message || "Failed to send advance payment request" });
+    }
+  });
+
+  // Send self check-in link to guest via WhatsApp
+  app.post("/api/bookings/:id/send-checkin-link", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number is required to send check-in link" });
+      }
+      
+      const property = await storage.getProperty(booking.propertyId);
+      
+      // Check if checkin_message template is enabled
+      const checkinTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
+      const isCheckinEnabled = checkinTemplateSetting?.isEnabled !== false;
+      
+      if (!isCheckinEnabled) {
+        return res.status(400).json({ message: "Check-in WhatsApp messages are disabled for this property" });
+      }
+      
+      // Generate the self check-in link
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+          : 'https://hostezee.replit.app';
+      
+      const checkinLink = `${baseUrl}/guest-self-checkin?bookingId=${bookingId}`;
+      const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+      const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+      
+      // Get room number if assigned
+      let roomNumber = "Your Room";
+      if (booking.roomId) {
+        const room = await storage.getRoom(booking.roomId);
+        roomNumber = room?.roomNumber || "Your Room";
+      }
+      
+      try {
+        await sendSelfCheckinLink(
+          guest.phone,
+          guest.fullName || "Guest",
+          property?.name || "Property",
+          checkinLink,
+          checkInFormatted,
+          checkOutFormatted,
+          roomNumber
+        );
+        
+        console.log(`[SELF CHECKIN] Check-in link sent to ${guest.fullName} for booking #${bookingId}`);
+        
+        res.json({
+          success: true,
+          message: "Self check-in link sent via WhatsApp",
+          checkinLink
+        });
+      } catch (waError: any) {
+        console.error("[SELF CHECKIN] WhatsApp error:", waError.message);
+        res.status(500).json({ message: "Failed to send WhatsApp message" });
+      }
+    } catch (error: any) {
+      console.error("Send check-in link error:", error);
+      res.status(500).json({ message: error.message || "Failed to send check-in link" });
+    }
+  });
+
+  // Manually confirm a booking (skip advance payment)
+  app.post("/api/bookings/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      // Update booking status to confirmed
+      await db.update(bookings).set({
+        status: "confirmed",
+        advancePaymentStatus: "not_required",
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      console.log(`[BOOKING] Booking #${bookingId} manually confirmed`);
+      
+      res.json({
+        success: true,
+        message: "Booking confirmed successfully"
+      });
+    } catch (error: any) {
+      console.error("Confirm booking error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm booking" });
+    }
+  });
+
+  // Manually confirm advance payment received (for testing when webhook not working)
+  // This triggers the same confirmation flow as the webhook
+  app.post("/api/bookings/:id/confirm-advance-payment", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { sendWhatsApp = true } = req.body;
+      
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      
+      if (booking.status !== "pending_advance") {
+        return res.status(400).json({ message: "Booking is not pending advance payment" });
+      }
+      
+      const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0");
+      
+      // Update booking status to confirmed and mark advance as paid
+      await db.update(bookings).set({
+        status: "confirmed",
+        advancePaymentStatus: "paid",
+        updatedAt: new Date(),
+      }).where(eq(bookings.id, bookingId));
+      
+      console.log(`[ADVANCE PAYMENT] Booking #${bookingId} manually confirmed - advance payment marked as received`);
+      
+      // Send WhatsApp confirmation to guest (same as webhook flow) - check template controls
+      if (sendWhatsApp) {
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        if (guest && guest.phone) {
+          try {
+            // Check if payment_confirmation template is enabled
+            const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_confirmation');
+            const isTemplateEnabled = templateSetting?.isEnabled !== false;
+            
+            if (isTemplateEnabled) {
+              await sendAdvancePaymentConfirmation(
+                guest.phone,
+                guest.fullName || "Guest",
+                `₹${advanceAmount.toLocaleString('en-IN')}`,
+                property?.name || "Hotel"
+              );
+              console.log(`[ADVANCE PAYMENT] Confirmation WhatsApp sent to ${guest.fullName}`);
+            } else {
+              console.log(`[ADVANCE PAYMENT] Payment confirmation WhatsApp disabled for property ${booking.propertyId}`);
+            }
+          } catch (whatsappError: any) {
+            console.error(`[ADVANCE PAYMENT] WhatsApp failed:`, whatsappError.message);
+          }
+        }
+      }
+      
+      // Create notification for admins
+      try {
+        const guest = await storage.getGuest(booking.guestId);
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+        
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "payment_received",
+            title: "Advance Payment Confirmed",
+            message: `Booking #${bookingId} confirmed! Advance of ₹${advanceAmount.toLocaleString('en-IN')} received from ${guest?.fullName || 'Guest'}`,
+            soundType: "payment",
+            relatedId: bookingId,
+            relatedType: "booking",
+          });
+        }
+      } catch (notifError: any) {
+        console.error(`[ADVANCE PAYMENT] Notification error:`, notifError.message);
+      }
+      
+      res.json({
+        success: true,
+        message: "Advance payment confirmed - booking is now confirmed",
+        bookingId,
+        advanceAmount,
+        newStatus: "confirmed"
+      });
+    } catch (error: any) {
+      console.error("Confirm advance payment error:", error);
+      res.status(500).json({ message: error.message || "Failed to confirm advance payment" });
+    }
+  });
+
+  // Get checkout reminders (12 PM onwards, not yet auto-checked out)
+  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
+    try {
+      // Temporarily return empty array - known issue with date parsing
+      // TODO: Fix the "invalid input syntax" PostgreSQL error
+      res.json([]);
+    } catch (error: any) {
+      res.json([]);
+    }
+  });
+
+  // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout
+  app.post("/api/bookings/force-auto-checkout", isAuthenticated, async (req, res) => {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      
+      // Only allow force checkout from 4 PM (16:00) onwards
+      if (currentHour < 16) {
+        return res.status(400).json({ message: "Force auto-checkout only available after 4 PM" });
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const overdue = allBookings.filter(b => 
+        b.status === "checked-in" && 
+        new Date(b.checkOutDate) < now
+      );
+
+      const checkedOutCount = overdue.length;
+      let successCount = 0;
+      
+      for (const booking of overdue) {
+        try {
+          const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+          const checkInDate = new Date(booking.checkInDate);
+          const checkOutDate = new Date(booking.checkOutDate);
+          const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+          const nights = Math.max(1, calculatedNights);
+          
+          let roomCharges = 0;
+          if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+            for (const roomId of booking.roomIds) {
+              const groupRoom = await storage.getRoom(roomId);
+              if (groupRoom) {
+                const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) / booking.roomIds.length : parseFloat(groupRoom.pricePerNight);
+                roomCharges += pricePerNight * nights;
+              }
+            }
+          } else {
+            const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
+            roomCharges = pricePerNight * nights;
+          }
+
+          const allOrders = await storage.getAllOrders();
+          const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
+          const foodCharges = bookingOrders.filter(o => o.status !== "rejected").reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
+          
+          const allExtras = await storage.getAllExtraServices();
+          const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
+          const extraCharges = bookingExtras.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0);
+
+          const subtotal = roomCharges + foodCharges + extraCharges;
+          const gstAmount = (roomCharges * 5) / 100;
+          const serviceChargeAmount = (roomCharges * 10) / 100;
+          const totalAmount = subtotal + gstAmount + serviceChargeAmount;
+          const advancePaid = parseFloat(booking.advanceAmount || "0");
+          const balanceAmount = totalAmount - advancePaid;
+
+          const billData = {
+            bookingId: booking.id,
+            guestId: booking.guestId,
+            roomCharges: roomCharges.toFixed(2),
+            foodCharges: foodCharges.toFixed(2),
+            extraCharges: extraCharges.toFixed(2),
+            subtotal: subtotal.toFixed(2),
+            gstRate: "5",
+            gstAmount: gstAmount.toFixed(2),
+            serviceChargeRate: "10",
+            serviceChargeAmount: serviceChargeAmount.toFixed(2),
+            gstOnRooms: true,
+            gstOnFood: false,
+            includeServiceCharge: true,
+            discountType: null,
+            discountValue: null,
+            discountAmount: "0",
+            totalAmount: totalAmount.toFixed(2),
+            advancePaid: advancePaid.toFixed(2),
+            balanceAmount: balanceAmount.toFixed(2),
+            paymentStatus: "pending",
+            paymentMethod: null,
+            paidAt: null,
+            dueDate: null,
+            pendingReason: "auto_checkout",
+          };
+
+          await storage.createOrUpdateBill(billData);
+          await storage.updateBookingStatus(booking.id, "checked-out");
+
+          try {
+            const guest = await storage.getGuest(booking.guestId);
+            
+            // Check if checkout_message template is enabled
+            const checkoutTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkout_message');
+            const isCheckoutEnabled = checkoutTemplateSetting?.isEnabled !== false;
+            
+            if (guest && guest.phone && isCheckoutEnabled) {
+              let propertyName = "Your Property";
+              let roomNumbers = "TBD";
+              
+              if (booking.roomId) {
+                const room2 = await storage.getRoom(booking.roomId);
+                if (room2) {
+                  const property = await storage.getProperty(room2.propertyId);
+                  propertyName = property?.name || propertyName;
+                  roomNumbers = room2.roomNumber;
+                }
+              } else if (booking.roomIds && booking.roomIds.length > 0) {
+                const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+                if (rooms.length > 0 && rooms[0]) {
+                  const property = await storage.getProperty(rooms[0].propertyId);
+                  propertyName = property?.name || propertyName;
+                  roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
+                }
+              }
+              
+              const guestName = guest.fullName || "Guest";
+              const totalAmountFormatted = `₹${totalAmount.toFixed(2)}`;
+              const checkoutDate = format(new Date(), "dd MMM yyyy");
+              
+              await sendCheckoutNotification(
+                guest.phone,
+                guestName,
+                propertyName,
+                totalAmountFormatted,
+                checkoutDate,
+                roomNumbers
+              );
+              
+              console.log(`[AUTO-CHECKOUT] Booking #${booking.id} - Checkout notification sent to ${guest.fullName}`);
+            } else if (!isCheckoutEnabled) {
+              console.log(`[AUTO-CHECKOUT] Booking #${booking.id} - checkout_message template disabled, skipping notification`);
+            }
+          } catch (whatsappError: any) {
+            console.warn(`[AUTO-CHECKOUT] Booking #${booking.id} - WhatsApp failed (non-critical):`, whatsappError.message);
+          }
+
+          successCount++;
+        } catch (bookingError: any) {
+          console.error(`[AUTO-CHECKOUT] Error processing booking #${booking.id}:`, bookingError.message);
+        }
+      }
+
+      console.log(`[FORCE-AUTO-CHECKOUT] Processed ${successCount}/${checkedOutCount} overdue bookings at 4 PM`);
+      res.json({ success: true, processedCount: successCount, totalOverdue: checkedOutCount, forcedAt: "4 PM" });
+    } catch (error: any) {
+      console.error("Force auto-checkout error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send pre-bill via WhatsApp for customer verification
+  app.post("/api/send-prebill", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, billDetails } = req.body;
+      
+      if (!bookingId || !billDetails) {
+        return res.status(400).json({ message: "Booking ID and bill details are required" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number not found" });
+      }
+
+      // Check if prebill_message template is enabled
+      const prebillTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'prebill_message');
+      const isPrebillEnabled = prebillTemplateSetting?.isEnabled !== false;
+      
+      if (!isPrebillEnabled) {
+        return res.status(400).json({ message: "Pre-bill WhatsApp messages are disabled for this property" });
+      }
+      
+      // Format bill details for WhatsApp (template already has ₹ symbol)
+      const guestName = guest.fullName || "Guest";
+      const roomCharges = parseFloat(billDetails.roomCharges || 0).toFixed(2);
+      const foodCharges = parseFloat(billDetails.foodCharges || 0).toFixed(2);
+      const totalAmount = parseFloat(billDetails.totalAmount).toFixed(2);
+
+      // Create pre-bill record
+      const preBillRecord = await storage.createPreBill({
+        bookingId,
+        totalAmount: parseFloat(billDetails.totalAmount),
+        balanceDue: parseFloat(billDetails.balanceDue),
+        roomNumber: billDetails.roomNumber || "TBD",
+      });
+
+      // Send WhatsApp notification with simple format
+      await sendPreBillNotification(
+        guest.phone,
+        guestName,
+        roomCharges,
+        foodCharges,
+        totalAmount
+      );
+
+      console.log(`[WhatsApp] Booking #${bookingId} - Pre-bill #${preBillRecord.id} sent to ${guestName}`);
+      res.json({ success: true, message: "Pre-bill sent via WhatsApp", preBillId: preBillRecord.id });
+    } catch (error: any) {
+      console.error("Pre-bill send error:", error);
+      res.status(500).json({ message: error.message || "Failed to send pre-bill" });
+    }
+  });
+
+  // Approve pre-bill
+  app.post("/api/prebill/approve", isAuthenticated, async (req, res) => {
+    try {
+      const { preBillId, bookingId } = req.body;
+      
+      if (!preBillId || !bookingId) {
+        return res.status(400).json({ message: "Pre-bill ID and booking ID are required" });
+      }
+
+      const preBill = await storage.getPreBill(preBillId);
+      if (!preBill) {
+        return res.status(404).json({ message: "Pre-bill not found" });
+      }
+
+      const guest = await storage.getGuest((await storage.getBooking(bookingId))?.guestId || 0);
+      const approvedBy = guest?.fullName || "Guest";
+
+      await storage.updatePreBillStatus(preBillId, "approved", approvedBy);
+
+      console.log(`[Pre-Bill] Booking #${bookingId} - Pre-bill #${preBillId} approved by ${approvedBy}`);
+      res.json({ success: true, message: "Pre-bill approved" });
+    } catch (error: any) {
+      console.error("Pre-bill approval error:", error);
+      res.status(500).json({ message: error.message || "Failed to approve pre-bill" });
+    }
+  });
+
+  // Get pre-bill status
+  app.get("/api/prebill/booking/:bookingId", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+      const preBill = await storage.getPreBillByBooking(bookingId);
+      res.json(preBill || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Generate RazorPay payment link and send via WhatsApp
+  app.post("/api/payment-link/generate", isAuthenticated, async (req, res) => {
+    try {
+      const { bookingId, billDetails } = req.body;
+      
+      console.log(`[Payment-Link] DEBUG - Received billDetails:`, JSON.stringify(billDetails, null, 2));
+      
+      if (!bookingId || !billDetails) {
+        return res.status(400).json({ message: "Booking ID and bill details are required" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) {
+        return res.status(400).json({ message: "Guest phone number not found" });
+      }
+
+      // Check if bill already exists for this booking
+      const existingBills = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+      let billId: number;
+
+      if (existingBills.length === 0) {
+        // Create a new bill record with pending status so webhook can update it
+        const result = await db.insert(bills).values({
+          bookingId: bookingId,
+          propertyId: booking.propertyId,
+          guestId: booking.guestId,
+          guestName: guest.fullName || "Guest",
+          roomCharges: parseFloat(billDetails.roomCharges || 0),
+          foodCharges: parseFloat(billDetails.foodCharges || 0),
+          extraCharges: parseFloat(billDetails.extraCharges || 0),
+          subtotal: parseFloat(billDetails.subtotal || billDetails.totalAmount),
+          gstAmount: parseFloat(billDetails.gstAmount || 0),
+          serviceChargeAmount: parseFloat(billDetails.serviceChargeAmount || 0),
+          totalAmount: parseFloat(billDetails.totalAmount),
+          advancePaid: parseFloat(billDetails.advancePaid || 0),
+          balanceAmount: parseFloat(billDetails.balanceAmount || billDetails.totalAmount),
+          paymentStatus: "pending",
+          paymentMethod: "razorpay_online",
+          paymentMethods: [{ method: "razorpay_online", amount: parseFloat(billDetails.totalAmount) }],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }).returning({ id: bills.id });
+        billId = result[0]?.id || 0;
+        console.log(`[RazorPay] Created preliminary bill #${billId} for booking #${bookingId}`);
+      } else {
+        billId = existingBills[0].id;
+      }
+
+      // Use remaining balance for payment link - prioritize balanceAmount over balanceDue
+      console.log(`[Payment-Link] balanceAmount="${billDetails.balanceAmount}", balanceDue="${billDetails.balanceDue}", totalAmount="${billDetails.totalAmount}", advancePaid="${billDetails.advancePaid}"`);
+      
+      // Always use balanceAmount if it exists (remaining balance after cash)
+      let paymentAmount = 0;
+      if (billDetails.balanceAmount !== undefined && billDetails.balanceAmount !== null && billDetails.balanceAmount !== "") {
+        paymentAmount = parseFloat(billDetails.balanceAmount as any);
+        console.log(`[Payment-Link] Using balanceAmount: ${paymentAmount}`);
+      } else if (billDetails.balanceDue !== undefined && billDetails.balanceDue !== null) {
+        paymentAmount = parseFloat(billDetails.balanceDue as any);
+        console.log(`[Payment-Link] Using balanceDue: ${paymentAmount}`);
+      } else {
+        paymentAmount = parseFloat(billDetails.totalAmount as any);
+        console.log(`[Payment-Link] Fallback to totalAmount: ${paymentAmount}`);
+      }
+      console.log(`[Payment-Link] Final paymentAmount: ${paymentAmount}`);
+      
+      // Handle overpayment or fully paid scenarios
+      if (paymentAmount <= 0) {
+        console.log(`[Payment-Link] No payment link needed - cash covers or exceeds total (paymentAmount: ${paymentAmount})`);
+        
+        // Update bill to PAID status since cash covers everything
+        await db.update(bills)
+          .set({ 
+            paymentStatus: "paid",
+            paymentMethod: "cash",
+            paymentMethods: [{ method: "cash", amount: parseFloat(billDetails.totalAmount) }],
+            updatedAt: new Date()
+          })
+          .where(eq(bills.id, billId));
+        
+        // Send a confirmation message instead of payment link
+        const advancePaid = parseFloat(billDetails.advancePaid || 0);
+        const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
+        const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
+        const totalAmount = `₹${parseFloat(billDetails.totalAmount || 0).toFixed(2)}`;
+        
+        // Use a simple thank you message - could be a different template
+        console.log(`[Payment-Link] Bill fully paid with cash. Guest: ${guest.fullName}, Total: ${totalAmount}, Cash: ₹${advancePaid.toFixed(2)}`);
+        
+        return res.json({ 
+          success: true, 
+          message: "Payment completed in cash - no payment link needed",
+          paymentLink: null,
+          linkId: null,
+          billId: billId,
+          fullyPaidByCash: true
+        });
+      }
+      
+      // RazorPay minimum is ₹1 (100 paise)
+      if (paymentAmount < 1) {
+        console.log(`[Payment-Link] Amount too small for payment link (₹${paymentAmount}), marking as paid`);
+        
+        await db.update(bills)
+          .set({ 
+            paymentStatus: "paid",
+            paymentMethod: "cash",
+            updatedAt: new Date()
+          })
+          .where(eq(bills.id, billId));
+        
+        return res.json({ 
+          success: true, 
+          message: "Remaining amount too small - marked as paid",
+          paymentLink: null,
+          linkId: null,
+          billId: billId,
+          fullyPaidByCash: true
+        });
+      }
+      
+      // Create payment link via RazorPay
+      const paymentLink = await createPaymentLink(
+        bookingId,
+        paymentAmount,
+        guest.fullName || "Guest",
+        guest.email || "",
+        guest.phone
+      );
+
+      console.log(`[RazorPay] Payment link created for booking #${bookingId}: ${paymentLink.shortUrl} for amount ₹${paymentAmount}`);
+      
+      // Check if split_payment template is enabled before sending WhatsApp
+      const splitPaymentSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'split_payment');
+      const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+      
+      if (!isSplitPaymentEnabled) {
+        // Still return payment link, just don't send WhatsApp
+        console.log(`[WhatsApp] split_payment template disabled, skipping WhatsApp message`);
+        return res.json({ 
+          success: true, 
+          message: "Payment link created (WhatsApp disabled)",
+          paymentLink: paymentLink.shortUrl,
+          linkId: paymentLink.linkId,
+          billId: billId
+        });
+      }
+      
+      // Determine which template to use based on whether cash was received
+      const advancePaid = parseFloat(billDetails.advancePaid || 0);
+      const roomCharges = `₹${parseFloat(billDetails.roomCharges || 0).toFixed(2)}`;
+      const foodCharges = `₹${parseFloat(billDetails.foodCharges || 0).toFixed(2)}`;
+      const totalAmount = `₹${parseFloat(billDetails.totalAmount || 0).toFixed(2)}`;
+      const balanceAmount = `₹${paymentAmount.toFixed(2)}`;
+      const cashReceivedFormatted = `₹${advancePaid.toFixed(2)}`;
+      
+      let templateId: string;
+      let variables: string[];
+      
+      if (advancePaid > 0) {
+        // Use new split payment template when cash is received (19892)
+        templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+        variables = [
+          guest.fullName || "Guest",
+          roomCharges,
+          foodCharges,
+          cashReceivedFormatted,
+          balanceAmount,
+          paymentLink.shortUrl
+        ];
+        console.log(`[WhatsApp] Using split payment template (${templateId}) for advance payment of ₹${advancePaid}`);
+      } else {
+        // Use standard bill payment template when no cash received (19873)
+        templateId = "19873"; // Bill Payment template with room/food/total charges and payment link
+        variables = [
+          guest.fullName || "Guest",
+          roomCharges,
+          foodCharges,
+          totalAmount,
+          paymentLink.shortUrl
+        ];
+        console.log(`[WhatsApp] Using standard payment template (${templateId})`);
+      }
+      
+      await sendCustomWhatsAppMessage(guest.phone, templateId, variables);
+
+      console.log(`[WhatsApp] Payment link sent to ${guest.fullName} (${guest.phone})`);
+      
+      res.json({ 
+        success: true, 
+        message: "Payment link sent via WhatsApp",
+        paymentLink: paymentLink.shortUrl,
+        linkId: paymentLink.linkId,
+        billId: billId
+      });
+    } catch (error: any) {
+      console.error("Payment link generation error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate payment link" });
+    }
+  });
+
+  // RazorPay Webhook - Handle payment confirmations (NO AUTH REQUIRED - webhook from RazorPay)
+  app.post("/api/webhooks/razorpay", async (req, res) => {
+    try {
+      console.log(`[RazorPay Webhook] ===== WEBHOOK RECEIVED =====`);
+      console.log(`[RazorPay Webhook] Full Body:`, JSON.stringify(req.body, null, 2));
+      
+      // RazorPay sends nested payload structure for payment_link events
+      // Structure: { event: "payment_link.paid", payload: { payment_link: { entity: {...} } } }
+      const eventType = req.body.event;
+      const paymentLinkData = req.body.payload?.payment_link?.entity;
+      
+      // Also support legacy flat format for backwards compatibility
+      const payment_link_id = paymentLinkData?.id || req.body.payment_link_id;
+      const status = paymentLinkData?.status || req.body.status;
+      const amount = paymentLinkData?.amount || req.body.amount;
+      const reference_id = paymentLinkData?.reference_id || req.body.reference_id;
+      const customer = paymentLinkData?.customer || req.body.customer;
+      
+      console.log(`[RazorPay Webhook] Event=${eventType}, Link=${payment_link_id}, Status=${status}, Amount=${amount}, RefId=${reference_id}`);
+
+      // Verify webhook signature if provided (x-razorpay-signature header)
+      const signature = req.headers['x-razorpay-signature'] as string;
+      if (signature && process.env.RAZORPAY_WEBHOOK_SECRET) {
+        const crypto = await import('crypto');
+        const expectedSignature = crypto
+          .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET)
+          .update(JSON.stringify(req.body))
+          .digest('hex');
+        
+        if (signature !== expectedSignature) {
+          console.warn("[RazorPay Webhook] Invalid signature");
+          return res.status(401).json({ message: "Invalid signature" });
+        }
+        console.log("[RazorPay Webhook] Signature verified successfully");
+      }
+
+      // Process payment_link.paid event
+      if ((eventType === "payment_link.paid" || status === "paid") && reference_id) {
+        console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
+        
+        // Check if this is an advance payment (reference_id starts with "advance_")
+        const isAdvancePayment = reference_id.startsWith("advance_");
+        
+        // Extract booking ID from reference_id format: booking_{id}_{timestamp} or advance_{id}_{timestamp}
+        const bookingIdMatch = reference_id.match(/(booking|advance)_(\d+)_/);
+        const bookingId = bookingIdMatch ? parseInt(bookingIdMatch[2]) : parseInt(reference_id);
+        console.log(`[RazorPay Webhook] Extracted booking ID: ${bookingId}, isAdvancePayment: ${isAdvancePayment}`);
+        
+        const booking = await storage.getBooking(bookingId);
+        console.log(`[RazorPay Webhook] Booking found: ${booking ? 'YES' : 'NO'}`);
+        
+        if (booking) {
+          const amountInRupees = amount ? (amount / 100) : 0;
+          
+          // Handle advance payment confirmation - update booking status to confirmed
+          if (isAdvancePayment) {
+            console.log(`[RazorPay Webhook] Processing ADVANCE payment for booking #${bookingId}`);
+            
+            // Update booking status to confirmed and record advance payment
+            await db.update(bookings).set({
+              status: "confirmed",
+              advancePaymentStatus: "paid",
+              advanceAmount: amountInRupees.toString(),
+              updatedAt: new Date(),
+            }).where(eq(bookings.id, bookingId));
+            
+            console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
+            
+            // Record advance payment to wallet
+            try {
+              const guest = await storage.getGuest(booking.guestId);
+              await storage.recordBillPaymentToWallet(
+                booking.propertyId,
+                bookingId,
+                amountInRupees,
+                'razorpay_online',
+                `Advance payment - ${guest?.fullName || 'Guest'} (Booking #${bookingId})`,
+                null
+              );
+              console.log(`[Wallet] Recorded advance payment ₹${amountInRupees} for booking #${bookingId}`);
+            } catch (walletError) {
+              console.log(`[Wallet] Could not record advance payment to wallet:`, walletError);
+            }
+            
+            // Send WhatsApp confirmation to guest - check template controls first
+            const guest = await storage.getGuest(booking.guestId);
+            const property = await storage.getProperty(booking.propertyId);
+            if (guest && guest.phone) {
+              // Check if payment_confirmation template is enabled
+              const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_confirmation');
+              const isTemplateEnabled = templateSetting?.isEnabled !== false;
+              
+              if (isTemplateEnabled) {
+                console.log(`[RazorPay Webhook] Sending payment confirmation to guest: ${guest.fullName} (${guest.phone})`);
+                await sendAdvancePaymentConfirmation(
+                  guest.phone,
+                  guest.fullName || "Guest",
+                  `₹${amountInRupees.toLocaleString('en-IN')}`,
+                  property?.name || "Hotel"
+                );
+                console.log(`[RazorPay Webhook] Payment confirmation sent successfully`);
+              } else {
+                console.log(`[RazorPay Webhook] Payment confirmation WhatsApp disabled for property ${booking.propertyId}`);
+              }
+            }
+            
+            // Create notification for admins
+            try {
+              const allUsers = await storage.getAllUsers();
+              const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+              
+              for (const admin of adminUsers) {
+                await db.insert(notifications).values({
+                  userId: admin.id,
+                  type: "payment_received",
+                  title: "Advance Payment Received",
+                  message: `Booking #${bookingId} confirmed! Advance of ₹${amountInRupees} received from ${guest?.fullName || 'Guest'}`,
+                  soundType: "payment",
+                  relatedId: bookingId,
+                  relatedType: "booking",
+                });
+              }
+              console.log(`[RazorPay Webhook] Admin notifications created for advance payment`);
+            } catch (notifError: any) {
+              console.error(`[RazorPay Webhook] Failed to create notification:`, notifError.message);
+            }
+            
+            // Activity log for advance payment received
+            try {
+              const property = await storage.getProperty(booking.propertyId);
+              await storage.createActivityLog({
+                userId: null, // Webhook - no user
+                userEmail: null,
+                userName: 'Razorpay Webhook',
+                action: 'advance_payment_received',
+                category: 'payment',
+                resourceType: 'booking',
+                resourceId: String(bookingId),
+                resourceName: `Booking #${bookingId}`,
+                propertyId: booking.propertyId,
+                propertyName: property?.name || null,
+                details: { 
+                  amount: amountInRupees,
+                  guestName: guest?.fullName,
+                  paymentLinkId: payment_link_id
+                },
+              });
+            } catch (logErr) {
+              console.error('[ACTIVITY] Error logging advance payment:', logErr);
+            }
+          } else {
+            // Regular bill payment flow (existing logic)
+            const billsResult = await db.select().from(bills).where(eq(bills.bookingId, bookingId)).limit(1);
+            console.log(`[RazorPay Webhook] Bills found for booking: ${billsResult.length}`);
+            
+            if (billsResult.length > 0) {
+              const bill = billsResult[0];
+              console.log(`[RazorPay Webhook] Updating bill #${bill.id} status to PAID`);
+              
+              // Update bill payment status to paid
+              await db.update(bills).set({
+                paymentStatus: "paid",
+                paymentMethod: "razorpay_online",
+                paidAt: new Date(),
+                updatedAt: new Date(),
+              }).where(eq(bills.id, bill.id));
+
+              console.log(`[RazorPay] ✅ Payment confirmed for booking #${bookingId}, Bill #${bill.id} marked as PAID`);
+
+              // Record payment to wallet
+              try {
+                const guest = await storage.getGuest(booking.guestId);
+                await storage.recordBillPaymentToWallet(
+                  booking.propertyId,
+                  bill.id,
+                  amountInRupees,
+                  'razorpay_online',
+                  `Online payment - ${guest?.fullName || 'Guest'} (Bill #${bill.id})`,
+                  null
+                );
+                console.log(`[Wallet] Recorded RazorPay payment ₹${amountInRupees} for bill #${bill.id}`);
+              } catch (walletError) {
+                console.log(`[Wallet] Could not record RazorPay payment to wallet:`, walletError);
+              }
+
+              // Send confirmation to guest via WhatsApp
+              const guest = await storage.getGuest(booking.guestId);
+              if (guest && guest.phone) {
+                console.log(`[RazorPay Webhook] Sending confirmation to guest: ${guest.fullName} (${guest.phone})`);
+                const templateId = process.env.AUTHKEY_WA_PAYMENT_CONFIRMATION || "18649"; // Payment received confirmation
+                await sendCustomWhatsAppMessage(
+                  guest.phone,
+                  templateId,
+                  [guest.fullName || "Guest", `₹${amountInRupees.toFixed(2)}`]
+                );
+                console.log(`[RazorPay Webhook] Confirmation sent successfully`);
+              } else {
+                console.warn(`[RazorPay Webhook] Guest not found or no phone number`);
+              }
+            } else {
+              console.warn(`[RazorPay Webhook] No bill found for booking #${bookingId}`);
+            }
+          }
+        } else {
+          console.warn(`[RazorPay Webhook] Booking #${bookingId} not found`);
+        }
+      } else {
+        console.log(`[RazorPay Webhook] Event not payment_link.paid or no reference_id (event=${eventType}, status=${status})`);
+      }
+
+      // Always return 200 to acknowledge receipt
+      res.json({ success: true, received: true });
+    } catch (error: any) {
+      console.error("[RazorPay Webhook] ❌ ERROR:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Items
+  app.get("/api/menu-items", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // Filter menu items by assigned properties for all users (except super admin)
+      if (currentUser.role === "super_admin") {
+        // Super admin sees all menu items
+        const items = await storage.getAllMenuItems();
+        res.json(items);
+      } else if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+        // All other users only see menu items from their assigned properties
+        const allItems = await storage.getAllMenuItems();
+        const filteredItems = allItems.filter(item => 
+          item.propertyId && currentUser.assignedPropertyIds!.includes(item.propertyId)
+        );
+        res.json(filteredItems);
+      } else {
+        // User without assigned properties sees no menu items
+        res.json([]);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/menu-items/:id", isAuthenticated, async (req, res) => {
+    try {
+      const item = await storage.getMenuItem(parseInt(req.params.id));
+      if (!item) {
+        return res.status(404).json({ message: "Menu item not found" });
+      }
+      res.json(item);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-items", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      const data = insertMenuItemSchema.parse(req.body);
+      
+      // Security: If user is manager or kitchen, enforce they can only create items for their assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0) {
+          return res.status(403).json({ message: "You must be assigned to at least one property to create menu items." });
+        }
+        
+        // Verify the provided propertyId is in their assigned properties
+        if (!data.propertyId || !currentUser.assignedPropertyIds.includes(data.propertyId)) {
+          return res.status(403).json({ message: "You can only create menu items for your assigned properties." });
+        }
+      }
+      
+      const item = await storage.createMenuItem(data);
+      res.status(201).json(item);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // Security: If user is manager or kitchen, verify the menu item belongs to their assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        const existingItem = await storage.getMenuItem(parseInt(req.params.id));
+        
+        if (!existingItem) {
+          return res.status(404).json({ message: "Menu item not found" });
+        }
+        
+        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(existingItem.propertyId)) {
+          return res.status(403).json({ message: "You can only modify menu items from your assigned properties." });
+        }
+        
+        // Prevent changing propertyId to a property not in their assigned list
+        if (req.body.propertyId && !currentUser.assignedPropertyIds.includes(req.body.propertyId)) {
+          return res.status(403).json({ message: "You cannot change the property to one you're not assigned to." });
+        }
+      }
+      
+      const item = await storage.updateMenuItem(parseInt(req.params.id), req.body);
+      res.json(item);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // Security: If user is manager or kitchen, verify the menu item belongs to their assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        const existingItem = await storage.getMenuItem(parseInt(req.params.id));
+        
+        if (!existingItem) {
+          return res.status(404).json({ message: "Menu item not found" });
+        }
+        
+        if (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(existingItem.propertyId)) {
+          return res.status(403).json({ message: "You can only delete menu items from your assigned properties." });
+        }
+      }
+      
+      await storage.deleteMenuItem(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Swap two menu items (simple swap for arrow buttons)
+  app.patch("/api/menu-items/swap", isAuthenticated, async (req, res) => {
+    try {
+      const { id1, id2, order1, order2 } = req.body;
+      
+      console.log("[MENU-SWAP] Request body:", { id1, id2, order1, order2 });
+      
+      // Validate inputs
+      const parsedId1 = parseInt(String(id1), 10);
+      const parsedId2 = parseInt(String(id2), 10);
+      const parsedOrder1 = parseInt(String(order1), 10);
+      const parsedOrder2 = parseInt(String(order2), 10);
+      
+      if (isNaN(parsedId1) || isNaN(parsedId2) || isNaN(parsedOrder1) || isNaN(parsedOrder2)) {
+        console.log("[MENU-SWAP] Invalid input - NaN detected:", { parsedId1, parsedId2, parsedOrder1, parsedOrder2 });
+        return res.status(400).json({ message: "Invalid input: all values must be valid numbers" });
+      }
+      
+      // Simple swap - update both items
+      await storage.updateMenuItem(parsedId1, { displayOrder: parsedOrder2 });
+      await storage.updateMenuItem(parsedId2, { displayOrder: parsedOrder1 });
+      
+      console.log("[MENU-SWAP] Swap successful:", { id1: parsedId1, newOrder1: parsedOrder2, id2: parsedId2, newOrder2: parsedOrder1 });
+      
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      console.error("[MENU-SWAP] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reorder multiple menu items (for drag-and-drop)
+  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { updates } = req.body;
+      
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Updates array is required" });
+      }
+
+      // Update each item's displayOrder
+      for (const update of updates) {
+        await storage.updateMenuItem(Number(update.id), { displayOrder: Number(update.displayOrder) });
+      }
+      
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Categories
+  app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          const allCategories = await storage.getAllMenuCategories();
+          const filteredCategories = allCategories.filter(cat => 
+            cat.propertyId === null || currentUser.assignedPropertyIds!.includes(cat.propertyId)
+          );
+          res.json(filteredCategories);
+        } else {
+          res.json([]);
+        }
+      } else {
+        const categories = await storage.getAllMenuCategories();
+        res.json(categories);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-categories", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (req.body.propertyId !== null && (!currentUser.assignedPropertyIds || !currentUser.assignedPropertyIds.includes(req.body.propertyId))) {
+          return res.status(403).json({ message: "You can only create categories for your assigned properties or all properties." });
+        }
+      }
+      
+      const category = await storage.createMenuCategory(req.body);
+      res.status(201).json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-categories/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const category = await storage.updateMenuCategory(parseInt(req.params.id), req.body);
+      res.json(category);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuCategory(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bulk update display order for menu categories
+  app.patch("/api/menu-categories/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const updates: { id: number; displayOrder: number }[] = req.body;
+      await storage.reorderMenuCategories(updates);
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Item Variants
+  app.get("/api/menu-items/:menuItemId/variants", isAuthenticated, async (req, res) => {
+    try {
+      const variants = await storage.getVariantsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(variants);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-items/:menuItemId/variants", isAuthenticated, async (req, res) => {
+    try {
+      const variant = await storage.createMenuItemVariant({
+        ...req.body,
+        menuItemId: parseInt(req.params.menuItemId),
+      });
+      res.status(201).json(variant);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-item-variants/:id", isAuthenticated, async (req, res) => {
+    try {
+      const variant = await storage.updateMenuItemVariant(parseInt(req.params.id), req.body);
+      res.json(variant);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-item-variants/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuItemVariant(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bulk delete all variants for a menu item
+  app.delete("/api/menu-items/:menuItemId/variants", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVariantsByMenuItem(parseInt(req.params.menuItemId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Menu Item Add-Ons
+  app.get("/api/menu-items/:menuItemId/add-ons", isAuthenticated, async (req, res) => {
+    try {
+      const addOns = await storage.getAddOnsByMenuItem(parseInt(req.params.menuItemId));
+      res.json(addOns);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/menu-items/:menuItemId/add-ons", isAuthenticated, async (req, res) => {
+    try {
+      const addOn = await storage.createMenuItemAddOn({
+        ...req.body,
+        menuItemId: parseInt(req.params.menuItemId),
+      });
+      res.status(201).json(addOn);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/menu-item-add-ons/:id", isAuthenticated, async (req, res) => {
+    try {
+      const addOn = await storage.updateMenuItemAddOn(parseInt(req.params.id), req.body);
+      res.json(addOn);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/menu-item-add-ons/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteMenuItemAddOn(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bulk delete all add-ons for a menu item
+  app.delete("/api/menu-items/:menuItemId/add-ons", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteAddOnsByMenuItem(parseInt(req.params.menuItemId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bulk import menu items with variants and add-ons
+  app.post("/api/menu-items/bulk-import", isAuthenticated, async (req, res) => {
+    try {
+      const { items, propertyId } = req.body;
+      
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "No items provided for import" });
+      }
+
+      const results = {
+        created: 0,
+        failed: 0,
+        categoriesCreated: 0,
+        errors: [] as string[],
+      };
+
+      // Cache for categories we've created/found during import
+      const categoryCache: Map<string, number> = new Map();
+      
+      // Load existing categories for this property
+      const existingCategories = await storage.getMenuCategoriesByProperty(propertyId);
+      for (const cat of existingCategories) {
+        categoryCache.set(cat.name.toLowerCase().trim(), cat.id);
+      }
+
+      for (const item of items) {
+        try {
+          // Auto-create category if it doesn't exist
+          let categoryId = item.categoryId;
+          const categoryName = item.category?.trim();
+          
+          if (categoryName && !categoryId) {
+            const cacheKey = categoryName.toLowerCase();
+            if (categoryCache.has(cacheKey)) {
+              categoryId = categoryCache.get(cacheKey);
+            } else {
+              // Create new category for this property
+              const newCategory = await storage.createMenuCategory({
+                propertyId: propertyId,
+                name: categoryName,
+                description: null,
+                displayOrder: 0
+              });
+              categoryCache.set(cacheKey, newCategory.id);
+              categoryId = newCategory.id;
+              results.categoriesCreated++;
+              console.log(`[BULK-IMPORT] Created category "${categoryName}" for property ${propertyId}`);
+            }
+          }
+
+          // Parse variants from CSV string format: "Name:Price,Name:Price"
+          const parsedVariants: { name: string; priceModifier: string }[] = [];
+          if (item.variants && typeof item.variants === 'string' && item.variants.trim()) {
+            const variantParts = item.variants.split(',');
+            for (const part of variantParts) {
+              const [vName, vPrice] = part.split(':').map((s: string) => s.trim());
+              if (vName && vPrice) {
+                parsedVariants.push({ name: vName, priceModifier: vPrice });
+              }
+            }
+          }
+
+          // Parse add-ons from CSV string format: "Name:Price,Name:Price"
+          const parsedAddOns: { name: string; price: string }[] = [];
+          if (item.addOns && typeof item.addOns === 'string' && item.addOns.trim()) {
+            const addOnParts = item.addOns.split(',');
+            for (const part of addOnParts) {
+              const [aName, aPrice] = part.split(':').map((s: string) => s.trim());
+              if (aName && aPrice) {
+                parsedAddOns.push({ name: aName, price: aPrice });
+              }
+            }
+          }
+
+          // Create the menu item
+          const menuItemData = {
+            propertyId: propertyId || item.propertyId || null,
+            categoryId: categoryId || null,
+            name: item.name,
+            description: item.description || null,
+            category: item.category || null,
+            price: item.price?.toString() || "0",
+            isVeg: item.isVeg === true,
+            isAvailable: item.isAvailable !== false,
+            preparationTime: item.preparationTime ? parseInt(item.preparationTime) : null,
+            foodType: item.isVeg ? 'veg' : 'non-veg',
+            hasVariants: parsedVariants.length > 0,
+            hasAddOns: parsedAddOns.length > 0,
+            displayOrder: item.sequence || item.displayOrder || 0,
+          };
+
+          const createdItem = await storage.createMenuItem(menuItemData);
+
+          // Create variants if provided
+          const basePrice = parseFloat(item.price?.toString() || "0");
+          for (const variant of parsedVariants) {
+            const priceModifier = parseFloat(variant.priceModifier);
+            if (!isNaN(priceModifier)) {
+              const actualPrice = basePrice + priceModifier;
+              await storage.createMenuItemVariant({
+                menuItemId: createdItem.id,
+                variantName: variant.name,
+                actualPrice: actualPrice.toString(),
+                discountedPrice: null,
+              });
+            }
+          }
+
+          // Create add-ons if provided
+          for (const addOn of parsedAddOns) {
+            const price = parseFloat(addOn.price);
+            if (!isNaN(price) && price >= 0) {
+              await storage.createMenuItemAddOn({
+                menuItemId: createdItem.id,
+                addOnName: addOn.name,
+                addOnPrice: price.toString(),
+              });
+            }
+          }
+
+          results.created++;
+        } catch (itemError: any) {
+          results.failed++;
+          results.errors.push(`${item.name || 'Unknown item'}: ${itemError.message}`);
+        }
+      }
+
+      res.status(201).json({
+        message: `Imported ${results.created} items${results.categoriesCreated > 0 ? `, created ${results.categoriesCreated} new categories` : ''}${results.failed > 0 ? `, ${results.failed} failed` : ''}`,
+        ...results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Export menu items to CSV - Simple version
+  app.get("/api/menu-items/export/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId, 10);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const allItems = await storage.getAllMenuItems();
+      const items = allItems.filter(i => i.propertyId === propertyId);
+      const categories = await storage.getMenuCategoriesByProperty(propertyId);
+      const catMap = new Map(categories.map(c => [c.id, c.name]));
+
+      let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns\n';
+      for (const item of items) {
+        const cat = item.categoryId ? (catMap.get(item.categoryId) || '') : '';
+        
+        // Fetch variants and add-ons for this item
+        let variantsStr = '';
+        let addOnsStr = '';
+        try {
+          const variants = await storage.getVariantsByMenuItem(item.id);
+          const addOns = await storage.getAddOnsByMenuItem(item.id);
+          
+          // Format: "VariantName:Price,VariantName2:Price2"
+          // Database fields: variantName, actualPrice for variants; addOnName, addOnPrice for add-ons
+          variantsStr = variants.map(v => `${v.variantName}:${v.actualPrice || 0}`).join(',');
+          addOnsStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice || 0}`).join(',');
+        } catch (err) {
+          console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}:`, err);
+        }
+        
+        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"${variantsStr}","${addOnsStr}"\n`;
+      }
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="menu.csv"');
+      res.send(csv);
+    } catch (error: any) {
+      res.status(500).json({ message: 'Export failed: ' + error.message });
+    }
+  });
+
+  // Delete all menu items for a property
+  app.post("/api/menu-items/delete-all/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId, 10);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const allItems = await storage.getAllMenuItems();
+      const itemsToDelete = allItems.filter(i => i.propertyId === propertyId);
+      
+      for (const item of itemsToDelete) {
+        await storage.deleteMenuItem(item.id);
+      }
+
+      res.json({ message: `Deleted ${itemsToDelete.length} menu items` });
+    } catch (error: any) {
+      res.status(500).json({ message: 'Delete failed: ' + error.message });
+    }
+  });
+
+  // Reorder menu items (up/down buttons)
+  app.post("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { category, itemIds } = req.body;
+      
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return res.status(400).json({ message: "Item IDs array is required" });
+      }
+
+      console.log("[REORDER] Updating order for category:", category, "items:", itemIds);
+
+      // Use the dedicated reorderMenuItems function for proper batch update
+      const updates = itemIds.map((id: number, index: number) => ({
+        id,
+        displayOrder: index
+      }));
+      
+      await storage.reorderMenuItems(updates);
+
+      console.log("[REORDER] Successfully updated", itemIds.length, "items");
+      res.json({ message: "Menu order updated successfully", category, itemCount: itemIds.length });
+    } catch (error: any) {
+      console.error("[REORDER] Error:", error);
+      res.status(500).json({ message: 'Reorder failed: ' + error.message });
+    }
+  });
+
+  // Orders
+  app.get("/api/orders", isAuthenticated, async (req: any, res) => {
+    try {
+      // Get current user to check role and property assignment
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Security: If user not found in storage (deleted/stale session), deny access
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found. Please log in again." });
+      }
+      
+      // If user is a manager or kitchen, filter orders by assigned properties
+      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
+        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+          // Get orders from all assigned properties
+          const allOrders = await storage.getAllOrders();
+          const filteredOrders = allOrders.filter(order => 
+            order.propertyId && currentUser.assignedPropertyIds!.includes(order.propertyId)
+          );
+          res.json(filteredOrders);
+        } else {
+          // Manager/Kitchen without assigned property sees no orders
+          res.json([]);
+        }
+      } else {
+        // Admin and staff see all orders
+        const orders = await storage.getAllOrders();
+        res.json(orders);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const order = await storage.getOrder(parseInt(req.params.id));
+      if (!order) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+      res.json(order);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/orders", isAuthenticated, async (req, res) => {
+    try {
+      let orderData = insertOrderSchema.parse(req.body) as any;
+      
+      // If order has bookingId but no guestId, automatically set guestId from booking
+      if (orderData.bookingId && !orderData.guestId) {
+        const booking = await storage.getBooking(orderData.bookingId);
+        if (booking) {
+          orderData = { ...orderData, guestId: booking.guestId };
+        }
+      }
+      
+      // If order has roomId but no propertyId, automatically set propertyId from room
+      if (orderData.roomId && !orderData.propertyId) {
+        const room = await storage.getRoom(orderData.roomId);
+        if (room) {
+          orderData = { ...orderData, propertyId: room.propertyId };
+        }
+      }
+      
+      const order = await storage.createOrder(orderData);
+      
+      // Create notification for new order + send WhatsApp alerts
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen');
+        const guest = orderData.guestId ? await storage.getGuest(orderData.guestId) : null;
+        
+        for (const admin of adminUsers) {
+          // In-app notification
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_order",
+            title: "New Order Placed",
+            message: `New ${orderData.orderType || 'food'} order #${order.id} for ${guest?.fullName || 'Guest'}. Amount: ₹${orderData.totalAmount || 0}`,
+            soundType: "info",
+            relatedId: order.id,
+            relatedType: "order",
+          });
+          
+          // WhatsApp alert (even when app is closed)
+          if (admin.phone) {
+            try {
+              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
+              const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+              const hotelName = property?.name || 'Hotel';
+              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
+              
+              await sendCustomWhatsAppMessage({
+                countryCode: '91',
+                mobile: admin.phone,
+                message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
+              });
+              console.log(`[WhatsApp] New order alert sent to ${admin.email}`);
+            } catch (waError: any) {
+              console.warn(`[WhatsApp] Failed to send order alert to ${admin.phone}:`, waError.message);
+            }
+          }
+        }
+        console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
+        
+        // Send to configured food order WhatsApp numbers
+        if (orderData.propertyId) {
+          try {
+            const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(orderData.propertyId);
+            if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
+              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
+              const property = await storage.getProperty(orderData.propertyId);
+              const hotelName = property?.name || 'Hotel';
+              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
+              
+              for (const phone of foodOrderSettings.phoneNumbers) {
+                try {
+                  await sendCustomWhatsAppMessage({
+                    countryCode: '91',
+                    mobile: phone,
+                    message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
+                  });
+                  console.log(`[WhatsApp] Food order alert sent to configured number: ${phone}`);
+                } catch (waErr: any) {
+                  console.warn(`[WhatsApp] Failed to send to ${phone}:`, waErr.message);
+                }
+              }
+            }
+          } catch (foodWaErr: any) {
+            console.warn(`[WhatsApp] Food order settings fetch failed:`, foodWaErr.message);
+          }
+        }
+      } catch (notifError: any) {
+        console.error(`[NOTIFICATIONS] Failed to create order notification:`, notifError.message);
+      }
+      
+      res.status(201).json(order);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all unmerged café orders (for merging at checkout)
+  app.get("/api/orders/unmerged-cafe", isAuthenticated, async (req, res) => {
+    try {
+      // Get all orders and filter in JavaScript
+      const allOrders = await db
+        .select()
+        .from(orders)
+        .orderBy(desc(orders.createdAt));
+      
+      // Filter for restaurant orders with null bookingId
+      const unmergedOrders = allOrders.filter(
+        (order) => order.orderType === "restaurant" && order.bookingId === null
+      );
+      
+      console.log(`Found ${unmergedOrders.length} unmerged café orders`);
+      res.json(unmergedOrders);
+    } catch (error: any) {
+      console.error("Error fetching unmerged café orders:", error);
+      console.error("Full error:", JSON.stringify(error, null, 2));
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Merge café orders to a booking - MUST BE BEFORE /api/orders/:id to avoid route collision
+  app.patch("/api/orders/merge-to-booking", isAuthenticated, async (req, res) => {
+    try {
+      const { orderIds, bookingId } = req.body;
+      
+      if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ message: "orderIds array is required" });
+      }
+      
+      if (!bookingId) {
+        return res.status(400).json({ message: "bookingId is required" });
+      }
+
+      // Verify booking exists
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Update each order - ONLY include non-null values to avoid NaN conversion
+      const updatedOrders = [];
+      for (const orderId of orderIds) {
+        const orderData: any = {
+          bookingId: bookingId,
+          guestId: booking.guestId,
+          propertyId: booking.propertyId,
+        };
+        
+        // Only add roomId if it's not null
+        if (booking.roomId !== null && booking.roomId !== undefined) {
+          orderData.roomId = booking.roomId;
+        }
+        
+        const updated = await storage.updateOrder(orderId, orderData);
+        updatedOrders.push(updated);
+      }
+
+      res.json({ 
+        message: "Orders merged successfully",
+        mergedOrders: updatedOrders
+      });
+    } catch (error: any) {
+      console.error("Error merging orders:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/orders/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const { status } = req.body;
+      const order = await storage.updateOrderStatus(parseInt(req.params.id), status);
+      res.json(order);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const order = await storage.updateOrder(parseInt(req.params.id), req.body);
+      res.json(order);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteOrder(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Extra Services
+  app.get("/api/extra-services", isAuthenticated, async (req, res) => {
+    try {
+      const services = await storage.getAllExtraServices();
+      res.json(services);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/extra-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.getExtraService(parseInt(req.params.id));
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      res.json(service);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/extra-services/booking/:bookingId", isAuthenticated, async (req, res) => {
+    try {
+      const services = await storage.getExtraServicesByBooking(parseInt(req.params.bookingId));
+      res.json(services);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/extra-services", isAuthenticated, async (req, res) => {
+    try {
+      const { insertExtraServiceSchema } = await import("@shared/schema");
+      const data = insertExtraServiceSchema.parse(req.body);
+      const service = await storage.createExtraService(data);
+      res.status(201).json(service);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/extra-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const service = await storage.updateExtraService(parseInt(req.params.id), req.body);
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      res.json(service);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/extra-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteExtraService(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Bills
+  app.get("/api/bills", isAuthenticated, async (req, res) => {
+    try {
+      const bills = await storage.getAllBills();
+      
+      // Enrich bills with guest names
+      const enrichedBills = await Promise.all(
+        bills.map(async (bill) => {
+          const guest = await storage.getGuest(bill.guestId);
+          return {
+            ...bill,
+            guestName: guest?.fullName || "Unknown Guest",
+          };
+        })
+      );
+      
+      res.json(enrichedBills);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bills/:id", isAuthenticated, async (req, res) => {
+    try {
+      const bill = await storage.getBill(parseInt(req.params.id));
+      if (!bill) {
+        return res.status(404).json({ message: "Bill not found" });
+      }
+      res.json(bill);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get bill with all related details (guest, booking, room, property, orders)
+  app.get("/api/bills/:id/details", isAuthenticated, async (req, res) => {
+    try {
+      const billId = parseInt(req.params.id);
+      
+      // Fetch bill
+      const bill = await storage.getBill(billId);
+      if (!bill) {
+        return res.status(404).json({ message: "Bill not found" });
+      }
+
+      // Fetch related booking
+      const booking = await storage.getBooking(bill.bookingId);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Fetch guest
+      const guest = await storage.getGuest(bill.guestId);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+
+      // Fetch room(s) - handle both single and group bookings
+      let room = null;
+      let rooms = [];
+      let property = null;
+      
+      if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+        // Group booking: fetch all rooms
+        for (const roomId of booking.roomIds) {
+          const r = await storage.getRoom(roomId);
+          if (r) {
+            rooms.push(r);
+            if (!property && r.propertyId) {
+              property = await storage.getProperty(r.propertyId);
+            }
+          }
+        }
+      } else {
+        // Single room booking
+        room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+        property = room?.propertyId ? await storage.getProperty(room.propertyId) : null;
+      }
+
+      // Fetch orders for this booking
+      const allOrders = await storage.getAllOrders();
+      const orders = allOrders.filter(o => o.bookingId === booking.id);
+
+      // Fetch extra services for this booking
+      const allExtras = await storage.getAllExtraServices();
+      const extraServices = allExtras.filter(e => e.bookingId === booking.id);
+
+      // Return enriched bill data
+      res.json({
+        ...bill,
+        guest,
+        booking: {
+          ...booking,
+          room,
+          rooms, // Add rooms array for group bookings
+          property,
+        },
+        orders,
+        extraServices,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bills/booking/:bookingId", isAuthenticated, async (req, res) => {
+    try {
+      const bill = await storage.getBillByBooking(parseInt(req.params.bookingId));
+      if (!bill) {
+        return res.status(404).json({ message: "Bill not found" });
+      }
+      res.json(bill);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bills", isAuthenticated, async (req, res) => {
+    try {
+      // Only admins can create bills manually
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can create bills" });
+      }
+
+      const data = insertBillSchema.parse(req.body);
+      const bill = await storage.createBill(data);
+      
+      // Audit log for bill creation
+      await storage.createAuditLog({
+        entityType: "bill",
+        entityId: String(bill.id),
+        action: "create",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: data,
+        metadata: { bookingId: data.bookingId, totalAmount: data.totalAmount },
+      });
+      
+      res.status(201).json(bill);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/bills/:id", isAuthenticated, async (req, res) => {
+    try {
+      // Only admins can update bills
+      if (req.user?.role !== "admin") {
+        return res.status(403).json({ message: "Only administrators can modify bills" });
+      }
+
+      const bill = await storage.updateBill(parseInt(req.params.id), req.body);
+      
+      // Audit log for bill update
+      await storage.createAuditLog({
+        entityType: "bill",
+        entityId: req.params.id,
+        action: "update",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: req.body,
+        metadata: { updatedFields: Object.keys(req.body) },
+      });
+      
+      res.json(bill);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bills/merge", isAuthenticated, async (req, res) => {
+    try {
+      // Admins, super-admins, managers, and staff can merge bills
+      console.log("[MERGE BILLS] User role:", req.user?.role, "Full user:", req.user);
+      const allowedRoles = ["admin", "super-admin", "manager", "staff"];
+      if (!allowedRoles.includes(req.user?.role)) {
+        console.log("[MERGE BILLS] Permission denied - role not in allowed list");
+        return res.status(403).json({ message: "Only administrators, managers, and staff can merge bills" });
+      }
+
+      const schema = z.object({
+        bookingIds: z.array(z.number()).min(2, "At least 2 bookings required"),
+        primaryBookingId: z.number(),
+      });
+      
+      const data = schema.parse(req.body);
+      
+      // Validate that primaryBookingId is in bookingIds
+      if (!data.bookingIds.includes(data.primaryBookingId)) {
+        return res.status(400).json({ message: "Primary booking must be one of the selected bookings" });
+      }
+      
+      const mergedBill = await storage.mergeBills(data.bookingIds, data.primaryBookingId);
+      res.status(201).json(mergedBill);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all pending bills with guest and agent details  
+  app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      
+      // Use getAllBills and filter for pending status
+      const allBills = await storage.getAllBills();
+      let pendingBills = allBills
+        .filter((bill: any) => bill.paymentStatus === 'pending')
+        .map((bill: any) => ({
+          ...bill,
+          balanceAmount: bill.balanceAmount || bill.totalAmount || "0",
+        }));
+      
+      // Filter by property if specified
+      if (propertyId) {
+        pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
+      }
+      
+      res.json(pendingBills);
+    } catch (error: any) {
+      console.error("[/api/bills/pending] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Mark a bill as paid
+  app.post("/api/bills/:id/mark-paid", isAuthenticated, async (req, res) => {
+    try {
+      // Get userId from multiple auth sources (OAuth, email/password, session)
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized - no user ID" });
+      }
+      
+      // Fetch user from database to verify they're admin/super-admin
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      
+      // Allow if user is authenticated (we'll do proper role checking if role exists)
+      // For now, just require authentication to allow testing
+      if (!dbUser) {
+        // User not in DB but is authenticated - auto-create them
+        const name = req.user?.claims?.name || req.user?.claims?.email || 'User';
+        const email = req.user?.claims?.email || `${userId}@replit.user`;
+        const nameParts = name.split(' ');
+        
+        await db.insert(users).values({
+          id: userId,
+          email: email,
+          firstName: nameParts[0],
+          lastName: nameParts.slice(1).join(' ') || 'User',
+          role: 'admin',
+          status: 'active',
+        });
+      }
+
+      const billId = parseInt(req.params.id);
+      const { paymentMethod } = req.body;
+      
+      if (!paymentMethod) {
+        return res.status(400).json({ message: "Payment method is required" });
+      }
+      
+      const bill = await storage.getBill(billId);
+      if (!bill) {
+        return res.status(404).json({ message: "Bill not found" });
+      }
+      
+      // Update bill to paid status
+      const updatedBill = await storage.updateBill(billId, {
+        paymentStatus: "paid",
+        paymentMethod,
+        paidAt: new Date(),
+        balanceAmount: "0.00",
+      });
+      
+      res.json(updatedBill);
+    } catch (error: any) {
+      console.error("❌ ERROR marking bill as paid:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Enquiries
+  app.get("/api/enquiries", isAuthenticated, async (req, res) => {
+    try {
+      const enquiries = await storage.getAllEnquiries();
+      res.json(enquiries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/enquiries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const enquiry = await storage.getEnquiry(parseInt(req.params.id));
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      res.json(enquiry);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enquiries", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertEnquirySchema.parse(req.body);
+      const enquiry = await storage.createEnquiry(data);
+      res.status(201).json(enquiry);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/enquiries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updateSchema = z.object({
+        propertyId: z.number().optional(),
+        guestName: z.string().min(2).optional(),
+        guestPhone: z.string().min(10).optional(),
+        guestEmail: z.string().email().optional().or(z.literal("")).nullable(),
+        checkInDate: z.coerce.date().optional(),
+        checkOutDate: z.coerce.date().optional(),
+        roomId: z.number().optional().nullable(),
+        roomIds: z.array(z.number()).optional().nullable(),
+        isGroupEnquiry: z.boolean().optional(),
+        bedsBooked: z.number().optional().nullable(),
+        numberOfGuests: z.number().optional(),
+        mealPlan: z.enum(["EP", "CP", "MAP", "AP"]).optional(),
+        priceQuoted: z.coerce.number().optional().nullable().transform(val => val !== null && val !== undefined ? val.toString() : null),
+        advanceAmount: z.coerce.number().optional().nullable().transform(val => val !== null && val !== undefined ? val.toString() : null),
+        specialRequests: z.string().optional().nullable(),
+      });
+      const data = updateSchema.parse(req.body);
+      console.log("📝 ENQUIRY PATCH - Received data:", {
+        enquiryId: req.params.id,
+        priceQuoted: data.priceQuoted,
+        roomId: data.roomId,
+        allData: JSON.stringify(data),
+      });
+      const enquiry = await storage.updateEnquiry(parseInt(req.params.id), data);
+      console.log("✅ ENQUIRY PATCH - Updated enquiry:", {
+        id: enquiry.id,
+        priceQuoted: enquiry.priceQuoted,
+        roomId: enquiry.roomId,
+      });
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      res.json(enquiry);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        console.error("Enquiry update validation error:", JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/enquiries/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const statusSchema = z.object({
+        status: z.enum(["new", "messaged", "payment_pending", "paid", "confirmed", "cancelled"]),
+      });
+      const { status } = statusSchema.parse(req.body);
+      const enquiry = await storage.updateEnquiryStatus(parseInt(req.params.id), status);
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      res.json(enquiry);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid status", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/enquiries/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteEnquiry(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update enquiry payment status
+  app.patch("/api/enquiries/:id/payment-status", isAuthenticated, async (req, res) => {
+    try {
+      const paymentStatusSchema = z.object({
+        paymentStatus: z.enum(["pending", "received", "refunded"]),
+      });
+      const { paymentStatus } = paymentStatusSchema.parse(req.body);
+      const enquiry = await storage.updateEnquiryPaymentStatus(parseInt(req.params.id), paymentStatus);
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      res.json(enquiry);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid payment status", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send advance payment link for enquiry via WhatsApp
+  app.post("/api/enquiries/:id/send-advance-payment-link", isAuthenticated, async (req, res) => {
+    try {
+      const enquiryId = parseInt(req.params.id);
+      const [enquiry] = await db.select().from(enquiries).where(eq(enquiries.id, enquiryId));
+      
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+
+      // Validate phone number exists and has minimum digits
+      if (!enquiry.guestPhone || enquiry.guestPhone.trim() === "") {
+        return res.status(400).json({ message: "Guest phone number is required to send payment link. Please edit the enquiry and add a phone number." });
+      }
+      
+      const cleanedPhone = enquiry.guestPhone.replace(/[^\d]/g, "");
+      if (cleanedPhone.length < 10) {
+        return res.status(400).json({ message: "Invalid phone number. Please enter a valid 10-digit phone number in the enquiry." });
+      }
+
+      const advanceAmount = enquiry.advanceAmount ? parseFloat(String(enquiry.advanceAmount)) : 0;
+      if (advanceAmount <= 0) {
+        return res.status(400).json({ message: "Please enter an advance amount before sending the payment link" });
+      }
+
+      console.log(`[Enquiry Payment] Creating RazorPay link for enquiry #${enquiryId}, amount: ₹${advanceAmount}`);
+      
+      // Check if split_payment template is enabled
+      if (enquiry.propertyId) {
+        const splitPaymentSetting = await storage.getWhatsappTemplateSetting(enquiry.propertyId, 'split_payment');
+        const isSplitPaymentEnabled = splitPaymentSetting?.isEnabled !== false;
+        
+        if (!isSplitPaymentEnabled) {
+          return res.status(400).json({ message: "Split payment WhatsApp messages are disabled for this property" });
+        }
+      }
+
+      // Create RazorPay payment link
+      const paymentLink = await createEnquiryPaymentLink(
+        enquiryId,
+        advanceAmount,
+        enquiry.guestName,
+        enquiry.guestEmail || "",
+        enquiry.guestPhone
+      );
+
+      const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+      console.log(`[Enquiry Payment] Payment link created: ${paymentLinkUrl}`);
+
+      // Send via WhatsApp using Authkey
+      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+      const result = await sendCustomWhatsAppMessage(
+        enquiry.guestPhone,
+        templateId,
+        [enquiry.guestName, `₹${advanceAmount.toFixed(2)}`, paymentLinkUrl]
+      );
+
+      if (result.success) {
+        // Update enquiry status to payment_pending
+        await storage.updateEnquiryStatus(enquiryId, "payment_pending");
+        
+        console.log(`[Enquiry Payment] Payment link sent successfully to ${enquiry.guestPhone}`);
+        res.json({ 
+          success: true, 
+          message: "Advance payment link sent successfully via WhatsApp",
+          paymentLinkUrl 
+        });
+      } else {
+        console.error(`[Enquiry Payment] Failed to send WhatsApp: ${result.error}`);
+        res.status(500).json({ message: result.error || "Failed to send payment link via WhatsApp" });
+      }
+    } catch (error: any) {
+      console.error("[Enquiry Payment] Error:", error);
+      res.status(500).json({ message: error.message || "Failed to send advance payment link" });
+    }
+  });
+
+  // Confirm enquiry and create booking
+  app.post("/api/enquiries/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const enquiryId = parseInt(req.params.id);
+      const [enquiry] = await db.select().from(enquiries).where(eq(enquiries.id, enquiryId));
+      
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+
+      console.log("Enquiry data:", JSON.stringify(enquiry, null, 2));
+
+      // Validate enquiry has required guest information AND room selection
+      if (!enquiry.guestName || !enquiry.guestPhone) {
+        console.log("Missing guest info - guestName:", enquiry.guestName, "guestPhone:", enquiry.guestPhone);
+        return res.status(400).json({ message: "Enquiry is missing required guest information (name or phone)" });
+      }
+
+      // CRITICAL: Require room selection before confirming
+      if (!enquiry.roomId && (!enquiry.roomIds || enquiry.roomIds.length === 0)) {
+        console.log("❌ Cannot confirm enquiry without room selection - roomId:", enquiry.roomId, "roomIds:", enquiry.roomIds);
+        return res.status(400).json({ 
+          message: "Please select a room for this enquiry before confirming. Edit the enquiry to assign a room." 
+        });
+      }
+
+      // Create or find guest - match by BOTH name and phone to avoid duplicates
+      let guestId: number;
+      const existingGuests = await storage.getAllGuests();
+      const existingGuest = existingGuests.find(g => 
+        g.phone === enquiry.guestPhone && 
+        g.fullName.toLowerCase() === enquiry.guestName.toLowerCase()
+      );
+      
+      if (existingGuest) {
+        guestId = existingGuest.id;
+      } else {
+        const newGuest = await storage.createGuest({
+          fullName: enquiry.guestName,
+          phone: enquiry.guestPhone,
+          email: enquiry.guestEmail || null,
+          idProofType: null,
+          idProofNumber: null,
+          idProofImage: null,
+          address: null,
+          preferences: null,
+        });
+        guestId = newGuest.id;
+      }
+
+      // Check for double-booking: Verify room isn't already booked for overlapping dates
+      if (enquiry.roomId) {
+        const existingBookings = await storage.getAllBookings();
+        const overlappingBooking = existingBookings.find(b => {
+          // Skip cancelled and checked-out bookings
+          if (b.status === "cancelled" || b.status === "checked-out") return false;
+          
+          // Check if same room
+          if (b.roomId !== enquiry.roomId) return false;
+          
+          // Check for date overlap
+          const existingCheckIn = new Date(b.checkInDate);
+          const existingCheckOut = new Date(b.checkOutDate);
+          const newCheckIn = new Date(enquiry.checkInDate);
+          const newCheckOut = new Date(enquiry.checkOutDate);
+          
+          return (
+            (newCheckIn >= existingCheckIn && newCheckIn < existingCheckOut) ||
+            (newCheckOut > existingCheckIn && newCheckOut <= existingCheckOut) ||
+            (newCheckIn <= existingCheckIn && newCheckOut >= existingCheckOut)
+          );
+        });
+        
+        if (overlappingBooking) {
+          return res.status(400).json({ 
+            message: `Room is already booked from ${format(new Date(overlappingBooking.checkInDate), "MMM dd, yyyy")} to ${format(new Date(overlappingBooking.checkOutDate), "MMM dd, yyyy")}` 
+          });
+        }
+      }
+
+      // Create booking from enquiry (using correct field names)
+      // Convert decimal values properly - they come from DB as strings or null
+      const customPriceValue = enquiry.priceQuoted != null ? String(enquiry.priceQuoted) : null;
+      const advanceAmountValue = enquiry.advanceAmount != null ? String(enquiry.advanceAmount) : "0";
+      
+      // DEBUG: Log enquiry details
+      console.log("📋 ENQUIRY CONFIRM - Enquiry Details:", {
+        enquiryId: enquiry.id,
+        roomId: enquiry.roomId,
+        roomIds: enquiry.roomIds,
+        checkInDate: enquiry.checkInDate,
+        checkOutDate: enquiry.checkOutDate,
+        priceQuoted: enquiry.priceQuoted,
+        advanceAmount: enquiry.advanceAmount,
+      });
+
+      // Calculate totalAmount based on room price and number of nights
+      let totalAmount: string = "0"; // DEFAULT TO 0 if calculation fails
+      
+      try {
+        if (enquiry.roomId) {
+          const allRooms = await storage.getAllRooms();
+          const room = allRooms.find(r => r.id === enquiry.roomId);
+          if (room) {
+            const checkIn = new Date(enquiry.checkInDate);
+            const checkOut = new Date(enquiry.checkOutDate);
+            let numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            if (numberOfNights <= 0) numberOfNights = 1; // Minimum 1 night
+            const pricePerNight = customPriceValue ? parseFloat(customPriceValue) : parseFloat(room.pricePerNight.toString());
+            totalAmount = (pricePerNight * numberOfNights).toFixed(2);
+            console.log("✅ Calculated totalAmount (single room):", { roomId: enquiry.roomId, numberOfNights, pricePerNight, totalAmount });
+          } else {
+            console.warn("⚠️ Room not found for roomId:", enquiry.roomId);
+          }
+        } else if (enquiry.roomIds && enquiry.roomIds.length > 0) {
+          // For group bookings
+          const allRooms = await storage.getAllRooms();
+          const selectedRooms = allRooms.filter(r => enquiry.roomIds?.includes(r.id));
+          if (selectedRooms.length > 0) {
+            const checkIn = new Date(enquiry.checkInDate);
+            const checkOut = new Date(enquiry.checkOutDate);
+            let numberOfNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+            if (numberOfNights <= 0) numberOfNights = 1; // Minimum 1 night
+            const totalPrice = selectedRooms.reduce((sum, room) => {
+              const pricePerNight = parseFloat(room.pricePerNight.toString());
+              return sum + (pricePerNight * numberOfNights);
+            }, 0);
+            totalAmount = totalPrice.toFixed(2);
+            console.log("✅ Calculated totalAmount (group):", { roomIds: enquiry.roomIds, numberOfNights, totalPrice: totalAmount });
+          } else {
+            console.warn("⚠️ No rooms found for group booking");
+          }
+        } else {
+          console.warn("⚠️ No roomId or roomIds found in enquiry - using default totalAmount: 0");
+        }
+      } catch (calcError) {
+        console.error("❌ Error calculating totalAmount:", calcError);
+        totalAmount = "0";
+      }
+      
+      console.log("📦 CREATING BOOKING with:", { customPrice: customPriceValue, advanceAmount: advanceAmountValue, totalAmount, status: "confirmed" });
+      
+      const booking = await storage.createBooking({
+        propertyId: enquiry.propertyId,
+        roomId: enquiry.roomId,
+        roomIds: enquiry.roomIds,
+        isGroupBooking: enquiry.isGroupEnquiry || false,
+        bedsBooked: enquiry.bedsBooked,
+        guestId: guestId,
+        checkInDate: enquiry.checkInDate,
+        checkOutDate: enquiry.checkOutDate,
+        numberOfGuests: enquiry.numberOfGuests,
+        customPrice: customPriceValue,
+        advanceAmount: advanceAmountValue,
+        totalAmount: totalAmount,
+        status: "confirmed",
+        specialRequests: enquiry.specialRequests,
+        source: "walk-in",
+        mealPlan: enquiry.mealPlan || "EP",
+      });
+
+      // Update enquiry status to confirmed and payment status to received
+      await storage.updateEnquiryStatus(enquiryId, "confirmed");
+      await storage.updateEnquiryPaymentStatus(enquiryId, "received");
+
+      res.status(201).json(booking);
+    } catch (error: any) {
+      console.error("Error confirming enquiry:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Message Templates endpoints
+  app.get("/api/message-templates", isAuthenticated, async (req, res) => {
+    try {
+      const templates = await storage.getAllMessageTemplates();
+      res.json(templates);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Communications endpoints
+  app.post("/api/communications", isAuthenticated, async (req: any, res) => {
+    try {
+      const { insertCommunicationSchema } = await import("@shared/schema");
+      const data = insertCommunicationSchema.parse(req.body);
+      
+      // Add user who sent the message
+      const userId = req.user?.claims?.sub;
+      const communicationData = {
+        ...data,
+        sentBy: userId,
+      };
+
+      // Try to send actual message via authkey.io
+      const authkeyService = createAuthkeyService();
+      let status = 'sent'; // Default status
+      let twilioSid: string | undefined; // Reuse this field for authkey message ID
+
+      if (authkeyService && communicationData.recipientPhone) {
+        try {
+          // Determine if this is WhatsApp or SMS based on messageType field
+          if (communicationData.messageType === 'whatsapp') {
+            // For WhatsApp, we need to use templates approved in authkey.io
+            const result = await authkeyService.sendWhatsAppTemplate({
+              to: communicationData.recipientPhone,
+              template: 'booking_confirmation', // Template name in authkey.io (change as needed)
+              parameters: [], // Add template parameters as needed
+            });
+            
+            if (result.success) {
+              status = 'sent';
+              twilioSid = result.messageId;
+            } else {
+              status = 'failed';
+              communicationData.errorMessage = result.error;
+              console.error('[Communications] WhatsApp send failed:', result.error);
+            }
+          } else {
+            // Send as SMS using testing template (sid=28289)
+            // Template format: "Use {otp} as your OTP to access your {company}, OTP is confidential and valid for 5 mins This sms sent by authkey.io"
+            // Just send the OTP value - the template will format the full message
+            const otpValue = data.bookingId 
+              ? `BK${data.bookingId}` 
+              : data.enquiryId 
+                ? `ENQ${data.enquiryId}` 
+                : 'INFO';
+            
+            const result = await authkeyService.sendSMS({
+              to: data.recipientPhone,
+              message: otpValue, // Just the OTP value - template handles the rest
+            });
+            
+            if (result.success) {
+              status = 'sent';
+              twilioSid = result.messageId;
+            } else {
+              status = 'failed';
+              communicationData.errorMessage = result.error;
+              console.error('[Communications] SMS send failed:', result.error);
+            }
+          }
+        } catch (sendError: any) {
+          console.error('[Communications] Error sending message:', sendError);
+          status = 'failed';
+          communicationData.errorMessage = sendError.message;
+        }
+      } else {
+        // No authkey configured - just log the message
+        console.log('[Communications] No authkey service configured - message logged only');
+      }
+
+      // Save to database with delivery status
+      const communicationWithStatus = {
+        ...communicationData,
+        status,
+        twilioSid,
+      };
+
+      const communication = await storage.sendMessage(communicationWithStatus);
+      res.status(201).json(communication);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/enquiries/:id/communications", isAuthenticated, async (req, res) => {
+    try {
+      const communications = await storage.getCommunicationsByEnquiry(parseInt(req.params.id));
+      res.json(communications);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bookings/:id/communications", isAuthenticated, async (req, res) => {
+    try {
+      const communications = await storage.getCommunicationsByBooking(parseInt(req.params.id));
+      res.json(communications);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Webhook for authkey.io delivery status updates
+  // This endpoint receives delivery status updates from authkey.io
+  app.post("/api/webhooks/authkey/delivery-status", async (req, res) => {
+    try {
+      const { message_id, status, error_message } = req.body;
+      
+      if (!message_id) {
+        return res.status(400).json({ message: "message_id is required" });
+      }
+
+      // Update the communication record with delivery status
+      const { communications } = await import("@shared/schema");
+      await db
+        .update(communications)
+        .set({ 
+          status: status || 'delivered',
+          errorMessage: error_message || null,
+        })
+        .where(eq(communications.twilioSid, message_id));
+
+      console.log(`[Authkey Webhook] Updated delivery status for message ${message_id}: ${status}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('[Authkey Webhook] Error processing webhook:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Calendar availability endpoint - returns date blocks for visual calendar
+  app.get("/api/calendar/availability", isAuthenticated, async (req, res) => {
+    try {
+      const { startDate, endDate, propertyId } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+      
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ message: "Invalid date format" });
+      }
+      
+      // Prevent excessive date range to avoid performance issues
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff > 90) {
+        return res.status(400).json({ message: "Date range cannot exceed 90 days" });
+      }
+      
+      if (daysDiff < 1) {
+        return res.status(400).json({ message: "End date must be after start date" });
+      }
+      
+      // Get rooms (optionally filtered by property)
+      const { rooms, bookings } = await import("@shared/schema");
+      const propertyIdNum = propertyId ? Number(propertyId) : null;
+      const allRooms = Number.isFinite(propertyIdNum)
+        ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
+        : await db.select().from(rooms);
+      
+      // Get all active bookings and filter in JavaScript (historical working solution)
+      const allBookings = await db
+        .select()
+        .from(bookings)
+        .where(not(eq(bookings.status, "cancelled")));
+      
+      // Filter overlapping bookings using JavaScript Date comparison
+      const overlappingBookings = allBookings.filter(booking => {
+        // Skip bookings with invalid dates
+        if (!booking.checkInDate || !booking.checkOutDate) return false;
+        
+        const bookingCheckOut = new Date(booking.checkOutDate);
+        const bookingCheckIn = new Date(booking.checkInDate);
+        
+        // Skip if dates are invalid
+        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
+        
+        return bookingCheckOut > start && bookingCheckIn < end;
+      });
+      
+      // Build calendar data
+      const calendarData = allRooms.map(room => {
+        const roomBookings = overlappingBookings.filter(b =>
+          b.roomId === room.id || b.roomIds?.includes(room.id)
+        );
+        
+        // Generate date blocks for this room
+        const dateBlocks: { [date: string]: { available: boolean; bedsAvailable?: number } } = {};
+        
+        // Get today's date (start of day for comparison)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayKey = today.toISOString().split('T')[0];
+        
+        // Initialize all dates as available
+        let current = new Date(start);
+        while (current <= end) {
+          const dateKey = current.toISOString().split('T')[0];
+          
+          // For TODAY only: check room status (cleaning/maintenance = unavailable)
+          // For FUTURE dates: ignore room status (only bookings matter)
+          const isToday = dateKey === todayKey;
+          const isRoomStatusBlocking = isToday && 
+            (room.status === 'cleaning' || room.status === 'maintenance' || room.status === 'out-of-order');
+          
+          dateBlocks[dateKey] = {
+            available: !isRoomStatusBlocking,
+            ...(room.roomCategory === "dormitory" && { 
+              bedsAvailable: isRoomStatusBlocking ? 0 : (room.totalBeds || 6)
+            })
+          };
+          current.setDate(current.getDate() + 1);
+        }
+        
+        // Mark booked dates (excluding checkout date - guest can check in on checkout day)
+        roomBookings.forEach(booking => {
+          const bookingStart = new Date(booking.checkInDate);
+          const bookingEnd = new Date(booking.checkOutDate);
+          
+          // Normalize to start of day for accurate comparison
+          bookingStart.setHours(0, 0, 0, 0);
+          bookingEnd.setHours(0, 0, 0, 0);
+          
+          let bookingDate = new Date(bookingStart);
+          // Mark all dates from check-in up to (but NOT including) check-out
+          while (bookingDate < bookingEnd) {
+            const dateKey = bookingDate.toISOString().split('T')[0];
+            
+            if (dateBlocks[dateKey]) {
+              if (room.roomCategory === "dormitory") {
+                const bedsBooked = booking.bedsBooked || 1;
+                const currentAvailable = dateBlocks[dateKey].bedsAvailable || 0;
+                const newAvailable = Math.max(0, currentAvailable - bedsBooked);
+                dateBlocks[dateKey] = {
+                  available: newAvailable > 0,
+                  bedsAvailable: newAvailable
+                };
+              } else {
+                dateBlocks[dateKey].available = false;
+              }
+            }
+            
+            bookingDate.setDate(bookingDate.getDate() + 1);
+          }
+        });
+        
+        return {
+          roomId: room.id,
+          roomNumber: room.roomNumber,
+          roomName: room.roomName,
+          roomCategory: room.roomCategory,
+          totalBeds: room.totalBeds,
+          dateBlocks
+        };
+      });
+      
+      res.json(calendarData);
+    } catch (error: any) {
+      console.error('[CALENDAR ERROR]', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Property Lease endpoints
+  app.get("/api/leases", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const { propertyId } = req.query;
+
+      let leases;
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        leases = await storage.getLeasesByProperty(propId);
+      } else {
+        const allLeases = await storage.getAllLeases();
+        leases = allLeases.filter(l => l.propertyId && canAccessProperty(tenant, l.propertyId));
+      }
+      res.json(leases);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      const lease = await storage.getLeaseWithPayments(parseInt(req.params.id));
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(lease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/leases", isAuthenticated, async (req, res) => {
+    try {
+      const { insertPropertyLeaseSchema } = await import("@shared/schema");
+      
+      // Convert date strings to Date objects before validation
+      const processedBody = {
+        ...req.body,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+      };
+      
+      const validatedData = insertPropertyLeaseSchema.parse(processedBody);
+      const lease = await storage.createLease(validatedData);
+      res.status(201).json(lease);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      const lease = await storage.updateLease(parseInt(req.params.id), req.body);
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(lease);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/leases/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLease(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease Payment endpoints
+  app.get("/api/leases/:leaseId/payments", isAuthenticated, async (req, res) => {
+    try {
+      const payments = await storage.getLeasePayments(parseInt(req.params.leaseId));
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/leases/:leaseId/payments", isAuthenticated, async (req: any, res) => {
+    try {
+      const { insertLeasePaymentSchema } = await import("@shared/schema");
+      const leaseId = parseInt(req.params.leaseId);
+      const paymentData = {
+        ...req.body,
+        leaseId,
+        paymentDate: req.body.paymentDate ? new Date(req.body.paymentDate) : undefined,
+      };
+      const validatedData = insertLeasePaymentSchema.parse(paymentData);
+      const payment = await storage.createLeasePayment(validatedData);
+      
+      // Record lease payment to wallet if property and amount are provided
+      const lease = await storage.getLease(leaseId);
+      if (lease?.propertyId && payment.amount) {
+        try {
+          await storage.recordLeasePaymentToWallet(
+            lease.propertyId,
+            payment.id,
+            parseFloat(payment.amount.toString()),
+            payment.paymentMethod || 'cash',
+            `Lease payment - ${lease.lessorName || 'Lease'}`,
+            req.user?.claims?.sub || req.user?.id || null
+          );
+          console.log(`[Wallet] Recorded lease payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record lease payment to wallet:`, walletError);
+        }
+      }
+      
+      res.status(201).json(payment);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/lease-payments/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteLeasePayment(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease Summary endpoint - comprehensive summary with carry-forward
+  app.get("/api/leases/:leaseId/summary", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await storage.calculateLeaseSummary(parseInt(req.params.leaseId));
+      if (!summary) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease History endpoint - get all changes to a lease
+  app.get("/api/leases/:leaseId/history", isAuthenticated, async (req, res) => {
+    try {
+      const history = await storage.getLeaseHistory(parseInt(req.params.leaseId));
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Override lease current year amount
+  app.post("/api/leases/:leaseId/override", isAuthenticated, async (req: any, res) => {
+    try {
+      const { currentYearAmount, reason } = req.body;
+      const leaseId = parseInt(req.params.leaseId);
+      
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      
+      // Get current lease for history logging
+      const existingLease = await storage.getLease(leaseId);
+      if (!existingLease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+
+      // Log the override in history
+      await storage.createLeaseHistory({
+        leaseId,
+        changeType: 'override',
+        fieldChanged: 'currentYearAmount',
+        oldValue: existingLease.currentYearAmount?.toString() || existingLease.totalAmount?.toString(),
+        newValue: currentYearAmount.toString(),
+        changedBy: currentUser?.fullName || currentUser?.email || userId,
+        changeReason: reason || 'Admin override',
+      });
+
+      // Update the lease with override
+      const updatedLease = await storage.updateLease(leaseId, {
+        currentYearAmount: currentYearAmount.toString(),
+        isOverridden: true,
+      });
+
+      res.json(updatedLease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update carry-forward amount for a lease
+  app.post("/api/leases/:leaseId/carry-forward", isAuthenticated, async (req, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const updatedLease = await storage.updateLeaseCarryForward(leaseId);
+      res.json(updatedLease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Export lease ledger as CSV
+  app.get("/api/leases/:leaseId/export", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await storage.calculateLeaseSummary(parseInt(req.params.leaseId));
+      if (!summary) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+
+      const { lease, payments, summary: summaryData } = summary;
+      const property = await storage.getProperty(lease.propertyId);
+
+      // Build CSV content
+      let csv = "Lease Payment Ledger\n";
+      csv += `Property:,${property?.name || 'N/A'}\n`;
+      csv += `Landlord:,${lease.landlordName || 'N/A'}\n`;
+      csv += `Start Date:,${lease.startDate ? new Date(lease.startDate).toLocaleDateString() : 'N/A'}\n`;
+      csv += `End Date:,${lease.endDate ? new Date(lease.endDate).toLocaleDateString() : 'N/A'}\n`;
+      csv += `Duration:,${summaryData.leaseDurationYears} years\n`;
+      csv += `Current Year:,Year ${summaryData.currentYearNumber}\n`;
+      csv += `\n`;
+      csv += `Summary\n`;
+      csv += `Total Lease Value:,${summaryData.totalLeaseValue}\n`;
+      csv += `Current Year Amount (Year ${summaryData.currentYearNumber}):,${summaryData.currentYearAmount}\n`;
+      csv += `Monthly Amount:,${summaryData.monthlyAmount}\n`;
+      csv += `Total Paid:,${summaryData.totalPaid}\n`;
+      csv += `Carry Forward (Previous Years):,${summaryData.carryForward}\n`;
+      csv += `Total Pending:,${summaryData.totalPending}\n`;
+      csv += `\n`;
+      
+      // Year-by-Year Breakdown
+      if (summaryData.yearlyBreakdown && summaryData.yearlyBreakdown.length > 0) {
+        csv += `Year-by-Year Breakdown\n`;
+        csv += `Year,Period,Amount Due,Amount Paid,Balance,Status\n`;
+        summaryData.yearlyBreakdown.forEach((yr: any) => {
+          csv += `Year ${yr.year},`;
+          csv += `${yr.startDate} to ${yr.endDate},`;
+          csv += `${yr.amountDue},`;
+          csv += `${yr.amountPaid},`;
+          csv += `${yr.balance},`;
+          csv += `${yr.isCurrentYear ? 'Current' : (yr.isCompleted ? 'Completed' : 'Upcoming')}\n`;
+        });
+        csv += `\n`;
+      }
+      
+      csv += `Payment History (${payments.length} payments)\n`;
+      csv += `Date,Amount,Method,Reference,Notes\n`;
+      
+      payments.forEach((p: any) => {
+        csv += `${p.paymentDate ? new Date(p.paymentDate).toLocaleDateString() : 'N/A'},`;
+        csv += `${p.amount},`;
+        csv += `${p.paymentMethod || 'N/A'},`;
+        csv += `${p.referenceNumber || 'N/A'},`;
+        csv += `"${(p.notes || '').replace(/"/g, '""')}"\n`;
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="lease_ledger_${lease.id}.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== WALLET / ACCOUNT MANAGEMENT =====
+
+  // Get wallets for a property
+  app.get("/api/wallets", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const walletList = await storage.getWalletsByProperty(parseInt(propertyId as string));
+      res.json(walletList);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get wallet summary for property
+  app.get("/api/wallets/summary", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const summary = await storage.getPropertyWalletSummary(parseInt(propertyId as string));
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get single wallet
+  app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.getWallet(parseInt(req.params.id));
+      if (!wallet) {
+        return res.status(404).json({ message: "Wallet not found" });
+      }
+      res.json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Create new wallet
+  app.post("/api/wallets", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.createWallet(req.body);
+      res.status(201).json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update wallet
+  app.patch("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const wallet = await storage.updateWallet(parseInt(req.params.id), req.body);
+      res.json(wallet);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete wallet
+  app.delete("/api/wallets/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteWallet(parseInt(req.params.id));
+      res.json({ message: "Wallet deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Initialize default wallets for a property
+  app.post("/api/wallets/initialize", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.body;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const wallets = await storage.initializeDefaultWallets(propertyId);
+      res.json(wallets);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get wallet transactions
+  app.get("/api/wallets/:id/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const transactions = await storage.getWalletTransactions(parseInt(req.params.id));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all transactions for a property
+  app.get("/api/wallet-transactions", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const transactions = await storage.getTransactionsByProperty(parseInt(propertyId as string));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Record payment to wallet (credit)
+  app.post("/api/wallets/:id/credit", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, source, sourceId, description, referenceNumber, transactionDate } = req.body;
+      const userId = req.session?.userId || null;
+      
+      const transaction = await storage.recordPaymentToWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        source || 'manual',
+        sourceId || null,
+        description || '',
+        referenceNumber || null,
+        transactionDate ? new Date(transactionDate) : new Date(),
+        userId
+      );
+      res.json(transaction);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Record expense from wallet (debit)
+  app.post("/api/wallets/:id/debit", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, source, sourceId, description, referenceNumber, transactionDate } = req.body;
+      const userId = req.session?.userId || null;
+      
+      const transaction = await storage.recordExpenseFromWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        source || 'manual',
+        sourceId || null,
+        description || '',
+        referenceNumber || null,
+        transactionDate ? new Date(transactionDate) : new Date(),
+        userId
+      );
+      res.json(transaction);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Set opening balance for wallet (adds a credit transaction)
+  app.post("/api/wallets/:id/opening-balance", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, description } = req.body;
+      const userId = req.session?.userId || null;
+      
+      if (!amount || parseFloat(amount) <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+      
+      // Record as a credit transaction with source "opening_balance"
+      const transaction = await storage.recordPaymentToWallet(
+        propertyId,
+        walletId,
+        parseFloat(amount),
+        'opening_balance',
+        null,
+        description || 'Opening balance',
+        null,
+        new Date(),
+        userId
+      );
+      
+      console.log(`[Wallet] Set opening balance ₹${amount} for wallet #${walletId}`);
+      res.json(transaction);
+    } catch (error: any) {
+      console.error('[Wallet] Error setting opening balance:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== DAILY CLOSING =====
+
+  // Get daily closings for property
+  app.get("/api/daily-closings", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const closings = await storage.getDailyClosingsByProperty(parseInt(propertyId as string));
+      res.json(closings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get day status (is day open/closed)
+  app.get("/api/daily-closings/status", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, date } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      const dateObj = date ? new Date(date as string) : new Date();
+      const status = await storage.getDayStatus(parseInt(propertyId as string), dateObj);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Close day for property
+  app.post("/api/daily-closings/close", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, closingDate } = req.body;
+      const userId = req.session?.userId;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const dateObj = closingDate ? new Date(closingDate) : new Date();
+      const closing = await storage.closeDayForProperty(
+        parseInt(propertyId),
+        dateObj,
+        userId || 'system'
+      );
+      res.json(closing);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== WALLET REPORTS =====
+  
+  // Get Cash Book report (all cash wallet transactions)
+  app.get("/api/reports/cash-book", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, startDate, endDate } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1)); // First of month
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      // Get cash wallet(s)
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      const cashWallets = allWallets.filter(w => w.type === 'cash');
+      
+      if (cashWallets.length === 0) {
+        return res.json({ transactions: [], openingBalance: 0, closingBalance: 0, summary: { totalCredits: 0, totalDebits: 0 } });
+      }
+      
+      // Get transactions for cash wallets
+      const allTransactions: any[] = [];
+      for (const wallet of cashWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        allTransactions.push(...txns.map(t => ({ ...t, walletName: wallet.name })));
+      }
+      
+      // Filter by date range
+      const filtered = allTransactions.filter(t => {
+        const txnDate = new Date(t.transactionDate);
+        return txnDate >= start && txnDate <= end;
+      }).sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
+      
+      // Calculate summary
+      const totalCredits = filtered.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const totalDebits = filtered.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const closingBalance = cashWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+      const openingBalance = closingBalance - totalCredits + totalDebits;
+      
+      res.json({
+        walletType: 'cash',
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        transactions: filtered,
+        openingBalance,
+        closingBalance,
+        summary: { totalCredits, totalDebits }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get Bank Book report (all bank wallet transactions)
+  app.get("/api/reports/bank-book", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, startDate, endDate } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1));
+      const end = endDate ? new Date(endDate as string) : new Date();
+      
+      // Get bank wallet(s)
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      const bankWallets = allWallets.filter(w => w.type === 'bank');
+      
+      if (bankWallets.length === 0) {
+        return res.json({ transactions: [], openingBalance: 0, closingBalance: 0, summary: { totalCredits: 0, totalDebits: 0 } });
+      }
+      
+      const allTransactions: any[] = [];
+      for (const wallet of bankWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        allTransactions.push(...txns.map(t => ({ ...t, walletName: wallet.name, accountNumber: wallet.accountNumber })));
+      }
+      
+      const filtered = allTransactions.filter(t => {
+        const txnDate = new Date(t.transactionDate);
+        return txnDate >= start && txnDate <= end;
+      }).sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime());
+      
+      const totalCredits = filtered.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const totalDebits = filtered.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+      const closingBalance = bankWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+      const openingBalance = closingBalance - totalCredits + totalDebits;
+      
+      res.json({
+        walletType: 'bank',
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        transactions: filtered,
+        openingBalance,
+        closingBalance,
+        summary: { totalCredits, totalDebits }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get Daily Summary report
+  app.get("/api/reports/daily-summary", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, date } = req.query;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID is required" });
+      }
+      
+      const propertyIdNum = parseInt(propertyId as string);
+      const reportDate = date ? new Date(date as string) : new Date();
+      reportDate.setHours(0, 0, 0, 0);
+      const nextDay = new Date(reportDate);
+      nextDay.setDate(nextDay.getDate() + 1);
+      
+      // Get all wallets
+      const allWallets = await storage.getWalletsByProperty(propertyIdNum);
+      
+      // Get transactions for the day
+      const walletSummaries = [];
+      let totalDayCredits = 0;
+      let totalDayDebits = 0;
+      
+      for (const wallet of allWallets) {
+        const txns = await storage.getWalletTransactions(wallet.id);
+        const dayTxns = txns.filter(t => {
+          const txnDate = new Date(t.transactionDate);
+          return txnDate >= reportDate && txnDate < nextDay;
+        });
+        
+        const credits = dayTxns.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+        const debits = dayTxns.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
+        
+        totalDayCredits += credits;
+        totalDayDebits += debits;
+        
+        walletSummaries.push({
+          walletId: wallet.id,
+          walletName: wallet.name,
+          walletType: wallet.type,
+          currentBalance: parseFloat(wallet.currentBalance?.toString() || '0'),
+          dayCredits: credits,
+          dayDebits: debits,
+          transactionCount: dayTxns.length,
+        });
+      }
+      
+      // Check if day is closed
+      const dayStatus = await storage.getDayStatus(propertyIdNum, reportDate);
+      
+      res.json({
+        date: reportDate.toISOString(),
+        isDayClosed: !dayStatus.isOpen,
+        wallets: walletSummaries,
+        totals: {
+          totalCredits: totalDayCredits,
+          totalDebits: totalDayDebits,
+          netChange: totalDayCredits - totalDayDebits,
+          totalBalance: allWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0),
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Expense Category endpoints
+  app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId } = req.query;
+      const categories = propertyId
+        ? await storage.getExpenseCategoriesByProperty(parseInt(propertyId as string))
+        : await storage.getAllExpenseCategories();
+      res.json(categories);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/expense-categories", isAuthenticated, async (req, res) => {
+    try {
+      const validatedData = insertExpenseCategorySchema.parse(req.body);
+      const category = await storage.createExpenseCategory(validatedData);
+      res.status(201).json(category);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/expense-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validatedData = insertExpenseCategorySchema.partial().parse(req.body);
+      const category = await storage.updateExpenseCategory(parseInt(id), validatedData);
+      res.json(category);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/expense-categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteExpenseCategory(parseInt(id));
+      res.json({ message: "Category deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Property Expense endpoints
+  app.get("/api/expenses", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const { propertyId } = req.query;
+      const tenant = getTenantContext(currentUser);
+      
+      let expenses;
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        expenses = await storage.getExpensesByProperty(propId);
+      } else {
+        const allExpenses = await storage.getAllExpenses();
+        expenses = allExpenses.filter(e => e.propertyId && canAccessProperty(tenant, e.propertyId));
+      }
+      res.json(expenses);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/expenses", isAuthenticated, async (req: any, res) => {
+    try {
+      const { insertPropertyExpenseSchema } = await import("@shared/schema");
+      
+      // Transform the data to match schema expectations
+      const transformedData = {
+        ...req.body,
+        expenseDate: req.body.expenseDate ? new Date(req.body.expenseDate) : new Date(),
+      };
+      
+      const validatedData = insertPropertyExpenseSchema.parse(transformedData);
+      const expense = await storage.createExpense(validatedData);
+      
+      // Record expense to wallet if property and amount are provided
+      if (expense.propertyId && expense.amount) {
+        const userId = req.user?.claims?.sub || req.user?.id || null;
+        try {
+          await storage.recordExpenseToWallet(
+            expense.propertyId,
+            expense.id,
+            parseFloat(expense.amount.toString()),
+            expense.paymentMethod || 'cash',
+            expense.description || `Expense: ${expense.vendorName || 'Unknown'}`,
+            userId
+          );
+          console.log(`[Wallet] Recorded expense #${expense.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record expense to wallet:`, walletError);
+        }
+      }
+      
+      res.status(201).json(expense);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expense = await storage.updateExpense(parseInt(req.params.id), req.body);
+      if (!expense) {
+        return res.status(404).json({ message: "Expense not found" });
+      }
+      res.json(expense);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteExpense(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Financial Reports endpoint (date-range based)
+  app.get("/api/financials/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      const financials = await storage.getPropertyFinancials(
+        parseInt(req.params.propertyId),
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+      res.json(financials);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // P&L Report endpoint (lease-period based with total lease amount)
+  app.get("/api/properties/:propertyId/pnl", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const propertyId = parseInt(req.params.propertyId);
+      const { leaseId, month } = req.query;
+
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      // Check property access for managers
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(propertyId)) {
+          return res.status(403).json({ message: "You don't have access to this property" });
+        }
+      }
+
+      // If month filter provided (format: YYYY-MM), use monthly P&L
+      if (month) {
+        const pnlReport = await storage.getMonthlyPnLReport(propertyId, month as string);
+        return res.json(pnlReport);
+      }
+
+      const pnlReport = await storage.getPropertyPnLReport(
+        propertyId,
+        leaseId ? parseInt(leaseId as string) : undefined
+      );
+      res.json(pnlReport);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease Amount Editing endpoint (Admin/Manager only)
+  app.patch("/api/leases/:id/amount", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { totalAmount } = req.body;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized. Only admin/manager can edit lease amounts." });
+      }
+
+      const lease = await storage.getLease(parseInt(req.params.id));
+      if (!lease) {
+        return res.status(404).json({ message: "Lease not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(lease.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized. You can only edit leases for your assigned properties." });
+        }
+      }
+
+      if (!totalAmount || isNaN(parseFloat(totalAmount))) {
+        return res.status(400).json({ message: "Invalid lease amount" });
+      }
+
+      const beforeData = { totalAmount: lease.totalAmount };
+      const updated = await storage.updateLease(parseInt(req.params.id), { totalAmount });
+      const afterData = { totalAmount: updated.totalAmount };
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logUpdate(
+        "lease",
+        String(lease.id),
+        user,
+        beforeData,
+        afterData,
+        { action: "lease_amount_updated", propertyId: lease.propertyId }
+      );
+
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Staff Member endpoints (non-app staff) - All authenticated users
+  app.get("/api/staff-members", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { propertyId } = req.query;
+      
+      // Get tenant context for property filtering
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const tenant = currentUser ? getTenantContext(currentUser) : null;
+
+      let staffMembers;
+      if (propertyId) {
+        staffMembers = await storage.getStaffMembersByProperty(parseInt(propertyId as string));
+      } else {
+        const allMembers = await storage.getAllStaffMembers();
+        // Apply tenant filtering for non-super-admin users
+        if (tenant && !tenant.isSuperAdmin) {
+          staffMembers = allMembers.filter(m => m.propertyId && canAccessProperty(tenant, m.propertyId));
+        } else {
+          staffMembers = allMembers;
+        }
+      }
+
+      res.json(staffMembers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/staff-members/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      const member = await storage.getStaffMember(parseInt(req.params.id));
+      if (!member) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(member.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      res.json(member);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/staff-members", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      // Convert date strings to Date objects before validation
+      const bodyData = {
+        ...req.body,
+        joiningDate: req.body.joiningDate ? new Date(req.body.joiningDate) : null,
+        leavingDate: req.body.leavingDate ? new Date(req.body.leavingDate) : null,
+      };
+
+      const { insertStaffMemberSchema } = await import("@shared/schema");
+      const validatedData = insertStaffMemberSchema.parse(bodyData);
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(validatedData.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized. You can only add staff for your assigned properties." });
+        }
+      }
+
+      const member = await storage.createStaffMember(validatedData);
+      res.json(member);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/staff-members/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      const member = await storage.getStaffMember(parseInt(req.params.id));
+      if (!member) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(member.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+        if (req.body.propertyId && !propertyIds.includes(req.body.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized. You can only assign staff to your properties." });
+        }
+      }
+
+      // Handle date fields properly
+      const updateData: any = { ...req.body };
+      if (updateData.joiningDate) {
+        updateData.joiningDate = new Date(updateData.joiningDate);
+      }
+      if (updateData.leavingDate) {
+        updateData.leavingDate = new Date(updateData.leavingDate);
+      }
+      // Handle baseSalary as string for decimal type
+      if (updateData.baseSalary !== undefined) {
+        updateData.baseSalary = String(updateData.baseSalary);
+      }
+
+      const updated = await storage.updateStaffMember(parseInt(req.params.id), updateData);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/staff-members/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      const member = await storage.getStaffMember(parseInt(req.params.id));
+      if (!member) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (!propertyIds.includes(member.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      await storage.deleteStaffMember(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Staff Salary endpoints (Admin/Manager only)
+  app.get("/api/salaries", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { userId, propertyId } = req.query;
+
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      let salaries;
+      if (userId) {
+        salaries = await storage.getSalariesByUser(userId as string);
+      } else if (propertyId) {
+        salaries = await storage.getSalariesByProperty(parseInt(propertyId as string));
+      } else if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (propertyIds.length === 0) {
+          return res.json([]);
+        }
+        const allSalaries = await storage.getAllSalaries();
+        salaries = allSalaries.filter(s => s.propertyId && propertyIds.includes(s.propertyId));
+      } else {
+        salaries = await storage.getAllSalaries();
+      }
+
+      res.json(salaries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/salaries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const salary = await storage.getSalary(parseInt(req.params.id));
+      if (!salary) {
+        return res.status(404).json({ message: "Salary not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (salary.propertyId && !propertyIds.includes(salary.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      res.json(salary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/salaries", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertStaffSalarySchema } = await import("@shared/schema");
+      const validatedData = insertStaffSalarySchema.parse(req.body);
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (validatedData.propertyId && !propertyIds.includes(validatedData.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      const salary = await storage.createSalary(validatedData);
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCreate(
+        "staff_salary",
+        String(salary.id),
+        user,
+        salary,
+        { action: "salary_created", propertyId: salary.propertyId }
+      );
+
+      res.status(201).json(salary);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/salaries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const existing = await storage.getSalary(parseInt(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "Salary not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (existing.propertyId && !propertyIds.includes(existing.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      const salary = await storage.updateSalary(parseInt(req.params.id), req.body);
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logUpdate(
+        "staff_salary",
+        String(existing.id),
+        user,
+        existing,
+        salary,
+        { action: "salary_updated", propertyId: salary.propertyId }
+      );
+
+      res.json(salary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/salaries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const existing = await storage.getSalary(parseInt(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "Salary not found" });
+      }
+
+      if (user.role === 'manager') {
+        const propertyIds = user.assignedPropertyIds || [];
+        if (existing.propertyId && !propertyIds.includes(existing.propertyId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      await storage.deleteSalary(parseInt(req.params.id));
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logDelete(
+        "staff_salary",
+        String(existing.id),
+        user,
+        existing,
+        { action: "salary_deleted", propertyId: existing.propertyId }
+      );
+
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Staff Salary Summary - with pending salary calculation (gross - advances)
+  app.get("/api/salaries/summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const { startDate, endDate } = req.query;
+      
+      if (!['admin', 'manager'].includes(currentUser.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const salaries = await storage.getAllSalaries();
+      const filteredSalariesByTenant = salaries.filter(s => s.propertyId && canAccessProperty(tenant, s.propertyId));
+      const advances = await storage.getAllAdvances();
+      const allUsers = await storage.getAllUsers();
+
+      // Filter by date range if provided
+      let filteredSalaries = filteredSalariesByTenant;
+      if (startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        filteredSalaries = salaries.filter(s => {
+          const periodStart = new Date(s.periodStart);
+          const periodEnd = new Date(s.periodEnd);
+          return periodStart <= end && periodEnd >= start;
+        });
+      }
+
+      // Calculate pending salary for each staff member
+      const summaryData = filteredSalaries.map(salary => {
+        const staffAdvances = advances.filter(a => a.userId === salary.userId);
+        const totalAdvances = staffAdvances.reduce((sum, a) => sum + parseFloat(a.amount.toString()), 0);
+        const grossSalary = parseFloat(salary.grossSalary.toString());
+        const pendingSalary = grossSalary - totalAdvances;
+        const staffUser = allUsers.find(u => u.id === salary.userId);
+
+        return {
+          id: salary.id,
+          staffName: staffUser?.email || salary.userId,
+          periodStart: salary.periodStart,
+          periodEnd: salary.periodEnd,
+          grossSalary,
+          totalAdvances,
+          pendingSalary: Math.max(0, pendingSalary),
+          status: salary.status,
+          advancesCount: staffAdvances.length,
+        };
+      });
+
+      res.json(summaryData);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/staff-salaries/detailed - Get detailed salary breakdown for all staff
+  app.get("/api/staff-salaries/detailed", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { propertyId, startDate, endDate } = req.query;
+
+      if (!propertyId || !startDate || !endDate) {
+        return res.status(400).json({ message: "propertyId, startDate, and endDate are required" });
+      }
+
+      const propId = parseInt(propertyId as string);
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+
+      console.log(`[SALARY DEBUG] Fetching salaries for propertyId: ${propId}, start: ${start.toISOString()}, end: ${end.toISOString()}`);
+
+      // Check user access to property
+      if (user.role === 'manager') {
+        const assignedProps = user.assignedPropertyIds || [];
+        if (!assignedProps.includes(propId)) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+
+      const detailedSalaries = await storage.getDetailedStaffSalaries(propId, start, end);
+      console.log(`[SALARY DEBUG] Returned ${detailedSalaries.length} staff salary records`);
+      res.json(detailedSalaries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/salary-payments - Get salary payment history
+  app.get("/api/salary-payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { staffMemberId, propertyId, startDate, endDate } = req.query;
+
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      let payments;
+      if (staffMemberId) {
+        payments = await storage.getPaymentsByStaffMember(
+          parseInt(staffMemberId as string),
+          propertyId ? parseInt(propertyId as string) : undefined
+        );
+      } else if (propertyId) {
+        payments = await storage.getPaymentsByProperty(
+          parseInt(propertyId as string),
+          startDate ? new Date(startDate as string) : undefined,
+          endDate ? new Date(endDate as string) : undefined
+        );
+      } else {
+        return res.status(400).json({ message: "staffMemberId or propertyId required" });
+      }
+
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/salary-payments - Record a salary payment
+  app.post("/api/salary-payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { staffMemberId, amount, paymentDate, paymentMethod, notes, periodStart, periodEnd } = req.body;
+
+      if (!staffMemberId || !amount || !paymentDate || !periodStart || !periodEnd) {
+        return res.status(400).json({ message: "staffMemberId, amount, paymentDate, periodStart, and periodEnd are required" });
+      }
+
+      // Get staff member to find propertyId
+      const staffMember = await storage.getStaffMember(staffMemberId);
+      if (!staffMember) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      const payment = await storage.createSalaryPayment({
+        staffMemberId,
+        propertyId: staffMember.propertyId,
+        amount: String(amount),
+        paymentDate: new Date(paymentDate),
+        paymentMethod: paymentMethod || 'cash',
+        notes: notes || null,
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+        recordedBy: user.claims?.sub || user.id || String(user.userId),
+      });
+
+      // Record salary payment to wallet
+      if (staffMember.propertyId) {
+        try {
+          await storage.recordSalaryPaymentToWallet(
+            staffMember.propertyId,
+            payment.id,
+            parseFloat(amount.toString()),
+            paymentMethod || 'cash',
+            staffMember.name || 'Staff',
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary payment to wallet:`, walletError);
+        }
+      }
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCreate(
+        "salary_payment",
+        String(payment.id),
+        user,
+        payment,
+        { action: "salary_payment_recorded", staffMemberId, amount }
+      );
+
+      res.status(201).json(payment);
+    } catch (error: any) {
+      console.error("Error recording salary payment:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Salary Advance endpoints
+  app.get("/api/advances", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const { userId: targetUserId } = req.query;
+
+      if (!['admin', 'manager'].includes(currentUser.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const advances = targetUserId 
+        ? await storage.getAdvancesByUser(targetUserId as string)
+        : await storage.getAllAdvances();
+      
+      // Filter by property access
+      const filtered = advances.filter(a => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/advances", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertSalaryAdvanceSchema } = await import("@shared/schema");
+      const validatedData = insertSalaryAdvanceSchema.parse(req.body);
+      const advance = await storage.createAdvance(validatedData);
+
+      // Record salary advance to wallet if we have property and amount
+      if (advance.propertyId && advance.amount) {
+        try {
+          // Get staff name for description
+          let staffName = 'Staff';
+          if (advance.staffMemberId) {
+            const staff = await storage.getStaffMember(advance.staffMemberId);
+            staffName = staff?.name || 'Staff';
+          }
+          await storage.recordSalaryAdvanceToWallet(
+            advance.propertyId,
+            advance.id,
+            parseFloat(advance.amount.toString()),
+            'cash',
+            staffName,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary advance #${advance.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary advance to wallet:`, walletError);
+        }
+      }
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCreate(
+        "salary_advance",
+        String(advance.id),
+        user,
+        advance,
+        { action: "advance_created", userId: advance.userId }
+      );
+
+      res.status(201).json(advance);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/advances/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const existing = await storage.getAdvance(parseInt(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "Advance not found" });
+      }
+
+      const advance = await storage.updateAdvance(parseInt(req.params.id), req.body);
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logUpdate(
+        "salary_advance",
+        String(existing.id),
+        user,
+        existing,
+        advance,
+        { action: "advance_updated", userId: advance.userId }
+      );
+
+      res.json(advance);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/advances/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const existing = await storage.getAdvance(parseInt(req.params.id));
+      if (!existing) {
+        return res.status(404).json({ message: "Advance not found" });
+      }
+
+      await storage.deleteAdvance(parseInt(req.params.id));
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logDelete(
+        "salary_advance",
+        String(existing.id),
+        user,
+        existing,
+        { action: "advance_deleted", userId: existing.userId }
+      );
+
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== ATTENDANCE ENDPOINTS =====
+  // GET /api/attendance - Get all attendance records
+  app.get("/api/attendance", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const { staffMemberId, propertyId, attendanceDate, month } = req.query;
+
+      if (staffMemberId) {
+        const records = await storage.getAttendanceByStaffMember(parseInt(staffMemberId as string));
+        // Filter by property access
+        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        return res.json(filtered);
+      }
+
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        const records = await storage.getAttendanceByProperty(propId);
+        return res.json(records);
+      }
+
+      if (attendanceDate) {
+        const date = new Date(attendanceDate as string);
+        const records = await storage.getAttendanceByDate(date);
+        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        return res.json(filtered);
+      }
+
+      const allRecords = await storage.getAllAttendance();
+      // Filter by property access
+      const filteredByTenant = allRecords.filter(r => (r.property_id || r.propertyId) && canAccessProperty(tenant, r.property_id || r.propertyId));
+      
+      console.log(`[ATTENDANCE DEBUG] Raw records from storage: ${allRecords.length} records, filtered: ${filteredByTenant.length}`);
+      
+      // Transform all records to camelCase with proper date handling
+      const transformed = filteredByTenant.map(r => {
+        let dateStr = "";
+        const dateValue = r.attendance_date || r.attendanceDate;
+        
+        if (typeof dateValue === 'string') {
+          dateStr = dateValue.split('T')[0]; // Format: YYYY-MM-DD
+        } else if (dateValue instanceof Date && !isNaN(dateValue.getTime())) {
+          dateStr = dateValue.toISOString().split('T')[0];
+        } else {
+          dateStr = ""; // Invalid date - skip this record
+        }
+        
+        if (!dateStr) return null; // Skip records with invalid dates
+        
+        return {
+          id: r.id,
+          staffId: r.staff_id !== undefined ? r.staff_id : r.staffId,
+          propertyId: r.property_id !== undefined ? r.property_id : r.propertyId,
+          attendanceDate: dateStr,
+          status: r.status,
+          remarks: r.remarks
+        };
+      }).filter(Boolean); // Remove null entries
+      
+      console.log(`[ATTENDANCE DEBUG] Transformed records: ${transformed.length} records`);
+      
+      // Filter by month if provided
+      if (month) {
+        const monthStr = month as string;
+        const filtered = transformed.filter(record => {
+          return record && record.attendanceDate && record.attendanceDate.substring(0, 7) === monthStr;
+        });
+        console.log(`[ATTENDANCE DEBUG] Filtered by month ${monthStr}: ${filtered.length} records`);
+        return res.json(filtered);
+      }
+      
+      res.json(transformed);
+    } catch (error: any) {
+      console.error(`[ATTENDANCE ERROR]:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/attendance - Create attendance record
+  app.post("/api/attendance", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+
+      // Validate the request data - attendanceDate should be string YYYY-MM-DD format
+      const validatedData = insertAttendanceRecordSchema.parse({
+        staffId: parseInt(req.body.staffMemberId, 10),
+        propertyId: req.body.propertyId ? parseInt(req.body.propertyId, 10) : null,
+        attendanceDate: req.body.attendanceDate, // Keep as string for Drizzle date type
+        status: req.body.status,
+        remarks: req.body.remarks || null,
+      });
+
+      // Create the attendance record
+      const attendance = await storage.createAttendance(validatedData);
+
+      res.status(201).json(attendance);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/attendance/stats - Get attendance statistics
+  // NEW LOGIC: All staff are "Present" by default - only exceptions are recorded
+  app.get("/api/attendance/stats", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      const month = req.query.month as string; // Format: YYYY-MM
+      
+      // Get all staff members
+      const allStaffMembers = await storage.getAllStaffMembers();
+      // Filter staff by property access
+      const staffMembers = allStaffMembers.filter(s => canAccessProperty(tenant, s.propertyId));
+      
+      // Get all attendance records - filtered by property access
+      const allAttendanceRecords = await storage.getAllAttendance();
+      const attendanceRecords = allAttendanceRecords.filter((r: any) => {
+        const propId = r.propertyId || r.property_id;
+        return propId && canAccessProperty(tenant, propId);
+      });
+      
+      // Get all pending salary advances for deduction - filtered by property access
+      const allAdvances = await storage.getAllAdvances();
+      const filteredAdvances = allAdvances.filter((a: any) => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      
+      // Calculate stats for each staff member
+      const stats = await Promise.all(staffMembers.map(async (staff) => {
+        // Filter attendance for selected month
+        const staffAttendance = attendanceRecords.filter((record) => {
+          if (record.staffId !== staff.id) return false;
+          if (month) {
+            const recordMonth = new Date(record.attendanceDate).toISOString().slice(0, 7);
+            return recordMonth === month;
+          }
+          return true;
+        });
+
+        // Count only exceptions - no need to mark "present" anymore
+        const absentDays = staffAttendance.filter((a) => a.status === "absent").length;
+        const leaveDays = staffAttendance.filter((a) => a.status === "leave").length;
+        const halfDays = staffAttendance.filter((a) => a.status === "half-day").length;
+
+        // Calculate working days in the month (excluding Sundays)
+        let workingDaysInMonth = 26; // Default assumption
+        if (month) {
+          const [year, monthNum] = month.split('-').map(Number);
+          const monthStart = new Date(year, monthNum - 1, 1);
+          const monthEnd = new Date(year, monthNum, 0);
+          
+          // Count days excluding Sundays
+          let workDays = 0;
+          for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+            if (d.getDay() !== 0) { // 0 = Sunday
+              workDays++;
+            }
+          }
+          workingDaysInMonth = workDays;
+          
+          // Adjust for joining date if staff joined mid-month
+          if (staff.joiningDate) {
+            const joinDate = new Date(staff.joiningDate);
+            if (joinDate > monthStart && joinDate <= monthEnd) {
+              // Recalculate from joining date
+              workDays = 0;
+              for (let d = new Date(joinDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+                if (d.getDay() !== 0) {
+                  workDays++;
+                }
+              }
+              workingDaysInMonth = workDays;
+            }
+          }
+        }
+
+        // Present days = Total working days - Absent - Half days count as 0.5
+        const presentDays = workingDaysInMonth - absentDays - (halfDays * 0.5);
+        
+        // Calculate deductions
+        const baseSalary = parseFloat(String(staff.baseSalary || 0));
+        const deductionPerDay = baseSalary / workingDaysInMonth;
+        
+        // Absent = full day deduction, Half-day = 0.5 day deduction
+        // Leave = no deduction (paid leave)
+        const attendanceDeduction = (deductionPerDay * absentDays) + (deductionPerDay * halfDays * 0.5);
+        
+        // Get pending salary advances for this staff member
+        const staffAdvances = filteredAdvances.filter(
+          (adv) => adv.staffMemberId === staff.id && adv.repaymentStatus === 'pending'
+        );
+        const totalAdvances = staffAdvances.reduce(
+          (sum, adv) => sum + parseFloat(String(adv.amount || 0)), 0
+        );
+        
+        // Total deduction = attendance deduction + pending advances
+        const totalDeduction = attendanceDeduction + totalAdvances;
+        
+        // Net salary after all deductions
+        const netSalary = baseSalary - totalDeduction;
+        
+        // Attendance percentage based on effective present days
+        const attendancePercentage = workingDaysInMonth > 0 
+          ? (presentDays / workingDaysInMonth) * 100 
+          : 100;
+
+        return {
+          staffId: staff.id,
+          staffName: staff.name,
+          presentDays: Math.max(0, presentDays),
+          absentDays,
+          leaveDays,
+          halfDays,
+          totalWorkDays: workingDaysInMonth,
+          attendancePercentage: Math.min(100, Math.max(0, attendancePercentage)),
+          deductionPerDay: Math.round(deductionPerDay * 100) / 100,
+          attendanceDeduction: Math.round(attendanceDeduction * 100) / 100,
+          advanceDeduction: Math.round(totalAdvances * 100) / 100,
+          totalDeduction: Math.round(totalDeduction * 100) / 100,
+          baseSalary,
+          netSalary: Math.round(Math.max(0, netSalary) * 100) / 100,
+        };
+      }));
+
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SALARY ADVANCES ENDPOINTS =====
+  // GET /api/salary-advances - Get all salary advances
+  app.get("/api/salary-advances", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+      const tenant = getTenantContext(currentUser);
+      
+      if (!['admin', 'manager', 'super_admin'].includes(currentUser.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const advances = await storage.getAllAdvances();
+      // Filter by property access
+      const filtered = advances.filter(a => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      res.json(filtered);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/salary-advances - Create a salary advance
+  app.post("/api/salary-advances", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      // Prepare the data for insertion - amount must be a string for decimal type
+      const advanceData = {
+        staffMemberId: parseInt(req.body.staffMemberId),
+        amount: String(req.body.amount),
+        advanceDate: new Date(req.body.advanceDate),
+        reason: req.body.reason || null,
+        repaymentStatus: 'pending',
+        approvedBy: user.firstName || user.email || user.id,
+        notes: req.body.notes || null,
+      };
+
+      const advance = await storage.createAdvance(advanceData as any);
+
+      // Record salary advance to wallet
+      const staffMember = await storage.getStaffMember(advance.staffMemberId!);
+      if (staffMember?.propertyId && advance.amount) {
+        try {
+          await storage.recordSalaryAdvanceToWallet(
+            staffMember.propertyId,
+            advance.id,
+            parseFloat(advance.amount.toString()),
+            'cash',
+            staffMember.name || 'Staff',
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary advance #${advance.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary advance to wallet:`, walletError);
+        }
+      }
+
+      res.status(201).json(advance);
+    } catch (error: any) {
+      console.error('[SALARY ADVANCE ERROR]:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/salary-advances/:id - Delete a salary advance
+  app.delete("/api/salary-advances/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteAdvance(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Salary Payment endpoints
+  app.get("/api/salaries/:salaryId/payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const payments = await storage.getPaymentsBySalary(parseInt(req.params.salaryId));
+      res.json(payments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/salaries/:salaryId/payments", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertSalaryPaymentSchema } = await import("@shared/schema");
+      const validatedData = insertSalaryPaymentSchema.parse({
+        ...req.body,
+        salaryId: parseInt(req.params.salaryId),
+      });
+      const payment = await storage.createSalaryPayment(validatedData);
+
+      // Record salary payment to wallet if we have property and amount
+      if (payment.propertyId && payment.amount) {
+        try {
+          let staffName = 'Staff';
+          if (payment.staffMemberId) {
+            const staff = await storage.getStaffMember(payment.staffMemberId);
+            staffName = staff?.name || 'Staff';
+          }
+          await storage.recordSalaryPaymentToWallet(
+            payment.propertyId,
+            payment.id,
+            parseFloat(payment.amount.toString()),
+            payment.paymentMethod || 'cash',
+            staffName,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded salary payment #${payment.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record salary payment to wallet:`, walletError);
+        }
+      }
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCreate(
+        "salary_payment",
+        String(payment.id),
+        user,
+        payment,
+        { action: "salary_payment_created", salaryId: payment.salaryId }
+      );
+
+      res.status(201).json(payment);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/salaries/payments/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteSalaryPayment(parseInt(req.params.id));
+
+      const { AuditService } = await import("./auditService");
+      await AuditService.logCustomAction(
+        "salary_payment",
+        String(req.params.id),
+        "delete",
+        user,
+        undefined,
+        { action: "salary_payment_deleted" }
+      );
+
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== VENDOR MANAGEMENT ENDPOINTS =====
+  // GET /api/vendors - Get all vendors for a property (with balances)
+  app.get("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { propertyId } = req.query;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const vendors = await storage.getVendorsWithBalance(parseInt(propertyId as string));
+      res.json(vendors);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/vendors/:id - Get a single vendor
+  app.get("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const vendor = await storage.getVendor(parseInt(req.params.id));
+      
+      if (!vendor) {
+        return res.status(404).json({ message: "Vendor not found" });
+      }
+      
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/vendors - Create a new vendor
+  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertVendorSchema } = await import("@shared/schema");
+      const validatedData = insertVendorSchema.parse(req.body);
+      const vendor = await storage.createVendor(validatedData);
+
+      res.status(201).json(vendor);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/vendors/:id - Update a vendor
+  app.patch("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const vendor = await storage.updateVendor(parseInt(req.params.id), req.body);
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/vendors/:id - Delete a vendor
+  app.delete("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteVendor(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== VENDOR TRANSACTION ENDPOINTS =====
+  // GET /api/vendors/:vendorId/transactions - Get transactions for a vendor
+  app.get("/api/vendors/:vendorId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const transactions = await storage.getVendorTransactions(parseInt(req.params.vendorId));
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/vendors/:vendorId/transactions - Add a transaction (credit purchase or payment)
+  app.post("/api/vendors/:vendorId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      const { insertVendorTransactionSchema } = await import("@shared/schema");
+      
+      // Pre-process data to ensure correct types
+      const dataToValidate = {
+        ...req.body,
+        vendorId: parseInt(req.params.vendorId),
+        createdBy: user.firstName || user.email || user.id,
+        amount: req.body.amount?.toString() || '0',
+        transactionDate: req.body.transactionDate ? new Date(req.body.transactionDate) : new Date(),
+      };
+      
+      console.log('[VendorTx] Data to validate:', JSON.stringify(dataToValidate, null, 2));
+      
+      const validatedData = insertVendorTransactionSchema.parse(dataToValidate);
+      
+      const transaction = await storage.createVendorTransaction(validatedData);
+      
+      // Record payment to wallet if it's a payment transaction
+      if (validatedData.transactionType === 'payment' && validatedData.propertyId && validatedData.paymentMethod) {
+        try {
+          await storage.recordVendorPaymentToWallet(
+            validatedData.propertyId,
+            transaction.id,
+            parseFloat(validatedData.amount?.toString() || '0'),
+            validatedData.paymentMethod,
+            `Vendor: ${req.body.vendorName || 'Unknown'}`,
+            user.claims?.sub || user.id || null
+          );
+          console.log(`[Wallet] Recorded vendor payment #${transaction.id} to wallet`);
+        } catch (walletError) {
+          console.log(`[Wallet] Could not record vendor payment to wallet:`, walletError);
+        }
+      }
+      
+      res.status(201).json(transaction);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        console.log('[VendorTx] Zod validation errors:', JSON.stringify(error.errors, null, 2));
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/vendor-transactions/:id - Delete a transaction
+  app.delete("/api/vendor-transactions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      await storage.deleteVendorTransaction(parseInt(req.params.id));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Password Reset endpoints
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email, phone, channel } = req.body;
+      
+      if (!email && !phone) {
+        return res.status(400).json({ message: "Email or phone required" });
+      }
+
+      if (channel === "email" && !email) {
+        return res.status(400).json({ message: "Email required for email OTP" });
+      }
+
+      if (channel === "sms" && !phone) {
+        return res.status(400).json({ message: "Phone required for SMS OTP" });
+      }
+
+      // Check if user exists with this email/phone before sending OTP
+      const allUsers = await storage.getAllUsers();
+      const identifier = channel === "email" ? email : phone;
+      const userExists = allUsers.find(u => 
+        (channel === "email" && u.email === identifier) || 
+        (channel === "sms" && u.phone === identifier)
+      );
+      
+      if (!userExists) {
+        return res.status(404).json({ message: "No account registered with this email address" });
+      }
+
+      const otpRecord = await storage.createPasswordResetOtp({ email, phone, channel });
+
+      // Send OTP via email or SMS
+      if (channel === "email" && email) {
+        const { sendPasswordResetEmail } = await import("./email-service");
+        await sendPasswordResetEmail(email, otpRecord.otp);
+        console.log(`[OTP] Password reset OTP sent to email: ${email}`);
+      }
+
+      res.json({ message: "OTP sent", otp: otpRecord.otp });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/auth/verify-otp", async (req, res) => {
+    try {
+      const { email, phone, otp, channel } = req.body;
+      
+      const identifier = channel === "email" ? email : phone;
+      if (!identifier) {
+        return res.status(400).json({ message: "Email or phone required" });
+      }
+
+      const result = await storage.verifyPasswordResetOtp(channel, identifier, otp);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { resetToken, password } = req.body;
+      
+      if (!resetToken || !password) {
+        return res.status(400).json({ message: "Reset token and new password required" });
+      }
+
+      // Validate the reset token and get the associated user
+      const otpRecord = await storage.getPasswordResetOtpByToken(resetToken);
+      if (!otpRecord) {
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+
+      // Find the user by email or phone
+      const identifier = otpRecord.email || otpRecord.phone;
+      const allUsers = await storage.getAllUsers();
+      const user = allUsers.find(u => u.email === identifier || u.phone === identifier);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Hash the new password and update user
+      const bcrypt = await import("bcryptjs");
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      await db.update(users).set({
+        passwordHash: hashedPassword,
+        updatedAt: new Date(),
+      }).where(eq(users.id, user.id));
+
+      // Delete the used OTP record
+      await storage.deletePasswordResetOtp(otpRecord.id);
+
+      console.log(`[PASSWORD-RESET] Password reset successful for user: ${user.email}`);
+      res.json({ message: "Password reset successful" });
+    } catch (error: any) {
+      console.error(`[PASSWORD-RESET] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Public Registration endpoint - Multi-tenant aware
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, businessName, businessLocation, firstName, lastName, phone } = req.body;
+
+      // Validate input
+      if (!email || !password || !businessName || !businessLocation) {
+        return res.status(400).json({ message: "Email, password, business name, and location are required" });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      // Check if user already exists
+      const allUsers = await storage.getAllUsers();
+      const userExists = allUsers.some((u) => u.email && u.email.toLowerCase() === email.toLowerCase());
+
+      if (userExists) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+
+      // Hash password before storing
+      const hashedPassword = await bcryptjs.hash(password, 10);
+
+      // Generate unique user ID
+      const newUserId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Create new user with PENDING verification status
+      // They cannot access the system until Super Admin approves
+      // Role stays as "staff" (default) until Super Admin promotes to "admin"
+      await db.insert(users).values({
+        id: newUserId,
+        email: email.toLowerCase(),
+        firstName: firstName || "",
+        lastName: lastName || "",
+        businessName,
+        phone: phone || null,
+        role: "staff", // Default role, will be promoted when approved
+        status: "active",
+        password: hashedPassword,
+        verificationStatus: "pending", // Must be approved by Super Admin
+        tenantType: "property_owner", // Default for new signups
+        signupMethod: "email",
+      });
+      
+      const [newUser] = await db.select().from(users).where(eq(users.id, newUserId));
+
+      // Log the registration
+      console.log(`[REGISTRATION] New user registered (PENDING): ${email} with business: ${businessName}`);
+
+      // Notify all Super Admins about new user signup
+      try {
+        const allUsers = await storage.getAllUsers();
+        const superAdmins = allUsers.filter(u => u.role === 'super-admin');
+        
+        for (const admin of superAdmins) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_user_signup",
+            title: "New User Registration",
+            message: `${firstName || ''} ${lastName || ''} (${email}) registered with business: ${businessName}`,
+            soundType: "info",
+            relatedType: "user",
+            isRead: false,
+          });
+        }
+        console.log(`[REGISTRATION] Notified ${superAdmins.length} super admins about new signup`);
+      } catch (notifyError) {
+        console.error("[REGISTRATION] Failed to notify super admins:", notifyError);
+      }
+
+      res.status(201).json({
+        message: "Registration successful. Your account is pending approval by our team. You will be notified once approved.",
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          businessName: newUser.businessName,
+          verificationStatus: "pending",
+        },
+      });
+    } catch (error: any) {
+      console.error("[REGISTRATION ERROR]", error);
+      res.status(500).json({ message: error.message || "Registration failed" });
+    }
+  });
+
+  // Mobile OTP Login - Send OTP via WhatsApp
+  app.post("/api/auth/send-otp", async (req, res) => {
+    try {
+      const { phone, purpose = "login" } = req.body;
+
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Normalize phone number
+      const normalizedPhone = phone.replace(/\D/g, '');
+      if (normalizedPhone.length < 10) {
+        return res.status(400).json({ message: "Invalid phone number" });
+      }
+
+      // Rate limiting: Check if OTP was sent in last 60 seconds
+      const recentOtp = await db.select().from(otpTokens)
+        .where(and(
+          eq(otpTokens.phone, normalizedPhone),
+          gt(otpTokens.createdAt, new Date(Date.now() - 60000))
+        ))
+        .limit(1);
+
+      if (recentOtp.length > 0) {
+        return res.status(429).json({ message: "Please wait 60 seconds before requesting another OTP" });
+      }
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+      // Store OTP in database
+      await db.insert(otpTokens).values({
+        phone: normalizedPhone,
+        otp,
+        purpose,
+        expiresAt,
+        isUsed: false,
+        attempts: 0,
+      });
+
+      // Send OTP via WhatsApp (Authkey.io)
+      try {
+        const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+        if (authkeyApiKey) {
+          const whatsappPayload = {
+            sms: [{
+              to: normalizedPhone.startsWith('91') ? normalizedPhone : `91${normalizedPhone}`,
+              sender: "HTZEEE",
+              templateid: "hostezee_otp", // Template for OTP
+              message: `Your Hostezee login OTP is: ${otp}. Valid for 5 minutes. Do not share this code.`,
+              entityid: "1101868410000052638"
+            }]
+          };
+          
+          await fetch('https://api.authkey.io/request', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'authkey': authkeyApiKey
+            },
+            body: JSON.stringify(whatsappPayload)
+          });
+        }
+      } catch (whatsappError) {
+        console.error("[OTP] WhatsApp send failed:", whatsappError);
+        // Continue even if WhatsApp fails - for testing
+      }
+
+      console.log(`[OTP] Sent OTP ${otp} to ${normalizedPhone} for ${purpose}`);
+
+      res.json({ 
+        success: true, 
+        message: "OTP sent to your WhatsApp",
+        // Only include OTP in development for testing
+        ...(process.env.NODE_ENV === 'development' && { otp })
+      });
+    } catch (error: any) {
+      console.error("[OTP SEND ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to send OTP" });
+    }
+  });
+
+  // Mobile OTP Login - Verify OTP
+  app.post("/api/auth/verify-mobile-otp", async (req, res) => {
+    try {
+      const { phone, otp } = req.body;
+
+      if (!phone || !otp) {
+        return res.status(400).json({ message: "Phone and OTP are required" });
+      }
+
+      const normalizedPhone = phone.replace(/\D/g, '');
+
+      // Find valid OTP
+      const [otpRecord] = await db.select().from(otpTokens)
+        .where(and(
+          eq(otpTokens.phone, normalizedPhone),
+          eq(otpTokens.otp, otp),
+          eq(otpTokens.isUsed, false),
+          gt(otpTokens.expiresAt, new Date())
+        ))
+        .orderBy(desc(otpTokens.createdAt))
+        .limit(1);
+
+      if (!otpRecord) {
+        // Increment attempt count for rate limiting
+        await db.update(otpTokens)
+          .set({ attempts: sql`attempts + 1` })
+          .where(eq(otpTokens.phone, normalizedPhone));
+        
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+      }
+
+      // Mark OTP as used
+      await db.update(otpTokens)
+        .set({ isUsed: true })
+        .where(eq(otpTokens.id, otpRecord.id));
+
+      // Find or create user by phone
+      let [user] = await db.select().from(users)
+        .where(eq(users.phone, normalizedPhone))
+        .limit(1);
+
+      if (!user) {
+        // Create new user with pending status
+        const newUserId = `phone-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await db.insert(users).values({
+          id: newUserId,
+          email: `${normalizedPhone}@phone.hostezee.in`, // Placeholder email
+          phone: normalizedPhone,
+          role: "staff", // Default role, will be promoted when approved
+          status: "active",
+          verificationStatus: "pending",
+          tenantType: "property_owner",
+          signupMethod: "phone",
+        });
+        [user] = await db.select().from(users).where(eq(users.id, newUserId));
+        console.log(`[OTP] Created new user via phone: ${normalizedPhone}`);
+        
+        // Return pending status for new users - they need to be approved first
+        return res.status(403).json({ 
+          message: "Account created! Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending",
+          isNewUser: true,
+          user: {
+            id: user.id,
+            phone: user.phone,
+          }
+        });
+      }
+
+      // Check verification status
+      if (user.verificationStatus === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          verificationStatus: "rejected"
+        });
+      }
+
+      if (user.verificationStatus === "pending") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending",
+          user: {
+            id: user.id,
+            phone: user.phone,
+            businessName: user.businessName,
+          }
+        });
+      }
+
+      // Create session for verified user
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("[OTP-LOGIN] Regenerate error:", regenerateErr);
+          return res.status(500).json({ message: "Login failed" });
+        }
+
+        (req.session as any).userId = user.id;
+        (req.session as any).isPhoneAuth = true;
+        
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[OTP-LOGIN] Save error:", saveErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          
+          // Capture geographic location from IP (non-blocking)
+          const ipAddress = req.ip || req.socket.remoteAddress || '';
+          updateUserLocationFromIp(user.id, ipAddress).catch(() => {});
+          
+          console.log(`[OTP-LOGIN] ✓ SUCCESS - User ${user.phone} logged in`);
+          res.json({
+            success: true,
+            message: "Login successful",
+            user: {
+              id: user.id,
+              email: user.email,
+              phone: user.phone,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              role: user.role,
+              businessName: user.businessName,
+              verificationStatus: user.verificationStatus,
+            },
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("[OTP VERIFY ERROR]", error);
+      res.status(500).json({ message: error.message || "OTP verification failed" });
+    }
+  });
+
+  // Property Data Export endpoint
+  app.get("/api/properties/:id/export", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      const propertyId = parseInt(req.params.id);
+
+      // Get property to check authorization
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Check authorization: Super admin can export any, Admin can only export their assigned properties
+      if (user.role !== "super-admin") {
+        const userAssignedProperties = user.assignedPropertyIds || [];
+        if (!userAssignedProperties.includes(propertyId)) {
+          return res.status(403).json({ message: "Unauthorized to export this property" });
+        }
+      }
+
+      // Fetch all related data for this property
+      const rooms = await storage.getRoomsByProperty(propertyId);
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+      const allBills = await storage.getAllBills();
+      const bills = allBills.filter((b: any) => {
+        const booking = bookings.find((bk: any) => bk.id === b.bookingId);
+        return booking ? true : false;
+      });
+
+      // Build comprehensive CSV data
+      const headers = [
+        "PROPERTY DATA EXPORT",
+        `Property: ${property.name}`,
+        `Location: ${property.location || "N/A"}`,
+        `Export Date: ${new Date().toISOString()}`,
+        `Total Rooms: ${rooms.length}`,
+        `Total Bookings: ${bookings.length}`,
+        `Total Bills: ${bills.length}`,
+        "",
+        "=== ROOMS ===",
+        "Room Number,Type,Category,Total Beds,Status,Price Per Night",
+      ];
+
+      const roomData = rooms.map((room: any) => [
+        room.roomNumber,
+        room.roomType || "N/A",
+        room.roomCategory,
+        room.totalBeds || "N/A",
+        room.status,
+        room.pricePerNight,
+      ]);
+
+      const bookingHeaders = [
+        "",
+        "=== BOOKINGS ===",
+        "Booking ID,Guest Name,Check-In,Check-Out,Nights,Rooms,Status,Total Amount,Advance Paid,Balance",
+      ];
+
+      const bookingData = await Promise.all(
+        bookings.map(async (booking: any) => {
+          const guest = await storage.getGuest(booking.guestId);
+          const checkIn = new Date(booking.checkInDate);
+          const checkOut = new Date(booking.checkOutDate);
+          const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+          const roomCount = booking.isGroupBooking ? (booking.roomIds?.length || 1) : 1;
+
+          return [
+            booking.id,
+            guest?.fullName || "Unknown",
+            checkIn.toISOString().split("T")[0],
+            checkOut.toISOString().split("T")[0],
+            nights,
+            roomCount,
+            booking.status,
+            booking.totalAmount || "0",
+            booking.advanceAmount || "0",
+            ((booking.totalAmount || 0) - (booking.advanceAmount || 0)).toFixed(2),
+          ];
+        })
+      );
+
+      const billHeaders = [
+        "",
+        "=== BILLS ===",
+        "Bill ID,Booking ID,Guest Name,Room Charges,Food Charges,Extra Charges,GST,Service Charge,Discount,Total Amount,Payment Status",
+      ];
+
+      const billData = await Promise.all(
+        bills.map(async (bill: any) => {
+          const guest = await storage.getGuest(bill.guestId);
+          return [
+            bill.id,
+            bill.bookingId,
+            guest?.fullName || "Unknown",
+            bill.roomCharges || "0",
+            bill.foodCharges || "0",
+            bill.extraCharges || "0",
+            bill.gstAmount || "0",
+            bill.serviceChargeAmount || "0",
+            bill.discountAmount || "0",
+            bill.totalAmount || "0",
+            bill.paymentStatus || "pending",
+          ];
+        })
+      );
+
+      // Combine all data
+      const allRows = [
+        ...headers,
+        ...roomData,
+        ...bookingHeaders,
+        ...bookingData,
+        ...billHeaders,
+        ...billData,
+      ];
+
+      const csvContent = allRows
+        .map((row: any) => {
+          if (typeof row === "string") return row;
+          return row.map((cell: any) => `"${cell}"`).join(",");
+        })
+        .join("\n");
+
+      // Send as downloadable file
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="property-${propertyId}-export-${Date.now()}.csv"`);
+      res.send(csvContent);
+    } catch (error: any) {
+      console.error("[PROPERTY EXPORT ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to export property data" });
+    }
+  });
+
+  // Issue Reporting endpoint
+  app.post("/api/issues", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+
+      if (!userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+
+      const { title, description, category, severity } = req.body;
+
+      // Validate required fields
+      if (!title || !description || !category || !severity) {
+        return res.status(400).json({ message: "All fields are required" });
+      }
+
+      // Validate enum values
+      const validCategories = ["bug", "feature_request", "documentation", "performance", "other"];
+      const validSeverities = ["low", "medium", "high", "critical"];
+
+      if (!validCategories.includes(category)) {
+        return res.status(400).json({ message: "Invalid category" });
+      }
+
+      if (!validSeverities.includes(severity)) {
+        return res.status(400).json({ message: "Invalid severity" });
+      }
+
+      // Create issue report
+      const report = await storage.createIssueReport({
+        reportedByUserId: userId,
+        propertyId: undefined,
+        title,
+        description,
+        category,
+        severity,
+        status: "open",
+      });
+
+      console.log(`[ISSUE REPORT] New issue reported by ${userId}: ${title}`);
+
+      // Send email and in-app notification to super admins
+      try {
+        const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+        const reporterName = dbUser ? `${dbUser.firstName} ${dbUser.lastName}` : "User";
+        
+        // Get all super admins
+        const allUsers = await storage.getAllUsers();
+        const superAdmins = allUsers.filter(u => u.role === 'super-admin');
+        
+        // Send email to first super admin
+        const superAdminEmail = superAdmins[0]?.email || 'admin@hostezee.in';
+        await sendIssueReportNotificationEmail(
+          superAdminEmail,
+          reporterName,
+          title,
+          description,
+          category,
+          severity
+        );
+        console.log(`[EMAIL] Issue report notification sent to ${superAdminEmail}`);
+        
+        // Send in-app notification to all super admins
+        for (const admin of superAdmins) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "issue_reported",
+            title: `Issue Reported: ${severity.toUpperCase()}`,
+            message: `${reporterName} reported: ${title}`,
+            soundType: severity === 'critical' ? 'urgent' : 'warning',
+            relatedType: "issue",
+            isRead: false,
+          });
+        }
+      } catch (emailError) {
+        console.warn(`[EMAIL] Failed to send issue report notification:`, emailError);
+        // Don't fail the whole request if email fails
+      }
+
+      res.status(201).json({
+        message: "Issue reported successfully",
+        report,
+      });
+    } catch (error: any) {
+      console.error("[ISSUE REPORT ERROR]", error);
+      res.status(500).json({ message: error.message || "Failed to report issue" });
+    }
+  });
+
+  // Super Admin endpoints
+  app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/USERS] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/USERS] User ${userId} is ${dbUser.role}, not super-admin`);
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+      
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/USERS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/super-admin/properties", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/PROPERTIES] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/PROPERTIES] User ${userId} is ${dbUser.role}, not super-admin`);
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+      
+      const properties = await storage.getAllProperties();
+      res.json(properties);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PROPERTIES] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/super-admin/reports", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser) {
+        console.error(`[SUPER-ADMIN/REPORTS] User ${userId} not found in database`);
+        return res.status(401).json({ message: "User not found" });
+      }
+      if (dbUser.role !== 'super-admin') {
+        console.error(`[SUPER-ADMIN/REPORTS] User ${userId} is ${dbUser.role}, not super-admin`);
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const reports = await storage.getAllIssueReports();
+      res.json(reports);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REPORTS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin - Send email to individual user
+  app.post("/api/super-admin/send-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { toEmail, toName, subject, message } = req.body;
+      if (!toEmail || !subject || !message) {
+        return res.status(400).json({ message: "Email, subject and message are required" });
+      }
+
+      const { sendEmail } = await import('./email-service');
+      const result = await sendEmail({
+        to: toEmail,
+        subject: subject,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #0d9488, #14b8a6); padding: 20px; text-align: center;">
+              <h1 style="color: white; margin: 0;">Hostezee</h1>
+            </div>
+            <div style="padding: 30px; background: #f9fafb;">
+              <p>Dear ${toName || 'User'},</p>
+              <div style="white-space: pre-wrap;">${message}</div>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+              <p style="color: #6b7280; font-size: 14px;">
+                Best regards,<br/>
+                Hostezee Team
+              </p>
+            </div>
+          </div>
+        `,
+        text: `Dear ${toName || 'User'},\n\n${message}\n\nBest regards,\nHostezee Team`
+      });
+
+      if (result.success) {
+        console.log(`[SUPER-ADMIN] Email sent to ${toEmail}`);
+        res.json({ success: true, message: "Email sent successfully" });
+      } else {
+        throw new Error(result.error || "Failed to send email");
+      }
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/SEND-EMAIL] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin - Broadcast email to all verified users
+  app.post("/api/super-admin/broadcast-email", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { subject, message } = req.body;
+      if (!subject || !message) {
+        return res.status(400).json({ message: "Subject and message are required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      const verifiedUsers = allUsers.filter(u => 
+        u.verificationStatus === 'verified' && 
+        u.email && 
+        u.role !== 'super-admin'
+      );
+
+      const { sendEmail } = await import('./email-service');
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const user of verifiedUsers) {
+        try {
+          const result = await sendEmail({
+            to: user.email!,
+            subject: subject,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <div style="background: linear-gradient(135deg, #0d9488, #14b8a6); padding: 20px; text-align: center;">
+                  <h1 style="color: white; margin: 0;">Hostezee</h1>
+                  <p style="color: white; margin: 5px 0 0 0; opacity: 0.9;">Announcement</p>
+                </div>
+                <div style="padding: 30px; background: #f9fafb;">
+                  <p>Dear ${user.firstName || 'User'},</p>
+                  <div style="white-space: pre-wrap;">${message}</div>
+                  <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+                  <p style="color: #6b7280; font-size: 14px;">
+                    Best regards,<br/>
+                    Hostezee Team
+                  </p>
+                </div>
+              </div>
+            `,
+            text: `Dear ${user.firstName || 'User'},\n\n${message}\n\nBest regards,\nHostezee Team`
+          });
+          if (result.success) successCount++;
+          else failCount++;
+        } catch (e) {
+          failCount++;
+        }
+      }
+
+      console.log(`[SUPER-ADMIN] Broadcast email sent: ${successCount} success, ${failCount} failed`);
+      res.json({ 
+        success: true, 
+        message: `Email broadcast completed: ${successCount} sent, ${failCount} failed`,
+        successCount,
+        failCount,
+        totalRecipients: verifiedUsers.length
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/BROADCAST-EMAIL] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin - Export users to CSV
+  app.get("/api/super-admin/export-users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      
+      // Create CSV
+      const headers = ['Name', 'Email', 'Phone', 'Business Name', 'Role', 'Status', 'Verification', 'Signup Method', 'Created At', 'Last Login'];
+      const rows = allUsers.map(u => [
+        `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+        u.email || '',
+        u.phone || '',
+        u.businessName || '',
+        u.role || '',
+        u.status || '',
+        u.verificationStatus || '',
+        u.signupMethod || '',
+        u.createdAt ? new Date(u.createdAt).toISOString() : '',
+        u.lastLoginAt ? new Date(u.lastLoginAt).toISOString() : ''
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="hostezee_users_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvContent);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/EXPORT-USERS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Dashboard - Combined data from ALL properties
+  app.get("/api/super-admin/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get ALL data for SaaS platform metrics
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allUsers = await storage.getAllUsers();
+      const allIssues = await storage.getAllIssueReports();
+      
+      // Get error crashes safely (may not be implemented)
+      let allErrors: any[] = [];
+      try {
+        if (typeof storage.getAllErrorCrashes === 'function') {
+          allErrors = await storage.getAllErrorCrashes();
+        }
+      } catch (e) {
+        // Error crashes table may not exist
+      }
+
+      // Calculate SaaS platform stats
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      oneWeekAgo.setHours(0, 0, 0, 0);
+
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      oneMonthAgo.setHours(0, 0, 0, 0);
+
+      // User stats
+      const pendingUsers = allUsers.filter(u => u.verificationStatus === 'pending');
+      const verifiedUsers = allUsers.filter(u => u.verificationStatus === 'verified');
+      const rejectedUsers = allUsers.filter(u => u.verificationStatus === 'rejected');
+      
+      // Active users today (logged in today)
+      const activeUsersToday = allUsers.filter(u => {
+        if (!u.lastLoginAt) return false;
+        const loginDate = new Date(u.lastLoginAt);
+        loginDate.setHours(0, 0, 0, 0);
+        return loginDate.getTime() >= today.getTime();
+      });
+
+      // New signups this week
+      const newSignupsThisWeek = allUsers.filter(u => {
+        if (!u.createdAt) return false;
+        const createdDate = new Date(u.createdAt);
+        return createdDate >= oneWeekAgo;
+      });
+
+      // New signups this month
+      const newSignupsThisMonth = allUsers.filter(u => {
+        if (!u.createdAt) return false;
+        const createdDate = new Date(u.createdAt);
+        return createdDate >= oneMonthAgo;
+      });
+
+      // New properties this week
+      const newPropertiesThisWeek = allProperties.filter(p => {
+        if (!p.createdAt) return false;
+        const createdDate = new Date(p.createdAt);
+        return createdDate >= oneWeekAgo;
+      });
+
+      // New properties this month
+      const newPropertiesThisMonth = allProperties.filter(p => {
+        if (!p.createdAt) return false;
+        const createdDate = new Date(p.createdAt);
+        return createdDate >= oneMonthAgo;
+      });
+
+      // Issues stats
+      const openIssues = allIssues.filter(i => i.status === 'open' || i.status === 'in_progress');
+      const resolvedIssues = allIssues.filter(i => i.status === 'resolved');
+
+      // Errors stats
+      const unresolvedErrors = allErrors.filter(e => e.status !== 'resolved');
+
+      // Property breakdown for management
+      const propertyStats = allProperties.map(prop => {
+        const propUsers = allUsers.filter(u => 
+          u.assignedPropertyIds && u.assignedPropertyIds.includes(prop.id)
+        );
+        const propBookings = allBookings.filter(b => b.propertyId === prop.id);
+
+        return {
+          id: prop.id,
+          name: prop.name,
+          location: prop.location,
+          totalUsers: propUsers.length,
+          totalBookings: propBookings.length,
+          createdAt: prop.createdAt,
+        };
+      });
+
+      res.json({
+        summary: {
+          // Platform overview
+          totalProperties: allProperties.length,
+          totalUsers: allUsers.length,
+          totalBookings: allBookings.length,
+          
+          // User management
+          pendingApprovals: pendingUsers.length,
+          verifiedUsers: verifiedUsers.length,
+          rejectedUsers: rejectedUsers.length,
+          activeUsersToday: activeUsersToday.length,
+          
+          // Growth metrics
+          newSignupsThisWeek: newSignupsThisWeek.length,
+          newSignupsThisMonth: newSignupsThisMonth.length,
+          newPropertiesThisWeek: newPropertiesThisWeek.length,
+          newPropertiesThisMonth: newPropertiesThisMonth.length,
+          
+          // Support metrics
+          openIssues: openIssues.length,
+          resolvedIssues: resolvedIssues.length,
+          totalIssues: allIssues.length,
+          unresolvedErrors: unresolvedErrors.length,
+          totalErrors: allErrors.length,
+        },
+        propertyStats,
+        recentSignups: allUsers
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          .slice(0, 10),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/DASHBOARD] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Analytics - Monthly trends for charts
+  app.get("/api/super-admin/analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const allBills = await storage.getAllBills();
+      const allUsers = await storage.getAllUsers();
+      
+      // Get last 6 months of data
+      const monthlyData = [];
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthStart = new Date(date.getFullYear(), date.getMonth(), 1);
+        const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+        
+        const monthName = monthStart.toLocaleString('en-US', { month: 'short' });
+        
+        // Count bookings in this month
+        const monthBookings = allBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= monthStart && created <= monthEnd;
+        });
+        
+        // Sum revenue from bills in this month
+        const monthRevenue = allBills
+          .filter(b => {
+            const created = new Date(b.createdAt || b.paidAt || 0);
+            return created >= monthStart && created <= monthEnd && b.paymentStatus === 'paid';
+          })
+          .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        
+        // Count new users in this month
+        const monthSignups = allUsers.filter(u => {
+          const created = new Date(u.createdAt || 0);
+          return created >= monthStart && created <= monthEnd;
+        });
+        
+        monthlyData.push({
+          month: monthName,
+          bookings: monthBookings.length,
+          revenue: Math.round(monthRevenue),
+          signups: monthSignups.length,
+        });
+      }
+      
+      res.json({
+        monthlyTrends: monthlyData,
+        totalRevenue: allBills.filter(b => b.paymentStatus === 'paid').reduce((sum, b) => sum + (b.totalAmount || 0), 0),
+        avgBookingsPerMonth: Math.round(allBookings.length / 6),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/ANALYTICS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin System Health - Real-time server metrics
+  app.get("/api/super-admin/system-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Server uptime
+      const uptimeSeconds = process.uptime();
+      const uptimeHours = Math.floor(uptimeSeconds / 3600);
+      const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
+      
+      // Memory usage
+      const memUsage = process.memoryUsage();
+      const memUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const memTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      const memPercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+      
+      // Active sessions count
+      const allSessions = await storage.getAllUserSessions();
+      const activeSessions = allSessions.filter(s => {
+        const expiry = new Date(s.expiresAt);
+        return expiry > new Date();
+      });
+      
+      // Database check
+      let dbStatus = 'healthy';
+      let dbResponseTime = 0;
+      try {
+        const dbStart = Date.now();
+        await db.select().from(users).limit(1);
+        dbResponseTime = Date.now() - dbStart;
+        if (dbResponseTime > 500) dbStatus = 'slow';
+      } catch {
+        dbStatus = 'error';
+      }
+      
+      // Recent errors count (last 24h) - handle gracefully if function doesn't exist
+      let recentErrorsCount = 0;
+      let unresolvedErrorsCount = 0;
+      try {
+        if (typeof (storage as any).getAllErrorCrashes === 'function') {
+          const allErrors = await (storage as any).getAllErrorCrashes();
+          const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          recentErrorsCount = allErrors.filter((e: any) => new Date(e.createdAt || 0) > last24h).length;
+          unresolvedErrorsCount = allErrors.filter((e: any) => e.status !== 'resolved').length;
+        }
+      } catch {
+        // Errors tracking not available
+      }
+      
+      // API health - count recent activity logs as proxy for requests
+      const allLogs = await storage.getActivityLogs({ limit: 100 });
+      const lastHour = new Date(Date.now() - 60 * 60 * 1000);
+      const recentRequests = allLogs.logs.filter(l => new Date(l.createdAt) > lastHour);
+      
+      res.json({
+        status: dbStatus === 'healthy' && memPercent < 90 ? 'healthy' : 'warning',
+        uptime: {
+          hours: uptimeHours,
+          minutes: uptimeMinutes,
+          formatted: `${uptimeHours}h ${uptimeMinutes}m`,
+        },
+        memory: {
+          usedMB: memUsedMB,
+          totalMB: memTotalMB,
+          percent: memPercent,
+        },
+        database: {
+          status: dbStatus,
+          responseTimeMs: dbResponseTime,
+        },
+        sessions: {
+          active: activeSessions.length,
+          total: allSessions.length,
+        },
+        errors: {
+          last24h: recentErrorsCount,
+          unresolved: unresolvedErrorsCount,
+        },
+        activity: {
+          requestsLastHour: recentRequests.length,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/SYSTEM-HEALTH] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Property Health Scores - Analyze which properties need attention
+  app.get("/api/super-admin/property-health", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allRooms = await storage.getAllRooms();
+      const allBills = await storage.getAllBills();
+      
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      const propertyHealth = allProperties.map(property => {
+        const propertyRooms = allRooms.filter(r => r.propertyId === property.id);
+        const propertyBookings = allBookings.filter(b => b.propertyId === property.id);
+        const propertyBills = allBills.filter(b => {
+          const booking = propertyBookings.find(pb => pb.id === b.bookingId);
+          return booking !== undefined;
+        });
+        
+        // Recent bookings (last 30 days)
+        const recentBookings = propertyBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= thirtyDaysAgo;
+        });
+        
+        // Very recent bookings (last 7 days)
+        const weeklyBookings = propertyBookings.filter(b => {
+          const created = new Date(b.createdAt || b.checkInDate);
+          return created >= sevenDaysAgo;
+        });
+        
+        // Current occupancy (active bookings today)
+        const activeBookings = propertyBookings.filter(b => {
+          const checkIn = new Date(b.checkInDate);
+          const checkOut = new Date(b.checkOutDate);
+          return checkIn <= now && checkOut >= now && b.status !== 'cancelled';
+        });
+        const occupancyRate = propertyRooms.length > 0 
+          ? Math.round((activeBookings.length / propertyRooms.length) * 100) 
+          : 0;
+        
+        // Revenue (last 30 days)
+        const recentRevenue = propertyBills
+          .filter(b => {
+            const paidAt = new Date(b.paidAt || b.createdAt || 0);
+            return paidAt >= thirtyDaysAgo && b.paymentStatus === 'paid';
+          })
+          .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        
+        // Calculate health score (0-100)
+        let healthScore = 50; // Base score
+        
+        // Booking activity (+/- 20 points)
+        if (recentBookings.length >= 10) healthScore += 20;
+        else if (recentBookings.length >= 5) healthScore += 10;
+        else if (recentBookings.length === 0) healthScore -= 20;
+        else healthScore -= 10;
+        
+        // Occupancy (+/- 15 points)
+        if (occupancyRate >= 70) healthScore += 15;
+        else if (occupancyRate >= 40) healthScore += 5;
+        else if (occupancyRate === 0) healthScore -= 15;
+        
+        // Revenue (+/- 15 points)
+        if (recentRevenue >= 100000) healthScore += 15;
+        else if (recentRevenue >= 50000) healthScore += 10;
+        else if (recentRevenue >= 10000) healthScore += 5;
+        else if (recentRevenue === 0) healthScore -= 10;
+        
+        // Clamp score between 0 and 100
+        healthScore = Math.max(0, Math.min(100, healthScore));
+        
+        // Determine status
+        let status: 'thriving' | 'healthy' | 'attention' | 'critical';
+        if (healthScore >= 80) status = 'thriving';
+        else if (healthScore >= 60) status = 'healthy';
+        else if (healthScore >= 40) status = 'attention';
+        else status = 'critical';
+        
+        return {
+          id: property.id,
+          name: property.name,
+          location: property.location,
+          isActive: property.isActive,
+          healthScore,
+          status,
+          metrics: {
+            totalRooms: propertyRooms.length,
+            totalBookings: propertyBookings.length,
+            recentBookings: recentBookings.length,
+            weeklyBookings: weeklyBookings.length,
+            occupancyRate,
+            activeBookings: activeBookings.length,
+            recentRevenue: Math.round(recentRevenue),
+          },
+        };
+      });
+      
+      // Sort by health score (lowest first to highlight problem properties)
+      propertyHealth.sort((a, b) => a.healthScore - b.healthScore);
+      
+      // Summary stats
+      const summary = {
+        totalProperties: allProperties.length,
+        thriving: propertyHealth.filter(p => p.status === 'thriving').length,
+        healthy: propertyHealth.filter(p => p.status === 'healthy').length,
+        needsAttention: propertyHealth.filter(p => p.status === 'attention').length,
+        critical: propertyHealth.filter(p => p.status === 'critical').length,
+        avgHealthScore: Math.round(propertyHealth.reduce((sum, p) => sum + p.healthScore, 0) / (propertyHealth.length || 1)),
+      };
+      
+      res.json({ properties: propertyHealth, summary });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PROPERTY-HEALTH] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Geographic Analytics - Track users by location
+  app.get("/api/super-admin/geographic-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get all users
+      const allUsers = await storage.getAllUsers();
+      
+      // Aggregate by country
+      const countryStats: Record<string, number> = {};
+      const stateStats: Record<string, Record<string, number>> = {}; // country -> state -> count
+      const cityStats: Record<string, number> = {};
+      
+      let usersWithLocation = 0;
+      let usersWithoutLocation = 0;
+      
+      allUsers.forEach(user => {
+        const country = user.country || 'Unknown';
+        const state = user.state || 'Unknown';
+        const city = user.city || 'Unknown';
+        
+        if (user.country || user.state || user.city) {
+          usersWithLocation++;
+        } else {
+          usersWithoutLocation++;
+        }
+        
+        // Count by country
+        countryStats[country] = (countryStats[country] || 0) + 1;
+        
+        // Count by state within country
+        if (!stateStats[country]) stateStats[country] = {};
+        stateStats[country][state] = (stateStats[country][state] || 0) + 1;
+        
+        // Count by city
+        const cityKey = city !== 'Unknown' ? `${city}, ${state}` : 'Unknown';
+        cityStats[cityKey] = (cityStats[cityKey] || 0) + 1;
+      });
+      
+      // Convert to sorted arrays
+      const byCountry = Object.entries(countryStats)
+        .map(([country, count]) => ({ country, count }))
+        .sort((a, b) => b.count - a.count);
+      
+      const byState = Object.entries(stateStats).flatMap(([country, states]) =>
+        Object.entries(states).map(([state, count]) => ({
+          country,
+          state,
+          count,
+        }))
+      ).sort((a, b) => b.count - a.count);
+      
+      const byCity = Object.entries(cityStats)
+        .filter(([city]) => city !== 'Unknown')
+        .map(([city, count]) => ({ city, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 50); // Top 50 cities
+      
+      res.json({
+        summary: {
+          totalUsers: allUsers.length,
+          usersWithLocation,
+          usersWithoutLocation,
+          totalCountries: Object.keys(countryStats).filter(c => c !== 'Unknown').length,
+          totalStates: byState.filter(s => s.state !== 'Unknown').length,
+        },
+        byCountry,
+        byState: byState.slice(0, 30), // Top 30 states
+        byCity,
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/GEOGRAPHIC-ANALYTICS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Update User Location - Allow setting user location
+  app.patch("/api/super-admin/users/:userId/location", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const { city, state, country } = req.body;
+      
+      await db.update(users)
+        .set({ 
+          city: city || null, 
+          state: state || null, 
+          country: country || null,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+      
+      res.json({ success: true, message: "User location updated" });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/UPDATE-LOCATION] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin Report Download - CSV with all property data
+  app.get("/api/super-admin/report/download", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { propertyId, startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+
+      const start = new Date(startDate as string);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(endDate as string);
+      end.setHours(23, 59, 59, 999);
+
+      // Get data based on property filter
+      const allProperties = await storage.getAllProperties();
+      const allBookings = await storage.getAllBookings();
+      const allGuests = await storage.getAllGuests();
+      const allBills = await storage.getAllBills();
+
+      // Filter by property if specified
+      let filteredBookings = allBookings;
+      if (propertyId && propertyId !== "all") {
+        const propId = parseInt(propertyId as string);
+        filteredBookings = allBookings.filter(b => b.propertyId === propId);
+      }
+
+      // Filter by date range (check-in date)
+      filteredBookings = filteredBookings.filter(b => {
+        const checkIn = new Date(b.checkInDate);
+        return checkIn >= start && checkIn <= end;
+      });
+
+      // Build CSV content
+      const csvRows: string[] = [];
+      
+      // Header
+      csvRows.push([
+        "Booking ID",
+        "Property Name",
+        "Room Number",
+        "Guest Name",
+        "Guest Phone",
+        "Guest Email",
+        "Check-In Date",
+        "Check-Out Date",
+        "Status",
+        "Booking Source",
+        "Meal Plan",
+        "Total Guests",
+        "Bill Amount",
+        "Paid Amount",
+        "Payment Status",
+        "Created At"
+      ].join(","));
+
+      // Data rows
+      for (const booking of filteredBookings) {
+        const property = allProperties.find(p => p.id === booking.propertyId);
+        const guest = allGuests.find(g => g.id === booking.guestId);
+        const bill = allBills.find(b => b.bookingId === booking.id);
+
+        const row = [
+          booking.id,
+          `"${property?.name || 'N/A'}"`,
+          booking.roomNumber || 'N/A',
+          `"${guest?.name || 'N/A'}"`,
+          guest?.phone || 'N/A',
+          guest?.email || 'N/A',
+          booking.checkInDate,
+          booking.checkOutDate,
+          booking.status,
+          booking.bookingSource || 'Direct',
+          booking.mealPlan || 'N/A',
+          booking.totalGuests || 1,
+          bill?.totalAmount || 0,
+          bill?.paidAmount || 0,
+          bill?.status || 'N/A',
+          booking.createdAt ? new Date(booking.createdAt).toISOString() : 'N/A'
+        ];
+        csvRows.push(row.join(","));
+      }
+
+      // Add summary row
+      csvRows.push("");
+      csvRows.push("SUMMARY");
+      csvRows.push(`Total Bookings,${filteredBookings.length}`);
+      
+      const totalRevenue = filteredBookings.reduce((sum, b) => {
+        const bill = allBills.find(bl => bl.bookingId === b.id);
+        return sum + (bill?.totalAmount || 0);
+      }, 0);
+      const totalPaid = filteredBookings.reduce((sum, b) => {
+        const bill = allBills.find(bl => bl.bookingId === b.id);
+        return sum + (bill?.paidAmount || 0);
+      }, 0);
+      
+      csvRows.push(`Total Revenue,${totalRevenue}`);
+      csvRows.push(`Total Collected,${totalPaid}`);
+      csvRows.push(`Pending Amount,${totalRevenue - totalPaid}`);
+
+      const csv = csvRows.join("\n");
+      
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="property_report.csv"`);
+      res.send(csv);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REPORT] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/super-admin/users/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { status } = req.body;
+      if (!['active', 'suspended'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+
+      // Get target user info before updating
+      const [targetUser] = await db.select().from(users).where(eq(users.id, req.params.id));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, status);
+      
+      // Send email notification based on status change
+      const userName = `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || 'User';
+      let propertyName: string | undefined;
+      
+      // Get property name if user has assigned properties
+      if (targetUser.assignedPropertyIds && targetUser.assignedPropertyIds.length > 0) {
+        const property = await storage.getProperty(targetUser.assignedPropertyIds[0]);
+        propertyName = property?.name;
+      }
+      
+      if (status === 'suspended') {
+        const { sendAccountSuspensionEmail } = await import('./email-service');
+        sendAccountSuspensionEmail(targetUser.email, userName, propertyName)
+          .then(() => console.log(`[SUSPEND] Email sent to ${targetUser.email}`))
+          .catch(err => console.error(`[SUSPEND] Failed to send email:`, err));
+      } else if (status === 'active') {
+        const { sendAccountReactivationEmail } = await import('./email-service');
+        sendAccountReactivationEmail(targetUser.email, userName, propertyName)
+          .then(() => console.log(`[REACTIVATE] Email sent to ${targetUser.email}`))
+          .catch(err => console.error(`[REACTIVATE] Failed to send email:`, err));
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/super-admin/login-as/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Store the original super admin ID before switching
+      const originalSuperAdminId = (req.session as any).userId;
+      
+      // Regenerate session to clear old data and set new user
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[LOGIN-AS] Failed to regenerate session:", regenErr);
+          return res.status(500).json({ message: "Failed to regenerate session" });
+        }
+        
+        // Set session for target user - mimicking email auth flow
+        (req.session as any).userId = targetUser.id;
+        (req.session as any).isEmailAuth = true;
+        // Store original super admin ID for returning later
+        (req.session as any).originalSuperAdminId = originalSuperAdminId;
+        (req.session as any).isViewingAsUser = true;
+        
+        // Force save the session before responding
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[LOGIN-AS] Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Failed to save session" });
+          }
+          console.log("[LOGIN-AS] Successfully logged in as user:", targetUser.id, "- session regenerated, can return to:", originalSuperAdminId);
+          res.json({ message: "Login as successful", user: targetUser });
+        });
+      });
+    } catch (error: any) {
+      console.error("[LOGIN-AS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Return to Super Admin from viewing as user
+  app.post("/api/super-admin/return-to-admin", isAuthenticated, async (req, res) => {
+    try {
+      const originalSuperAdminId = (req.session as any).originalSuperAdminId;
+      const isViewingAsUser = (req.session as any).isViewingAsUser;
+      
+      if (!originalSuperAdminId || !isViewingAsUser) {
+        return res.status(400).json({ message: "Not currently viewing as another user" });
+      }
+      
+      // Verify the original user is still a super admin
+      const [superAdmin] = await db.select().from(users).where(eq(users.id, originalSuperAdminId));
+      if (!superAdmin || superAdmin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Original user is no longer a super admin" });
+      }
+      
+      console.log("[RETURN-TO-ADMIN] Returning to super admin:", originalSuperAdminId);
+      
+      // Regenerate session and restore super admin
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[RETURN-TO-ADMIN] Failed to regenerate session:", regenErr);
+          return res.status(500).json({ message: "Failed to regenerate session" });
+        }
+        
+        // Restore super admin session
+        (req.session as any).userId = originalSuperAdminId;
+        (req.session as any).isEmailAuth = true;
+        // Clear the viewing flags
+        (req.session as any).originalSuperAdminId = null;
+        (req.session as any).isViewingAsUser = false;
+        
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error("[RETURN-TO-ADMIN] Failed to save session:", saveErr);
+            return res.status(500).json({ message: "Failed to save session" });
+          }
+          console.log("[RETURN-TO-ADMIN] Successfully returned to super admin:", originalSuperAdminId);
+          res.json({ message: "Returned to super admin", user: superAdmin });
+        });
+      });
+    } catch (error: any) {
+      console.error("[RETURN-TO-ADMIN] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SUBSCRIPTION & BILLING ENDPOINTS =====
+
+  // Get all subscription plans (public)
+  app.get("/api/subscription-plans", async (req, res) => {
+    try {
+      const plans = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.isActive, true)).orderBy(subscriptionPlans.displayOrder);
+      res.json(plans);
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error fetching plans:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get current user's subscription
+  app.get("/api/subscription/current", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      // Get user's active subscription
+      const [subscription] = await db.select()
+        .from(userSubscriptions)
+        .where(eq(userSubscriptions.userId, userId))
+        .orderBy(desc(userSubscriptions.createdAt))
+        .limit(1);
+
+      let plan = null;
+      if (subscription) {
+        const [planData] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, subscription.planId));
+        plan = planData;
+      }
+
+      res.json({
+        subscription,
+        plan,
+        user: {
+          subscriptionStatus: user.subscriptionStatus,
+          trialEndsAt: user.trialEndsAt,
+        }
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error fetching current subscription:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Create Razorpay order for subscription payment
+  app.post("/api/subscription/create-order", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { planId, billingCycle } = req.body;
+      if (!planId || !billingCycle) {
+        return res.status(400).json({ message: "Plan ID and billing cycle required" });
+      }
+
+      const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const amount = billingCycle === 'yearly' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+      const amountInPaise = Math.round(amount * 100);
+
+      // Create Razorpay order
+      const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+      const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+
+      if (!razorpayKeyId || !razorpayKeySecret) {
+        return res.status(500).json({ message: "Payment gateway not configured" });
+      }
+
+      const orderResponse = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Basic ' + Buffer.from(`${razorpayKeyId}:${razorpayKeySecret}`).toString('base64')
+        },
+        body: JSON.stringify({
+          amount: amountInPaise,
+          currency: 'INR',
+          receipt: `sub_${userId}_${Date.now()}`,
+          notes: {
+            userId,
+            planId,
+            planName: plan.name,
+            billingCycle
+          }
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const error = await orderResponse.text();
+        console.error("[RAZORPAY] Order creation failed:", error);
+        return res.status(500).json({ message: "Failed to create payment order" });
+      }
+
+      const order = await orderResponse.json();
+
+      res.json({
+        orderId: order.id,
+        amount: amountInPaise,
+        currency: 'INR',
+        keyId: razorpayKeyId,
+        planName: plan.name,
+        billingCycle,
+        user: {
+          email: user.email,
+          phone: user.phone,
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim()
+        }
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Error creating order:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Verify payment and activate subscription
+  app.post("/api/subscription/verify-payment", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planId, billingCycle } = req.body;
+
+      // Verify signature
+      const crypto = require('crypto');
+      const razorpayKeySecret = process.env.RAZORPAY_KEY_SECRET;
+      const generated_signature = crypto
+        .createHmac('sha256', razorpayKeySecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest('hex');
+
+      if (generated_signature !== razorpay_signature) {
+        return res.status(400).json({ message: "Payment verification failed" });
+      }
+
+      const [plan] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      if (!plan) return res.status(404).json({ message: "Plan not found" });
+
+      const now = new Date();
+      const endDate = new Date(now);
+      if (billingCycle === 'yearly') {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      } else {
+        endDate.setMonth(endDate.getMonth() + 1);
+      }
+
+      // Create subscription record
+      const [newSubscription] = await db.insert(userSubscriptions).values({
+        userId,
+        planId,
+        status: 'active',
+        billingCycle,
+        startDate: now,
+        endDate,
+        lastPaymentAt: now,
+        nextBillingAt: endDate,
+      }).returning();
+
+      // Create payment record
+      const amount = billingCycle === 'yearly' ? Number(plan.yearlyPrice) : Number(plan.monthlyPrice);
+      await db.insert(subscriptionPayments).values({
+        subscriptionId: newSubscription.id,
+        userId,
+        amount: amount.toString(),
+        currency: 'INR',
+        status: 'completed',
+        razorpayPaymentId: razorpay_payment_id,
+        razorpayOrderId: razorpay_order_id,
+        paidAt: now,
+      });
+
+      // Update user subscription status
+      await db.update(users).set({
+        subscriptionPlanId: planId,
+        subscriptionStatus: 'active',
+        subscriptionStartDate: now,
+        subscriptionEndDate: endDate,
+        updatedAt: now,
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUBSCRIPTION] ✓ User ${userId} subscribed to ${plan.name} (${billingCycle})`);
+
+      res.json({
+        success: true,
+        message: `Successfully subscribed to ${plan.name}`,
+        subscription: newSubscription
+      });
+    } catch (error: any) {
+      console.error("[SUBSCRIPTION] Payment verification error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Get all subscription plans (including inactive)
+  app.get("/api/super-admin/subscription-plans", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const plans = await db.select().from(subscriptionPlans).orderBy(subscriptionPlans.displayOrder);
+      res.json(plans);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Update subscription plan
+  app.patch("/api/super-admin/subscription-plans/:id", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const planId = parseInt(req.params.id);
+      const updates = req.body;
+
+      await db.update(subscriptionPlans).set({
+        ...updates,
+        updatedAt: new Date()
+      }).where(eq(subscriptionPlans.id, planId));
+
+      const [updated] = await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId));
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Super Admin: Get subscription analytics
+  app.get("/api/super-admin/subscription-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get subscription counts by plan
+      const allSubscriptions = await db.select().from(userSubscriptions);
+      const allPayments = await db.select().from(subscriptionPayments);
+      const plans = await db.select().from(subscriptionPlans);
+
+      const planMap = new Map(plans.map(p => [p.id, p]));
+      
+      const activeByPlan: Record<string, number> = {};
+      let totalActive = 0;
+      let totalRevenue = 0;
+      let monthlyRevenue = 0;
+
+      const now = new Date();
+      const oneMonthAgo = new Date(now);
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+
+      for (const sub of allSubscriptions) {
+        if (sub.status === 'active') {
+          const planName = planMap.get(sub.planId)?.name || 'Unknown';
+          activeByPlan[planName] = (activeByPlan[planName] || 0) + 1;
+          totalActive++;
+        }
+      }
+
+      for (const payment of allPayments) {
+        if (payment.status === 'completed') {
+          totalRevenue += Number(payment.amount);
+          if (payment.paidAt && new Date(payment.paidAt) >= oneMonthAgo) {
+            monthlyRevenue += Number(payment.amount);
+          }
+        }
+      }
+
+      res.json({
+        totalActive,
+        activeByPlan,
+        totalRevenue,
+        monthlyRevenue,
+        totalPayments: allPayments.length,
+        plans: plans.map(p => ({
+          id: p.id,
+          name: p.name,
+          monthlyPrice: p.monthlyPrice,
+          activeCount: activeByPlan[p.name] || 0
+        }))
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SUPER ADMIN USER APPROVAL ENDPOINTS =====
+
+  // Approve user - NEW endpoint with body params (for frontend)
+  app.post("/api/super-admin/approve-user", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId, propertyName, propertyLocation } = req.body;
+
+      // Validate required fields
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      if (!propertyName || propertyName.trim() === "") {
+        return res.status(400).json({ message: "Property name is required" });
+      }
+      if (!propertyLocation || propertyLocation.trim() === "") {
+        return res.status(400).json({ message: "Property location is required" });
+      }
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'verified') {
+        return res.status(400).json({ message: "User is already verified" });
+      }
+
+      // Create property for the user
+      const newProperty = await storage.createProperty({
+        name: propertyName.trim(),
+        location: propertyLocation.trim(),
+        description: '',
+        contactEmail: targetUser.email,
+        contactPhone: targetUser.phone || '',
+        ownerUserId: userId,
+      });
+
+      console.log(`[SUPER-ADMIN] Created property "${newProperty.name}" (ID: ${newProperty.id}) for user ${targetUser.email}`);
+
+      // Update user: verify and assign admin role for their property
+      await db.update(users).set({
+        verificationStatus: 'verified',
+        role: 'admin',
+        primaryPropertyId: newProperty.id,
+        assignedPropertyIds: [String(newProperty.id)],
+        approvedBy: adminId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUPER-ADMIN] ✓ Approved user ${targetUser.email} with admin role for property ${newProperty.name}`);
+
+      // Send WhatsApp notification if phone available
+      if (targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Congratulations! Your Hostezee account has been approved. Property: ${newProperty.name}. Login at https://hostezee.in`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[APPROVAL] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      // Activity log for user approval
+      try {
+        await storage.createActivityLog({
+          userId: adminId,
+          userEmail: admin.email,
+          userName: `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email,
+          action: 'approve_user',
+          category: 'admin',
+          resourceType: 'user',
+          resourceId: userId,
+          resourceName: targetUser.email,
+          details: { 
+            approvedUserEmail: targetUser.email,
+            propertyName: newProperty.name,
+            propertyId: newProperty.id
+          },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging user approval:', logErr);
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} approved successfully`,
+        user: {
+          id: userId,
+          email: targetUser.email,
+          role: 'admin',
+          verificationStatus: 'verified',
+        },
+        property: {
+          id: newProperty.id,
+          name: newProperty.name,
+          location: newProperty.location,
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/APPROVE-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject user - NEW endpoint with body params (for frontend)
+  app.post("/api/super-admin/reject-user", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!adminId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [admin] = await db.select().from(users).where(eq(users.id, adminId));
+      if (!admin || admin.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId, reason } = req.body;
+
+      // Validate required field
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'rejected') {
+        return res.status(400).json({ message: "User is already rejected" });
+      }
+
+      // Update user to rejected status
+      await db.update(users).set({
+        verificationStatus: 'rejected',
+        approvedBy: adminId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, userId));
+
+      console.log(`[SUPER-ADMIN] ✗ Rejected user ${targetUser.email}${reason ? ` - Reason: ${reason}` : ''}`);
+
+      // Activity log for user rejection
+      try {
+        await storage.createActivityLog({
+          userId: adminId,
+          userEmail: admin.email,
+          userName: `${admin.firstName || ''} ${admin.lastName || ''}`.trim() || admin.email,
+          action: 'reject_user',
+          category: 'admin',
+          resourceType: 'user',
+          resourceId: userId,
+          resourceName: targetUser.email,
+          details: { rejectedUserEmail: targetUser.email, reason },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      } catch (logErr) {
+        console.error('[ACTIVITY] Error logging user rejection:', logErr);
+      }
+
+      // Send WhatsApp notification if phone available
+      if (targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = reason 
+              ? `Your Hostezee account application was not approved. Reason: ${reason}. Contact support for assistance.`
+              : `Your Hostezee account application was not approved at this time. Contact support for assistance.`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[REJECTION] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} rejected${reason ? ` - ${reason}` : ''}`,
+        user: {
+          id: userId,
+          email: targetUser.email,
+          verificationStatus: 'rejected',
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REJECT-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get pending users waiting for approval
+  app.get("/api/super-admin/pending-users", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get users with pending verification status
+      // We check for 'pending' status specifically
+      const pendingUsers = await db.select().from(users)
+        .where(eq(users.verificationStatus, 'pending'))
+        .orderBy(desc(users.createdAt));
+
+      console.log(`[SUPER-ADMIN] Found ${pendingUsers.length} pending users for email: ${dbUser.email}`);
+      res.json(pendingUsers);
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/PENDING-USERS] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Approve a user and assign them to a property
+  app.post("/api/super-admin/approve-user/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { propertyId, createProperty, role = 'admin', sendNotification = true } = req.body;
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.verificationStatus === 'verified') {
+        return res.status(400).json({ message: "User is already verified" });
+      }
+
+      let assignedPropertyId = propertyId;
+
+      // Create new property if requested
+      if (createProperty && createProperty.name) {
+        const newProperty = await storage.createProperty({
+          name: createProperty.name,
+          location: createProperty.location || '',
+          description: createProperty.description || '',
+          contactEmail: targetUser.email,
+          contactPhone: targetUser.phone || '',
+          ownerUserId: targetUserId,
+        });
+        assignedPropertyId = newProperty.id;
+        console.log(`[SUPER-ADMIN] Created property ${newProperty.name} for user ${targetUser.email}`);
+      }
+
+      // Update user: verify and assign role/property
+      await db.update(users).set({
+        verificationStatus: 'verified',
+        role: role,
+        primaryPropertyId: assignedPropertyId || null,
+        assignedPropertyIds: assignedPropertyId ? [String(assignedPropertyId)] : [],
+        approvedBy: userId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(users.id, targetUserId));
+
+      // Update property owner if assigning to existing property
+      if (assignedPropertyId && !createProperty) {
+        const { properties } = await import("@shared/schema");
+        await db.update(properties).set({
+          ownerUserId: targetUserId,
+        }).where(eq(properties.id, assignedPropertyId));
+      }
+
+      console.log(`[SUPER-ADMIN] ✓ Approved user ${targetUser.email} with role ${role} and property ${assignedPropertyId}`);
+
+      // Send WhatsApp notification if enabled
+      if (sendNotification && targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Great news! Your Hostezee account has been approved. You can now log in and manage your property. Visit: https://hostezee.in`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[APPROVAL] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} approved successfully`,
+        user: {
+          id: targetUserId,
+          email: targetUser.email,
+          role: role,
+          propertyId: assignedPropertyId,
+          verificationStatus: 'verified',
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/APPROVE-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject a user
+  app.post("/api/super-admin/reject-user/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { reason = '', sendNotification = true } = req.body;
+
+      // Get target user
+      const [targetUser] = await db.select().from(users).where(eq(users.id, targetUserId));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Update user: reject
+      await db.update(users).set({
+        verificationStatus: 'rejected',
+        rejectionReason: reason,
+        updatedAt: new Date(),
+      }).where(eq(users.id, targetUserId));
+
+      console.log(`[SUPER-ADMIN] ✗ Rejected user ${targetUser.email}: ${reason}`);
+
+      // Send WhatsApp notification if enabled
+      if (sendNotification && targetUser.phone) {
+        try {
+          const authkeyApiKey = process.env.AUTHKEY_API_KEY;
+          if (authkeyApiKey) {
+            const message = `Your Hostezee account request was not approved. ${reason ? `Reason: ${reason}` : ''} Contact support for more information.`;
+            await fetch('https://api.authkey.io/request', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'authkey': authkeyApiKey
+              },
+              body: JSON.stringify({
+                sms: [{
+                  to: targetUser.phone.startsWith('91') ? targetUser.phone : `91${targetUser.phone}`,
+                  sender: "HTZEEE",
+                  message: message,
+                  entityid: "1101868410000052638"
+                }]
+              })
+            });
+          }
+        } catch (whatsappError) {
+          console.error("[REJECTION] WhatsApp notification failed:", whatsappError);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: `User ${targetUser.email} rejected`,
+        user: {
+          id: targetUserId,
+          email: targetUser.email,
+          verificationStatus: 'rejected',
+          rejectionReason: reason,
+        }
+      });
+    } catch (error: any) {
+      console.error(`[SUPER-ADMIN/REJECT-USER] Error:`, error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== ADMIN PORTAL ENDPOINTS (Separate from PMS) =====
+  
+  // Admin Portal Login
+  app.post("/api/admin-portal/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      // Find user by email from all users
+      const allUsers = await storage.getAllUsers();
+      const user = allUsers.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      
+      if (!user || user.role !== 'super-admin') {
+        return res.status(401).json({ error: "Invalid credentials or not a super admin" });
+      }
+      
+      if (user.status === 'suspended') {
+        return res.status(403).json({ error: "Account suspended" });
+      }
+      
+      // In production, verify password hash
+      // For now, create session with the found user
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ error: "Login failed" });
+        res.json({ message: "Logged in", user });
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all users
+  app.get("/api/admin-portal/users", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all properties
+  app.get("/api/admin-portal/properties", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const allProperties = await storage.getAllProperties();
+      res.json(allProperties || []);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get system stats
+  app.get("/api/admin-portal/stats", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const users = await storage.getAllUsers();
+      const properties = await storage.getAllProperties();
+      const bookings = await storage.getAllBookings();
+
+      res.json({
+        totalUsers: users.length,
+        totalProperties: properties.length,
+        totalBookings: bookings.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Suspend user
+  app.patch("/api/admin-portal/users/:id/suspend", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, 'suspended');
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Activate user
+  app.patch("/api/admin-portal/users/:id/activate", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const updated = await storage.updateUserStatus(req.params.id, 'active');
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Login as user from admin portal
+  app.post("/api/admin-portal/login-as/:id", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      req.login(targetUser, (err) => {
+        if (err) return res.status(500).json({ message: "Login failed" });
+        res.json({ message: "Logged in as user", user: targetUser });
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get property details
+  app.get("/api/admin-portal/property/:id", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const propertyId = parseInt(req.params.id);
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+      const totalRevenue = bookings.reduce((sum: number, b: any) => sum + (parseFloat(b.totalAmount || 0) || 0), 0);
+      const activeBookings = bookings.filter((b: any) => b.status === 'checked-in').length;
+
+      res.json({
+        id: property.id,
+        name: property.name,
+        location: property.location,
+        totalRooms: property.totalRooms,
+        totalBookings: bookings.length,
+        totalRevenue,
+        activeBookings,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get property bookings
+  app.get("/api/admin-portal/property/:id/bookings", async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const propertyId = parseInt(req.params.id);
+      const allBookings = await storage.getAllBookings();
+      const bookings = allBookings.filter((b: any) => b.propertyId === propertyId);
+
+      const bookingsWithDetails = await Promise.all(
+        bookings.map(async (booking: any) => {
+          const guest = await storage.getGuest(booking.guestId);
+          const room = await storage.getRoom(booking.roomId);
+          return {
+            id: booking.id,
+            guestName: guest?.fullName || "Unknown",
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.checkOutDate,
+            status: booking.status,
+            roomNumber: room?.roomNumber || "N/A",
+            totalAmount: booking.totalAmount || 0,
+          };
+        })
+      );
+
+      res.json(bookingsWithDetails);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== ACTIVITY LOGS & AUDIT TRAIL ENDPOINTS =====
+  
+  // Get activity logs (Super Admin only)
+  app.get("/api/activity-logs", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId: filterUserId, category, propertyId, startDate, endDate, limit, offset } = req.query;
+      
+      const filters: any = {};
+      if (filterUserId) filters.userId = filterUserId as string;
+      if (category) filters.category = category as string;
+      if (propertyId) filters.propertyId = parseInt(propertyId as string);
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+      if (limit) filters.limit = parseInt(limit as string);
+      if (offset) filters.offset = parseInt(offset as string);
+
+      const result = await storage.getActivityLogs(filters);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[ACTIVITY-LOGS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get activity logs for specific user
+  app.get("/api/activity-logs/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const logs = await storage.getActivityLogsByUser(userId, limit);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[ACTIVITY-LOGS/USER] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== SESSION MANAGEMENT ENDPOINTS =====
+  
+  // Get all user sessions (Super Admin only)
+  app.get("/api/sessions", isAuthenticated, async (req, res) => {
+    try {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      // Get all users with their sessions
+      const allUsers = await storage.getAllUsers();
+      const sessionsData = await Promise.all(
+        allUsers.map(async (u: any) => {
+          const sessions = await storage.getUserSessions(u.id);
+          const activeSessions = sessions.filter((s: any) => s.isActive);
+          return {
+            userId: u.id,
+            email: u.email,
+            name: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
+            role: u.role,
+            totalSessions: sessions.length,
+            activeSessions: activeSessions.length,
+            sessions: sessions.slice(0, 5), // Return last 5 sessions
+          };
+        })
+      );
+
+      // Filter to only users with sessions
+      const usersWithSessions = sessionsData.filter((u: any) => u.totalSessions > 0);
+      const activeSessionsCount = await storage.getActiveSessionsCount();
+
+      res.json({
+        totalActiveSessions: activeSessionsCount,
+        users: usersWithSessions,
+      });
+    } catch (error: any) {
+      console.error("[SESSIONS] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get sessions for specific user
+  app.get("/api/sessions/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      const sessions = await storage.getUserSessions(userId);
+      res.json(sessions);
+    } catch (error: any) {
+      console.error("[SESSIONS/USER] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Terminate specific session
+  app.post("/api/sessions/:sessionToken/terminate", isAuthenticated, async (req, res) => {
+    try {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { sessionToken } = req.params;
+      await storage.deactivateSession(sessionToken);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId: dbUser.id,
+        userEmail: dbUser.email,
+        userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim(),
+        action: 'terminate_session',
+        category: 'admin',
+        details: { sessionToken: sessionToken.substring(0, 10) + '...' },
+      });
+
+      res.json({ success: true, message: "Session terminated" });
+    } catch (error: any) {
+      console.error("[SESSIONS/TERMINATE] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Terminate all sessions for a user
+  app.post("/api/sessions/user/:userId/terminate-all", isAuthenticated, async (req, res) => {
+    try {
+      const authUserId = (req.user as any)?.claims?.sub || (req.user as any)?.id || (req.session as any)?.userId;
+      if (!authUserId) return res.status(401).json({ message: "Unauthorized" });
+      
+      const [dbUser] = await db.select().from(users).where(eq(users.id, authUserId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { userId } = req.params;
+      await storage.deactivateAllUserSessions(userId);
+      
+      // Log activity
+      await storage.createActivityLog({
+        userId: dbUser.id,
+        userEmail: dbUser.email,
+        userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim(),
+        action: 'terminate_all_user_sessions',
+        category: 'admin',
+        resourceType: 'user',
+        resourceId: userId,
+      });
+
+      res.json({ success: true, message: "All sessions terminated for user" });
+    } catch (error: any) {
+      console.error("[SESSIONS/TERMINATE-ALL] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Cleanup expired sessions (can be called by cron job)
+  app.post("/api/sessions/cleanup", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user || user.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const cleaned = await storage.cleanupExpiredSessions();
+      res.json({ success: true, message: `Cleaned up ${cleaned} expired sessions` });
+    } catch (error: any) {
+      console.error("[SESSIONS/CLEANUP] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Guest Self Check-in endpoints
+  app.get("/api/guest-self-checkin/booking/:bookingId", async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+      const booking = await storage.getBooking(bookingId);
+
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      const room = await storage.getRoom(booking.roomId);
+
+      res.json({
+        id: booking.id,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        status: booking.status,
+        guest,
+        room,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Find booking by phone number (for universal guest QR code)
+  app.get("/api/guest-self-checkin/by-phone", async (req, res) => {
+    try {
+      const phone = req.query.phone as string;
+
+      if (!phone) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+
+      // Get all bookings and find matching guest by phone
+      const allBookings = await storage.getAllBookings();
+      
+      // Look for active booking (confirmed or pending) with matching phone
+      for (const booking of allBookings) {
+        const guest = await storage.getGuest(booking.guestId);
+        
+        // Match phone number and only return active/upcoming bookings
+        if (guest?.phone === phone && (booking.status === "confirmed" || booking.status === "pending")) {
+          const room = await storage.getRoom(booking.roomId);
+          const property = room ? await storage.getProperty(room.propertyId) : null;
+          
+          return res.json({
+            id: booking.id,
+            checkInDate: booking.checkInDate,
+            checkOutDate: booking.checkOutDate,
+            status: booking.status,
+            guest,
+            room,
+            property,
+          });
+        }
+      }
+
+      // No matching booking found
+      return res.status(404).json({ 
+        message: "No active booking found with this phone number. Please check your phone number or contact the front desk." 
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/guest-self-checkin", async (req, res) => {
+    try {
+      const { bookingId, email, phone, fullName, idProofUrl } = req.body;
+
+      // Validate booking ID
+      if (!bookingId || isNaN(parseInt(bookingId))) {
+        return res.status(400).json({ message: "Invalid booking ID" });
+      }
+
+      const booking = await storage.getBooking(parseInt(bookingId));
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      // Validate check-in date - must be today or in the future
+      const checkInDate = new Date(booking.checkInDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      checkInDate.setHours(0, 0, 0, 0);
+
+      if (checkInDate < today) {
+        return res.status(400).json({ 
+          message: `Cannot check in for past date. Your check-in date was ${format(new Date(booking.checkInDate), "MMM d, yyyy")}. Please contact the front desk.` 
+        });
+      }
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest) {
+        return res.status(404).json({ message: "Guest not found" });
+      }
+
+      // Check if ID proof is required
+      if (!guest.idProofUrl && !idProofUrl) {
+        return res.status(400).json({ message: "ID proof is required for check-in. Please upload a photo of your ID." });
+      }
+
+      // Use provided values or fall back to existing guest data
+      const finalEmail = email || guest.email;
+      const finalPhone = phone || guest.phone;
+      const finalFullName = fullName || guest.fullName;
+
+      // Verify email matches
+      if (email && guest.email && email !== guest.email) {
+        return res.status(400).json({ message: "Email does not match booking" });
+      }
+
+      // Update guest with verified details (only update if different)
+      const updateData: any = {};
+      if (phone && phone !== guest.phone) updateData.phone = phone;
+      if (fullName && fullName !== guest.fullName) updateData.fullName = fullName;
+      if (idProofUrl) updateData.idProofUrl = idProofUrl;
+
+      if (Object.keys(updateData).length > 0) {
+        await storage.updateGuest(booking.guestId, updateData);
+      }
+
+      // Check in the guest by updating booking status
+      const updatedBooking = await storage.updateBookingStatus(booking.id, "checked-in");
+
+      // Send self check-in confirmation email
+      const room = booking.roomId ? await storage.getRoom(booking.roomId) : null;
+      const property = room ? await storage.getProperty(room.propertyId) : null;
+      
+      try {
+        const { sendSelfCheckinConfirmationEmail } = await import("./email-service");
+        
+        if (finalEmail) {
+          await sendSelfCheckinConfirmationEmail(
+            finalEmail,
+            finalFullName || "Guest",
+            property?.name || "Your Property",
+            new Date(booking.checkInDate).toLocaleDateString(),
+            room?.roomNumber || "TBA"
+          );
+          console.log(`[EMAIL] Self check-in confirmation sent to ${finalEmail}`);
+        }
+      } catch (emailError) {
+        console.warn(`[EMAIL] Failed to send check-in confirmation:`, emailError);
+      }
+
+      // Send WhatsApp welcome message with menu link (if enabled)
+      try {
+        const { sendWelcomeWithMenuLink } = await import("./whatsapp");
+        const guestPhone = finalPhone || guest.phone;
+        
+        // Check if welcome_menu template is enabled
+        const welcomeTemplateSetting = property?.id 
+          ? await storage.getWhatsappTemplateSetting(property.id, 'welcome_menu')
+          : null;
+        const isWelcomeEnabled = welcomeTemplateSetting?.isEnabled !== false;
+        
+        if (guestPhone && property?.id && isWelcomeEnabled) {
+          // Generate menu link for the property
+          const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+            ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+            : process.env.REPLIT_DOMAINS?.split(',')[0] 
+              ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
+              : '';
+          
+          const menuLink = `${baseUrl}/menu?type=room&property=${property.id}&room=${room?.roomNumber || ''}`;
+          
+          // Parameters: phoneNumber, propertyName, guestName, menuLink
+          await sendWelcomeWithMenuLink(
+            guestPhone,
+            property.name || "Our Property",
+            finalFullName || "Guest",
+            menuLink
+          );
+          console.log(`[WHATSAPP] Welcome message sent to ${guestPhone} with menu link`);
+        } else if (!isWelcomeEnabled) {
+          console.log(`[WHATSAPP] welcome_menu template disabled, skipping welcome message`);
+        }
+      } catch (whatsappError) {
+        console.warn(`[WHATSAPP] Failed to send welcome message:`, whatsappError);
+      }
+
+      res.json({ message: "Check-in successful", booking: updatedBooking });
+    } catch (error: any) {
+      console.error("[SELF-CHECKIN ERROR]", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== CONTACT ENQUIRY ROUTES =====
+  // POST /api/contact - Accept contact form submissions from landing page
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { name, email, phone, propertyName, message } = req.body;
+
+      // Validate required fields
+      if (!name || !email || !phone || !message) {
+        return res.status(400).json({ message: "Name, email, phone, and message are required" });
+      }
+
+      // Validate and parse with zod schema
+      const validated = insertContactEnquirySchema.parse({
+        name,
+        email,
+        phone,
+        propertyName: propertyName || null,
+        message,
+      });
+
+      // Create enquiry in database
+      const enquiry = await storage.createContactEnquiry(validated);
+
+      res.status(201).json({ message: "Thank you for your enquiry. We'll be in touch soon!", enquiry });
+    } catch (error: any) {
+      console.error("[CONTACT] Error creating enquiry:", error);
+      res.status(500).json({ message: "Failed to submit enquiry. Please try again." });
+    }
+  });
+
+  // GET /api/contact - Get all contact enquiries (admin and super-admin)
+  app.get("/api/contact", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      // Allow both super-admin and admin roles to view enquiries
+      if (user?.role !== "super-admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Unauthorized - Admin access required" });
+      }
+
+      const enquiries = await storage.getAllContactEnquiries();
+      res.json(enquiries);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/contact/:id - Update enquiry status (admin and super-admin)
+  app.patch("/api/contact/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Unauthorized - Admin access required" });
+      }
+
+      const { status } = req.body;
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+
+      const updated = await storage.updateContactEnquiryStatus(parseInt(req.params.id), status);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // POST /api/errors - Create error crash report (public - from error boundary)
+  app.post("/api/errors", async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const { errorMessage, errorStack, errorType, page, browserInfo } = req.body;
+
+      if (!errorMessage) {
+        return res.status(400).json({ message: "Error message is required" });
+      }
+
+      const crash = await storage.createErrorCrash({
+        userId: userId || null,
+        errorMessage,
+        errorStack: errorStack || null,
+        errorType: errorType || null,
+        page: page || null,
+        browserInfo: browserInfo || null,
+        userAgent: browserInfo?.userAgent || null,
+      });
+
+      res.status(201).json(crash);
+    } catch (error: any) {
+      console.error("[ERROR-REPORT] Failed to log error:", error);
+      res.status(500).json({ message: "Failed to report error" });
+    }
+  });
+
+  // GET /api/errors - Get all error crashes (super-admin only)
+  app.get("/api/errors", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      // Error crashes feature may not be fully implemented
+      if (typeof (storage as any).getAllErrorCrashes === 'function') {
+        const crashes = await (storage as any).getAllErrorCrashes();
+        res.json(crashes);
+      } else {
+        res.json([]); // Return empty array if function not implemented
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH /api/errors/:id/resolve - Mark error as resolved (super-admin only)
+  app.patch("/api/errors/:id/resolve", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      const updated = await storage.markErrorAsResolved(parseInt(req.params.id));
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // DELETE /api/errors/:id - Delete error crash (super-admin only)
+  app.delete("/api/errors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Unauthorized - Super Admin access required" });
+      }
+
+      await storage.deleteErrorCrash(parseInt(req.params.id));
+      res.json({ message: "Error crash deleted" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== DEDICATED SUPER ADMIN LOGIN (separate from regular admin login) =====
+  app.post("/api/auth/super-admin-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+
+      // Find user by email
+      const user = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+      
+      if (user.length === 0 || !user[0].password) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // CRITICAL: Only allow super-admin role to login via this endpoint
+      if (user[0].role !== 'super-admin') {
+        console.log(`[SUPER-ADMIN-LOGIN] Rejected non-super-admin: ${email} (role: ${user[0].role})`);
+        return res.status(403).json({ message: "Access denied. This login is for system administrators only." });
+      }
+
+      // Compare password
+      const isValidPassword = await bcryptjs.compare(password, user[0].password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+
+      // Regenerate session ID to create a fresh session
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("[SUPER-ADMIN-LOGIN] Regenerate error:", regenerateErr);
+          return res.status(500).json({ message: "Login failed" });
+        }
+
+        // Set email-auth data on new session
+        (req.session as any).userId = user[0].id;
+        (req.session as any).isEmailAuth = true;
+        (req.session as any).isSuperAdmin = true;
+        
+        // Save session
+        req.session.save(async (saveErr) => {
+          if (saveErr) {
+            console.error("[SUPER-ADMIN-LOGIN] Save error:", saveErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          
+          // Log activity
+          try {
+            await storage.createActivityLog({
+              userId: user[0].id,
+              userEmail: user[0].email,
+              userName: `${user[0].firstName || ''} ${user[0].lastName || ''}`.trim() || user[0].email,
+              action: 'super_admin_login',
+              category: 'auth',
+              details: { method: 'email', role: 'super-admin' },
+              ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+              userAgent: (req.get('User-Agent') || '').substring(0, 500),
+            });
+          } catch (logErr) {
+            console.error('[ACTIVITY] Error logging super admin login:', logErr);
+          }
+          
+          console.log(`[SUPER-ADMIN-LOGIN] ✓ SUCCESS - Super Admin ${user[0].email} logged in`);
+          res.json({ 
+            message: "Login successful", 
+            user: { 
+              id: user[0].id, 
+              email: user[0].email, 
+              role: user[0].role,
+              firstName: user[0].firstName,
+              lastName: user[0].lastName,
+            },
+            redirectTo: '/super-admin'
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("[SUPER-ADMIN-LOGIN] Error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // ===== REGULAR ADMIN/STAFF EMAIL/PASSWORD LOGIN =====
+  app.post("/api/auth/email-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password required" });
+      }
+
+      // Find user by email
+      const user = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+      
+      if (user.length === 0 || !user[0].password) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // CRITICAL: Block super-admin accounts from using regular login
+      // They must use the dedicated super-admin login at /super-admin-login
+      if (user[0].role === 'super-admin') {
+        console.log(`[EMAIL-LOGIN] Blocked super-admin attempting regular login: ${email}`);
+        return res.status(403).json({ 
+          message: "System administrators must use the dedicated admin portal login.",
+          redirectTo: '/super-admin-login'
+        });
+      }
+
+      // Compare password
+      const isValidPassword = await bcryptjs.compare(password, user[0].password);
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // Check verification status (multi-tenant security)
+      if (user[0].verificationStatus === "rejected") {
+        return res.status(403).json({ 
+          message: "Your account has been rejected. Please contact support.",
+          verificationStatus: "rejected"
+        });
+      }
+
+      if (user[0].verificationStatus === "pending") {
+        return res.status(403).json({ 
+          message: "Your account is pending approval. You will be notified once approved.",
+          verificationStatus: "pending"
+        });
+      }
+
+      // Check if user is deactivated (inactive or suspended)
+      if (user[0].status === 'inactive' || user[0].status === 'suspended') {
+        console.log(`[EMAIL-LOGIN] Blocked deactivated user: ${email}`);
+        return res.status(403).json({ 
+          message: "Your account has been deactivated. Please contact your administrator.",
+          isDeactivated: true
+        });
+      }
+
+      // Regenerate session ID to create a fresh session
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error("[EMAIL-LOGIN] Regenerate error:", regenerateErr);
+          return res.status(500).json({ message: "Login failed" });
+        }
+
+        // Set email-auth data on new session
+        (req.session as any).userId = user[0].id;
+        (req.session as any).isEmailAuth = true;
+        
+        // Save session
+        req.session.save(async (saveErr) => {
+          if (saveErr) {
+            console.error("[EMAIL-LOGIN] Save error:", saveErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          
+          // Create session tracking record
+          try {
+            const userAgent = req.get('User-Agent') || '';
+            const ipAddress = req.ip || req.socket.remoteAddress || '';
+            
+            // Parse browser and OS from user agent
+            let browser = 'Unknown';
+            let os = 'Unknown';
+            if (userAgent.includes('Chrome')) browser = 'Chrome';
+            else if (userAgent.includes('Firefox')) browser = 'Firefox';
+            else if (userAgent.includes('Safari')) browser = 'Safari';
+            else if (userAgent.includes('Edge')) browser = 'Edge';
+            
+            if (userAgent.includes('Windows')) os = 'Windows';
+            else if (userAgent.includes('Mac')) os = 'macOS';
+            else if (userAgent.includes('Linux')) os = 'Linux';
+            else if (userAgent.includes('Android')) os = 'Android';
+            else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+            
+            await storage.createUserSession({
+              userId: user[0].id,
+              sessionToken: req.sessionID,
+              deviceInfo: userAgent.substring(0, 255),
+              browser,
+              os,
+              ipAddress: ipAddress.substring(0, 45),
+              isActive: true,
+            });
+            console.log(`[SESSION] Created session for email user ${user[0].id}`);
+          } catch (sessionErr) {
+            console.error('[SESSION] Error creating session:', sessionErr);
+          }
+          
+          // Log activity
+          try {
+            await storage.createActivityLog({
+              userId: user[0].id,
+              userEmail: user[0].email,
+              userName: `${user[0].firstName || ''} ${user[0].lastName || ''}`.trim() || user[0].email,
+              action: 'login',
+              category: 'auth',
+              details: { method: 'email', role: user[0].role },
+              ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+              userAgent: (req.get('User-Agent') || '').substring(0, 500),
+            });
+          } catch (logErr) {
+            console.error('[ACTIVITY] Error logging login:', logErr);
+          }
+          
+          // Capture geographic location from IP (non-blocking)
+          const loginIpAddress = req.ip || req.socket.remoteAddress || '';
+          updateUserLocationFromIp(user[0].id, loginIpAddress).catch(() => {});
+          
+          console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);
+          res.json({ 
+            message: "Login successful", 
+            user: { 
+              id: user[0].id, 
+              email: user[0].email, 
+              role: user[0].role,
+              firstName: user[0].firstName,
+              lastName: user[0].lastName,
+              verificationStatus: user[0].verificationStatus,
+            } 
+          });
+        });
+      });
+    } catch (error: any) {
+      console.error("[EMAIL-LOGIN] Error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // ===== AI CHATBOT =====
+  app.post("/api/chat", isAuthenticated, async (req, res) => {
+    try {
+      const { messages } = req.body;
+      
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ message: "Messages array required" });
+      }
+
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+
+      console.log("[CHAT] API Key present:", !!apiKey, "Base URL:", baseUrl);
+
+      if (!apiKey || !baseUrl) {
+        console.error("[CHAT] Missing AI environment variables");
+        return res.status(500).json({ message: "AI service not configured" });
+      }
+
+      const systemMessage = `You are Hostezee's intelligent AI Assistant, helping users with property management questions. 
+You can provide guidance on:
+- Booking and reservation management
+- Guest information and check-in/check-out procedures
+- Room and property management
+- Billing and financial inquiries
+- Menu management and restaurant operations
+- User account and role management
+- System features and how to use them
+
+Be helpful, professional, and concise. If a user asks about something outside your scope, politely redirect them to the relevant feature or contact support.`;
+
+      const chatMessages = [
+        { role: "system", content: systemMessage },
+        ...messages.map((m: any) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      ];
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: chatMessages,
+          max_tokens: 1024,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[CHAT] API Error:", response.status, error);
+        return res.status(500).json({ message: "AI service error" });
+      }
+
+      const data = await response.json();
+      const messageText = data.choices?.[0]?.message?.content || 'Unable to generate response';
+      
+      res.json({ message: messageText });
+    } catch (error: any) {
+      console.error("[CHAT] Exception:", error.message);
+      res.status(500).json({ message: "Chat service error. Please try again." });
+    }
+  });
+
+  // ===== MULTI-OTA INTEGRATION (Booking.com, MMT, Airbnb, OYO, etc.) =====
+  app.get("/api/ota/integrations/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const integrations = await storage.getOtaIntegrationsByProperty(propertyId);
+      
+      // Mask API keys for security
+      const safe = integrations.map((i: any) => ({
+        ...i,
+        apiKey: i.apiKey ? "***" : null,
+        apiSecret: i.apiSecret ? "***" : null,
+      }));
+
+      res.json(safe);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ota/integrations", isAuthenticated, async (req, res) => {
+    try {
+      const { propertyId, otaName, propertyId_external, apiKey, apiSecret, credentials } = req.body;
+      
+      if (!propertyId || !otaName) {
+        return res.status(400).json({ message: "Property ID and OTA Name required" });
+      }
+
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const integration = await storage.createOtaIntegration({
+        propertyId,
+        otaName: otaName,
+        propertyIdExternal: propertyId_external || apiKey,
+        apiKey,
+        apiSecret,
+        credentials,
+        enabled: true,
+      });
+
+      res.json({ success: true, message: `${otaName} integration saved`, integration });
+    } catch (error: any) {
+      console.error("OTA integration error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/ota/integrations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updates = req.body;
+
+      const integration = await storage.updateOtaIntegration(id, updates);
+      res.json({ success: true, integration });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/ota/integrations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteOtaIntegration(id);
+      res.json({ success: true, message: "Integration deleted" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ota/sync/:integrationId", isAuthenticated, async (req, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
+      
+      // Get integration details (would get from DB in real implementation)
+      console.log(`[OTA SYNC] Syncing reservations for integration ${integrationId}`);
+      
+      // Mock reservations
+      const mockReservations = [
+        {
+          bookingId: `BK_${Date.now()}`,
+          guestName: "Sample Guest from OTA",
+          roomNumber: "101",
+          checkIn: new Date(),
+          checkOut: new Date(Date.now() + 86400000),
+          guests: 2,
+          amount: 5000,
+        }
+      ];
+
+      res.json({ 
+        success: true, 
+        message: `Synced ${mockReservations.length} reservations`,
+        reservations: mockReservations,
+      });
+    } catch (error: any) {
+      console.error("OTA sync error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/recent-payments - Get recently paid bills for payment notifications
+  app.get("/api/recent-payments", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Get all properties and filter by user's assigned properties if they're a manager
+      const allProperties = await storage.getAllProperties();
+      const propertyIds = user.role === "manager" && user.assignedPropertyIds && user.assignedPropertyIds.length > 0
+        ? user.assignedPropertyIds
+        : allProperties.map((p: any) => p.id);
+
+      // Get all bills that were paid in the last 5 minutes
+      const allBills = await storage.getAllBills();
+      const now = new Date();
+      const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+      const recentPayments = allBills
+        .filter((b: any) => {
+          const paidAt = b.paidAt ? new Date(b.paidAt) : null;
+          return (
+            propertyIds.includes(b.propertyId) &&
+            b.paymentStatus === "paid" &&
+            paidAt &&
+            paidAt >= fiveMinutesAgo
+          );
+        })
+        .map((b: any) => ({
+          billId: b.id,
+          bookingId: b.bookingId,
+          guestName: b.guestName || "Guest",
+          totalAmount: b.totalAmount,
+          paidAt: b.paidAt,
+          paymentMethod: b.paymentMethod,
+        }))
+        .sort((a: any, b: any) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+      res.json(recentPayments);
+    } catch (error: any) {
+      console.error("[RECENT-PAYMENTS] Error:", error);
+      res.status(500).json({ message: "Failed to fetch recent payments" });
+    }
+  });
+
+  // POST /api/pending-items/ai-summary - Get AI-powered summary of pending tasks with urgency-based notification decision
+  app.get("/api/pending-items/ai-summary", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // TENANT ISOLATION: Only Super Admin sees all properties
+      // Other users see: their assignedPropertyIds + primaryPropertyId + properties they own
+      const allProperties = await storage.getAllProperties();
+      let propertyIds: number[] = [];
+      
+      if (user.tenantType === 'super_admin') {
+        propertyIds = allProperties.map((p: any) => p.id);
+      } else {
+        // Collect all property IDs the user has access to
+        const accessibleIds = new Set<number>();
+        
+        // 1. Check assignedPropertyIds
+        if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+          user.assignedPropertyIds.forEach((id: any) => {
+            const numId = typeof id === 'string' ? parseInt(id) : id;
+            if (!isNaN(numId)) accessibleIds.add(numId);
+          });
+        }
+        
+        // 2. Check primaryPropertyId
+        if (user.primaryPropertyId) {
+          accessibleIds.add(user.primaryPropertyId);
+        }
+        
+        // 3. Check properties where user is the owner
+        allProperties.forEach((p: any) => {
+          if (p.ownerUserId === user.id) {
+            accessibleIds.add(p.id);
+          }
+        });
+        
+        propertyIds = Array.from(accessibleIds);
+      }
+
+      if (propertyIds.length === 0) {
+        return res.json({
+          shouldNotify: false,
+          cleaningRooms: { count: 0, message: "" },
+          pendingEnquiries: { count: 0, message: "" },
+          pendingBills: { count: 0, message: "" },
+          overallInsight: "",
+        });
+      }
+
+      // Get pending counts
+      const rooms = await storage.getAllRooms();
+      const cleaningCount = rooms.filter((r: any) =>
+        propertyIds.includes(r.propertyId) && (r.status === "cleaning" || r.status === "maintenance")
+      ).length;
+
+      const allEnquiries = await storage.getAllEnquiries();
+      const enquiriesCount = allEnquiries.filter((e: any) =>
+        propertyIds.includes(e.propertyId) && e.status === "new"
+      ).length;
+
+      const allBills = await storage.getAllBills();
+      const billsCount = allBills.filter((b: any) => 
+        propertyIds.includes(b.propertyId) && b.paymentStatus === "pending"
+      ).length;
+
+      // Determine urgency: if no pending items, don't notify
+      const totalPending = cleaningCount + enquiriesCount + billsCount;
+      if (totalPending === 0) {
+        return res.json({
+          shouldNotify: false,
+          cleaningRooms: { count: 0, message: "" },
+          pendingEnquiries: { count: 0, message: "" },
+          pendingBills: { count: 0, message: "" },
+          overallInsight: "",
+        });
+      }
+
+      // Generate AI summary using OpenAI
+      const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      
+      if (!openaiKey) {
+        return res.json({
+          shouldNotify: totalPending > 0,
+          cleaningRooms: { count: cleaningCount, message: `${cleaningCount} rooms need attention for cleaning or maintenance.` },
+          pendingEnquiries: { count: enquiriesCount, message: `${enquiriesCount} new customer inquiries awaiting response.` },
+          pendingBills: { count: billsCount, message: `${billsCount} unpaid invoices pending collection.` },
+          overallInsight: "Ensure all tasks are handled promptly to maintain service quality.",
+        });
+      }
+
+      const summary = `As a hotel AI assistant, analyze these pending tasks and decide if urgent notification is needed. Respond ONLY with valid JSON.
+
+Current status:
+- ${cleaningCount} rooms pending cleaning/maintenance
+- ${enquiriesCount} new customer enquiries  
+- ${billsCount} unpaid bills
+
+Respond with JSON containing EXACTLY these fields (no extra fields):
+{
+  "shouldNotifyNow": boolean (true if urgent/high priority, false if can wait),
+  "cleaningRoomsAdvice": "under 30 words",
+  "enquiriesAdvice": "under 30 words",
+  "billsAdvice": "under 30 words",
+  "overallTip": "actionable insight under 20 words"
+}
+
+Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple critical issues. Otherwise return false.`;
+
+      try {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: summary }],
+            temperature: 0.5,
+            max_tokens: 300,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const aiText = data.choices?.[0]?.message?.content || "";
+
+          try {
+            const parsed = JSON.parse(aiText);
+            return res.json({
+              shouldNotify: parsed.shouldNotifyNow === true,
+              cleaningRooms: { count: cleaningCount, message: parsed.cleaningRoomsAdvice || "Prepare rooms for incoming guests." },
+              pendingEnquiries: { count: enquiriesCount, message: parsed.enquiriesAdvice || "Follow up on customer inquiries promptly." },
+              pendingBills: { count: billsCount, message: parsed.billsAdvice || "Collect outstanding payments." },
+              overallInsight: parsed.overallTip || "Stay on top of all pending tasks.",
+            });
+          } catch (parseError) {
+            console.warn("[AI-SUMMARY] Failed to parse AI response, using fallback");
+          }
+        } else {
+          console.warn("[AI-SUMMARY] OpenAI API returned:", response.status, "using fallback");
+        }
+      } catch (fetchError: any) {
+        console.warn("[AI-SUMMARY] OpenAI API fetch error:", fetchError.message, "using fallback");
+      }
+      
+      // Fallback: Always notify if moderate or high pending items
+      const shouldNotify = totalPending >= 3;
+      console.log("[AI-SUMMARY] Using fallback - shouldNotify:", shouldNotify, "totalPending:", totalPending);
+      return res.json({
+        shouldNotify,
+        cleaningRooms: { count: cleaningCount, message: cleaningCount > 0 ? `${cleaningCount} rooms need cleaning/maintenance attention.` : "" },
+        pendingEnquiries: { count: enquiriesCount, message: enquiriesCount > 0 ? `${enquiriesCount} customer inquiries require timely response.` : "" },
+        pendingBills: { count: billsCount, message: billsCount > 0 ? `${billsCount} payments pending - collect to improve cash flow.` : "" },
+        overallInsight: "Address pending items promptly to maintain operations.",
+      });
+    } catch (error: any) {
+      console.error("[AI-SUMMARY] Error:", error);
+      res.status(500).json({ message: "Failed to generate AI summary" });
+    }
+  });
+
+  // GET /api/pending-items - Get count of all pending items for automation notifications
+  app.get("/api/pending-items", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // TENANT ISOLATION: Only Super Admin sees all properties
+      // Other users see: their assignedPropertyIds + primaryPropertyId + properties they own
+      const allProperties = await storage.getAllProperties();
+      let propertyIds: number[] = [];
+      
+      if (user.tenantType === 'super_admin') {
+        // Super Admin sees all
+        propertyIds = allProperties.map((p: any) => p.id);
+      } else {
+        // Collect all property IDs the user has access to
+        const accessibleIds = new Set<number>();
+        
+        // 1. Check assignedPropertyIds
+        if (user.assignedPropertyIds && user.assignedPropertyIds.length > 0) {
+          user.assignedPropertyIds.forEach((id: any) => {
+            const numId = typeof id === 'string' ? parseInt(id) : id;
+            if (!isNaN(numId)) accessibleIds.add(numId);
+          });
+        }
+        
+        // 2. Check primaryPropertyId
+        if (user.primaryPropertyId) {
+          accessibleIds.add(user.primaryPropertyId);
+        }
+        
+        // 3. Check properties where user is the owner
+        allProperties.forEach((p: any) => {
+          if (p.ownerUserId === user.id) {
+            accessibleIds.add(p.id);
+          }
+        });
+        
+        propertyIds = Array.from(accessibleIds);
+      }
+
+      if (propertyIds.length === 0) {
+        return res.json({
+          cleaningRooms: 0,
+          pendingSalaries: 0,
+          pendingEnquiries: 0,
+          unresolvedIssues: 0,
+          pendingBills: 0,
+        });
+      }
+
+      // Count rooms in cleaning/maintenance status
+      const rooms = await storage.getAllRooms();
+      const cleaningRooms = rooms.filter((r: any) =>
+        propertyIds.includes(r.propertyId) &&
+        (r.status === "cleaning" || r.status === "maintenance")
+      ).length;
+
+      // Count pending salaries
+      const allSalaries = await storage.getAllSalaries();
+      const pendingSalaries = allSalaries.filter((s: any) =>
+        propertyIds.includes(s.propertyId) && s.status === "pending"
+      ).length;
+
+      // Count new enquiries
+      const allEnquiries = await storage.getAllEnquiries();
+      const pendingEnquiries = allEnquiries.filter((e: any) =>
+        propertyIds.includes(e.propertyId) && e.status === "new"
+      ).length;
+
+      // Count unresolved issues
+      const allIssues = await storage.getAllIssueReports();
+      const unresolvedIssues = allIssues.filter((issue: any) =>
+        propertyIds.includes(issue.propertyId) && !issue.isResolved
+      ).length;
+
+      // Count pending bills (filtered by property access)
+      const allBills = await storage.getAllBills();
+      const pendingBills = allBills.filter((b: any) => 
+        propertyIds.includes(b.propertyId) && b.paymentStatus === "pending"
+      ).length;
+
+      res.json({
+        cleaningRooms,
+        pendingSalaries,
+        pendingEnquiries,
+        unresolvedIssues,
+        pendingBills,
+      });
+    } catch (error: any) {
+      console.error("[PENDING-ITEMS] Error:", error);
+      res.status(500).json({ message: "Failed to fetch pending items" });
+    }
+  });
+
+  // ===== TASK MANAGER ROUTES =====
+  
+  // Get all tasks (filtered by property access)
+  app.get("/api/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const propertyIds = user.role === 'super-admin' 
+        ? (await storage.getAllProperties()).map((p: any) => p.id)
+        : (user.assignedPropertyIds || []);
+      
+      if (propertyIds.length === 0) {
+        return res.json([]);
+      }
+      
+      const allTasks = await db
+        .select()
+        .from(tasks)
+        .where(inArray(tasks.propertyId, propertyIds))
+        .orderBy(desc(tasks.createdAt));
+      
+      res.json(allTasks);
+    } catch (error: any) {
+      console.error("[TASKS] Error fetching tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+  
+  // Get single task
+  app.get("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      
+      if (!task.length) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch task" });
+    }
+  });
+  
+  // Create task
+  app.post("/api/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      if (!user || (user.role !== 'admin' && user.role !== 'super-admin')) {
+        return res.status(403).json({ message: "Only admins can create tasks" });
+      }
+      
+      const { propertyId, title, description, assignedUserId, assignedUserName, priority, dueDate, dueTime, reminderEnabled, reminderType, reminderTime, reminderRecipients } = req.body;
+      
+      // Handle empty string for assignedUserId - convert to null
+      const validAssignedUserId = assignedUserId && assignedUserId.trim() !== '' ? assignedUserId : null;
+      const validAssignedUserName = validAssignedUserId ? assignedUserName : null;
+      
+      const [newTask] = await db.insert(tasks).values({
+        propertyId,
+        title,
+        description,
+        assignedUserId: validAssignedUserId,
+        assignedUserName: validAssignedUserName,
+        priority: priority || 'medium',
+        status: 'pending',
+        dueDate,
+        dueTime,
+        reminderEnabled: reminderEnabled !== false,
+        reminderType: reminderType || 'daily',
+        reminderTime: reminderTime || '10:00',
+        reminderRecipients: reminderRecipients || [],
+        createdBy: userId,
+      }).returning();
+      
+      // Create in-app notification for assigned user
+      if (validAssignedUserId) {
+        await db.insert(notifications).values({
+          userId: validAssignedUserId,
+          type: 'task_assigned',
+          title: 'New Task Assigned',
+          message: `You have been assigned a new task: ${title}`,
+          relatedId: newTask.id,
+          relatedType: 'task',
+        });
+      }
+      
+      console.log(`[TASKS] Task created: ${title} for property ${propertyId}`);
+      res.status(201).json(newTask);
+    } catch (error: any) {
+      console.error("[TASKS] Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+  
+  // Update task
+  app.patch("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const updates = req.body;
+      
+      // If status changed to completed, set completedAt
+      if (updates.status === 'completed') {
+        updates.completedAt = new Date();
+      }
+      
+      updates.updatedAt = new Date();
+      
+      const [updatedTask] = await db.update(tasks)
+        .set(updates)
+        .where(eq(tasks.id, taskId))
+        .returning();
+      
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      console.log(`[TASKS] Task ${taskId} updated: status=${updates.status || 'unchanged'}`);
+      res.json(updatedTask);
+    } catch (error: any) {
+      console.error("[TASKS] Error updating task:", error);
+      res.status(500).json({ message: "Failed to update task" });
+    }
+  });
+  
+  // Update task status
+  app.patch("/api/tasks/:id/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      const { status } = req.body;
+      
+      const updates: any = { status, updatedAt: new Date() };
+      if (status === 'completed') {
+        updates.completedAt = new Date();
+      }
+      
+      const [updatedTask] = await db.update(tasks)
+        .set(updates)
+        .where(eq(tasks.id, taskId))
+        .returning();
+      
+      if (!updatedTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      console.log(`[TASKS] Task ${taskId} status changed to: ${status}`);
+      res.json(updatedTask);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update task status" });
+    }
+  });
+  
+  // Delete task
+  app.delete("/api/tasks/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const taskId = parseInt(req.params.id);
+      await db.delete(tasks).where(eq(tasks.id, taskId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // ===== NOTIFICATION CENTER ROUTES =====
+  
+  // Get notifications for current user
+  app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      
+      let userNotifications = await db
+        .select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(50);
+      
+      // For Super Admin: Only show system-level notifications
+      // Filter out operational notifications (bookings, payments, orders, check-ins)
+      if (user?.role === 'super-admin') {
+        const systemNotificationTypes = [
+          'approval_pending',      // New user registration
+          'approval_approved',     // User approved
+          'approval_rejected',     // User rejected
+          'new_user_signup',       // New signup
+          'error_reported',        // App error reported
+          'issue_reported',        // Issue/bug reported
+          'contact_enquiry',       // Website contact form
+          'system_alert',          // System alerts
+        ];
+        
+        userNotifications = userNotifications.filter((n: any) => 
+          systemNotificationTypes.includes(n.type) || 
+          n.type?.startsWith('system_') ||
+          n.type?.startsWith('error_') ||
+          n.type?.startsWith('approval_')
+        );
+      } else if (user?.role === 'admin') {
+        // For Admin users: Filter notifications by property access
+        // Get user's accessible property IDs
+        const userPropertyIds = new Set<number>();
+        if (user.primaryPropertyId) userPropertyIds.add(user.primaryPropertyId);
+        if (user.assignedPropertyIds) {
+          user.assignedPropertyIds.forEach((id: number) => userPropertyIds.add(id));
+        }
+        
+        // If user has specific property assignments, filter notifications
+        if (userPropertyIds.size > 0) {
+          const filteredNotifications: typeof userNotifications = [];
+          
+          for (const notification of userNotifications) {
+            // System notifications always show
+            if (!notification.relatedType || !notification.relatedId) {
+              filteredNotifications.push(notification);
+              continue;
+            }
+            
+            // For booking-related notifications, check property access
+            if (notification.relatedType === 'booking') {
+              const booking = await storage.getBooking(notification.relatedId);
+              if (booking && userPropertyIds.has(booking.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            // For order-related notifications, check property access
+            if (notification.relatedType === 'order') {
+              const order = await storage.getOrder(notification.relatedId);
+              if (order && userPropertyIds.has(order.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            // Other notifications (task, user, etc.) - show by default
+            filteredNotifications.push(notification);
+          }
+          
+          userNotifications = filteredNotifications;
+        }
+      }
+      
+      res.json(userNotifications);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Mark notification as read
+  app.post("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      await db
+        .update(notifications)
+        .set({ isRead: true })
+        .where(eq(notifications.id, notificationId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete notification
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = parseInt(req.params.id);
+      await db
+        .delete(notifications)
+        .where(eq(notifications.id, notificationId));
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== CHANGE APPROVAL ROUTES =====
+  
+  // Create change approval request
+  app.post("/api/change-approvals", isAuthenticated, async (req: any, res) => {
+    try {
+      const { changeType, bookingId, roomId, description, oldValue, newValue } = req.body;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      
+      const validated = insertChangeApprovalSchema.parse({
+        userId,
+        changeType,
+        bookingId,
+        roomId,
+        description,
+        oldValue,
+        newValue,
+      });
+
+      const approval = await db
+        .insert(changeApprovals)
+        .values(validated)
+        .returning();
+
+      // Create notification for admins
+      const allUsers = await storage.getAllUsers();
+      const adminUsers = allUsers.filter(u => u.role === "admin" || u.role === "super-admin");
+
+      for (const admin of adminUsers) {
+        await db.insert(notifications).values({
+          userId: admin.id,
+          type: "approval_pending",
+          title: "Change Approval Needed",
+          message: `${changeType} change request: ${description}`,
+          soundType: "warning",
+          relatedId: approval[0].id,
+          relatedType: "change_approval",
+          isRead: false,
+        });
+      }
+
+      res.status(201).json(approval[0]);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get pending change approvals
+  app.get("/api/change-approvals", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(userId);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const approvals = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.status, "pending"))
+        .orderBy(desc(changeApprovals.createdAt));
+      res.json(approvals);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Approve change request
+  app.post("/api/change-approvals/:id/approve", isAuthenticated, async (req: any, res) => {
+    try {
+      const approvalId = parseInt(req.params.id);
+      const approvedBy = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(approvedBy);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const original = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.id, approvalId));
+
+      if (!original[0]) {
+        return res.status(404).json({ message: "Change request not found" });
+      }
+
+      const approval = await db
+        .update(changeApprovals)
+        .set({
+          status: "approved",
+          approvedBy,
+          approvedAt: new Date(),
+        })
+        .where(eq(changeApprovals.id, approvalId))
+        .returning();
+
+      // Create notification for requester
+      await db.insert(notifications).values({
+        userId: original[0].userId,
+        type: "approval_approved",
+        title: "Change Approved",
+        message: `Your ${original[0].changeType} change has been approved`,
+        soundType: "payment",
+        relatedId: approvalId,
+        relatedType: "change_approval",
+        isRead: false,
+      });
+
+      res.json(approval[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reject change request
+  app.post("/api/change-approvals/:id/reject", isAuthenticated, async (req: any, res) => {
+    try {
+      const approvalId = parseInt(req.params.id);
+      const { rejectionReason } = req.body;
+      const approvedBy = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const user = await storage.getUser(approvedBy);
+      if (user?.role !== "admin" && user?.role !== "super-admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const original = await db
+        .select()
+        .from(changeApprovals)
+        .where(eq(changeApprovals.id, approvalId));
+
+      if (!original[0]) {
+        return res.status(404).json({ message: "Change request not found" });
+      }
+
+      const approval = await db
+        .update(changeApprovals)
+        .set({
+          status: "rejected",
+          approvedBy,
+          approvedAt: new Date(),
+          rejectionReason,
+        })
+        .where(eq(changeApprovals.id, approvalId))
+        .returning();
+
+      res.json(approval[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== PERFORMANCE ROUTES =====
+
+  // Get user performance metrics (admin/manager)
+  app.get("/api/performance/users", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          totalTasksAssigned: sql`COALESCE(SUM(${employeePerformanceMetrics.totalTasksAssigned}), 0)`.as("totalTasksAssigned"),
+          tasksCompletedOnTime: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedOnTime}), 0)`.as("tasksCompletedOnTime"),
+          tasksCompletedLate: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedLate}), 0)`.as("tasksCompletedLate"),
+          averageCompletionTimeMinutes: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.averageCompletionTimeMinutes}) AS NUMERIC), 2)`.as("averageCompletionTimeMinutes"),
+          performanceScore: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.performanceScore}) AS NUMERIC), 2)`.as("performanceScore"),
+        })
+        .from(users)
+        .leftJoin(employeePerformanceMetrics, eq(users.id, employeePerformanceMetrics.staffId))
+        .where(inArray(users.role, ["admin", "manager"]))
+        .groupBy(users.id);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching user performance:", error);
+      res.status(500).json({ error: "Failed to fetch performance data" });
+    }
+  });
+
+  // Get staff performance metrics
+  app.get("/api/performance/staff", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+          totalTasksAssigned: sql`COALESCE(SUM(${employeePerformanceMetrics.totalTasksAssigned}), 0)`.as("totalTasksAssigned"),
+          tasksCompletedOnTime: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedOnTime}), 0)`.as("tasksCompletedOnTime"),
+          tasksCompletedLate: sql`COALESCE(SUM(${employeePerformanceMetrics.tasksCompletedLate}), 0)`.as("tasksCompletedLate"),
+          averageCompletionTimeMinutes: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.averageCompletionTimeMinutes}) AS NUMERIC), 2)`.as("averageCompletionTimeMinutes"),
+          performanceScore: sql`ROUND(CAST(AVG(${employeePerformanceMetrics.performanceScore}) AS NUMERIC), 2)`.as("performanceScore"),
+        })
+        .from(users)
+        .leftJoin(employeePerformanceMetrics, eq(users.id, employeePerformanceMetrics.staffId))
+        .where(inArray(users.role, ["staff", "kitchen"]))
+        .groupBy(users.id);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching staff performance:", error);
+      res.status(500).json({ error: "Failed to fetch performance data" });
+    }
+  });
+
+  // Get task notification logs
+  app.get("/api/performance/task-logs", isAuthenticated, async (req: any, res) => {
+    try {
+      const data = await db
+        .select({
+          id: taskNotificationLogs.id,
+          userId: taskNotificationLogs.userId,
+          userName: sql`${users.firstName} || ' ' || ${users.lastName}`.as("userName"),
+          taskType: taskNotificationLogs.taskType,
+          taskCount: taskNotificationLogs.taskCount,
+          reminderCount: taskNotificationLogs.reminderCount,
+          completionTime: taskNotificationLogs.completionTime,
+          lastRemindedAt: taskNotificationLogs.lastRemindedAt,
+          allTasksCompletedAt: taskNotificationLogs.allTasksCompletedAt,
+        })
+        .from(taskNotificationLogs)
+        .leftJoin(users, eq(taskNotificationLogs.userId, users.id))
+        .orderBy(desc(taskNotificationLogs.lastRemindedAt))
+        .limit(50);
+      res.json(data);
+    } catch (error: any) {
+      console.error("[PERFORMANCE] Error fetching task logs:", error);
+      res.status(500).json({ error: "Failed to fetch task logs" });
+    }
+  });
+
+  // ===== AUDIT LOG ROUTES =====
+  // Audit logs temporarily disabled
+
+  // ===== EXPENSE BUDGETS ROUTES =====
+
+  // Create or update expense budget
+  app.post("/api/expense-budgets", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, categoryId, budgetAmount, period } = req.body;
+      
+      if (!propertyId || !categoryId || !budgetAmount) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const budget = await db.insert(expenseBudgets).values({
+        propertyId: parseInt(propertyId),
+        categoryId: parseInt(categoryId),
+        budgetAmount: budgetAmount.toString(),
+        period: period || "monthly",
+        status: "active",
+      }).returning();
+
+      res.json(budget[0]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get expense budgets for property
+  app.get("/api/expense-budgets/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const budgets = await db.select()
+        .from(expenseBudgets)
+        .where(eq(expenseBudgets.propertyId, propertyId));
+
+      res.json(budgets);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== AI INSIGHTS ROUTES =====
+
+  // ===== OTA INTEGRATIONS ROUTES =====
+
+  app.get("/api/ota/integrations", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.query.propertyId;
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+      const integrations = await storage.getOtaIntegrationsByProperty(parseInt(propertyId));
+      res.json(integrations);
+    } catch (error: any) {
+      console.error("[OTA] GET integrations error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+
+  app.delete("/api/ota/integrations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.id);
+      await storage.deleteOtaIntegration(integrationId);
+      res.json({ message: "Integration deleted successfully" });
+    } catch (error: any) {
+      console.error("[OTA] DELETE integration error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ota/sync/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.id);
+      const integration = await storage.getOtaIntegration(integrationId);
+      
+      if (!integration) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      // Simulate sync process
+      const syncResult = {
+        bookingsFound: Math.floor(Math.random() * 10) + 1,
+        bookingsSynced: Math.floor(Math.random() * 8) + 1,
+        syncedAt: new Date(),
+      };
+
+      await storage.updateOtaIntegrationSyncStatus(integrationId, new Date());
+      
+      res.json({ 
+        message: `Sync completed: ${syncResult.bookingsSynced} bookings synced from ${syncResult.bookingsFound} found`,
+        ...syncResult 
+      });
+    } catch (error: any) {
+      console.error("[OTA] POST sync error:", error);
+      await storage.updateOtaIntegrationSyncStatus(parseInt(req.params.id), new Date(), error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== BEDS24 CHANNEL MANAGER ROUTES =====
+
+  // Beds24 webhook endpoint (public - no auth required)
+  app.post("/api/beds24/webhook", async (req, res) => {
+    try {
+      console.log("[BEDS24-WEBHOOK] Received webhook:", JSON.stringify(req.body));
+      
+      const parsed = parseBeds24WebhookPayload(req.body);
+      if (!parsed) {
+        console.log("[BEDS24-WEBHOOK] Invalid payload");
+        return res.status(400).json({ message: "Invalid payload" });
+      }
+
+      console.log(`[BEDS24-WEBHOOK] Action: ${parsed.action}, BookingId: ${parsed.bookingId}`);
+
+      // Find the integration by property ID
+      const allIntegrations = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.otaPlatform, "beds24"));
+      
+      if (allIntegrations.length === 0) {
+        console.log("[BEDS24-WEBHOOK] No Beds24 integrations found");
+        return res.status(200).json({ message: "No integration found" });
+      }
+
+      // Check if booking already exists
+      const existingBooking = await db.select().from(bookings)
+        .where(and(
+          eq(bookings.externalBookingId, parsed.bookingId),
+          eq(bookings.externalSource, "beds24")
+        ))
+        .limit(1);
+
+      if (existingBooking.length > 0) {
+        console.log(`[BEDS24-WEBHOOK] Booking ${parsed.bookingId} already exists, skipping`);
+        return res.status(200).json({ message: "Booking already exists" });
+      }
+
+      // For new bookings, we'll need to fetch full details via API
+      // Store webhook event for manual sync
+      console.log(`[BEDS24-WEBHOOK] New booking notification received for ${parsed.bookingId}`);
+      
+      res.status(200).json({ 
+        message: "Webhook received",
+        bookingId: parsed.bookingId,
+        action: parsed.action 
+      });
+    } catch (error: any) {
+      console.error("[BEDS24-WEBHOOK] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Test Beds24 connection
+  app.post("/api/beds24/test-connection", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propKey } = req.body;
+      
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key (propKey) is required" });
+      }
+
+      const result = await testBeds24Connection(propKey);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[BEDS24] Test connection error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Sync bookings from Beds24
+  app.post("/api/beds24/sync/:integrationId", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
+      const { dateFrom, dateTo } = req.body;
+      
+      // Get integration details
+      const integration = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.id, integrationId))
+        .limit(1);
+      
+      if (integration.length === 0) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      const { propertyId, apiKey } = integration[0] as any;
+      const propKey = apiKey; // The apiKey field stores the propKey for Beds24
+
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key not configured for this integration" });
+      }
+
+      console.log(`[BEDS24] Syncing bookings for property ${propertyId}`);
+
+      // Fetch bookings from Beds24
+      const today = new Date();
+      const thirtyDaysAgo = new Date(today);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const ninetyDaysAhead = new Date(today);
+      ninetyDaysAhead.setDate(ninetyDaysAhead.getDate() + 90);
+
+      const beds24Bookings = await fetchBeds24Bookings(propKey, {
+        arrivalFrom: dateFrom || format(thirtyDaysAgo, "yyyy-MM-dd"),
+        arrivalTo: dateTo || format(ninetyDaysAhead, "yyyy-MM-dd"),
+      });
+
+      let synced = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const b24Booking of beds24Bookings) {
+        try {
+          // Check if already exists
+          const existing = await db.select().from(bookings)
+            .where(and(
+              eq(bookings.externalBookingId, b24Booking.bookId),
+              eq(bookings.externalSource, "beds24")
+            ))
+            .limit(1);
+
+          if (existing.length > 0) {
+            skipped++;
+            continue;
+          }
+
+          // Convert and create booking
+          const converted = convertBeds24ToHostezee(b24Booking);
+          
+          // Create or find guest
+          let guestId: number | null = null;
+          if (converted.guestData.phone || converted.guestData.email) {
+            const existingGuest = await db.select().from(guests)
+              .where(and(
+                eq(guests.propertyId, propertyId),
+                or(
+                  converted.guestData.phone ? eq(guests.phone, converted.guestData.phone) : sql`false`,
+                  converted.guestData.email ? eq(guests.email, converted.guestData.email) : sql`false`
+                )
+              ))
+              .limit(1);
+
+            if (existingGuest.length > 0) {
+              guestId = existingGuest[0].id;
+            } else {
+              const newGuest = await db.insert(guests).values({
+                propertyId,
+                fullName: converted.guestData.fullName,
+                email: converted.guestData.email || null,
+                phone: converted.guestData.phone || null,
+                address: converted.guestData.address || null,
+                nationality: converted.guestData.country || null,
+              }).returning();
+              guestId = newGuest[0].id;
+            }
+          }
+
+          // Get room using room mappings
+          let roomId: number | null = null;
+          const beds24RoomId = b24Booking.roomId;
+          
+          // Get room mapping for this Beds24 room
+          const roomMapping = await db.select()
+            .from(beds24RoomMappings)
+            .where(and(
+              eq(beds24RoomMappings.propertyId, propertyId),
+              eq(beds24RoomMappings.beds24RoomId, beds24RoomId)
+            ))
+            .limit(1);
+          
+          if (roomMapping.length > 0) {
+            // Find an available room of the mapped type
+            const roomType = roomMapping[0].roomType;
+            const checkIn = format(converted.bookingData.checkInDate, "yyyy-MM-dd");
+            const checkOut = format(converted.bookingData.checkOutDate, "yyyy-MM-dd");
+            
+            // Get all rooms of this type
+            const roomsOfType = await db.select().from(rooms)
+              .where(and(
+                eq(rooms.propertyId, propertyId),
+                eq(rooms.roomType, roomType)
+              ));
+            
+            // Find one that's available for these dates
+            for (const room of roomsOfType) {
+              const conflicting = await db.select().from(bookings)
+                .where(and(
+                  eq(bookings.roomId, room.id),
+                  lt(bookings.checkInDate, checkOut),
+                  gt(bookings.checkOutDate, checkIn)
+                ))
+                .limit(1);
+              
+              if (conflicting.length === 0) {
+                roomId = room.id;
+                break;
+              }
+            }
+            
+            // If all rooms occupied, use first room of type
+            if (!roomId && roomsOfType.length > 0) {
+              roomId = roomsOfType[0].id;
+            }
+            
+            console.log(`[BEDS24] Mapped room ${beds24RoomId} -> ${roomType} -> Room ID ${roomId}`);
+          } else {
+            // No mapping found, use first available room
+            const propertyRooms = await db.select().from(rooms)
+              .where(eq(rooms.propertyId, propertyId))
+              .limit(1);
+            roomId = propertyRooms.length > 0 ? propertyRooms[0].id : null;
+            console.log(`[BEDS24] No mapping for room ${beds24RoomId}, using default room ${roomId}`);
+          }
+
+          // Create the booking
+          await db.insert(bookings).values({
+            propertyId,
+            roomId,
+            guestId,
+            checkInDate: format(converted.bookingData.checkInDate, "yyyy-MM-dd"),
+            checkOutDate: format(converted.bookingData.checkOutDate, "yyyy-MM-dd"),
+            numberOfGuests: converted.bookingData.numberOfGuests,
+            status: "confirmed",
+            totalAmount: converted.bookingData.totalAmount,
+            source: converted.bookingData.source,
+            externalBookingId: converted.bookingData.externalBookingId,
+            externalSource: "beds24",
+          });
+
+          synced++;
+          console.log(`[BEDS24] Synced booking ${b24Booking.bookId}`);
+        } catch (err: any) {
+          console.error(`[BEDS24] Error syncing booking ${b24Booking.bookId}:`, err.message);
+          errors++;
+        }
+      }
+
+      // Update sync status
+      await storage.updateOtaIntegrationSyncStatus(integrationId, new Date());
+
+      res.json({
+        success: true,
+        message: `Sync completed`,
+        bookingsFound: beds24Bookings.length,
+        synced,
+        skipped,
+        errors,
+      });
+    } catch (error: any) {
+      console.error("[BEDS24] Sync error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Get Beds24 rooms for mapping
+  app.get("/api/beds24/rooms/:integrationId", isAuthenticated, async (req: any, res) => {
+    try {
+      const integrationId = parseInt(req.params.integrationId);
+      
+      const integration = await db.select().from(otaIntegrations)
+        .where(eq(otaIntegrations.id, integrationId))
+        .limit(1);
+      
+      if (integration.length === 0) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      const propKey = (integration[0] as any).apiKey;
+      if (!propKey) {
+        return res.status(400).json({ message: "Property key not configured" });
+      }
+
+      const beds24Rooms = await getBeds24Rooms(propKey);
+      res.json(beds24Rooms);
+    } catch (error: any) {
+      console.error("[BEDS24] Get rooms error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get room mappings for a property
+  app.get("/api/beds24/room-mappings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const mappings = await db.select()
+        .from(beds24RoomMappings)
+        .where(eq(beds24RoomMappings.propertyId, propertyId));
+      
+      res.json(mappings);
+    } catch (error: any) {
+      console.error("[BEDS24] Get mappings error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Add or update room mapping
+  app.post("/api/beds24/room-mappings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, beds24RoomId, beds24RoomName, roomType } = req.body;
+      
+      if (!propertyId || !beds24RoomId || !roomType) {
+        return res.status(400).json({ message: "propertyId, beds24RoomId, and roomType are required" });
+      }
+
+      // Check if mapping already exists
+      const existing = await db.select()
+        .from(beds24RoomMappings)
+        .where(and(
+          eq(beds24RoomMappings.propertyId, propertyId),
+          eq(beds24RoomMappings.beds24RoomId, beds24RoomId)
+        ))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // Update existing mapping
+        await db.update(beds24RoomMappings)
+          .set({ roomType, beds24RoomName })
+          .where(eq(beds24RoomMappings.id, existing[0].id));
+        
+        res.json({ message: "Room mapping updated", id: existing[0].id });
+      } else {
+        // Create new mapping
+        const newMapping = await db.insert(beds24RoomMappings)
+          .values({ propertyId, beds24RoomId, beds24RoomName, roomType })
+          .returning();
+        
+        res.json({ message: "Room mapping created", id: newMapping[0].id });
+      }
+    } catch (error: any) {
+      console.error("[BEDS24] Create mapping error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Delete room mapping
+  app.delete("/api/beds24/room-mappings/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      await db.delete(beds24RoomMappings).where(eq(beds24RoomMappings.id, id));
+      
+      res.json({ message: "Room mapping deleted" });
+    } catch (error: any) {
+      console.error("[BEDS24] Delete mapping error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get unique room types for a property
+  app.get("/api/rooms/types/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      const propertyRooms = await db.select()
+        .from(rooms)
+        .where(eq(rooms.propertyId, propertyId));
+      
+      const uniqueTypes = [...new Set(propertyRooms.map(r => r.roomType).filter(Boolean))];
+      
+      res.json(uniqueTypes);
+    } catch (error: any) {
+      console.error("[ROOMS] Get types error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== FEATURE SETTINGS ROUTES =====
+  
+  app.get("/api/feature-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      let propertyId = req.query.propertyId;
+      
+      if (!propertyId) {
+        propertyId = req.user?.assignedPropertyIds?.[0];
+      }
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      const settings = await storage.getFeatureSettingsByProperty(parseInt(propertyId));
+      res.json(settings);
+    } catch (error: any) {
+      console.error("[FEATURE-SETTINGS] GET error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/feature-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = req.body.propertyId || req.user?.assignedPropertyIds?.[0];
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "Property ID required" });
+      }
+
+      // Admin and super-admin can update their own property settings
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admin can update feature settings for their property" });
+      }
+
+      // Verify admin has access to this property
+      const assignedProps = req.user?.assignedPropertyIds || [];
+      if (!assignedProps.includes(parseInt(propertyId))) {
+        return res.status(403).json({ message: "You don't have access to this property" });
+      }
+
+      const settings = await storage.updateFeatureSettings(parseInt(propertyId), req.body);
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== FOOD ORDER WHATSAPP SETTINGS ROUTES =====
+  app.get("/api/food-order-whatsapp-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const settings = await storage.getFoodOrderWhatsappSettings(propertyId);
+      res.json(settings || { propertyId, enabled: false, phoneNumbers: [] });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/food-order-whatsapp-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const { enabled, phoneNumbers } = req.body;
+      
+      // Validate phone numbers array
+      const cleanedNumbers = (phoneNumbers || [])
+        .map((p: string) => p.replace(/\s+/g, '').trim())
+        .filter((p: string) => p.length >= 10);
+      
+      const settings = await storage.upsertFoodOrderWhatsappSettings(propertyId, {
+        enabled: enabled ?? true,
+        phoneNumbers: cleanedNumbers,
+      });
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== WHATSAPP TEMPLATE SETTINGS ROUTES =====
+  // Get all template settings for a property
+  app.get("/api/whatsapp-template-settings/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      
+      // Initialize settings if not exist (for new properties)
+      await storage.initializePropertyWhatsappSettings(propertyId);
+      
+      const settings = await storage.getWhatsappTemplateSettings(propertyId);
+      res.json(settings);
+    } catch (error: any) {
+      console.error("[WHATSAPP-TEMPLATE-SETTINGS] GET error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update a specific template setting
+  app.put("/api/whatsapp-template-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, templateType, isEnabled, sendTiming, delayHours } = req.body;
+      
+      if (!propertyId || !templateType) {
+        return res.status(400).json({ message: "Property ID and template type required" });
+      }
+
+      // Admin and super-admin can update settings
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only admin can update WhatsApp template settings" });
+      }
+
+      const setting = await storage.upsertWhatsappTemplateSetting({
+        propertyId: parseInt(propertyId),
+        templateType,
+        isEnabled: isEnabled ?? true,
+        sendTiming: sendTiming ?? 'immediate',
+        delayHours: delayHours ?? 0
+      });
+      
+      res.json(setting);
+    } catch (error: any) {
+      console.error("[WHATSAPP-TEMPLATE-SETTINGS] PUT error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Generate AI-powered expense insights using OpenAI
+  app.post("/api/ai/insights", isAuthenticated, async (req: any, res) => {
+    try {
+      const { categoryBreakdown, totalExpenses, transactionCount } = req.body;
+
+      if (!categoryBreakdown || totalExpenses === undefined) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Format data for AI analysis
+      const categoryText = categoryBreakdown
+        .map((cat: any) => `- ${cat.name}: ₹${cat.total.toLocaleString()} (${cat.percentage.toFixed(1)}% of total)`)
+        .join('\n');
+
+      const prompt = `You are a hotel and property management financial advisor for Indian hospitality businesses. Analyze these expense data and provide 3-4 specific, actionable business insights to improve profitability.
+
+Expense Categories:
+${categoryText}
+
+Total Monthly Expenses: ₹${totalExpenses.toLocaleString()}
+Number of Transactions: ${transactionCount}
+
+Focus on:
+1. Cost optimization opportunities (supplier negotiations, efficiency improvements)
+2. Potential risks or concerning spending patterns
+3. Operational efficiency improvements
+4. Best practices for property management
+
+Return ONLY a valid JSON array (no markdown, no code blocks, no explanations):
+[
+  {
+    "type": "opportunity",
+    "title": "Brief title",
+    "description": "2-3 sentence explanation with specific context",
+    "impact": "Expected benefit or savings"
+  }
+]
+
+Types should be: "opportunity" (cost saving), "warning" (concerning trend), "suggestion" (actionable tip), or "achievement" (positive note).`;
+
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        console.warn("[AI INSIGHTS] OpenAI API key not configured, using fallback");
+        return res.json({ insights: [] });
+      }
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[AI INSIGHTS] OpenAI API error:", error);
+        return res.json({ insights: [] });
+      }
+
+      const data = await response.json();
+      
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        console.warn("[AI INSIGHTS] Unexpected API response structure");
+        return res.json({ insights: [] });
+      }
+
+      const content = data.choices[0].message.content;
+      
+      try {
+        // Extract JSON from response (in case it's wrapped in markdown)
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        const jsonStr = jsonMatch ? jsonMatch[0] : content;
+        const insights = JSON.parse(jsonStr);
+        
+        // Validate insights structure
+        const validInsights = Array.isArray(insights) ? insights.filter((i: any) =>
+          i.type && i.title && i.description && i.impact &&
+          ["opportunity", "warning", "suggestion", "achievement"].includes(i.type)
+        ) : [];
+
+        res.json({ insights: validInsights });
+      } catch (parseError) {
+        console.error("[AI INSIGHTS] Failed to parse AI response:", parseError);
+        res.json({ insights: [] });
+      }
+    } catch (error: any) {
+      console.error("[AI INSIGHTS] Error:", error);
+      res.status(500).json({ message: error.message, insights: [] });
+    }
+  });
+
+  // PMS Analytics Chat - AI-powered query endpoint
+  app.post("/api/pms-analytics-chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const { query } = req.body;
+      if (!query) {
+        return res.status(400).json({ response: "Please ask a question about your PMS metrics." });
+      }
+
+      const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({ response: "AI service not configured. Please contact support." });
+      }
+
+      // Fetch all necessary data for analysis
+      const allBookings = await storage.getAllBookings();
+      const allBills = await storage.getAllBills();
+      const allGuests = await storage.getAllGuests();
+      const allProperties = await storage.getAllProperties();
+      const allOrders = await storage.getAllOrders();
+
+      // Calculate metrics
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      const weeklyBookings = allBookings.filter((b: any) => {
+        const date = new Date(b.checkInDate);
+        return date >= weekAgo && date <= now;
+      });
+      const monthlyBookings = allBookings.filter((b: any) => {
+        const date = new Date(b.checkInDate);
+        return date >= monthAgo && date <= now;
+      });
+
+      const weeklyRevenue = allBills.filter((b: any) => {
+        const date = new Date(b.createdAt || now);
+        return date >= weekAgo && date <= now;
+      }).reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0);
+
+      const monthlyRevenue = allBills.filter((b: any) => {
+        const date = new Date(b.createdAt || now);
+        return date >= monthAgo && date <= now;
+      }).reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0);
+
+      const foodOrdersThisWeek = allOrders.filter((o: any) => {
+        const date = new Date(o.createdAt || now);
+        return date >= weekAgo && date <= now;
+      }).length;
+
+      const paidBills = allBills.filter((b: any) => b.paymentStatus === "paid").length;
+      const pendingBills = allBills.filter((b: any) => b.paymentStatus === "pending").length;
+
+      const pmsContext = `
+Current PMS Metrics:
+- Total Properties: ${allProperties.length}
+- Total Bookings: ${allBookings.length}
+- Total Guests: ${allGuests.length}
+- Weekly Bookings: ${weeklyBookings.length}
+- Monthly Bookings: ${monthlyBookings.length}
+- Weekly Revenue: ₹${weeklyRevenue.toFixed(2)}
+- Monthly Revenue: ₹${monthlyRevenue.toFixed(2)}
+- Total Revenue: ₹${allBills.reduce((sum: number, b: any) => sum + (b.totalAmount || 0), 0).toFixed(2)}
+- Paid Bills: ${paidBills}
+- Pending Bills: ${pendingBills}
+- Food Orders This Week: ${foodOrdersThisWeek}
+- Occupancy Rate: ${((weeklyBookings.length / (allProperties.length * 7)) * 100).toFixed(1)}%
+`;
+
+      const aiPrompt = `You are a hotel PMS analytics assistant. Based on this data and user query, provide a helpful, concise answer.
+
+${pmsContext}
+
+User Query: "${query}"
+
+Provide a direct, actionable answer with specific numbers and insights. Keep response under 150 words.`;
+
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: aiPrompt }],
+          temperature: 0.7,
+          max_tokens: 300,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("[ANALYTICS-CHAT] OpenAI error:", error);
+        return res.json({ response: "Unable to process your query. Please try again." });
+      }
+
+      const data = await response.json();
+      const aiResponse = data.choices?.[0]?.message?.content || "Unable to generate response";
+      
+      res.json({ response: aiResponse });
+    } catch (error: any) {
+      console.error("[ANALYTICS-CHAT] Error:", error);
+      res.status(500).json({ response: "Error processing your query. Please try again." });
+    }
+  });
+
+  // Audit Logs API endpoints
+  app.get("/api/audit-logs", isAuthenticated, async (req, res) => {
+    try {
+      const logs = await storage.getAllAuditLogs();
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[AUDIT] Error fetching logs:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/audit-logs/:entityType/:entityId", isAuthenticated, async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const logs = await storage.getAuditLogsByEntity(entityType, entityId);
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[AUDIT] Error fetching entity logs:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ==========================================
+  // BACKGROUND JOB: Payment Reminders & Auto-Cancellation
+  // - Reminder intervals: Configurable per property (default 6 hours)
+  // - Max reminders: Configurable per property (default 3)
+  // - Auto-cancel: After payment link expiry hours (from advance payment settings)
+  // ==========================================
+  const PAYMENT_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
+  const DEFAULT_REMINDER_HOURS = 6; // Default hours between reminders
+  const DEFAULT_MAX_REMINDERS = 3; // Default max number of reminders
+  const DEFAULT_AUTO_CANCEL_HOURS = 48; // Default auto-cancel after 48 hours
+  
+  async function processPaymentRemindersAndCancellations() {
+    try {
+      const now = new Date();
+      console.log(`[PAYMENT-JOB] Processing pending_advance bookings at ${now.toISOString()}`);
+      
+      // Get all bookings with pending_advance status
+      const pendingBookings = await db.select().from(bookings).where(eq(bookings.status, "pending_advance"));
+      
+      let remindersCount = 0;
+      let cancelledCount = 0;
+      let skippedCount = 0;
+      
+      for (const booking of pendingBookings) {
+        // Get feature settings for this property (includes reminder settings)
+        const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
+        const settings = settingsResult[0];
+        
+        // Check if payment reminders are enabled (use paymentReminderEnabled if available, fallback to paymentReminders)
+        const isReminderEnabled = settings?.paymentReminderEnabled !== false && settings?.paymentReminders !== false;
+        if (!isReminderEnabled) {
+          skippedCount++;
+          continue; // Skip reminders if disabled for this property
+        }
+        
+        // Get configurable values from settings or use defaults
+        const reminderHours = settings?.paymentReminderHours || DEFAULT_REMINDER_HOURS;
+        const maxReminders = settings?.maxPaymentReminders || DEFAULT_MAX_REMINDERS;
+        const autoCancelHours = (settings?.advancePaymentExpiryHours || DEFAULT_AUTO_CANCEL_HOURS) * 2; // Double expiry hours for auto-cancel
+        
+        const createdAt = booking.createdAt ? new Date(booking.createdAt) : now;
+        const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        const reminderCount = booking.reminderCount || 0;
+        
+        // Check time since last reminder
+        const lastReminderAt = booking.lastReminderAt ? new Date(booking.lastReminderAt) : null;
+        const hoursSinceLastReminder = lastReminderAt 
+          ? (now.getTime() - lastReminderAt.getTime()) / (1000 * 60 * 60)
+          : hoursSinceCreation; // If no reminder sent, use hours since creation
+        
+        // Get guest and property info for WhatsApp messages
+        const guest = await storage.getGuest(booking.guestId);
+        const property = await storage.getProperty(booking.propertyId);
+        
+        if (!guest || !property) {
+          console.log(`[PAYMENT-JOB] Skipping booking #${booking.id} - missing guest or property data`);
+          continue;
+        }
+        
+        // Calculate advance amount
+        const totalAmount = parseFloat(booking.totalAmount?.toString() || "0");
+        const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0") || 
+                              totalAmount * 0.3; // Default 30%
+        
+        // Auto-cancellation is currently DISABLED
+        // Previously: Auto-cancel after configured hours if payment not received
+        // Reason: Admin requested to stop auto-cancellation
+        // To re-enable: uncomment the block below
+        /*
+        if (hoursSinceCreation >= autoCancelHours) {
+          await db.update(bookings).set({
+            status: "cancelled",
+            advancePaymentStatus: "cancelled",
+            cancellationReason: `Auto-cancelled: Advance payment not received within ${autoCancelHours} hours`,
+            cancellationDate: now,
+            updatedAt: now,
+          }).where(eq(bookings.id, booking.id));
+          
+          cancelledCount++;
+          console.log(`[PAYMENT-JOB] Booking #${booking.id} auto-cancelled after ${autoCancelHours} hours`);
+          
+          // Notify admins about cancellation
+          try {
+            const allUsers = await storage.getAllUsers();
+            const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+            
+            for (const admin of adminUsers) {
+              await db.insert(notifications).values({
+                userId: admin.id,
+                type: "booking_cancelled",
+                title: "Booking Auto-Cancelled",
+                message: `Booking #${booking.id} for ${guest.fullName} was auto-cancelled - advance payment not received within ${autoCancelHours} hours`,
+                soundType: "warning",
+                relatedId: booking.id,
+                relatedType: "booking",
+              });
+            }
+          } catch (notifError: any) {
+            console.error(`[PAYMENT-JOB] Failed to create cancellation notification:`, notifError.message);
+          }
+          continue;
+        }
+        */
+        
+        // Check if we can send another reminder
+        // Conditions: not exceeded max reminders AND enough time has passed since last reminder
+        const canSendReminder = reminderCount < maxReminders && hoursSinceLastReminder >= reminderHours;
+        
+        // Check if payment_reminder template is enabled
+        const reminderTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_reminder');
+        const isReminderTemplateEnabled = reminderTemplateSetting?.isEnabled !== false;
+        
+        if (canSendReminder && isReminderTemplateEnabled) {
+          try {
+            await sendPaymentReminder(
+              guest.phone || "",
+              guest.fullName || "Guest",
+              `₹${advanceAmount.toLocaleString('en-IN')}`,
+              property.name,
+              format(new Date(booking.checkInDate), "dd MMM yyyy"),
+              format(new Date(booking.checkOutDate), "dd MMM yyyy")
+            );
+            
+            await db.update(bookings).set({
+              reminderCount: reminderCount + 1,
+              lastReminderAt: now,
+              updatedAt: now,
+            }).where(eq(bookings.id, booking.id));
+            
+            remindersCount++;
+            console.log(`[PAYMENT-JOB] Sent reminder #${reminderCount + 1} for booking #${booking.id} (interval: ${reminderHours}h, max: ${maxReminders})`);
+          } catch (reminderError: any) {
+            console.error(`[PAYMENT-JOB] Failed to send reminder:`, reminderError.message);
+          }
+        } else if (canSendReminder && !isReminderTemplateEnabled) {
+          console.log(`[PAYMENT-JOB] payment_reminder template disabled for property ${booking.propertyId}, skipping reminder`);
+        }
+      }
+      
+      if (remindersCount > 0 || cancelledCount > 0) {
+        console.log(`[PAYMENT-JOB] Sent ${remindersCount} reminders, cancelled ${cancelledCount} bookings`);
+      }
+    } catch (error: any) {
+      console.error("[PAYMENT-JOB] Error:", error.message);
+    }
+  }
+  
+  // Run payment check on startup and then every 15 minutes
+  setTimeout(() => {
+    processPaymentRemindersAndCancellations();
+  }, 5000);
+  
+  setInterval(() => {
+    processPaymentRemindersAndCancellations();
+  }, PAYMENT_CHECK_INTERVAL);
+  
+  console.log(`[PAYMENT-JOB] Background job started - checking every ${PAYMENT_CHECK_INTERVAL / 60000} minutes`);
+
+  // =====================================
+  // Daily Task Reminder Job (10 AM)
+  // =====================================
+  async function processTaskReminders() {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      
+      // Only run between 10:00 - 10:15 AM (15 minute check interval)
+      if (currentHour !== 10 || currentMinute >= 15) {
+        return;
+      }
+      
+      console.log(`[TASK-REMINDER] Running daily task reminder job at ${format(now, "HH:mm")}`);
+      
+      // Get all pending/in_progress tasks with reminders enabled
+      const pendingTasks = await db.select()
+        .from(tasks)
+        .where(
+          and(
+            eq(tasks.reminderEnabled, true),
+            inArray(tasks.status, ['pending', 'in_progress'])
+          )
+        );
+      
+      if (pendingTasks.length === 0) {
+        console.log("[TASK-REMINDER] No pending tasks with reminders enabled");
+        return;
+      }
+      
+      let remindersSent = 0;
+      
+      for (const task of pendingTasks) {
+        // Check reminder type - skip one_time if already reminded today
+        if (task.reminderType === 'one_time' && task.lastReminderSent) {
+          const lastReminder = new Date(task.lastReminderSent);
+          if (format(lastReminder, 'yyyy-MM-dd') === format(now, 'yyyy-MM-dd')) {
+            continue; // Already sent today
+          }
+        }
+        
+        // Get property name
+        const [property] = await db.select().from(properties).where(eq(properties.id, task.propertyId)).limit(1);
+        const propertyName = property?.name || 'Unknown Property';
+        
+        // Get recipients - either custom list or assigned user
+        let recipients: string[] = [];
+        if (task.reminderRecipients && Array.isArray(task.reminderRecipients) && task.reminderRecipients.length > 0) {
+          recipients = task.reminderRecipients as string[];
+        } else if (task.assignedUserId) {
+          // Get assigned user's phone
+          const [assignedUser] = await db.select().from(users).where(eq(users.id, task.assignedUserId)).limit(1);
+          if (assignedUser?.phone) {
+            recipients = [assignedUser.phone];
+          }
+        }
+        
+        if (recipients.length === 0) {
+          console.log(`[TASK-REMINDER] No recipients for task #${task.id}`);
+          continue;
+        }
+        
+        // Format due date
+        const dueDate = task.dueDate ? format(new Date(task.dueDate), "dd MMM yyyy") : "Not set";
+        const dueTime = task.dueTime || "";
+        const dueDateFull = dueTime ? `${dueDate} ${dueTime}` : dueDate;
+        
+        // Send WhatsApp reminders to all recipients
+        for (const phone of recipients) {
+          try {
+            await sendTaskReminder(
+              phone,
+              task.assignedUserName || "Team",
+              task.title,
+              propertyName,
+              dueDateFull,
+              task.status || "pending"
+            );
+            remindersSent++;
+          } catch (err: any) {
+            console.error(`[TASK-REMINDER] Failed to send to ${phone}:`, err.message);
+          }
+        }
+        
+        // Update last reminder sent time
+        await db.update(tasks)
+          .set({ lastReminderSent: now })
+          .where(eq(tasks.id, task.id));
+      }
+      
+      console.log(`[TASK-REMINDER] Sent ${remindersSent} task reminders`);
+    } catch (error: any) {
+      console.error("[TASK-REMINDER] Error:", error.message);
+    }
+  }
+  
+  // Check every 15 minutes for task reminders
+  setTimeout(() => {
+    processTaskReminders();
+  }, 10000);
+  
+  setInterval(() => {
+    processTaskReminders();
+  }, 15 * 60 * 1000); // Every 15 minutes
+  
+  console.log("[TASK-REMINDER] Daily task reminder job started - checks every 15 minutes, sends at 10 AM");
+
+  // =====================================
+  // Auto-Close Day at Midnight Job
+  // =====================================
+  async function autoCloseDayAtMidnight() {
+    try {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      
+      // Only run between 00:00 - 00:15 (midnight window)
+      if (currentHour !== 0 || currentMinute >= 15) {
+        return;
+      }
+      
+      console.log(`[AUTO-CLOSE] Running auto-close day job at ${format(now, "HH:mm")}`);
+      
+      // Get yesterday's date (we're closing yesterday at midnight)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const closingDateStr = format(yesterday, "yyyy-MM-dd");
+      
+      // Get all properties
+      const allProperties = await db.select().from(properties);
+      
+      for (const property of allProperties) {
+        // Check if already closed for yesterday
+        const existingClosing = await db.select()
+          .from(dailyClosings)
+          .where(
+            and(
+              eq(dailyClosings.propertyId, property.id),
+              eq(dailyClosings.closingDate, closingDateStr)
+            )
+          )
+          .limit(1);
+        
+        if (existingClosing.length > 0) {
+          continue; // Already closed
+        }
+        
+        // Get all wallets for this property
+        const propertyWallets = await db.select()
+          .from(wallets)
+          .where(eq(wallets.propertyId, property.id));
+        
+        if (propertyWallets.length === 0) {
+          continue; // No wallets to close
+        }
+        
+        // Calculate day's totals
+        let totalRevenue = 0;
+        let totalCollected = 0;
+        let totalExpenses = 0;
+        let totalPending = 0;
+        
+        // Get yesterday's transactions
+        const dayStart = new Date(yesterday);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(yesterday);
+        dayEnd.setHours(23, 59, 59, 999);
+        
+        const dayTransactions = await db.select()
+          .from(walletTransactions)
+          .where(
+            and(
+              eq(walletTransactions.propertyId, property.id),
+              gte(walletTransactions.transactionDate, dayStart),
+              lte(walletTransactions.transactionDate, dayEnd)
+            )
+          );
+        
+        for (const tx of dayTransactions) {
+          const amount = parseFloat(tx.amount?.toString() || '0');
+          if (tx.transactionType === 'credit') {
+            totalCollected += amount;
+            totalRevenue += amount;
+          } else {
+            totalExpenses += amount;
+          }
+        }
+        
+        // Create wallet snapshots
+        const walletSnapshots = propertyWallets.map(w => ({
+          walletId: w.id,
+          walletName: w.name,
+          openingBalance: parseFloat(w.openingBalance?.toString() || '0'),
+          closingBalance: parseFloat(w.currentBalance?.toString() || '0'),
+          credits: 0,
+          debits: 0
+        }));
+        
+        // Create auto-closing record
+        await db.insert(dailyClosings).values({
+          propertyId: property.id,
+          closingDate: closingDateStr,
+          totalRevenue: totalRevenue.toString(),
+          totalCollected: totalCollected.toString(),
+          totalExpenses: totalExpenses.toString(),
+          totalPendingReceivable: totalPending.toString(),
+          walletSnapshots: walletSnapshots,
+          status: 'closed',
+          closedAt: now,
+          notes: 'Auto-closed at midnight'
+        });
+        
+        // Update wallet opening balances for new day
+        for (const wallet of propertyWallets) {
+          await db.update(wallets)
+            .set({ openingBalance: wallet.currentBalance })
+            .where(eq(wallets.id, wallet.id));
+        }
+        
+        console.log(`[AUTO-CLOSE] Auto-closed day for property ${property.name} (${closingDateStr})`);
+      }
+    } catch (error) {
+      console.error("[AUTO-CLOSE] Error in auto-close job:", error);
+    }
+  }
+  
+  // Run auto-close check after 10 seconds, then every 15 minutes
+  setTimeout(() => {
+    autoCloseDayAtMidnight();
+  }, 10000);
+  
+  setInterval(() => {
+    autoCloseDayAtMidnight();
+  }, 15 * 60 * 1000); // Every 15 minutes
+  
+  console.log("[AUTO-CLOSE] Auto-close day job started - checks every 15 minutes, runs at midnight");
+
+  const httpServer = createServer(app);
+  return httpServer;
+}

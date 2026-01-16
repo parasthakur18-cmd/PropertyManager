@@ -1,0 +1,107 @@
+There are still several issues and missing features in the app that need to be addressed.
+
+1. User Creation & Role Assignment
+
+Currently, when someone logs in through hostezee.in, the system creates a new, separate user account. This behavior is correct for new property owners.
+
+However, there is no proper mechanism for property owners to add staff users and assign roles.
+
+Expected flow:
+
+Inside Admin Account → Settings → Users, there should be an option to Add User
+
+Admin enters:
+
+User email ID
+
+Role (Admin / Manager / Staff or custom)
+
+User receives an email invitation and logs in with assigned access
+
+At present, all new login requests go to the Super Admin, which is fine for new property owners but incorrect for staff users.
+
+2. Missing User Management Controls
+
+There is no option to delete a user
+
+There is no option to deactivate / suspend a user
+
+Admin should be able to temporarily disable access without deleting the user
+
+Services and system access for a user should be held or resumed anytime
+
+3. Role-Based Access Control (Very Important)
+
+Currently, there is no option to manually define permissions for a user.
+
+For example:
+
+If I want to give a Manager access only to bookings
+
+Or allow access to calendar but not billing
+
+Or allow food orders but not reports
+
+This is not possible at the moment.
+
+Required feature:
+
+A permission-based system where Admin can:
+
+Assign predefined roles, or
+
+Manually enable/disable rights for each user
+
+Example permissions:
+
+View / Edit Bookings
+
+Manage Calendar
+
+Room Management
+
+Food Orders
+
+Payments & Billing
+
+Reports
+
+Settings Access
+
+4. Centralized Settings Area
+
+All these controls should be available only under the Settings section, for easy access and management:
+
+Settings →
+
+Users
+
+Roles & Permissions
+
+Add / Edit / Delete / Deactivate Users
+
+Custom Permission Management
+
+This will allow Admins to easily control user access without Super Admin dependency.
+
+5. Login vs Signup on Website
+
+Website should clearly show:
+
+Login – for existing users
+
+Sign Up – for new customers / property owners
+
+This will avoid confusion and unnecessary Super Admin approval requests
+
+Expected Outcome
+
+Property owners can manage staff independently
+
+Super Admin approval required only for new property owners
+
+Admin can fully control user access and permissions
+
+Cleaner, scalable, and more secure system
+
+Please review and implement the above changes.

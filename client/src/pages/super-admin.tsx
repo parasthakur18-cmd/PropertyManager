@@ -1,0 +1,2688 @@
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import type { User, Property, IssueReport } from "@shared/schema";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+
+// ErrorCrash type - matching backend implementation
+interface ErrorCrash {
+  id: number;
+  userId?: string;
+  errorType?: string;
+  errorMessage: string;
+  errorStack?: string;
+  page?: string;
+  isResolved?: boolean;
+  createdAt?: string;
+}
+import { Users, Building2, AlertCircle, Eye, Lock, Unlock, Trash2, LogIn, Home, MessageSquare, Mail, Phone, Bug, CheckCircle, Clock, UserCheck, UserX, Plus, Download, CalendarIcon, Send, Megaphone, FileDown, Activity, Monitor, XCircle, RefreshCw, Filter, HeartPulse, Server, Database, Zap, TrendingUp, TrendingDown, MapPin, Globe, Flag, CreditCard } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { SuperAdminSidebar } from "@/components/super-admin-sidebar";
+import { format } from "date-fns";
+import { useLocation } from "wouter";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+interface ContactEnquiry {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string;
+  propertyName?: string;
+  message: string;
+  status: string;
+  createdAt: string;
+}
+
+interface ActivityLog {
+  id: number;
+  userId: string | null;
+  userEmail: string | null;
+  userName: string | null;
+  action: string;
+  category: string;
+  resourceType: string | null;
+  resourceId: string | null;
+  resourceName: string | null;
+  propertyId: number | null;
+  propertyName: string | null;
+  details: Record<string, unknown> | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+interface UserSession {
+  id: number;
+  userId: string;
+  sessionToken: string;
+  deviceInfo: string | null;
+  browser: string | null;
+  os: string | null;
+  ipAddress: string | null;
+  location: string | null;
+  isActive: boolean;
+  lastActivityAt: string;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+interface SessionsData {
+  totalActiveSessions: number;
+  users: Array<{
+    userId: string;
+    email: string;
+    name: string;
+    role: string;
+    totalSessions: number;
+    activeSessions: number;
+    sessions: UserSession[];
+  }>;
+}
+
+export default function SuperAdmin() {
+  const { toast } = useToast();
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [location, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState("pending");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+  
+  // Pending user approval state
+  const [approvalDialog, setApprovalDialog] = useState(false);
+  const [rejectionDialog, setRejectionDialog] = useState(false);
+  const [selectedPendingUser, setSelectedPendingUser] = useState<User | null>(null);
+  const [approvalPropertyName, setApprovalPropertyName] = useState("");
+  const [approvalPropertyLocation, setApprovalPropertyLocation] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
+  
+  // Report download state
+  const [reportPropertyId, setReportPropertyId] = useState<string>("all");
+  const [reportStartDate, setReportStartDate] = useState<Date | undefined>(undefined);
+  const [reportEndDate, setReportEndDate] = useState<Date | undefined>(undefined);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  // Email features state
+  const [emailDialog, setEmailDialog] = useState(false);
+  const [broadcastDialog, setBroadcastDialog] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState<User | null>(null);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [isExportingUsers, setIsExportingUsers] = useState(false);
+
+  // Activity logs state
+  const [activityCategory, setActivityCategory] = useState<string>("all");
+  const [activityPage, setActivityPage] = useState(0);
+  const ACTIVITY_PAGE_SIZE = 20;
+
+  // Check if user is authenticated as super admin on mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch("/api/auth/user");
+        if (!response.ok) {
+          // Not authenticated, redirect to login
+          setLocation("/super-admin-login");
+          return;
+        }
+        const user = await response.json();
+        if (user.role !== "super-admin") {
+          // Not a super admin, redirect to dashboard
+          setLocation("/dashboard");
+          return;
+        }
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error("Auth check failed:", error);
+        setLocation("/super-admin-login");
+      } finally {
+        setIsChecking(false);
+      }
+    };
+    checkAuth();
+  }, [setLocation]);
+
+  // Update active tab when location changes - MUST be before early returns
+  useEffect(() => {
+    const updateTab = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'users';
+      console.log('[SuperAdmin] Tab changed to:', tab);
+      setActiveTab(tab);
+    };
+    
+    // Initial update
+    updateTab();
+    
+    // Listen for custom tab change events from sidebar
+    const handleTabChange = (e: CustomEvent) => {
+      console.log('[SuperAdmin] Tab change event:', e.detail);
+      setActiveTab(e.detail);
+    };
+    
+    window.addEventListener('tabchange', handleTabChange as EventListener);
+    window.addEventListener('popstate', updateTab);
+    
+    return () => {
+      window.removeEventListener('tabchange', handleTabChange as EventListener);
+      window.removeEventListener('popstate', updateTab);
+    };
+  }, []);
+
+  // Fetch all users - MUST be before early returns
+  const { data: users = [] } = useQuery<User[]>({
+    queryKey: ["/api/super-admin/users"],
+  });
+
+  // Fetch all properties - MUST be before early returns
+  const { data: properties = [] } = useQuery<Array<Property & { ownerEmail?: string }>>(
+    {
+      queryKey: ["/api/super-admin/properties"],
+    }
+  );
+
+  // Fetch all issue reports - MUST be before early returns
+  const { data: reports = [] } = useQuery<IssueReport[]>({
+    queryKey: ["/api/super-admin/reports"],
+  });
+
+  // Fetch all contact enquiries - MUST be before early returns
+  const { data: enquiries = [] } = useQuery<ContactEnquiry[]>({
+    queryKey: ["/api/contact"],
+  });
+
+  // Fetch all error crashes - MUST be before early returns
+  const { data: errorCrashes = [] } = useQuery<ErrorCrash[]>({
+    queryKey: ["/api/errors"],
+  });
+
+  // Fetch combined dashboard data - ALL properties stats
+  interface DashboardData {
+    summary: {
+      totalProperties: number;
+      totalUsers: number;
+      totalBookings: number;
+      totalGuests: number;
+      checkedIn: number;
+      upcoming: number;
+      todayCheckIns: number;
+      todayCheckOuts: number;
+      totalRevenue: number;
+      paidAmount: number;
+      pendingAmount: number;
+    };
+    propertyStats: Array<{
+      id: number;
+      name: string;
+      location: string;
+      checkedIn: number;
+      upcoming: number;
+      totalBookings: number;
+      revenue: number;
+    }>;
+    recentBookings: Array<any>;
+  }
+  
+  const { data: dashboardData, isLoading: dashboardLoading } = useQuery<DashboardData>({
+    queryKey: ["/api/super-admin/dashboard"],
+  });
+
+  // Fetch analytics data for charts
+  const { data: analyticsData } = useQuery<{
+    monthlyTrends: { month: string; bookings: number; revenue: number; signups: number }[];
+    totalRevenue: number;
+    avgBookingsPerMonth: number;
+  }>({
+    queryKey: ["/api/super-admin/analytics"],
+  });
+
+  // Fetch pending users for approval - MUST be before early returns
+  const { data: pendingUsers = [], isLoading: pendingUsersLoading } = useQuery<User[]>({
+    queryKey: ["/api/super-admin/pending-users"],
+  });
+
+  // Fetch activity logs
+  const { data: activityLogsData, isLoading: activityLogsLoading, refetch: refetchActivityLogs } = useQuery<{ logs: ActivityLog[]; total: number }>({
+    queryKey: ["/api/activity-logs", activityCategory, activityPage],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (activityCategory !== "all") params.append("category", activityCategory);
+      params.append("limit", String(ACTIVITY_PAGE_SIZE));
+      params.append("offset", String(activityPage * ACTIVITY_PAGE_SIZE));
+      const res = await fetch(`/api/activity-logs?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch activity logs");
+      return res.json();
+    },
+  });
+
+  // Fetch sessions data
+  const { data: sessionsData, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery<SessionsData>({
+    queryKey: ["/api/sessions"],
+  });
+
+  // Fetch system health data
+  const { data: healthData, isLoading: healthLoading, refetch: refetchHealth } = useQuery<{
+    status: string;
+    uptime: { hours: number; minutes: number; formatted: string };
+    memory: { usedMB: number; totalMB: number; percent: number };
+    database: { status: string; responseTimeMs: number };
+    sessions: { active: number; total: number };
+    errors: { last24h: number; unresolved: number };
+    activity: { requestsLastHour: number };
+    timestamp: string;
+  }>({
+    queryKey: ["/api/super-admin/system-health"],
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+  });
+
+  // Fetch property health scores
+  const { data: propertyHealthData, isLoading: propertyHealthLoading, refetch: refetchPropertyHealth } = useQuery<{
+    properties: Array<{
+      id: number;
+      name: string;
+      location: string;
+      isActive: boolean;
+      healthScore: number;
+      status: 'thriving' | 'healthy' | 'attention' | 'critical';
+      metrics: {
+        totalRooms: number;
+        totalBookings: number;
+        recentBookings: number;
+        weeklyBookings: number;
+        occupancyRate: number;
+        activeBookings: number;
+        recentRevenue: number;
+      };
+    }>;
+    summary: {
+      totalProperties: number;
+      thriving: number;
+      healthy: number;
+      needsAttention: number;
+      critical: number;
+      avgHealthScore: number;
+    };
+  }>({
+    queryKey: ["/api/super-admin/property-health"],
+  });
+
+  // Fetch geographic analytics
+  const { data: geoData, isLoading: geoLoading, refetch: refetchGeo } = useQuery<{
+    summary: {
+      totalUsers: number;
+      usersWithLocation: number;
+      usersWithoutLocation: number;
+      totalCountries: number;
+      totalStates: number;
+    };
+    byCountry: Array<{ country: string; count: number }>;
+    byState: Array<{ country: string; state: string; count: number }>;
+    byCity: Array<{ city: string; count: number }>;
+  }>({
+    queryKey: ["/api/super-admin/geographic-analytics"],
+  });
+
+  // Fetch subscription analytics
+  const { data: subscriptionData, isLoading: subscriptionLoading, refetch: refetchSubscriptions } = useQuery<{
+    totalActive: number;
+    activeByPlan: Record<string, number>;
+    totalRevenue: number;
+    monthlyRevenue: number;
+    totalPayments: number;
+    plans: Array<{
+      id: number;
+      name: string;
+      monthlyPrice: string;
+      activeCount: number;
+    }>;
+  }>({
+    queryKey: ["/api/super-admin/subscription-analytics"],
+  });
+
+  // Fetch subscription plans for editing
+  const { data: allPlans = [], refetch: refetchPlans } = useQuery<Array<{
+    id: number;
+    name: string;
+    slug: string;
+    description: string;
+    monthlyPrice: string;
+    yearlyPrice: string;
+    maxProperties: number;
+    maxRooms: number;
+    maxStaff: number;
+    features: string[];
+    isActive: boolean;
+    displayOrder: number;
+  }>>({
+    queryKey: ["/api/super-admin/subscription-plans"],
+  });
+
+  // Terminate session mutation
+  const terminateSession = useMutation({
+    mutationFn: async (sessionToken: string) => {
+      return apiRequest(`/api/sessions/${encodeURIComponent(sessionToken)}/terminate`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      toast({
+        title: "Session Terminated",
+        description: "The session has been ended successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to terminate session",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Terminate all user sessions mutation
+  const terminateAllUserSessions = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest(`/api/sessions/user/${userId}/terminate-all`, "POST");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      toast({
+        title: "All Sessions Terminated",
+        description: "All sessions for this user have been ended.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to terminate sessions",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle opening approval dialog - pre-fill location from user data
+  const handleOpenApprovalDialog = (user: User) => {
+    setSelectedPendingUser(user);
+    setApprovalPropertyName(user.businessName || "");
+    setApprovalPropertyLocation(user.businessLocation || "");
+    setApprovalDialog(true);
+  };
+
+  // Approve user mutation
+  const approveUser = useMutation({
+    mutationFn: async (data: {
+      userId: string;
+      propertyName?: string;
+      propertyLocation?: string;
+    }) => {
+      return apiRequest(`/api/super-admin/approve-user/${data.userId}`, "POST", {
+        createProperty: {
+          name: data.propertyName || selectedPendingUser?.businessName || "New Property",
+          location: data.propertyLocation || selectedPendingUser?.businessLocation || "",
+        }
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/pending-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/properties"] });
+      toast({
+        title: "Success",
+        description: "User approved and property created successfully!",
+      });
+      setApprovalDialog(false);
+      setSelectedPendingUser(null);
+      setApprovalPropertyName("");
+      setApprovalPropertyLocation("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to approve user",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reject user mutation
+  const rejectUser = useMutation({
+    mutationFn: async (data: { userId: string; reason?: string }) => {
+      return apiRequest("/api/super-admin/reject-user", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/pending-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({
+        title: "User Rejected",
+        description: "The user has been notified of the rejection.",
+      });
+      setRejectionDialog(false);
+      setSelectedPendingUser(null);
+      setRejectionReason("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reject user",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mark error as resolved - MUST be before early returns
+  const resolveError = useMutation({
+    mutationFn: async (crashId: number) => {
+      return await apiRequest(`/api/errors/${crashId}/resolve`, "PATCH", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/errors"] });
+      toast({ description: "Error marked as resolved" });
+    },
+    onError: (error: any) => {
+      toast({
+        description: error.message || "Failed to resolve error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete error crash - MUST be before early returns
+  const deleteError = useMutation({
+    mutationFn: async (crashId: number) => {
+      return await apiRequest(`/api/errors/${crashId}`, "DELETE", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/errors"] });
+      toast({ description: "Error crash deleted" });
+    },
+    onError: (error: any) => {
+      toast({
+        description: error.message || "Failed to delete error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Download property report handler
+  const handleDownloadReport = async () => {
+    if (!reportStartDate || !reportEndDate) {
+      toast({
+        title: "Date Range Required",
+        description: "Please select both start and end dates",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const startDateStr = format(reportStartDate, "yyyy-MM-dd");
+      const endDateStr = format(reportEndDate, "yyyy-MM-dd");
+      const params = new URLSearchParams({
+        propertyId: reportPropertyId,
+        startDate: startDateStr,
+        endDate: endDateStr,
+      });
+      
+      const response = await fetch(`/api/super-admin/report/download?${params}`);
+      if (!response.ok) {
+        throw new Error("Failed to generate report");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const propertyName = reportPropertyId === "all" 
+        ? "AllProperties" 
+        : properties.find(p => p.id.toString() === reportPropertyId)?.name || "Property";
+      a.download = `${propertyName}_Report_${startDateStr}_to_${endDateStr}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      
+      toast({
+        title: "Report Downloaded",
+        description: "Your property report has been downloaded successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Download Failed",
+        description: error.message || "Failed to download report",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Send email to individual user
+  const handleSendEmail = async () => {
+    if (!emailRecipient || !emailSubject || !emailMessage) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in subject and message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await apiRequest("/api/super-admin/send-email", "POST", {
+        toEmail: emailRecipient.email,
+        toName: `${emailRecipient.firstName || ''} ${emailRecipient.lastName || ''}`.trim(),
+        subject: emailSubject,
+        message: emailMessage,
+      });
+
+      toast({
+        title: "Email Sent",
+        description: `Email successfully sent to ${emailRecipient.email}`,
+      });
+      setEmailDialog(false);
+      setEmailSubject("");
+      setEmailMessage("");
+      setEmailRecipient(null);
+    } catch (error: any) {
+      toast({
+        title: "Failed to Send",
+        description: error.message || "Failed to send email",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Broadcast email to all verified users
+  const handleBroadcastEmail = async () => {
+    if (!emailSubject || !emailMessage) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in subject and message",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSendingEmail(true);
+    try {
+      const response = await apiRequest("/api/super-admin/broadcast-email", "POST", {
+        subject: emailSubject,
+        message: emailMessage,
+      });
+
+      toast({
+        title: "Broadcast Sent",
+        description: response.message || "Email broadcast completed",
+      });
+      setBroadcastDialog(false);
+      setEmailSubject("");
+      setEmailMessage("");
+    } catch (error: any) {
+      toast({
+        title: "Broadcast Failed",
+        description: error.message || "Failed to send broadcast",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Export users to CSV
+  const handleExportUsers = async () => {
+    setIsExportingUsers(true);
+    try {
+      const response = await fetch("/api/super-admin/export-users");
+      if (!response.ok) throw new Error("Failed to export users");
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `hostezee_users_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+
+      toast({
+        title: "Export Complete",
+        description: "Users exported to CSV successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Export Failed",
+        description: error.message || "Failed to export users",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExportingUsers(false);
+    }
+  };
+
+  // Suspend/unsuspend user - MUST be before early returns
+  const toggleUserStatus = useMutation({
+    mutationFn: async ({
+      userId,
+      status,
+    }: {
+      userId: string;
+      status: "active" | "suspended";
+    }) => {
+      return apiRequest(`/api/super-admin/users/${userId}/status`, "PATCH", { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({
+        title: "Success",
+        description: "User status updated",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Login as user - MUST be before early returns
+  const loginAsUser = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest(`/api/super-admin/login-as/${userId}`, "POST", {});
+    },
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const filteredUsers = users.filter((u) =>
+    u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.businessName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Render loading state without early returns
+  if (isChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+          <p className="text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render null if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return (
+    <div className="flex h-screen bg-background">
+      {/* Sidebar */}
+      <SuperAdminSidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Header */}
+        <div className="sticky top-0 z-50 bg-background border-b border-border">
+          <div className="px-6 py-4 flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">System Administration</h1>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLocation("/");
+              }}
+              className="flex items-center gap-2"
+              data-testid="button-home"
+            >
+              <Home className="h-4 w-4" />
+              Home
+            </Button>
+          </div>
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="space-y-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold">Super Admin Dashboard</h1>
+        <p className="text-muted-foreground">System-wide management & monitoring</p>
+      </div>
+
+      <div className="space-y-4">
+        <div className="grid w-full grid-cols-7 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+          {[
+            { value: "dashboard", label: "Dashboard", icon: Home },
+            { value: "pending", label: `Pending (${pendingUsers.length})`, icon: Clock, highlight: pendingUsers.length > 0 },
+            { value: "users", label: `Users (${users.length})`, icon: Users },
+            { value: "properties", label: `Properties (${properties.length})`, icon: Building2 },
+            { value: "reports", label: `Reports (${reports.length})`, icon: AlertCircle },
+            { value: "enquiries", label: `Leads (${enquiries.length})`, icon: MessageSquare },
+            { value: "errors", label: `Errors (${errorCrashes.length})`, icon: Bug },
+          ].map(({ value, label, icon: Icon, highlight }) => (
+            <button
+              key={value}
+              onClick={() => {
+                setActiveTab(value);
+                setLocation(`/super-admin?tab=${value}`);
+              }}
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === value
+                  ? "bg-teal-600 dark:bg-teal-500 text-white"
+                  : highlight
+                    ? "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800/40"
+                    : "bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+              data-testid={`tab-${value}`}
+            >
+              <Icon className={`h-4 w-4 ${highlight && activeTab !== value ? "text-orange-600 dark:text-orange-400" : ""}`} />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Dashboard Tab - Combined Data from ALL Properties */}
+        {activeTab === "dashboard" && (
+          <div className="space-y-6">
+            {dashboardLoading ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  Loading dashboard data...
+                </CardContent>
+              </Card>
+            ) : dashboardData ? (
+              <>
+                {/* Platform Overview */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Properties</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-teal-600">{dashboardData.summary.totalProperties}</div>
+                      <p className="text-xs text-muted-foreground mt-1">On platform</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-blue-600">{dashboardData.summary.totalUsers}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{dashboardData.summary.verifiedUsers || 0} verified</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Bookings</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">{dashboardData.summary.totalBookings}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Processed via platform</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-orange-200 dark:border-orange-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-400">Pending Approvals</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-orange-600">{dashboardData.summary.pendingApprovals || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Awaiting review</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Platform Activity */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400">Active Today</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{dashboardData.summary.activeUsersToday || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Users logged in today</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400">New This Week</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">{dashboardData.summary.newSignupsThisWeek || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">User signups</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-purple-200 dark:border-purple-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-400">New This Month</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-purple-600">{dashboardData.summary.newSignupsThisMonth || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">User signups</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-teal-200 dark:border-teal-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-teal-700 dark:text-teal-400">New Properties</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-teal-600">{dashboardData.summary.newPropertiesThisMonth || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Added this month</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Analytics Charts */}
+                {analyticsData && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Bookings Trend Chart */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Booking Trends (Last 6 Months)</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={analyticsData.monthlyTrends}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis dataKey="month" className="text-xs" />
+                            <YAxis className="text-xs" />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))', 
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
+                              }} 
+                            />
+                            <Bar dataKey="bookings" fill="#0d9488" name="Bookings" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+
+                    {/* Revenue & Signups Trend Chart */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Growth Trends</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={250}>
+                          <LineChart data={analyticsData.monthlyTrends}>
+                            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                            <XAxis dataKey="month" className="text-xs" />
+                            <YAxis yAxisId="left" className="text-xs" />
+                            <YAxis yAxisId="right" orientation="right" className="text-xs" />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))', 
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
+                              }}
+                              formatter={(value: number, name: string) => [
+                                name === 'Revenue' ? `₹${value.toLocaleString('en-IN')}` : value,
+                                name
+                              ]}
+                            />
+                            <Legend />
+                            <Line yAxisId="left" type="monotone" dataKey="signups" stroke="#3b82f6" name="User Signups" strokeWidth={2} dot={{ r: 4 }} />
+                            <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#22c55e" name="Revenue" strokeWidth={2} dot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Support & Issues Overview */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="h-5 w-5" />
+                      Support Overview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Open Issues</div>
+                        <div className="text-2xl font-bold text-red-600">{dashboardData.summary.openIssues || 0}</div>
+                      </div>
+                      <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Resolved Issues</div>
+                        <div className="text-2xl font-bold text-green-600">{dashboardData.summary.resolvedIssues || 0}</div>
+                      </div>
+                      <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Unresolved Errors</div>
+                        <div className="text-2xl font-bold text-orange-600">{dashboardData.summary.unresolvedErrors || 0}</div>
+                      </div>
+                      <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Total Issues</div>
+                        <div className="text-2xl font-bold text-blue-600">{dashboardData.summary.totalIssues || 0}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Properties on Platform */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Properties on Platform</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-2 font-medium">Property</th>
+                            <th className="text-left py-3 px-2 font-medium">Location</th>
+                            <th className="text-center py-3 px-2 font-medium">Users</th>
+                            <th className="text-center py-3 px-2 font-medium">Total Bookings</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dashboardData.propertyStats.map((prop: any) => (
+                            <tr key={prop.id} className="border-b hover:bg-slate-50 dark:hover:bg-slate-800">
+                              <td className="py-3 px-2 font-medium">{prop.name}</td>
+                              <td className="py-3 px-2 text-muted-foreground">{prop.location}</td>
+                              <td className="py-3 px-2 text-center">
+                                <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/30 text-blue-700">
+                                  {prop.totalUsers || 0}
+                                </Badge>
+                              </td>
+                              <td className="py-3 px-2 text-center">{prop.totalBookings}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Download Report Section */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="h-5 w-5" />
+                      Download Property Report
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div className="space-y-2">
+                        <Label>Select Property</Label>
+                        <Select value={reportPropertyId} onValueChange={setReportPropertyId}>
+                          <SelectTrigger data-testid="select-report-property">
+                            <SelectValue placeholder="Select property" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Properties</SelectItem>
+                            {properties.map((prop) => (
+                              <SelectItem key={prop.id} value={prop.id.toString()}>
+                                {prop.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Start Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !reportStartDate && "text-muted-foreground"
+                              )}
+                              data-testid="input-report-start-date"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {reportStartDate ? format(reportStartDate, "dd MMM yyyy") : "Pick start date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={reportStartDate}
+                              onSelect={setReportStartDate}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>End Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal",
+                                !reportEndDate && "text-muted-foreground"
+                              )}
+                              data-testid="input-report-end-date"
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4" />
+                              {reportEndDate ? format(reportEndDate, "dd MMM yyyy") : "Pick end date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={reportEndDate}
+                              onSelect={setReportEndDate}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <Button
+                        onClick={handleDownloadReport}
+                        disabled={isDownloading || !reportStartDate || !reportEndDate}
+                        className="bg-teal-600 hover:bg-teal-700"
+                        data-testid="button-download-report"
+                      >
+                        {isDownloading ? (
+                          <>Generating...</>
+                        ) : (
+                          <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Report
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-3">
+                      Download a CSV report with all bookings, guests, bills, and revenue data for the selected property and date range.
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  No dashboard data available
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Pending Users Tab */}
+        {activeTab === "pending" && (
+          <div className="space-y-4">
+            {pendingUsersLoading ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  Loading pending users...
+                </CardContent>
+              </Card>
+            ) : pendingUsers.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                  <CheckCircle className="h-8 w-8 text-green-500" />
+                  <p>All caught up! No pending signups to review.</p>
+                  <p className="text-xs">New signups will appear here for approval</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+                    <Clock className="h-5 w-5" />
+                    <span className="font-medium">
+                      {pendingUsers.length} user{pendingUsers.length !== 1 ? "s" : ""} waiting for approval
+                    </span>
+                  </div>
+                  <p className="text-sm text-orange-600 dark:text-orange-400 mt-1">
+                    Review and approve new property owners to grant them access to the system.
+                  </p>
+                </div>
+
+                <div className="grid gap-4">
+                  {pendingUsers.map((user) => (
+                    <Card key={user.id} className="hover-elevate border-orange-200 dark:border-orange-800">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-base flex items-center gap-2">
+                              {user.firstName || user.lastName
+                                ? `${user.firstName || ""} ${user.lastName || ""}`.trim()
+                                : "New User"}
+                              <Badge variant="outline" className="bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-300">
+                                Pending
+                              </Badge>
+                            </CardTitle>
+                            <div className="mt-2 space-y-1">
+                              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                <Mail className="h-4 w-4" />
+                                {user.email}
+                              </p>
+                              {user.phone && (
+                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                  <Phone className="h-4 w-4" />
+                                  {user.phone}
+                                </p>
+                              )}
+                              {user.businessName && (
+                                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                                  <Building2 className="h-4 w-4" />
+                                  {user.businessName}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <Badge variant="secondary" className="text-xs">
+                              {user.signupMethod === "email" ? "Email Signup" : 
+                               user.signupMethod === "phone" ? "Phone Signup" : 
+                               user.signupMethod === "google" ? "Google Signup" : "Unknown"}
+                            </Badge>
+                            {user.createdAt && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Signed up {format(new Date(user.createdAt), "MMM dd, yyyy HH:mm")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => {
+                              setSelectedPendingUser(user);
+                              setApprovalPropertyName(user.businessName || "");
+                              setApprovalDialog(true);
+                            }}
+                            data-testid={`button-approve-${user.id}`}
+                          >
+                            <UserCheck className="h-4 w-4 mr-1" />
+                            Approve & Create Property
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={() => {
+                              setSelectedPendingUser(user);
+                              setRejectionDialog(true);
+                            }}
+                            data-testid={`button-reject-${user.id}`}
+                          >
+                            <UserX className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Approval Dialog */}
+        <Dialog open={approvalDialog} onOpenChange={setApprovalDialog}>
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-green-600" />
+                Approve User
+              </DialogTitle>
+              <DialogDescription>
+                Review and approve this user. A property will be created automatically using their registration details.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedPendingUser && (
+              <div className="space-y-4 py-4">
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-1">
+                  <p className="text-sm font-medium">
+                    {selectedPendingUser.firstName} {selectedPendingUser.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{selectedPendingUser.email}</p>
+                  {selectedPendingUser.phone && (
+                    <p className="text-sm text-muted-foreground">{selectedPendingUser.phone}</p>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-2">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Registration Details</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Property Name</p>
+                      <p className="text-sm font-medium">{selectedPendingUser.businessName || 'Not specified'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Location</p>
+                      <p className="text-sm font-medium">{selectedPendingUser.businessLocation || 'Not specified'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setApprovalDialog(false);
+                  setSelectedPendingUser(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  if (selectedPendingUser) {
+                    approveUser.mutate({
+                      userId: selectedPendingUser.id,
+                      propertyName: selectedPendingUser.businessName || "New Property",
+                      propertyLocation: selectedPendingUser.businessLocation || "",
+                    });
+                  }
+                }}
+                disabled={approveUser.isPending}
+                data-testid="button-confirm-approve"
+              >
+                {approveUser.isPending ? "Approving..." : "Approve User"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Rejection Dialog */}
+        <Dialog open={rejectionDialog} onOpenChange={setRejectionDialog}>
+          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserX className="h-5 w-5 text-red-600" />
+                Reject User Application
+              </DialogTitle>
+              <DialogDescription>
+                This will block the user from accessing the system. They will be notified via WhatsApp if possible.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedPendingUser && (
+              <div className="space-y-4 py-4">
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 space-y-1">
+                  <p className="text-sm font-medium">
+                    {selectedPendingUser.firstName} {selectedPendingUser.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{selectedPendingUser.email}</p>
+                  {selectedPendingUser.phone && (
+                    <p className="text-sm text-muted-foreground">{selectedPendingUser.phone}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="rejectionReason">Reason for Rejection (Optional)</Label>
+                  <Textarea
+                    id="rejectionReason"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Provide a reason for rejection (optional)..."
+                    rows={3}
+                    data-testid="input-rejection-reason"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRejectionDialog(false);
+                  setSelectedPendingUser(null);
+                  setRejectionReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (selectedPendingUser) {
+                    rejectUser.mutate({
+                      userId: selectedPendingUser.id,
+                      reason: rejectionReason || undefined,
+                    });
+                  }
+                }}
+                disabled={rejectUser.isPending}
+                data-testid="button-confirm-reject"
+              >
+                {rejectUser.isPending ? "Rejecting..." : "Reject User"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Users Tab */}
+        {activeTab === "users" && (
+        <div className="space-y-4">
+          {/* Toolbar with search and actions */}
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+            <Input
+              placeholder="Search by email or business name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="sm:max-w-sm"
+              data-testid="input-search-users"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setEmailSubject("");
+                  setEmailMessage("");
+                  setBroadcastDialog(true);
+                }}
+                data-testid="button-broadcast-email"
+              >
+                <Megaphone className="h-4 w-4 mr-1" />
+                Broadcast
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportUsers}
+                disabled={isExportingUsers}
+                data-testid="button-export-users"
+              >
+                <FileDown className="h-4 w-4 mr-1" />
+                {isExportingUsers ? "Exporting..." : "Export CSV"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {filteredUsers.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  No users found
+                </CardContent>
+              </Card>
+            ) : (
+              filteredUsers.map((user) => (
+                <Card key={user.id} className="hover-elevate">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-base">
+                          {user.firstName} {user.lastName}
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        {user.businessName && (
+                          <p className="text-sm text-muted-foreground">
+                            Business: {user.businessName}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge
+                          variant={user.status === "active" ? "default" : "destructive"}
+                          data-testid={`badge-status-${user.id}`}
+                        >
+                          {user.status}
+                        </Badge>
+                        <Badge variant="outline">{user.role}</Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => loginAsUser.mutate(user.id)}
+                        disabled={loginAsUser.isPending}
+                        data-testid={`button-login-as-${user.id}`}
+                      >
+                        <LogIn className="h-4 w-4 mr-1" />
+                        Login As User
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEmailRecipient(user);
+                          setEmailSubject("");
+                          setEmailMessage("");
+                          setEmailDialog(true);
+                        }}
+                        data-testid={`button-email-${user.id}`}
+                      >
+                        <Send className="h-4 w-4 mr-1" />
+                        Email
+                      </Button>
+                      {user.status === "active" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            toggleUserStatus.mutate({
+                              userId: user.id,
+                              status: "suspended",
+                            })
+                          }
+                          disabled={toggleUserStatus.isPending}
+                          data-testid={`button-suspend-${user.id}`}
+                        >
+                          <Lock className="h-4 w-4 mr-1" />
+                          Suspend
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            toggleUserStatus.mutate({
+                              userId: user.id,
+                              status: "active",
+                            })
+                          }
+                          disabled={toggleUserStatus.isPending}
+                          data-testid={`button-activate-${user.id}`}
+                        >
+                          <Unlock className="h-4 w-4 mr-1" />
+                          Activate
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Subscriptions Tab */}
+        {activeTab === "subscriptions" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-teal-600" />
+                Subscription Management
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => { refetchSubscriptions(); refetchPlans(); }} data-testid="button-refresh-subscriptions">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {subscriptionLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading subscription data...</CardContent></Card>
+            ) : subscriptionData ? (
+              <>
+                {/* Revenue Overview */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-green-700 dark:text-green-400">Active Subscriptions</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-green-600">{subscriptionData.totalActive}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Paying customers</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400">Monthly Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-blue-600">₹{subscriptionData.monthlyRevenue?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">This month</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-purple-200 dark:border-purple-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-400">Total Revenue</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-purple-600">₹{subscriptionData.totalRevenue?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-muted-foreground mt-1">All time</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-teal-200 dark:border-teal-800">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-teal-700 dark:text-teal-400">Total Payments</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-3xl font-bold text-teal-600">{subscriptionData.totalPayments}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Transactions</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Subscribers by Plan */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Subscribers by Plan</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {subscriptionData.plans?.map((plan) => (
+                        <div key={plan.id} className="p-4 border rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                          <div className="font-semibold text-lg">{plan.name}</div>
+                          <div className="text-3xl font-bold text-teal-600 mt-1">{plan.activeCount}</div>
+                          <div className="text-sm text-muted-foreground">₹{Number(plan.monthlyPrice).toLocaleString()}/mo</div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Plan Management */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Subscription Plans</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {allPlans.map((plan) => (
+                        <div key={plan.id} className="p-4 border rounded-lg">
+                          <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-lg">{plan.name}</h3>
+                                <Badge variant={plan.isActive ? "default" : "secondary"}>
+                                  {plan.isActive ? "Active" : "Inactive"}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>
+                              <div className="flex flex-wrap gap-4 mt-2 text-sm">
+                                <span>Monthly: <strong>₹{Number(plan.monthlyPrice).toLocaleString()}</strong></span>
+                                <span>Yearly: <strong>₹{Number(plan.yearlyPrice).toLocaleString()}</strong></span>
+                              </div>
+                              <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+                                <span>Max Properties: {plan.maxProperties}</span>
+                                <span>Max Rooms: {plan.maxRooms}</span>
+                                <span>Max Staff: {plan.maxStaff}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  try {
+                                    await apiRequest(`/api/super-admin/subscription-plans/${plan.id}`, "PATCH", { isActive: !plan.isActive });
+                                    refetchPlans();
+                                    refetchSubscriptions();
+                                    toast({ title: `Plan ${plan.isActive ? 'disabled' : 'enabled'}` });
+                                  } catch (error: any) {
+                                    toast({ title: "Error", description: error.message, variant: "destructive" });
+                                  }
+                                }}
+                                data-testid={`button-toggle-plan-${plan.id}`}
+                              >
+                                {plan.isActive ? "Disable" : "Enable"}
+                              </Button>
+                            </div>
+                          </div>
+                          {plan.features && plan.features.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {plan.features.map((feature, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs">{feature}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">No subscription data available</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* System Health Tab */}
+        {activeTab === "health" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <HeartPulse className="h-5 w-5 text-teal-600" />
+                System Health Monitor
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchHealth()} data-testid="button-refresh-health">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {healthLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading system metrics...</CardContent></Card>
+            ) : healthData ? (
+              <>
+                {/* Overall Status Banner */}
+                <Card className={healthData.status === 'healthy' ? 'border-green-300 dark:border-green-700' : 'border-yellow-300 dark:border-yellow-700'}>
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-4 w-4 rounded-full ${healthData.status === 'healthy' ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`} />
+                        <span className="font-semibold text-lg">
+                          System Status: <span className={healthData.status === 'healthy' ? 'text-green-600' : 'text-yellow-600'}>{healthData.status.toUpperCase()}</span>
+                        </span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        Last updated: {new Date(healthData.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Uptime */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Server className="h-4 w-4" />
+                        Server Uptime
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-teal-600">{healthData.uptime.formatted}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Since last restart</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Memory Usage */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Memory Usage
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className={`text-2xl font-bold ${healthData.memory.percent < 70 ? 'text-green-600' : healthData.memory.percent < 90 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {healthData.memory.percent}%
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.memory.usedMB}MB / {healthData.memory.totalMB}MB</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Database Status */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Database className="h-4 w-4" />
+                        Database
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className={`text-2xl font-bold ${healthData.database.status === 'healthy' ? 'text-green-600' : healthData.database.status === 'slow' ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {healthData.database.status.toUpperCase()}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.database.responseTimeMs}ms response</p>
+                    </CardContent>
+                  </Card>
+
+                  {/* Active Sessions */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                        <Monitor className="h-4 w-4" />
+                        Active Sessions
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-blue-600">{healthData.sessions.active}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{healthData.sessions.total} total sessions</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Error & Activity Stats */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-red-500" />
+                        Error Tracking
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                          <div className="text-sm text-muted-foreground mb-1">Last 24 Hours</div>
+                          <div className="text-3xl font-bold text-red-600">{healthData.errors.last24h}</div>
+                        </div>
+                        <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                          <div className="text-sm text-muted-foreground mb-1">Unresolved</div>
+                          <div className="text-3xl font-bold text-orange-600">{healthData.errors.unresolved}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-teal-500" />
+                        API Activity
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-center p-4 bg-teal-50 dark:bg-teal-900/20 rounded-lg">
+                        <div className="text-sm text-muted-foreground mb-1">Requests (Last Hour)</div>
+                        <div className="text-3xl font-bold text-teal-600">{healthData.activity.requestsLastHour}</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load system health data</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* Property Health Tab */}
+        {activeTab === "property-health" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-teal-600" />
+                Property Health Scores
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchPropertyHealth()} data-testid="button-refresh-property-health">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {propertyHealthLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Calculating property health scores...</CardContent></Card>
+            ) : propertyHealthData ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-green-600">{propertyHealthData.summary.thriving}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Thriving</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-blue-200 dark:border-blue-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-blue-600">{propertyHealthData.summary.healthy}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Healthy</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-yellow-200 dark:border-yellow-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-yellow-600">{propertyHealthData.summary.needsAttention}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Needs Attention</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-red-200 dark:border-red-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-red-600">{propertyHealthData.summary.critical}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Critical</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-teal-600">{propertyHealthData.summary.avgHealthScore}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Avg Score</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Property List */}
+                <div className="space-y-3">
+                  {propertyHealthData.properties.map((prop) => (
+                    <Card key={prop.id} className={`${
+                      prop.status === 'critical' ? 'border-red-300 dark:border-red-700' :
+                      prop.status === 'attention' ? 'border-yellow-300 dark:border-yellow-700' :
+                      prop.status === 'thriving' ? 'border-green-300 dark:border-green-700' :
+                      ''
+                    }`}>
+                      <CardContent className="py-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            {/* Health Score Circle */}
+                            <div className={`flex items-center justify-center w-14 h-14 rounded-full text-white font-bold text-lg ${
+                              prop.status === 'thriving' ? 'bg-green-500' :
+                              prop.status === 'healthy' ? 'bg-blue-500' :
+                              prop.status === 'attention' ? 'bg-yellow-500' :
+                              'bg-red-500'
+                            }`}>
+                              {prop.healthScore}
+                            </div>
+                            <div>
+                              <div className="font-semibold flex items-center gap-2">
+                                {prop.name}
+                                {prop.status === 'critical' && <TrendingDown className="h-4 w-4 text-red-500" />}
+                                {prop.status === 'thriving' && <TrendingUp className="h-4 w-4 text-green-500" />}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{prop.location}</p>
+                              <Badge variant={
+                                prop.status === 'thriving' ? 'default' :
+                                prop.status === 'healthy' ? 'secondary' :
+                                prop.status === 'attention' ? 'outline' :
+                                'destructive'
+                              } className="mt-1">
+                                {prop.status === 'thriving' ? 'Thriving' :
+                                 prop.status === 'healthy' ? 'Healthy' :
+                                 prop.status === 'attention' ? 'Needs Attention' :
+                                 'Critical'}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {/* Metrics */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.occupancyRate}%</div>
+                              <div className="text-xs text-muted-foreground">Occupancy</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.recentBookings}</div>
+                              <div className="text-xs text-muted-foreground">30-day Bookings</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">{prop.metrics.weeklyBookings}</div>
+                              <div className="text-xs text-muted-foreground">7-day Bookings</div>
+                            </div>
+                            <div className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <div className="text-lg font-bold">₹{(prop.metrics.recentRevenue / 1000).toFixed(0)}k</div>
+                              <div className="text-xs text-muted-foreground">30-day Revenue</div>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load property health data</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* Geographic Analytics Tab */}
+        {activeTab === "geographic" && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Globe className="h-5 w-5 text-blue-600" />
+                Geographic Distribution
+              </h2>
+              <Button variant="outline" size="sm" onClick={() => refetchGeo()} data-testid="button-refresh-geo">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
+              </Button>
+            </div>
+
+            {geoLoading ? (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Loading geographic data...</CardContent></Card>
+            ) : geoData ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-blue-600">{geoData.summary.totalUsers}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Total Users</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-green-200 dark:border-green-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-green-600">{geoData.summary.usersWithLocation}</div>
+                      <p className="text-xs text-muted-foreground mt-1">With Location</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-orange-200 dark:border-orange-800">
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-orange-600">{geoData.summary.usersWithoutLocation}</div>
+                      <p className="text-xs text-muted-foreground mt-1">No Location</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-purple-600">{geoData.summary.totalCountries}</div>
+                      <p className="text-xs text-muted-foreground mt-1">Countries</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4 text-center">
+                      <div className="text-3xl font-bold text-teal-600">{geoData.summary.totalStates}</div>
+                      <p className="text-xs text-muted-foreground mt-1">States</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* By Country */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Globe className="h-5 w-5 text-blue-500" />
+                        Users by Country
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byCountry.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <span className="font-medium text-sm">{item.country}</span>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byCountry.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No country data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* By State */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Flag className="h-5 w-5 text-purple-500" />
+                        Users by State
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byState.filter(s => s.state !== 'Unknown').map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <div className="flex-1">
+                              <span className="font-medium text-sm">{item.state}</span>
+                              {item.country !== 'Unknown' && (
+                                <span className="text-xs text-muted-foreground ml-2">({item.country})</span>
+                              )}
+                            </div>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byState.filter(s => s.state !== 'Unknown').length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No state data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* By City */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <MapPin className="h-5 w-5 text-teal-500" />
+                        Users by City
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-80 overflow-y-auto">
+                        {geoData.byCity.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                            <span className="font-medium text-sm">{item.city}</span>
+                            <Badge variant="secondary">{item.count}</Badge>
+                          </div>
+                        ))}
+                        {geoData.byCity.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-4">No city data yet</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Help text */}
+                <Card>
+                  <CardContent className="py-4">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Note:</strong> User locations are captured during registration and login. 
+                      You can also set user locations manually from the "All Users" tab.
+                    </p>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">Unable to load geographic data</CardContent></Card>
+            )}
+          </div>
+        )}
+
+        {/* Properties Tab */}
+        {activeTab === "properties" && (
+        <div className="space-y-4">
+          <div className="grid gap-4">
+            {properties.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  No properties found
+                </CardContent>
+              </Card>
+            ) : (
+              properties.map((prop) => {
+                const owner = users.find((u) => u.id === prop.ownerUserId);
+                return (
+                  <Card key={prop.id} className="hover-elevate">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-base">{prop.name}</CardTitle>
+                          <p className="text-sm text-muted-foreground">{prop.location}</p>
+                          {owner && (
+                            <p className="text-sm text-muted-foreground">
+                              Owner: {owner.email}
+                            </p>
+                          )}
+                        </div>
+                        <Badge
+                          variant={prop.isActive ? "default" : "secondary"}
+                          data-testid={`badge-property-status-${prop.id}`}
+                        >
+                          {prop.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-sm text-muted-foreground">
+                        <p>Total Rooms: {prop.totalRooms}</p>
+                        {prop.contactEmail && <p>Contact: {prop.contactEmail}</p>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Reports Tab */}
+        {activeTab === "reports" && (
+        <div className="space-y-4">
+          <div className="grid gap-4">
+            {reports.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground">
+                  No issue reports found
+                </CardContent>
+              </Card>
+            ) : (
+              reports.map((report) => {
+                const reporter = users.find((u) => u.id === report.reportedByUserId);
+                return (
+                  <Card key={report.id} className="hover-elevate">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <CardTitle className="text-base">{report.title}</CardTitle>
+                          <p className="text-sm text-muted-foreground">
+                            By: {reporter?.email || "Unknown"}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Badge
+                            variant={
+                              report.severity === "critical"
+                                ? "destructive"
+                                : report.severity === "high"
+                                  ? "default"
+                                  : "secondary"
+                            }
+                            data-testid={`badge-severity-${report.id}`}
+                          >
+                            {report.severity}
+                          </Badge>
+                          <Badge
+                            variant={
+                              report.status === "open"
+                                ? "default"
+                                : report.status === "resolved"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                            data-testid={`badge-report-status-${report.id}`}
+                          >
+                            {report.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <p className="text-sm">{report.description}</p>
+                      <div className="flex gap-2 text-xs text-muted-foreground">
+                        <span>Category: {report.category}</span>
+                        <span>•</span>
+                        <span>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Contact Enquiries Tab */}
+        {activeTab === "enquiries" && (
+        <div className="space-y-4">
+          <div className="grid gap-4">
+            {enquiries.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                  <MessageSquare className="h-8 w-8 text-slate-400" />
+                  <p>No contact leads yet</p>
+                  <p className="text-xs">Leads will appear when users submit the contact form on your landing page</p>
+                </CardContent>
+              </Card>
+            ) : (
+              enquiries.map((enquiry) => (
+                <Card key={enquiry.id} className="hover-elevate">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-base">{enquiry.name}</CardTitle>
+                        <Badge variant="outline" className="mt-2">{enquiry.status || "new"}</Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{format(new Date(enquiry.createdAt), "MMM dd, yyyy")}</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex gap-3">
+                      <Mail className="h-4 w-4 text-teal-600 flex-shrink-0 mt-1" />
+                      <a href={`mailto:${enquiry.email}`} className="text-teal-600 hover:underline break-all">{enquiry.email}</a>
+                    </div>
+                    {enquiry.phone && (
+                      <div className="flex gap-3">
+                        <Phone className="h-4 w-4 text-teal-600 flex-shrink-0 mt-1" />
+                        <a href={`tel:${enquiry.phone}`} className="text-teal-600 hover:underline">{enquiry.phone}</a>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">Message:</p>
+                      <p className="text-sm bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">{enquiry.message}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Activity Logs Tab */}
+        {activeTab === "activity" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Activity className="h-5 w-5 text-teal-600" />
+              Activity Logs
+            </h2>
+            <div className="flex items-center gap-2">
+              <Select value={activityCategory} onValueChange={(v) => { setActivityCategory(v); setActivityPage(0); }}>
+                <SelectTrigger className="w-40" data-testid="select-activity-category">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="auth">Authentication</SelectItem>
+                  <SelectItem value="booking">Bookings</SelectItem>
+                  <SelectItem value="guest">Guests</SelectItem>
+                  <SelectItem value="payment">Payments</SelectItem>
+                  <SelectItem value="property">Properties</SelectItem>
+                  <SelectItem value="room">Rooms</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
+                  <SelectItem value="order">Orders</SelectItem>
+                  <SelectItem value="expense">Expenses</SelectItem>
+                  <SelectItem value="settings">Settings</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={() => refetchActivityLogs()} data-testid="button-refresh-activity">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {activityLogsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading activity logs...
+              </CardContent>
+            </Card>
+          ) : !activityLogsData?.logs?.length ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Activity className="h-8 w-8 text-slate-400" />
+                <p>No activity logs yet</p>
+                <p className="text-xs">User actions will be recorded here automatically</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {activityLogsData.logs.map((log) => (
+                  <Card key={log.id} className="hover-elevate">
+                    <CardContent className="py-3 flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className="text-xs capitalize">{log.category}</Badge>
+                          <span className="text-sm font-medium">{log.action.replace(/_/g, ' ')}</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {log.userName || log.userEmail || 'Unknown user'}
+                          {log.resourceName && <span> - {log.resourceName}</span>}
+                          {log.propertyName && <span className="text-xs"> ({log.propertyName})</span>}
+                        </p>
+                        {log.details && Object.keys(log.details).length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1 truncate">
+                            {JSON.stringify(log.details).substring(0, 100)}...
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(log.createdAt), "MMM dd, HH:mm")}
+                        </p>
+                        {log.ipAddress && (
+                          <p className="text-xs text-muted-foreground">{log.ipAddress}</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {activityPage * ACTIVITY_PAGE_SIZE + 1} - {Math.min((activityPage + 1) * ACTIVITY_PAGE_SIZE, activityLogsData.total)} of {activityLogsData.total}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={activityPage === 0}
+                    onClick={() => setActivityPage(p => p - 1)}
+                    data-testid="button-activity-prev"
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={(activityPage + 1) * ACTIVITY_PAGE_SIZE >= activityLogsData.total}
+                    onClick={() => setActivityPage(p => p + 1)}
+                    data-testid="button-activity-next"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        )}
+
+        {/* Sessions Tab */}
+        {activeTab === "sessions" && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Monitor className="h-5 w-5 text-teal-600" />
+              Active Sessions
+              {sessionsData?.totalActiveSessions !== undefined && (
+                <Badge variant="secondary">{sessionsData.totalActiveSessions} active</Badge>
+              )}
+            </h2>
+            <Button variant="outline" size="icon" onClick={() => refetchSessions()} data-testid="button-refresh-sessions">
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {sessionsLoading ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
+                Loading sessions...
+              </CardContent>
+            </Card>
+          ) : !sessionsData?.users?.length ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <Monitor className="h-8 w-8 text-slate-400" />
+                <p>No active sessions</p>
+                <p className="text-xs">User login sessions will appear here</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {sessionsData.users.map((userData) => (
+                <Card key={userData.userId} className="hover-elevate">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle className="text-base">{userData.name}</CardTitle>
+                        <p className="text-sm text-muted-foreground">{userData.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={userData.role === 'super-admin' ? 'default' : 'outline'} className="capitalize">
+                          {userData.role}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {userData.activeSessions} active
+                        </Badge>
+                        {userData.activeSessions > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => terminateAllUserSessions.mutate(userData.userId)}
+                            disabled={terminateAllUserSessions.isPending}
+                            data-testid={`button-terminate-all-${userData.userId}`}
+                          >
+                            <XCircle className="h-4 w-4 mr-1" />
+                            End All
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {userData.sessions.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No recent sessions</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {userData.sessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className={`flex items-center justify-between p-2 rounded border ${
+                              session.isActive
+                                ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                                : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`h-2 w-2 rounded-full ${session.isActive ? 'bg-green-500' : 'bg-slate-400'}`} />
+                              <div>
+                                <p className="text-sm">
+                                  {session.browser || 'Unknown Browser'} on {session.os || 'Unknown OS'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {session.ipAddress || 'Unknown IP'} - Last active: {format(new Date(session.lastActivityAt), "MMM dd, HH:mm")}
+                                </p>
+                              </div>
+                            </div>
+                            {session.isActive && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20"
+                                onClick={() => terminateSession.mutate(session.sessionToken)}
+                                disabled={terminateSession.isPending}
+                                data-testid={`button-terminate-session-${session.id}`}
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Error Crashes Tab */}
+        {activeTab === "errors" && (
+        <div className="space-y-4">
+          <div className="grid gap-4">
+            {errorCrashes.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                  <Bug className="h-8 w-8 text-slate-400" />
+                  <p>No system errors yet</p>
+                  <p className="text-xs">Errors from user applications will appear here automatically</p>
+                </CardContent>
+              </Card>
+            ) : (
+              errorCrashes.map((crash) => (
+                <Card key={crash.id} className={`hover-elevate ${crash.isResolved ? "opacity-60" : ""}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Bug className={`h-5 w-5 ${crash.isResolved ? "text-green-600" : "text-red-600"}`} />
+                          <CardTitle className="text-base">{crash.errorType || "Error"}</CardTitle>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 max-w-2xl truncate">{crash.errorMessage}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={crash.isResolved ? "default" : "destructive"}>
+                          {crash.isResolved ? "Resolved" : "Open"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {crash.page && <div><span className="text-muted-foreground">Page:</span> {crash.page}</div>}
+                      {crash.userId && <div><span className="text-muted-foreground">User:</span> {crash.userId}</div>}
+                      {crash.createdAt && <div><span className="text-muted-foreground">Time:</span> {format(new Date(crash.createdAt), "MMM dd, HH:mm")}</div>}
+                    </div>
+                    {crash.errorStack && (
+                      <div className="bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">
+                        <p className="text-xs text-muted-foreground mb-2">Stack Trace:</p>
+                        <code className="text-xs text-slate-700 dark:text-slate-300 break-words whitespace-pre-wrap max-h-32 overflow-auto block">{crash.errorStack}</code>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {!crash.isResolved && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => resolveError.mutate(crash.id)}
+                          disabled={resolveError.isPending}
+                          data-testid={`button-resolve-error-${crash.id}`}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Mark Resolved
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteError.mutate(crash.id)}
+                        disabled={deleteError.isPending}
+                        data-testid={`button-delete-error-${crash.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Send Email Dialog */}
+        <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-teal-600" />
+                Send Email to User
+              </DialogTitle>
+              <DialogDescription>
+                Send an email directly to {emailRecipient?.email}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              {emailRecipient && (
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
+                  <p className="text-sm font-medium">
+                    {emailRecipient.firstName} {emailRecipient.lastName}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{emailRecipient.email}</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="emailSubject">Subject *</Label>
+                <Input
+                  id="emailSubject"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Enter email subject"
+                  data-testid="input-email-subject"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="emailMessage">Message *</Label>
+                <Textarea
+                  id="emailMessage"
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={6}
+                  data-testid="input-email-message"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEmailDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSendEmail}
+                disabled={isSendingEmail || !emailSubject || !emailMessage}
+                className="bg-teal-600 hover:bg-teal-700"
+                data-testid="button-send-email-confirm"
+              >
+                {isSendingEmail ? "Sending..." : "Send Email"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Broadcast Email Dialog */}
+        <Dialog open={broadcastDialog} onOpenChange={setBroadcastDialog}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Megaphone className="h-5 w-5 text-purple-600" />
+                Broadcast Email
+              </DialogTitle>
+              <DialogDescription>
+                Send an announcement email to all verified users on the platform
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+                <p className="text-sm text-purple-700 dark:text-purple-300">
+                  This will send an email to all verified users (excluding super admins).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="broadcastSubject">Subject *</Label>
+                <Input
+                  id="broadcastSubject"
+                  value={emailSubject}
+                  onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="e.g., Important Update from Hostezee"
+                  data-testid="input-broadcast-subject"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="broadcastMessage">Message *</Label>
+                <Textarea
+                  id="broadcastMessage"
+                  value={emailMessage}
+                  onChange={(e) => setEmailMessage(e.target.value)}
+                  placeholder="Type your announcement here..."
+                  rows={6}
+                  data-testid="input-broadcast-message"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBroadcastDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleBroadcastEmail}
+                disabled={isSendingEmail || !emailSubject || !emailMessage}
+                className="bg-purple-600 hover:bg-purple-700"
+                data-testid="button-broadcast-confirm"
+              >
+                {isSendingEmail ? "Broadcasting..." : "Send Broadcast"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
