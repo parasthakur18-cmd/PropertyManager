@@ -79,13 +79,15 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
+  // IMPORTANT: Only setup Vite dev server in development mode
+  // In production, serve pre-built static files from /dist/public
+  // This prevents WebSocket HMR errors (wss://localhost/v2) in production
+  if (process.env.NODE_ENV === "production") {
+    // Production: Serve static files (no Vite, no HMR, no WebSocket)
     serveStatic(app);
+  } else {
+    // Development: Use Vite dev server with HMR
+    await setupVite(app, server);
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT

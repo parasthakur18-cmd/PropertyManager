@@ -20,9 +20,17 @@ export function log(message: string, source = "express") {
 }
 
 export async function setupVite(app: Express, server: Server) {
+  // Safety check: Never run Vite dev server in production
+  // This prevents WebSocket HMR errors (wss://localhost/v2)
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "setupVite() should not be called in production. Use serveStatic() instead."
+    );
+  }
+
   const serverOptions = {
     middlewareMode: true,
-    hmr: { server },
+    hmr: { server }, // HMR WebSocket - only for development
     allowedHosts: true as const,
   };
 

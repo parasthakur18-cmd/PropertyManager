@@ -19,9 +19,11 @@ DATABASE_URL=postgresql://myappuser:StrongPassword321@localhost:5432/myappdb
 PORT=5000
 # OR your preferred port
 
-# Replit Configuration (if needed)
-REPLIT_DOMAINS=your-domain.com
-REPL_ID=your-repl-id
+# Replit Configuration (ONLY if using Replit, otherwise leave empty or remove)
+# For VPS deployment, set DISABLE_REPLIT_AUTH=true to use local email/password auth
+DISABLE_REPLIT_AUTH=true
+# REPLIT_DOMAINS=your-domain.com  # Only needed if using Replit
+# REPL_ID=your-repl-id            # Only needed if using Replit
 ```
 
 ### 📦 Object Storage Configuration

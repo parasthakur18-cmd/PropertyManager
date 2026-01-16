@@ -51,15 +51,25 @@ async function updateUserLocationFromIp(userId: string, ipAddress: string) {
   }
 }
 
-if (!process.env.REPLIT_DOMAINS) {
+// Only require REPLIT_DOMAINS if actually using Replit auth
+// On VPS, we use local email/password auth instead
+const isUsingReplitAuth = process.env.DISABLE_REPLIT_AUTH !== 'true' && 
+                          process.env.REPLIT_DOMAINS && 
+                          process.env.REPL_ID;
+
+if (isUsingReplitAuth && !process.env.REPLIT_DOMAINS) {
   throw new Error("Environment variable REPLIT_DOMAINS not provided");
 }
 
+// Only initialize OIDC config if actually using Replit auth
 const getOidcConfig = memoize(
   async () => {
+    if (!process.env.REPL_ID) {
+      throw new Error("REPL_ID is required for Replit OIDC authentication");
+    }
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      process.env.REPL_ID
     );
   },
   { maxAge: 3600 * 1000 }
@@ -209,10 +219,26 @@ async function upsertUser(
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
+  // Always setup session middleware (needed for email/password auth on VPS)
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Only setup Replit OIDC auth if on Replit and not disabled
+  // On VPS, skip Replit auth and use local email/password auth only
+  const isUsingReplitAuth = process.env.DISABLE_REPLIT_AUTH !== 'true' && 
+                            process.env.REPLIT_DOMAINS && 
+                            process.env.REPL_ID;
+
+  if (!isUsingReplitAuth) {
+    console.log('[AUTH] Using local email/password authentication (Replit auth disabled)');
+    // Setup basic passport serialization for local auth
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    return; // Exit early - no Replit OIDC setup needed
+  }
+
+  console.log('[AUTH] Setting up Replit OIDC authentication');
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
