@@ -2463,6 +2463,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const checkIn = new Date(data.checkInDate);
       const checkOut = new Date(data.checkOutDate);
       
+      // Validate check-out is after check-in
+      if (checkOut <= checkIn) {
+        return res.status(400).json({ 
+          message: "Check-out date must be after check-in date" 
+        });
+      }
+      
       // Get all rooms to check
       const roomIdsToCheck: number[] = [];
       if (data.roomId) {
