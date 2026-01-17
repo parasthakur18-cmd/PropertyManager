@@ -12,6 +12,9 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS monthly_rent NUMERIC(10, 2);
 -- Add cancellation_charges to bookings table
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancellation_charges NUMERIC(10, 2) DEFAULT 0;
 
+-- Add refund_amount to bookings table
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS refund_amount NUMERIC(10, 2) DEFAULT 0;
+
 -- Step 2: Create missing tables
 -- ============================================
 
@@ -184,7 +187,9 @@ WHERE table_name = 'properties' AND column_name = 'monthly_rent';
 
 SELECT column_name, data_type 
 FROM information_schema.columns 
-WHERE table_name = 'bookings' AND column_name = 'cancellation_charges';
+WHERE table_name = 'bookings' 
+  AND column_name IN ('cancellation_charges', 'refund_amount')
+ORDER BY column_name;
 
 -- Verify tables were created
 SELECT table_name 
