@@ -17,6 +17,17 @@ ALTER TABLE bookings ADD COLUMN IF NOT EXISTS refund_amount NUMERIC(10, 2) DEFAU
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
 ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(255);
 
+-- Add other missing booking columns
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS actual_check_in_time TIMESTAMP;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_link_id VARCHAR(100);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_link_url TEXT;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_link_expiry TIMESTAMP;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS advance_payment_status VARCHAR(20) DEFAULT 'not_required';
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS reminder_count INTEGER DEFAULT 0;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMP;
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS external_booking_id VARCHAR(100);
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS external_source VARCHAR(50);
+
 -- Step 2: Create missing tables
 -- ============================================
 
@@ -196,7 +207,16 @@ WHERE table_name = 'bookings'
     'cancellation_charges',
     'refund_amount',
     'cancellation_reason',
-    'cancelled_by'
+    'cancelled_by',
+    'actual_check_in_time',
+    'payment_link_id',
+    'payment_link_url',
+    'payment_link_expiry',
+    'advance_payment_status',
+    'reminder_count',
+    'last_reminder_at',
+    'external_booking_id',
+    'external_source'
   )
 ORDER BY column_name;
 
