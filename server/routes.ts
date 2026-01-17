@@ -11069,6 +11069,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create new property if requested
       if (createProperty && createProperty.name) {
+        // Note: monthlyRent is optional and may not exist in DB yet, so we omit it
         const newProperty = await storage.createProperty({
           name: createProperty.name,
           location: createProperty.location || '',
@@ -11076,7 +11077,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           contactEmail: targetUser.email,
           contactPhone: targetUser.phone || '',
           ownerUserId: targetUserId,
-        });
+          // Explicitly omit monthlyRent to avoid DB errors if column doesn't exist
+        } as any);
         assignedPropertyId = newProperty.id;
         console.log(`[SUPER-ADMIN] Created property ${newProperty.name} for user ${targetUser.email}`);
       }
