@@ -95,7 +95,12 @@ export function getSession() {
   });
   
   // Replit deployments always use HTTPS
+  // For VPS without HTTPS, we need to allow HTTP cookies
   const isProduction = process.env.REPLIT_DEPLOYMENT === '1' || process.env.NODE_ENV === 'production';
+  const isReplit = process.env.REPLIT_DEPLOYMENT === '1';
+  // On VPS without HTTPS, we can't use secure cookies
+  // Only use secure cookies if explicitly on Replit (which has HTTPS) or if HTTPS is configured
+  const useSecureCookies = isReplit || process.env.USE_SECURE_COOKIES === 'true';
   
   return session({
     secret: process.env.SESSION_SECRET!,
@@ -107,8 +112,8 @@ export function getSession() {
     proxy: true, // Trust the reverse proxy (required for Replit deployments)
     cookie: {
       httpOnly: true,
-      secure: isProduction, // Use secure cookies in production (Replit uses HTTPS)
-      sameSite: isProduction ? 'none' : 'lax', // 'none' for cross-site in production with HTTPS
+      secure: useSecureCookies, // Only use secure cookies on Replit (HTTPS) or if explicitly enabled
+      sameSite: useSecureCookies ? 'none' : 'lax', // 'none' requires HTTPS, use 'lax' for HTTP
       path: '/',
       maxAge: sessionTtl,
     },
