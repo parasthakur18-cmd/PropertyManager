@@ -565,7 +565,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProperty(property: InsertProperty): Promise<Property> {
-    const [newProperty] = await db.insert(properties).values(property).returning();
+    // Remove monthlyRent if it's undefined to avoid DB errors if column doesn't exist
+    const propertyData: any = { ...property };
+    if (propertyData.monthlyRent === undefined) {
+      delete propertyData.monthlyRent;
+    }
+    const [newProperty] = await db.insert(properties).values(propertyData).returning();
     return newProperty;
   }
 
