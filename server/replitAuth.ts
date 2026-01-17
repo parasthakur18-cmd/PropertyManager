@@ -53,13 +53,16 @@ async function updateUserLocationFromIp(userId: string, ipAddress: string) {
 
 // Only require REPLIT_DOMAINS if actually using Replit auth
 // On VPS, we use local email/password auth instead
-const isUsingReplitAuth = process.env.DISABLE_REPLIT_AUTH !== 'true' && 
+// IMPORTANT: Don't throw error if DISABLE_REPLIT_AUTH is true (allows VPS deployment)
+const isReplitAuthDisabled = process.env.DISABLE_REPLIT_AUTH === 'true';
+const isUsingReplitAuth = !isReplitAuthDisabled && 
                           process.env.REPLIT_DOMAINS && 
                           process.env.REPL_ID;
 
-// Don't throw error if Replit auth is disabled - allow VPS deployment without Replit
-if (isUsingReplitAuth && !process.env.REPLIT_DOMAINS) {
-  console.warn('[AUTH] REPLIT_DOMAINS not set, but DISABLE_REPLIT_AUTH is not true. Replit auth will be disabled.');
+// Only throw error if we're trying to use Replit auth but REPLIT_DOMAINS is missing
+// If DISABLE_REPLIT_AUTH is true, skip this check entirely
+if (!isReplitAuthDisabled && !process.env.REPLIT_DOMAINS) {
+  throw new Error("Environment variable REPLIT_DOMAINS not provided. Set DISABLE_REPLIT_AUTH=true for VPS deployment without Replit.");
 }
 
 // Only initialize OIDC config if actually using Replit auth
