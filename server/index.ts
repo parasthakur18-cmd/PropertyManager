@@ -91,20 +91,15 @@ app.use((req, res, next) => {
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  const listenOptions: any = {
-    port,
-    host: "0.0.0.0",
-  };
-  // Only use reusePort in production/Replit environments
-  if (process.env.NODE_ENV === 'production' || process.env.REPLIT_DEPLOYMENT === '1') {
-    listenOptions.reusePort = true;
-  }
-  server.listen(listenOptions, () => {
-    log(`serving on port ${port}`);
+  // Default to 5000 if not specified.
+  // IMPORTANT: Use "0.0.0.0" to bind to all interfaces (required for VPS)
+  // This allows connections from localhost, LAN, and external IPs
+  const port = Number(process.env.PORT) || 3000;
+  
+  // Use simple listen format for maximum compatibility
+  // "0.0.0.0" is REQUIRED on VPS - binds to all network interfaces
+  server.listen(port, "0.0.0.0", () => {
+    log(`serving on port ${port} (bound to 0.0.0.0)`);
   });
 })();
 
