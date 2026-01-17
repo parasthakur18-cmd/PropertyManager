@@ -30,15 +30,12 @@ const dbModule = useNeonDriver
   ? await import('drizzle-orm/neon-serverless')
   : await import('drizzle-orm/node-postgres');
 
-const poolModule = useNeonDriver
-  ? await import('@neondatabase/serverless')
-  : await import('pg');
-
 let pool: any;
 let db: any;
 
 if (useNeonDriver) {
   // Neon serverless driver (only if using Neon cloud database)
+  const poolModule = await import('@neondatabase/serverless');
   const { Pool: NeonPool, neonConfig } = poolModule;
   const ws = await import("ws");
   
@@ -48,7 +45,9 @@ if (useNeonDriver) {
   console.log('[DB INIT] Using Neon serverless driver');
 } else {
   // Regular PostgreSQL using node-postgres (for local development and VPS)
-  const { Pool } = poolModule;
+  const poolModule = await import('pg');
+  // Handle both default export and named export
+  const Pool = poolModule.default?.Pool || poolModule.Pool || (poolModule as any).default;
   pool = new Pool({ connectionString: process.env.DATABASE_URL });
   db = dbModule.drizzle({ client: pool, schema });
   console.log('[DB INIT] Using node-postgres driver (local/VPS PostgreSQL)');
