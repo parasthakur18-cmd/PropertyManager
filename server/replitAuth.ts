@@ -57,8 +57,9 @@ const isUsingReplitAuth = process.env.DISABLE_REPLIT_AUTH !== 'true' &&
                           process.env.REPLIT_DOMAINS && 
                           process.env.REPL_ID;
 
+// Don't throw error if Replit auth is disabled - allow VPS deployment without Replit
 if (isUsingReplitAuth && !process.env.REPLIT_DOMAINS) {
-  throw new Error("Environment variable REPLIT_DOMAINS not provided");
+  console.warn('[AUTH] REPLIT_DOMAINS not set, but DISABLE_REPLIT_AUTH is not true. Replit auth will be disabled.');
 }
 
 // Only initialize OIDC config if actually using Replit auth
@@ -235,6 +236,23 @@ export async function setupAuth(app: Express) {
     // Setup basic passport serialization for local auth
     passport.serializeUser((user: Express.User, cb) => cb(null, user));
     passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+    
+    // Redirect /api/login to email login page (since Replit OIDC is disabled)
+    app.get("/api/login", (req, res) => {
+      res.status(400).json({ 
+        message: "Replit OIDC authentication is disabled. Please use /api/auth/email-login for email/password authentication.",
+        useEmailLogin: true
+      });
+    });
+    
+    // Disable /api/callback since Replit auth is not available
+    app.get("/api/callback", (req, res) => {
+      res.status(400).json({ 
+        message: "Replit OIDC authentication is disabled. Please use /api/auth/email-login instead.",
+        useEmailLogin: true
+      });
+    });
+    
     return; // Exit early - no Replit OIDC setup needed
   }
 
@@ -282,6 +300,8 @@ export async function setupAuth(app: Express) {
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
+  // Only register /api/login route if using Replit auth
+  // On VPS, login is handled by /api/auth/email-login instead
   app.get("/api/login", (req, res, next) => {
     const strategyName = req.hostname === 'localhost' 
       ? `replitauth:localhost`
