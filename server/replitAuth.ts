@@ -68,6 +68,10 @@ if (!isReplitAuthDisabled && !process.env.REPLIT_DOMAINS) {
 // Only initialize OIDC config if actually using Replit auth
 const getOidcConfig = memoize(
   async () => {
+    // Don't initialize OIDC if Replit auth is disabled
+    if (process.env.DISABLE_REPLIT_AUTH === 'true') {
+      throw new Error("Replit OIDC authentication is disabled. This function should not be called when DISABLE_REPLIT_AUTH=true");
+    }
     if (!process.env.REPL_ID) {
       throw new Error("REPL_ID is required for Replit OIDC authentication");
     }
@@ -230,11 +234,8 @@ export async function setupAuth(app: Express) {
 
   // Only setup Replit OIDC auth if on Replit and not disabled
   // On VPS, skip Replit auth and use local email/password auth only
-  const isUsingReplitAuth = process.env.DISABLE_REPLIT_AUTH !== 'true' && 
-                            process.env.REPLIT_DOMAINS && 
-                            process.env.REPL_ID;
-
-  if (!isUsingReplitAuth) {
+  // Check DISABLE_REPLIT_AUTH first - if true, completely skip OIDC setup
+  if (process.env.DISABLE_REPLIT_AUTH === 'true') {
     console.log('[AUTH] Using local email/password authentication (Replit auth disabled)');
     // Setup basic passport serialization for local auth
     passport.serializeUser((user: Express.User, cb) => cb(null, user));
@@ -513,6 +514,13 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   // Handle Replit Auth (OIDC-based)
+  // Skip Replit OIDC auth if disabled (use email/password auth only)
+  if (process.env.DISABLE_REPLIT_AUTH === 'true') {
+    // Replit auth is disabled, so this middleware should only handle email/password auth
+    // If user is authenticated via email/password, they should have already been handled above
+    return next();
+  }
+
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
