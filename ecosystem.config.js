@@ -7,10 +7,10 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: '3000',
-      // Database - UPDATE THESE VALUES
+      // Database
       DATABASE_URL: 'postgresql://myappuser:StrongPassword321@localhost:5432/myappdb',
-      // Session Secret - UPDATE THIS
-      SESSION_SECRET: 'your-session-secret-change-this-in-production',
+      // Session Secret (generated with: openssl rand -base64 64)
+      SESSION_SECRET: 'OhzxIBcqP5K1E/mZ4mP15oD2xk6Q18yYRvFoSBMicrxv0Iw67yDaiAPihK0VikCp51K50qwESdWLOXKEmKgnPg==',
       // Disable Replit auth for VPS
       DISABLE_REPLIT_AUTH: 'true',
       // Optional: Object Storage
