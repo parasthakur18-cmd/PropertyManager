@@ -12006,7 +12006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(500).json({ message: "Login failed" });
           }
           
-          // Log activity
+          // Log activity (non-blocking - don't fail login if table doesn't exist)
           try {
             await storage.createActivityLog({
               userId: user[0].id,
@@ -12018,8 +12018,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
               userAgent: (req.get('User-Agent') || '').substring(0, 500),
             });
-          } catch (logErr) {
-            console.error('[ACTIVITY] Error logging super admin login:', logErr);
+          } catch (logErr: any) {
+            // Don't fail login if activity_logs table doesn't exist yet
+            if (logErr?.code === '42P01') {
+              console.warn('[ACTIVITY] activity_logs table does not exist - skipping activity log');
+            } else {
+              console.error('[ACTIVITY] Error logging super admin login:', logErr);
+            }
           }
           
           console.log(`[SUPER-ADMIN-LOGIN] ✓ SUCCESS - Super Admin ${user[0].email} logged in`);

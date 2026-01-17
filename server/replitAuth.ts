@@ -523,7 +523,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (process.env.DISABLE_REPLIT_AUTH === 'true') {
     // Replit auth is disabled, so this middleware should only handle email/password auth
     // If user is authenticated via email/password, they should have already been handled above
-    return next();
+    // If we reach here, user is NOT authenticated - return 401
+    return res.status(401).json({ message: "Unauthorized" });
   }
 
   if (!req.isAuthenticated() || !req.user) {
