@@ -237,6 +237,96 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Setup logout route (needed for both Replit and email/password auth)
+  // This must be registered before the early return
+  // Support both GET and POST methods
+  const handleLogout = async (req: Express.Request, res: Express.Response) => {
+    // Capture user info before destroying session for activity logging
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
+    let userEmail: string | null = null;
+    let userName: string | null = null;
+    
+    if (userId) {
+      try {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          userEmail = dbUser.email;
+          userName = `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email;
+        }
+      } catch (e) {
+        console.error('[LOGOUT] Error fetching user for logging:', e);
+      }
+    }
+    
+    // Log logout activity
+    try {
+      if (userId) {
+        await storage.createActivityLog({
+          userId,
+          userEmail,
+          userName,
+          action: 'logout',
+          category: 'auth',
+          details: { method: user?.isEmailAuth ? 'email' : 'oauth' },
+          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
+          userAgent: (req.get('User-Agent') || '').substring(0, 500),
+        });
+      }
+    } catch (logErr) {
+      console.error('[ACTIVITY] Error logging logout:', logErr);
+    }
+    
+    // For email/password auth, we need to manually destroy the session
+    if ((req.session as any)?.userId && (req.session as any)?.isEmailAuth) {
+      // Email/password auth - destroy session directly
+      if (req.session) {
+        req.session.destroy((sessionErr) => {
+          if (sessionErr) console.error("Session destroy error:", sessionErr);
+          
+          // Clear session cookies
+          res.clearCookie("hostezee.sid", { path: "/" });
+          res.clearCookie("connect.sid", { path: "/" });
+          res.clearCookie("session", { path: "/" });
+          
+          // Redirect to home (forces fresh login)
+          res.redirect("/");
+        });
+      } else {
+        res.clearCookie("hostezee.sid", { path: "/" });
+        res.clearCookie("connect.sid", { path: "/" });
+        res.redirect("/");
+      }
+    } else {
+      // OAuth logout (Replit auth)
+      req.logout((err) => {
+        if (err) console.error("Logout error:", err);
+        
+        // Destroy the session
+        if (req.session) {
+          req.session.destroy((sessionErr) => {
+            if (sessionErr) console.error("Session destroy error:", sessionErr);
+            
+            // Clear session cookies
+            res.clearCookie("hostezee.sid", { path: "/" });
+            res.clearCookie("connect.sid", { path: "/" });
+            res.clearCookie("session", { path: "/" });
+            
+            // Redirect to home (forces fresh login)
+            res.redirect("/");
+          });
+        } else {
+          res.clearCookie("hostezee.sid", { path: "/" });
+          res.clearCookie("connect.sid", { path: "/" });
+          res.redirect("/");
+        }
+      });
+    }
+  };
+  
+  app.get("/api/logout", handleLogout);
+  app.post("/api/logout", handleLogout);
+
   // Only setup Replit OIDC auth if on Replit and not disabled
   // On VPS, skip Replit auth and use local email/password auth only
   // Check DISABLE_REPLIT_AUTH first - if true, completely skip OIDC setup
@@ -421,67 +511,6 @@ export async function setupAuth(app: Express) {
     }
     
     next();
-  });
-
-  app.get("/api/logout", async (req, res) => {
-    // Capture user info before destroying session for activity logging
-    const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
-    let userEmail: string | null = null;
-    let userName: string | null = null;
-    
-    if (userId) {
-      try {
-        const dbUser = await storage.getUser(userId);
-        if (dbUser) {
-          userEmail = dbUser.email;
-          userName = `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email;
-        }
-      } catch (e) {
-        console.error('[LOGOUT] Error fetching user for logging:', e);
-      }
-    }
-    
-    // Log logout activity
-    try {
-      if (userId) {
-        await storage.createActivityLog({
-          userId,
-          userEmail,
-          userName,
-          action: 'logout',
-          category: 'auth',
-          details: { method: user?.isEmailAuth ? 'email' : 'oauth' },
-          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
-          userAgent: (req.get('User-Agent') || '').substring(0, 500),
-        });
-      }
-    } catch (logErr) {
-      console.error('[ACTIVITY] Error logging logout:', logErr);
-    }
-    
-    req.logout((err) => {
-      if (err) console.error("Logout error:", err);
-      
-      // Destroy the session
-      if (req.session) {
-        req.session.destroy((sessionErr) => {
-          if (sessionErr) console.error("Session destroy error:", sessionErr);
-          
-          // Clear session cookies
-          res.clearCookie("hostezee.sid", { path: "/" });
-          res.clearCookie("connect.sid", { path: "/" });
-          res.clearCookie("session", { path: "/" });
-          
-          // Redirect to home (forces fresh login)
-          res.redirect("/");
-        });
-      } else {
-        res.clearCookie("hostezee.sid", { path: "/" });
-        res.clearCookie("connect.sid", { path: "/" });
-        res.redirect("/");
-      }
-    });
   });
 }
 
