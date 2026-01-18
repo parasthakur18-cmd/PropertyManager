@@ -192,6 +192,41 @@ CREATE INDEX IF NOT EXISTS idx_subscription_payments_subscription_id ON subscrip
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_user_id ON subscription_payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_status ON subscription_payments(status);
 
+-- OTP Tokens table (for mobile login)
+CREATE TABLE IF NOT EXISTS otp_tokens (
+  id SERIAL PRIMARY KEY,
+  phone VARCHAR(20) NOT NULL,
+  email VARCHAR(255),
+  otp VARCHAR(6) NOT NULL,
+  purpose VARCHAR(20) NOT NULL DEFAULT 'login',
+  expires_at TIMESTAMP NOT NULL,
+  is_used BOOLEAN DEFAULT false,
+  attempts INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_otp_tokens_phone ON otp_tokens(phone);
+CREATE INDEX IF NOT EXISTS idx_otp_tokens_email ON otp_tokens(email);
+CREATE INDEX IF NOT EXISTS idx_otp_tokens_expires_at ON otp_tokens(expires_at);
+
+-- Password Reset OTPs table (for forgot password)
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255),
+  phone VARCHAR(20),
+  channel VARCHAR(20) NOT NULL DEFAULT 'email',
+  otp VARCHAR(6) NOT NULL,
+  reset_token VARCHAR(100),
+  expires_at TIMESTAMP NOT NULL,
+  is_used BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_email ON password_reset_otps(email);
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_phone ON password_reset_otps(phone);
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_reset_token ON password_reset_otps(reset_token);
+CREATE INDEX IF NOT EXISTS idx_password_reset_otps_expires_at ON password_reset_otps(expires_at);
+
 -- ============================================
 -- VERIFICATION (Optional - can comment out)
 -- ============================================
@@ -222,7 +257,8 @@ WHERE table_schema = 'public'
   AND table_name IN (
     'notifications', 'user_sessions', 'activity_logs',
     'issue_reports', 'contact_enquiries', 'subscription_plans',
-    'user_subscriptions', 'subscription_payments'
+    'user_subscriptions', 'subscription_payments', 'otp_tokens',
+    'password_reset_otps'
   )
 ORDER BY table_name;
 
