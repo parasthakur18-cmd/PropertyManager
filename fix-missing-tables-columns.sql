@@ -8,6 +8,9 @@
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_rooms BOOLEAN DEFAULT true;
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_food BOOLEAN DEFAULT false;
 
+-- 1b. Add missing column to staff_members table
+ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS role VARCHAR(50);
+
 -- 2. Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
   id SERIAL PRIMARY KEY,
