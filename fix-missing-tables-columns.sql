@@ -4,8 +4,9 @@
 -- Safe to run multiple times (uses IF NOT EXISTS)
 -- ============================================
 
--- 1. Add missing column to bills table
+-- 1. Add missing columns to bills table
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_rooms BOOLEAN DEFAULT true;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_food BOOLEAN DEFAULT false;
 
 -- 2. Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
