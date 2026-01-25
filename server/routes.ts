@@ -185,6 +185,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Serve private uploaded files (with authentication and ACL check)
   app.get("/objects/:objectPath(*)", isAuthenticated, async (req, res) => {
+    const objectPath = req.params.objectPath;
+    
+    // Check if MinIO is configured and object is from MinIO
+    const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
+    if (isMinIOConfigured() && !objectPath.startsWith('vps-uploads/')) {
+      try {
+        const minioService = new MinIOStorageService();
+        await minioService.downloadFile(objectPath, res);
+        return;
+      } catch (error: any) {
+        if (error.code === 'NotFound' || error.code === 'NoSuchKey') {
+          return res.sendStatus(404);
+        }
+        console.error("[MinIO File Serve] Error:", error);
+        return res.sendStatus(500);
+      }
+    }
+    
+    // Check if this is a VPS local file upload (starts with vps-uploads)
+    if (objectPath.startsWith('vps-uploads/')) {
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const filepath = path.join(process.cwd(), 'uploads', objectPath.replace('vps-uploads/', ''));
+        
+        // Check if file exists
+        try {
+          await fs.access(filepath);
+        } catch {
+          return res.sendStatus(404);
+        }
+        
+        // Determine content type
+        const ext = path.extname(filepath).toLowerCase();
+        const contentType = ext === '.png' ? 'image/png' : 
+                           ext === '.gif' ? 'image/gif' : 
+                           'image/jpeg';
+        
+        // Read and send file
+        const fileBuffer = await fs.readFile(filepath);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Length', fileBuffer.length);
+        res.send(fileBuffer);
+        return;
+      } catch (error) {
+        console.error("[VPS File Serve] Error:", error);
+        return res.sendStatus(500);
+      }
+    }
+    
+    // Replit object storage path
     const userId = req.user?.claims?.sub;
     const objectStorageService = new ObjectStorageService();
     try {
@@ -211,20 +262,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get presigned upload URL for guest ID proofs
   app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
-    const objectStorageService = new ObjectStorageService();
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-    res.json({ uploadURL });
+    try {
+      // Check if MinIO is configured (VPS)
+      const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
+      if (isMinIOConfigured()) {
+        const minioService = new MinIOStorageService();
+        const objectName = minioService.generateObjectName('id-proofs');
+        const uploadURL = await minioService.getPresignedUploadURL(objectName);
+        res.json({ uploadURL, objectName, isMinIO: true });
+        return;
+      }
+
+      // Try Replit object storage
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error: any) {
+      // Fallback to VPS direct upload if both fail
+      console.error("[Object Upload] Storage failed, using VPS fallback:", error.message);
+      const objectId = randomUUID();
+      res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
+    }
   });
 
   // Public upload endpoint for guest self-checkin (no auth required)
   app.post("/api/guest/upload", async (req, res) => {
     try {
+      // Check if MinIO is configured (VPS)
+      const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
+      if (isMinIOConfigured()) {
+        const minioService = new MinIOStorageService();
+        const objectName = minioService.generateObjectName('id-proofs');
+        const uploadURL = await minioService.getPresignedUploadURL(objectName);
+        res.json({ uploadURL, objectName, isMinIO: true });
+        return;
+      }
+
+      // Try Replit object storage
       const objectStorageService = new ObjectStorageService();
       const uploadURL = await objectStorageService.getObjectEntityUploadURL();
       res.json({ uploadURL });
     } catch (error: any) {
-      console.error("[Guest Upload] Error:", error);
-      res.status(500).json({ message: "Failed to get upload URL" });
+      // Fallback to VPS direct upload if both fail
+      console.error("[Guest Upload] Storage failed, using VPS fallback:", error.message);
+      const objectId = randomUUID();
+      res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
+    }
+  });
+
+  // VPS Direct file upload endpoint (fallback when Replit storage is not available)
+  // This handles both authenticated and public uploads
+  app.post("/api/vps-upload/:objectId", async (req, res) => {
+    try {
+      const { objectId } = req.params;
+      const chunks: Buffer[] = [];
+      
+      req.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      
+      req.on('end', async () => {
+        try {
+          const fileBuffer = Buffer.concat(chunks);
+          const contentType = req.headers['content-type'] || 'image/jpeg';
+          
+          // Save to local filesystem
+          const fs = await import('fs/promises');
+          const path = await import('path');
+          const uploadsDir = path.join(process.cwd(), 'uploads', 'id-proofs');
+          
+          // Ensure directory exists
+          await fs.mkdir(uploadsDir, { recursive: true });
+          
+          // Determine file extension from content type
+          const ext = contentType.includes('png') ? 'png' : 
+                     contentType.includes('gif') ? 'gif' : 'jpg';
+          const filename = `${objectId}.${ext}`;
+          const filepath = path.join(uploadsDir, filename);
+          
+          // Save file
+          await fs.writeFile(filepath, fileBuffer);
+          
+          // Return the object path
+          const objectPath = `/objects/vps-uploads/id-proofs/${filename}`;
+          res.json({ objectPath, uploadURL: objectPath });
+        } catch (error: any) {
+          console.error("[VPS Upload] Error saving file:", error);
+          res.status(500).json({ error: "Failed to save file" });
+        }
+      });
+      
+      req.on('error', (error) => {
+        console.error("[VPS Upload] Request error:", error);
+        res.status(500).json({ error: "Upload failed" });
+      });
+    } catch (error: any) {
+      console.error("[VPS Upload] Error:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -235,11 +369,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const userId = req.user?.claims?.sub;
+    const idProofUrl = req.body.idProofUrl;
+
+    // If this is a MinIO or VPS upload path, just return it (no ACL needed for MinIO/VPS)
+    if (idProofUrl.startsWith('/objects/vps-uploads/') || 
+        (idProofUrl.startsWith('/objects/') && !idProofUrl.startsWith('/objects/vps-uploads/'))) {
+      // Check if MinIO is configured - if so, this is likely a MinIO path
+      const { isMinIOConfigured } = await import('./minioStorage');
+      if (isMinIOConfigured() || idProofUrl.startsWith('/objects/vps-uploads/')) {
+        return res.status(200).json({
+          objectPath: idProofUrl,
+        });
+      }
+    }
 
     try {
       const objectStorageService = new ObjectStorageService();
       const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
-        req.body.idProofUrl,
+        idProofUrl,
         {
           owner: userId,
           visibility: "private", // Guest ID proofs are private
@@ -14373,7 +14520,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
         
         // Create wallet snapshots
-        const walletSnapshots = propertyWallets.map(w => ({
+        const walletBalances = propertyWallets.map(w => ({
           walletId: w.id,
           walletName: w.name,
           openingBalance: parseFloat(w.openingBalance?.toString() || '0'),
@@ -14390,7 +14537,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           totalCollected: totalCollected.toString(),
           totalExpenses: totalExpenses.toString(),
           totalPendingReceivable: totalPending.toString(),
-          walletSnapshots: walletSnapshots,
+          walletBalances: walletBalances,
           status: 'closed',
           closedAt: now,
           notes: 'Auto-closed at midnight'
