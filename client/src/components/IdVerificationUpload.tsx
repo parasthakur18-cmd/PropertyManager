@@ -43,38 +43,95 @@ export function IdVerificationUpload({ onUploadComplete, existingImageUrl }: IdV
         throw new Error('Failed to get upload URL');
       }
 
-      const { uploadURL } = await uploadResponse.json();
+      const { uploadURL, isVPS, isMinIO, objectName } = await uploadResponse.json();
 
-      // Step 2: Upload file to object storage
-      const putResponse = await fetch(uploadURL, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
-      });
+      let finalObjectPath: string;
 
-      if (!putResponse.ok) {
-        throw new Error('Failed to upload file');
+      // Step 2: Upload file (MinIO, VPS, or Replit)
+      if (isMinIO && objectName) {
+        // MinIO presigned URL upload
+        const putResponse = await fetch(uploadURL, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type,
+          },
+        });
+
+        if (!putResponse.ok) {
+          throw new Error('Failed to upload file to MinIO');
+        }
+
+        // For MinIO, objectName is the path - skip ACL step
+        finalObjectPath = `/objects/${objectName}`;
+        
+        setPreviewUrl(URL.createObjectURL(file));
+        onUploadComplete(finalObjectPath);
+
+        toast({
+          title: "Success",
+          description: "ID proof uploaded successfully",
+        });
+        return; // Exit early for MinIO
+      } else if (isVPS || uploadURL.startsWith('/api/vps-upload')) {
+        // VPS direct upload
+        const uploadRes = await fetch(uploadURL, {
+          method: 'POST',
+          body: file,
+          headers: {
+            'Content-Type': file.type,
+          },
+        });
+
+        if (!uploadRes.ok) {
+          throw new Error('Failed to upload file');
+        }
+
+        const { objectPath } = await uploadRes.json();
+        finalObjectPath = objectPath;
+        
+        // For VPS uploads, no ACL step needed - use objectPath directly
+        setPreviewUrl(URL.createObjectURL(file));
+        onUploadComplete(finalObjectPath);
+
+        toast({
+          title: "Success",
+          description: "ID proof uploaded successfully",
+        });
+        return; // Exit early for VPS upload
+      } else {
+        // Replit presigned URL upload
+        const putResponse = await fetch(uploadURL, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type,
+          },
+        });
+
+        if (!putResponse.ok) {
+          throw new Error('Failed to upload file');
+        }
+
+        // Step 3: Set private ACL for ID proof (Replit only)
+        const aclResponse = await fetch('/api/guest-id-proofs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            idProofUrl: uploadURL,
+          }),
+        });
+
+        if (!aclResponse.ok) {
+          throw new Error('Failed to secure ID proof');
+        }
+
+        const { objectPath } = await aclResponse.json();
+        finalObjectPath = objectPath;
       }
-
-      // Step 3: Set private ACL for ID proof
-      const aclResponse = await fetch('/api/guest-id-proofs', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          idProofUrl: uploadURL,
-        }),
-      });
-
-      if (!aclResponse.ok) {
-        throw new Error('Failed to secure ID proof');
-      }
-
-      const { objectPath } = await aclResponse.json();
 
       setPreviewUrl(URL.createObjectURL(file));
-      onUploadComplete(objectPath);
+      onUploadComplete(finalObjectPath);
 
       toast({
         title: "Success",

@@ -394,18 +394,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.user?.claims?.sub;
     const idProofUrl = req.body.idProofUrl;
 
-    // If this is a MinIO or VPS upload path, just return it (no ACL needed for MinIO/VPS)
-    if (idProofUrl.startsWith('/objects/vps-uploads/') || 
-        (idProofUrl.startsWith('/objects/') && !idProofUrl.startsWith('/objects/vps-uploads/'))) {
-      // Check if MinIO is configured - if so, this is likely a MinIO path
-      const { isMinIOConfigured } = await import('./minioStorage');
-      if (isMinIOConfigured() || idProofUrl.startsWith('/objects/vps-uploads/')) {
-        return res.status(200).json({
-          objectPath: idProofUrl,
-        });
+    console.log("[Guest ID Proof] Received idProofUrl:", idProofUrl);
+
+    // If this is a VPS upload URL, extract the object path from the saved file
+    if (idProofUrl.startsWith('/api/vps-upload/')) {
+      // Extract objectId from URL
+      const objectId = idProofUrl.split('/').pop();
+      // Construct the object path (VPS uploads save to /objects/vps-uploads/id-proofs/)
+      // We need to get the actual filename from the saved file
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'id-proofs');
+        
+        // List files to find the one matching objectId
+        const files = await fs.readdir(uploadsDir);
+        const matchingFile = files.find(f => f.startsWith(objectId + '.'));
+        
+        if (matchingFile) {
+          const objectPath = `/objects/vps-uploads/id-proofs/${matchingFile}`;
+          console.log("[Guest ID Proof] VPS upload, returning objectPath:", objectPath);
+          return res.status(200).json({
+            objectPath: objectPath,
+          });
+        }
+      } catch (error: any) {
+        console.error("[Guest ID Proof] Error finding VPS file:", error);
       }
     }
 
+    // If this is a VPS object path or MinIO path, just return it (no ACL needed)
+    if (idProofUrl.startsWith('/objects/vps-uploads/')) {
+      console.log("[Guest ID Proof] VPS object path, returning as-is");
+      return res.status(200).json({
+        objectPath: idProofUrl,
+      });
+    }
+
+    // Check if MinIO is configured and this is a MinIO path
+    const { isMinIOConfigured } = await import('./minioStorage');
+    if (isMinIOConfigured() && idProofUrl.startsWith('/objects/') && !idProofUrl.startsWith('/objects/vps-uploads/')) {
+      console.log("[Guest ID Proof] MinIO path, returning as-is");
+      return res.status(200).json({
+        objectPath: idProofUrl,
+      });
+    }
+
+    // Try Replit object storage (only if not VPS/MinIO)
     try {
       const objectStorageService = new ObjectStorageService();
       const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
@@ -416,11 +451,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
       );
 
+      console.log("[Guest ID Proof] Replit storage ACL set, returning:", objectPath);
       res.status(200).json({
         objectPath: objectPath,
       });
     } catch (error) {
-      console.error("Error setting guest ID proof:", error);
+      console.error("[Guest ID Proof] Error setting ACL:", error);
+      // If Replit storage fails, try to return the path as-is (might be VPS/MinIO)
+      if (idProofUrl.startsWith('/objects/')) {
+        console.log("[Guest ID Proof] Replit failed, returning path as-is:", idProofUrl);
+        return res.status(200).json({
+          objectPath: idProofUrl,
+        });
+      }
       res.status(500).json({ error: "Internal server error" });
     }
   });
