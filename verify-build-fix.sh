@@ -74,15 +74,20 @@ echo "Summary:"
 echo "=========================================="
 if [ -d "dist/public" ] && [ -f "dist/index.js" ]; then
     echo "Build exists - checking if fixes are included..."
-    FRONTEND_FIX=$(find dist/public -name "*.js" -type f -exec grep -l "Exit early for VPS upload" {} \; 2>/dev/null | wc -l)
-    BACKEND_FIX=$(grep -c "VPS upload, returning objectPath\|VPS upload file found" dist/index.js 2>/dev/null || echo "0")
+    FRONTEND_FIX=$(find dist/public -name "*.js" -type f -exec grep -l "Exit early for VPS upload\|return.*VPS upload" {} \; 2>/dev/null | wc -l)
+    BACKEND_FIX=$(grep -c "VPS upload.*returning\|VPS upload file found\|VPS upload URL detected" dist/index.js 2>/dev/null || echo "0")
     
     if [ "$FRONTEND_FIX" -gt 0 ] && [ "$BACKEND_FIX" -gt 0 ]; then
         echo "✓ Both fixes are in the build"
+        echo "  Frontend: $FRONTEND_FIX file(s) with fix"
+        echo "  Backend: $BACKEND_FIX match(es) found"
     else
-        echo "✗ Fixes missing - REBUILD NEEDED:"
-        echo "  npm run build"
-        echo "  pm2 restart propertymanager --update-env"
+        echo "⚠ Some fixes may be missing:"
+        echo "  Frontend matches: $FRONTEND_FIX"
+        echo "  Backend matches: $BACKEND_FIX"
+        echo "  → If upload still fails, rebuild:"
+        echo "    npm run build"
+        echo "    pm2 restart propertymanager --update-env"
     fi
 else
     echo "✗ Build missing - REBUILD NEEDED:"
