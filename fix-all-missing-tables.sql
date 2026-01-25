@@ -190,6 +190,34 @@ CREATE INDEX IF NOT EXISTS idx_subscription_payments_subscription_id ON subscrip
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_user_id ON subscription_payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscription_payments_status ON subscription_payments(status);
 
+-- Feature Settings table (for property-specific feature toggles)
+CREATE TABLE IF NOT EXISTS feature_settings (
+  id SERIAL PRIMARY KEY,
+  property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  food_order_notifications BOOLEAN NOT NULL DEFAULT true,
+  whatsapp_notifications BOOLEAN NOT NULL DEFAULT true,
+  email_notifications BOOLEAN NOT NULL DEFAULT false,
+  payment_reminders BOOLEAN NOT NULL DEFAULT true,
+  auto_checkout BOOLEAN NOT NULL DEFAULT true,
+  auto_salary_calculation BOOLEAN NOT NULL DEFAULT true,
+  attendance_tracking BOOLEAN NOT NULL DEFAULT true,
+  performance_analytics BOOLEAN NOT NULL DEFAULT true,
+  expense_forecasting BOOLEAN NOT NULL DEFAULT true,
+  budget_alerts BOOLEAN NOT NULL DEFAULT true,
+  -- Advance Payment Settings
+  advance_payment_enabled BOOLEAN NOT NULL DEFAULT true,
+  advance_payment_percentage NUMERIC(5, 2) DEFAULT 30,
+  advance_payment_expiry_hours INTEGER DEFAULT 24,
+  -- Payment Reminder Settings
+  payment_reminder_enabled BOOLEAN NOT NULL DEFAULT true,
+  payment_reminder_hours INTEGER DEFAULT 6,
+  max_payment_reminders INTEGER DEFAULT 3,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_feature_settings_property_id ON feature_settings(property_id);
+
 -- ============================================
 -- Verification Queries
 -- ============================================
@@ -235,6 +263,7 @@ WHERE table_schema = 'public'
     'contact_enquiries',
     'subscription_plans',
     'user_subscriptions',
-    'subscription_payments'
+    'subscription_payments',
+    'feature_settings'
   )
 ORDER BY table_name;
