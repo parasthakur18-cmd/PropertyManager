@@ -412,6 +412,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (idProofUrl.startsWith('/api/vps-upload/')) {
       // Extract objectId from URL
       const objectId = idProofUrl.split('/').pop();
+      console.log("[Guest ID Proof] VPS upload URL detected, objectId:", objectId);
+      
       // Construct the object path (VPS uploads save to /objects/vps-uploads/id-proofs/)
       // We need to get the actual filename from the saved file
       try {
@@ -419,19 +421,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const path = await import('path');
         const uploadsDir = path.join(process.cwd(), 'uploads', 'id-proofs');
         
-        // List files to find the one matching objectId
-        const files = await fs.readdir(uploadsDir);
-        const matchingFile = files.find(f => f.startsWith(objectId + '.'));
+        // Ensure directory exists
+        try {
+          await fs.mkdir(uploadsDir, { recursive: true });
+        } catch (mkdirError: any) {
+          // Directory might already exist, ignore error
+          console.log("[Guest ID Proof] Directory check:", mkdirError.code === 'EEXIST' ? 'exists' : mkdirError.message);
+        }
         
-        if (matchingFile) {
-          const objectPath = `/objects/vps-uploads/id-proofs/${matchingFile}`;
-          console.log("[Guest ID Proof] VPS upload, returning objectPath:", objectPath);
-          return res.status(200).json({
-            objectPath: objectPath,
-          });
+        // List files to find the one matching objectId
+        try {
+          const files = await fs.readdir(uploadsDir);
+          const matchingFile = files.find(f => f.startsWith(objectId + '.'));
+          
+          if (matchingFile) {
+            const objectPath = `/objects/vps-uploads/id-proofs/${matchingFile}`;
+            console.log("[Guest ID Proof] VPS upload file found, returning objectPath:", objectPath);
+            return res.status(200).json({
+              objectPath: objectPath,
+            });
+          } else {
+            console.log("[Guest ID Proof] VPS upload file not found yet, trying common extensions");
+            // Try common extensions if file not found
+            const extensions = ['jpg', 'jpeg', 'png', 'gif'];
+            for (const ext of extensions) {
+              const filename = `${objectId}.${ext}`;
+              const filepath = path.join(uploadsDir, filename);
+              try {
+                await fs.access(filepath);
+                const objectPath = `/objects/vps-uploads/id-proofs/${filename}`;
+                console.log("[Guest ID Proof] VPS upload file found with extension:", ext);
+                return res.status(200).json({
+                  objectPath: objectPath,
+                });
+              } catch {
+                // File doesn't exist with this extension, try next
+              }
+            }
+            // If file not found, return a path anyway (upload might be in progress)
+            console.log("[Guest ID Proof] VPS upload file not found, assuming jpg and returning path");
+            const objectPath = `/objects/vps-uploads/id-proofs/${objectId}.jpg`;
+            return res.status(200).json({
+              objectPath: objectPath,
+            });
+          }
+        } catch (readError: any) {
+          if (readError.code === 'ENOENT') {
+            // Directory doesn't exist yet, upload might be in progress
+            console.log("[Guest ID Proof] Upload directory doesn't exist yet, assuming upload in progress");
+            const objectPath = `/objects/vps-uploads/id-proofs/${objectId}.jpg`;
+            return res.status(200).json({
+              objectPath: objectPath,
+            });
+          }
+          throw readError;
         }
       } catch (error: any) {
         console.error("[Guest ID Proof] Error finding VPS file:", error);
+        // Even if we can't find the file, return a path (upload might be in progress)
+        const objectPath = `/objects/vps-uploads/id-proofs/${objectId}.jpg`;
+        console.log("[Guest ID Proof] Returning fallback objectPath:", objectPath);
+        return res.status(200).json({
+          objectPath: objectPath,
+        });
       }
     }
 
