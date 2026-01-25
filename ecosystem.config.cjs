@@ -14,9 +14,16 @@ module.exports = {
       // Disable Replit auth for VPS
       DISABLE_REPLIT_AUTH: 'true',
       // Optional: Object Storage
+      // For Replit (if using Replit object storage):
       DEFAULT_OBJECT_STORAGE_BUCKET_ID: 'replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff',
       PUBLIC_OBJECT_SEARCH_PATHS: '/replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff/public',
       PRIVATE_OBJECT_DIR: '/replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff/.private',
+      // For MinIO/S3 (S3-compatible) on VPS:
+      S3_ENDPOINT: 'http://127.0.0.1:9000',
+      S3_REGION: 'us-east-1',
+      S3_BUCKET: 'propertymanager',
+      S3_ACCESS_KEY: '1Y4CCLRPLOX8303BLEJ0',
+      S3_SECRET_KEY: '7+fwDJGaClA1RvZpDPv1nQvIL9VmvzmjSwoPc60D',
       // Optional: WhatsApp/Authkey
       AUTHKEY_API_KEY: '6c094eed3cd9b928',
       AUTHKEY_WHATSAPP_NUMBER: 'your-whatsapp-number',
