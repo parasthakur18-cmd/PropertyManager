@@ -62,13 +62,28 @@ export class MinIOStorageService {
   private bucketName: string;
 
   constructor() {
-    this.client = getMinioClient();
-    this.bucketName = process.env.S3_BUCKET || process.env.MINIO_BUCKET_NAME || 'propertymanager';
+    try {
+      this.client = getMinioClient();
+      this.bucketName = process.env.S3_BUCKET || process.env.MINIO_BUCKET_NAME || 'propertymanager';
+      console.log(`[MinIO] Initialized with bucket: ${this.bucketName}`);
+    } catch (error: any) {
+      console.error('[MinIO] Constructor error:', error.message);
+      throw error;
+    }
   }
 
   // Get presigned upload URL
   async getPresignedUploadURL(objectName: string, expirySeconds: number = 900): Promise<string> {
-    return await this.client.presignedPutObject(this.bucketName, objectName, expirySeconds);
+    try {
+      console.log(`[MinIO] Generating presigned URL for: ${objectName} in bucket: ${this.bucketName}`);
+      const url = await this.client.presignedPutObject(this.bucketName, objectName, expirySeconds);
+      console.log(`[MinIO] Presigned URL generated successfully`);
+      return url;
+    } catch (error: any) {
+      console.error('[MinIO] Error generating presigned URL:', error.message);
+      console.error('[MinIO] Error details:', error);
+      throw error;
+    }
   }
 
   // Get presigned download URL

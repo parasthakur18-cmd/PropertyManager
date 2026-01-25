@@ -266,20 +266,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if MinIO is configured (VPS)
       const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
       if (isMinIOConfigured()) {
-        const minioService = new MinIOStorageService();
-        const objectName = minioService.generateObjectName('id-proofs');
-        const uploadURL = await minioService.getPresignedUploadURL(objectName);
-        res.json({ uploadURL, objectName, isMinIO: true });
-        return;
+        try {
+          console.log("[Object Upload] Using MinIO storage");
+          const minioService = new MinIOStorageService();
+          const objectName = minioService.generateObjectName('id-proofs');
+          const uploadURL = await minioService.getPresignedUploadURL(objectName);
+          console.log("[Object Upload] MinIO presigned URL generated successfully");
+          res.json({ uploadURL, objectName, isMinIO: true });
+          return;
+        } catch (minioError: any) {
+          console.error("[Object Upload] MinIO error:", minioError.message);
+          console.error("[Object Upload] MinIO error stack:", minioError.stack);
+          // Fall through to VPS fallback
+        }
+      } else {
+        console.log("[Object Upload] MinIO not configured, checking Replit storage");
       }
 
       // Try Replit object storage
-      const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      try {
+        const objectStorageService = new ObjectStorageService();
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        console.log("[Object Upload] Replit storage URL generated");
+        res.json({ uploadURL });
+        return;
+      } catch (replitError: any) {
+        console.error("[Object Upload] Replit storage error:", replitError.message);
+        // Fall through to VPS fallback
+      }
+
+      // Fallback to VPS direct upload
+      console.log("[Object Upload] Using VPS direct upload fallback");
+      const objectId = randomUUID();
+      res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     } catch (error: any) {
-      // Fallback to VPS direct upload if both fail
-      console.error("[Object Upload] Storage failed, using VPS fallback:", error.message);
+      console.error("[Object Upload] Unexpected error:", error.message);
+      console.error("[Object Upload] Error stack:", error.stack);
+      // Final fallback
       const objectId = randomUUID();
       res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     }
