@@ -338,6 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vps-upload/:objectId", async (req, res) => {
     try {
       const { objectId } = req.params;
+      console.log(`[VPS Upload] Starting upload for objectId: ${objectId}`);
       const chunks: Buffer[] = [];
       
       req.on('data', (chunk: Buffer) => {
@@ -346,8 +347,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       req.on('end', async () => {
         try {
+          if (chunks.length === 0) {
+            console.error("[VPS Upload] No data received");
+            return res.status(400).json({ error: "No file data received" });
+          }
+
           const fileBuffer = Buffer.concat(chunks);
           const contentType = req.headers['content-type'] || 'image/jpeg';
+          console.log(`[VPS Upload] Received ${fileBuffer.length} bytes, content-type: ${contentType}`);
           
           // Save to local filesystem
           const fs = await import('fs/promises');
@@ -356,6 +363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Ensure directory exists
           await fs.mkdir(uploadsDir, { recursive: true });
+          console.log(`[VPS Upload] Upload directory: ${uploadsDir}`);
           
           // Determine file extension from content type
           const ext = contentType.includes('png') ? 'png' : 
@@ -365,23 +373,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Save file
           await fs.writeFile(filepath, fileBuffer);
+          console.log(`[VPS Upload] File saved successfully: ${filepath}`);
           
           // Return the object path
           const objectPath = `/objects/vps-uploads/id-proofs/${filename}`;
+          console.log(`[VPS Upload] Returning objectPath: ${objectPath}`);
           res.json({ objectPath, uploadURL: objectPath });
         } catch (error: any) {
           console.error("[VPS Upload] Error saving file:", error);
-          res.status(500).json({ error: "Failed to save file" });
+          console.error("[VPS Upload] Error stack:", error.stack);
+          res.status(500).json({ error: "Failed to save file", message: error.message });
         }
       });
       
       req.on('error', (error) => {
         console.error("[VPS Upload] Request error:", error);
-        res.status(500).json({ error: "Upload failed" });
+        res.status(500).json({ error: "Upload failed", message: error.message });
       });
     } catch (error: any) {
       console.error("[VPS Upload] Error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      console.error("[VPS Upload] Error stack:", error.stack);
+      res.status(500).json({ error: "Internal server error", message: error.message });
     }
   });
 
