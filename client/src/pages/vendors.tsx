@@ -343,6 +343,14 @@ export default function Vendors() {
           </Select>
           <Button
             onClick={() => {
+              if (!selectedProperty) {
+                toast({
+                  title: "Select a property",
+                  description: "Please select a property first to add a vendor.",
+                  variant: "destructive",
+                });
+                return;
+              }
               setEditingVendor(null);
               vendorForm.reset({
                 propertyId: selectedProperty || 0,
@@ -357,7 +365,6 @@ export default function Vendors() {
               });
               setIsVendorDialogOpen(true);
             }}
-            disabled={!selectedProperty}
             data-testid="button-add-vendor"
           >
             <Plus className="h-4 w-4 mr-2" />
