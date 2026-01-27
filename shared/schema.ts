@@ -1081,6 +1081,31 @@ export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
 });
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
+// Change Approvals table - for change request approvals
+export const changeApprovals = pgTable("change_approvals", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  changeType: varchar("change_type", { length: 50 }).notNull(),
+  bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'cascade' }),
+  roomId: integer("room_id").references(() => rooms.id, { onDelete: 'cascade' }),
+  description: text("description"),
+  oldValue: text("old_value"),
+  newValue: text("new_value"),
+  status: varchar("status", { length: 20 }).notNull().default('pending'),
+  approvedBy: varchar("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ChangeApproval = typeof changeApprovals.$inferSelect;
+export const insertChangeApprovalSchema = createInsertSchema(changeApprovals).omit({
+  id: true,
+  createdAt: true,
+  approvedAt: true,
+});
+export type InsertChangeApproval = z.infer<typeof insertChangeApprovalSchema>;
+
 // Employee Performance Metrics table
 export const employeePerformanceMetrics = pgTable("employee_performance_metrics", {
   id: serial("id").primaryKey(),
