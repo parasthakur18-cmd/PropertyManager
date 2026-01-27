@@ -101,32 +101,32 @@ export function IdVerificationUpload({ onUploadComplete, existingImageUrl }: IdV
         return; // Exit early for VPS upload
       } else {
         // Replit presigned URL upload
-        const putResponse = await fetch(uploadURL, {
-          method: 'PUT',
-          body: file,
-          headers: {
-            'Content-Type': file.type,
-          },
-        });
+      const putResponse = await fetch(uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
 
-        if (!putResponse.ok) {
-          throw new Error('Failed to upload file');
-        }
+      if (!putResponse.ok) {
+        throw new Error('Failed to upload file');
+      }
 
         // Step 3: Set private ACL for ID proof (Replit only)
-        const aclResponse = await fetch('/api/guest-id-proofs', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            idProofUrl: uploadURL,
-          }),
-        });
+      const aclResponse = await fetch('/api/guest-id-proofs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idProofUrl: uploadURL,
+        }),
+      });
 
-        if (!aclResponse.ok) {
-          throw new Error('Failed to secure ID proof');
-        }
+      if (!aclResponse.ok) {
+        throw new Error('Failed to secure ID proof');
+      }
 
-        const { objectPath } = await aclResponse.json();
+      const { objectPath } = await aclResponse.json();
         finalObjectPath = objectPath;
       }
 
