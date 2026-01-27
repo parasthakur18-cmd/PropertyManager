@@ -1062,9 +1062,14 @@ export class DatabaseStorage implements IStorage {
         );
         
         return ordersOnly.map(order => {
-          const room = order.roomId ? roomMap.get(order.roomId) : null;
-          const booking = order.bookingId ? bookingMap.get(order.bookingId) : null;
-          const guest = booking?.guestId ? guestMap.get(booking.guestId) : null;
+          // Handle IDs as either number or string
+          const roomIdNum = order.roomId ? Number(order.roomId) : null;
+          const bookingIdNum = order.bookingId ? Number(order.bookingId) : null;
+          
+          const room = roomIdNum ? roomMap.get(roomIdNum) : null;
+          const booking = bookingIdNum ? bookingMap.get(bookingIdNum) : null;
+          const guestIdNum = booking?.guestId ? Number(booking.guestId) : null;
+          const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
           
           return {
             ...order,
@@ -1072,7 +1077,7 @@ export class DatabaseStorage implements IStorage {
             roomNumber: room?.roomNumber || null,
             customerName: guest?.fullName || null,
             customerPhone: guest?.phone || null,
-            hasCheckedInBooking: order.roomId ? activeBookingRooms.has(order.roomId) : false,
+            hasCheckedInBooking: roomIdNum ? activeBookingRooms.has(roomIdNum) : false,
           };
         });
       } catch (joinError: any) {
@@ -1225,12 +1230,18 @@ export class DatabaseStorage implements IStorage {
         
         const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
         
-        return billsOnly.map(bill => ({
-          ...bill,
-          propertyId: bill.bookingId && bookingMap.has(bill.bookingId) 
-            ? bookingMap.get(bill.bookingId) 
-            : null,
-        }));
+        return billsOnly.map(bill => {
+          // Handle bookingId as either number or string
+          const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
+          const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
+            ? bookingMap.get(bookingIdNum) 
+            : null;
+          
+          return {
+            ...bill,
+            propertyId,
+          };
+        });
       } catch (joinError: any) {
         console.warn("[Storage] getAllBills - Could not fetch propertyId, returning bills without it:", joinError.message);
         return billsOnly.map(bill => ({ ...bill, propertyId: null }));
