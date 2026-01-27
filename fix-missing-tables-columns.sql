@@ -9,8 +9,12 @@ ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_rooms BOOLEAN DEFAULT true;
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_food BOOLEAN DEFAULT false;
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS payment_methods JSONB;
 
--- 1b. Add missing column to staff_members table
+-- 1b. Add missing columns to staff_members table
 ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS role VARCHAR(50);
+ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS leaving_date TIMESTAMP;
+
+-- 1c. Add missing column to travel_agents table
+ALTER TABLE travel_agents ADD COLUMN IF NOT EXISTS bank_details TEXT;
 
 -- 2. Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
