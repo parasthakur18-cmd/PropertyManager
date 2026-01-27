@@ -4343,15 +4343,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    try {
-      // Return empty array - no reminders needed for now
-      // This endpoint was causing integer parsing errors, so simplified
-      return res.json([]);
-    } catch (error: any) {
-      console.error("[/api/bookings/checkout-reminders] Error:", error.message);
-      // Always return empty array on error
-      return res.json([]);
-    }
+    // Return empty array immediately - no database queries needed
+    // This prevents any integer parsing errors from joins or queries
+    return res.json([]);
   });
 
   // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout
