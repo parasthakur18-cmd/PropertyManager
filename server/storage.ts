@@ -1062,8 +1062,10 @@ export class DatabaseStorage implements IStorage {
             status: bookings.status,
           }).from(bookings).limit(10000);
         } catch (bookingsError: any) {
-          console.warn("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
-          console.warn("[Storage] getAllOrders - Bookings error details:", bookingsError.code, bookingsError.detail);
+          console.error("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
+          console.error("[Storage] getAllOrders - Bookings error code:", bookingsError.code);
+          console.error("[Storage] getAllOrders - Bookings error detail:", bookingsError.detail);
+          // Continue without bookings data
         }
         
         try {
@@ -1295,6 +1297,7 @@ export class DatabaseStorage implements IStorage {
       let allBookings: any[] = [];
       try {
         // Try to fetch bookings - if this fails due to invalid data, we'll skip it
+        // Use explicit column selection to avoid reading problematic columns
         allBookings = await db
           .select({
             id: bookings.id,
@@ -1303,8 +1306,10 @@ export class DatabaseStorage implements IStorage {
           .from(bookings)
           .limit(10000); // Add limit to prevent issues with large datasets
       } catch (bookingsError: any) {
-        console.warn("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId:", bookingsError.message);
-        console.warn("[Storage] getAllBills - Bookings error code:", bookingsError.code);
+        console.error("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId");
+        console.error("[Storage] getAllBills - Bookings error:", bookingsError.message);
+        console.error("[Storage] getAllBills - Bookings error code:", bookingsError.code);
+        console.error("[Storage] getAllBills - Bookings error detail:", bookingsError.detail);
         // Return bills without propertyId if bookings query fails
         return billsOnly.map(bill => ({ ...bill, propertyId: null }));
       }

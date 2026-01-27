@@ -4351,7 +4351,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("[/api/bookings/checkout-reminders] Error:", error.message);
       console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
       // Return empty array on error instead of 500
-      return res.json([]);
+      // Use res.status(200) to ensure it's not treated as an error
+      return res.status(200).json([]);
     }
   });
 
@@ -5778,6 +5779,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get all unmerged café orders (for merging at checkout)
   app.get("/api/orders/unmerged-cafe", isAuthenticated, async (req, res) => {
+    // Ensure response is only sent once
+    let responseSent = false;
+    const sendResponse = (data: any) => {
+      if (!responseSent) {
+        responseSent = true;
+        return res.json(data);
+      }
+    };
+    
     try {
       // Get all orders and filter in JavaScript
       // Use getAllOrders to avoid direct DB query issues
@@ -5787,8 +5797,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (storageError: any) {
         console.error("[/api/orders/unmerged-cafe] Storage error:", storageError.message);
         console.error("[/api/orders/unmerged-cafe] Storage error code:", storageError.code);
+        console.error("[/api/orders/unmerged-cafe] Storage error detail:", storageError.detail);
         // Return empty array if storage fails
-        return res.json([]);
+        return sendResponse([]);
       }
       
       // Safely filter for restaurant orders with null bookingId
@@ -5800,16 +5811,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (filterError: any) {
         console.error("[/api/orders/unmerged-cafe] Filter error:", filterError.message);
         // Return empty array if filtering fails
-        return res.json([]);
+        return sendResponse([]);
       }
       
       console.log(`Found ${unmergedOrders.length} unmerged café orders`);
-      return res.json(unmergedOrders);
+      return sendResponse(unmergedOrders);
     } catch (error: any) {
-      console.error("[/api/orders/unmerged-cafe] Error:", error.message);
-      console.error("[/api/orders/unmerged-cafe] Stack:", error.stack);
+      console.error("[/api/orders/unmerged-cafe] Unexpected error:", error.message);
+      console.error("[/api/orders/unmerged-cafe] Error stack:", error.stack);
       // Return empty array on error instead of 500
-      return res.json([]);
+      return sendResponse([]);
     }
   });
 
@@ -6161,6 +6172,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get all pending bills with guest and agent details  
   app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
+    // Ensure response is only sent once
+    let responseSent = false;
+    const sendResponse = (data: any) => {
+      if (!responseSent) {
+        responseSent = true;
+        return res.json(data);
+      }
+    };
+    
     try {
       let propertyId: number | null = null;
       if (req.query.propertyId) {
@@ -6176,8 +6196,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (storageError: any) {
         console.error("[/api/bills/pending] Storage error:", storageError.message);
         console.error("[/api/bills/pending] Storage error code:", storageError.code);
+        console.error("[/api/bills/pending] Storage error detail:", storageError.detail);
         // Return empty array if storage fails
-        return res.json([]);
+        return sendResponse([]);
       }
       
       // Safely filter and map
@@ -6197,15 +6218,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (filterError: any) {
         console.error("[/api/bills/pending] Filter error:", filterError.message);
         // Return empty array if filtering fails
-        return res.json([]);
+        return sendResponse([]);
       }
       
-      return res.json(pendingBills);
+      return sendResponse(pendingBills);
     } catch (error: any) {
-      console.error("[/api/bills/pending] Error:", error.message);
-      console.error("[/api/bills/pending] Stack:", error.stack);
+      console.error("[/api/bills/pending] Unexpected error:", error.message);
+      console.error("[/api/bills/pending] Error stack:", error.stack);
       // Return empty array on error instead of 500 to prevent frontend crashes
-      return res.json([]);
+      return sendResponse([]);
     }
   });
 
