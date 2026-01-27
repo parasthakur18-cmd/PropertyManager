@@ -1038,9 +1038,9 @@ export class DatabaseStorage implements IStorage {
           )`,
         })
         .from(orders)
-        .leftJoin(rooms, eq(orders.roomId, rooms.id))
-        .leftJoin(bookings, eq(orders.bookingId, bookings.id))
-        .leftJoin(guests, eq(bookings.guestId, guests.id))
+        .leftJoin(rooms, sql`${orders.roomId} = ${rooms.id} OR ${orders.roomId} IS NULL`)
+        .leftJoin(bookings, sql`${orders.bookingId} = ${bookings.id} OR ${orders.bookingId} IS NULL`)
+        .leftJoin(guests, sql`${bookings.guestId} = ${guests.id} OR ${bookings.guestId} IS NULL`)
         .orderBy(desc(orders.createdAt));
       
       return ordersWithDetails.map(row => ({
@@ -1189,13 +1189,17 @@ export class DatabaseStorage implements IStorage {
       console.log("[Storage] getAllBills - starting query");
       // Join with bookings to get propertyId for filtering
       // leftJoin handles null bookingId automatically
+      // Use SQL condition to handle null bookingId properly
+      // This prevents "NaN" string errors when bookingId is null
       const result = await db
         .select({
           ...bills,
           propertyId: bookings.propertyId,
         })
         .from(bills)
-        .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+        .leftJoin(bookings, 
+          sql`${bills.bookingId} = ${bookings.id} OR ${bills.bookingId} IS NULL`
+        )
         .orderBy(desc(bills.createdAt));
       console.log("[Storage] getAllBills - success, count:", result.length);
       return result;
