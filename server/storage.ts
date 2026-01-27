@@ -1187,37 +1187,40 @@ export class DatabaseStorage implements IStorage {
   async getAllBills(): Promise<any[]> {
     try {
       console.log("[Storage] getAllBills - starting query");
-      // Join with bookings to get propertyId for filtering
-      // leftJoin handles null bookingId automatically
-      // Use SQL condition to handle null bookingId properly
-      // This prevents "NaN" string errors when bookingId is null
-      const result = await db
-        .select({
-          ...bills,
-          propertyId: bookings.propertyId,
-        })
+      // Get bills without join first to avoid type casting issues
+      // Then enrich with propertyId from bookings separately if needed
+      const billsOnly = await db
+        .select()
         .from(bills)
-        .leftJoin(bookings, 
-          sql`${bills.bookingId} IS NOT NULL AND (${bills.bookingId}::text ~ '^[0-9]+$') AND ${bills.bookingId}::integer = ${bookings.id}`
-        )
         .orderBy(desc(bills.createdAt));
-      console.log("[Storage] getAllBills - success, count:", result.length);
-      return result;
+      
+      // Get propertyId for bills that have valid bookingId
+      // Use a safer approach: get all bookings first, then map
+      try {
+        const allBookings = await db
+          .select({
+            id: bookings.id,
+            propertyId: bookings.propertyId,
+          })
+          .from(bookings);
+        
+        const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
+        
+        return billsOnly.map(bill => ({
+          ...bill,
+          propertyId: bill.bookingId && bookingMap.has(bill.bookingId) 
+            ? bookingMap.get(bill.bookingId) 
+            : null,
+        }));
+      } catch (joinError: any) {
+        console.warn("[Storage] getAllBills - Could not fetch propertyId, returning bills without it:", joinError.message);
+        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+      }
     } catch (error: any) {
       console.error("[Storage] getAllBills - ERROR:", error.message);
       console.error("[Storage] getAllBills - Stack:", error.stack);
-      // If join fails, try without join and return bills without propertyId
-      try {
-        console.log("[Storage] getAllBills - retrying without join");
-        const billsOnly = await db
-          .select()
-          .from(bills)
-          .orderBy(desc(bills.createdAt));
-        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
-      } catch (retryError: any) {
-        console.error("[Storage] getAllBills - retry also failed:", retryError.message);
-        throw error; // Throw original error
-      }
+      // Return empty array on error instead of throwing
+      return [];
     }
   }
 
