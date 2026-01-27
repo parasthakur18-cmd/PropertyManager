@@ -285,10 +285,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Try Replit object storage
       try {
-        const objectStorageService = new ObjectStorageService();
-        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const objectStorageService = new ObjectStorageService();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
         console.log("[Object Upload] Replit storage URL generated");
-        res.json({ uploadURL });
+    res.json({ uploadURL });
         return;
       } catch (replitError: any) {
         console.error("[Object Upload] Replit storage error:", replitError.message);
@@ -7740,7 +7740,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const propertyId = parseInt(req.params.propertyId);
       const { leaseId, month } = req.query;
 
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8710,7 +8711,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const tenant = getTenantContext(currentUser);
       
-      if (!['admin', 'manager', 'super_admin'].includes(currentUser.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8728,7 +8730,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8775,7 +8778,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8889,7 +8893,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8911,7 +8916,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8932,7 +8938,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8954,7 +8961,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8970,7 +8978,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -8987,7 +8996,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -9003,7 +9013,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -9056,7 +9067,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const user = req.user as any;
       
-      if (!['admin', 'manager', 'super_admin'].includes(user.role)) {
+      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
@@ -12304,7 +12316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (logErr?.code === '42P01') {
               console.warn('[ACTIVITY] activity_logs table does not exist - skipping activity log');
             } else {
-              console.error('[ACTIVITY] Error logging super admin login:', logErr);
+            console.error('[ACTIVITY] Error logging super admin login:', logErr);
             }
           }
           
