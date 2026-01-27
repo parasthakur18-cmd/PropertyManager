@@ -1028,6 +1028,10 @@ export class DatabaseStorage implements IStorage {
       let ordersOnly: any[] = [];
       try {
         // Use raw SQL and map snake_case to camelCase
+        if (!pool || typeof pool.query !== 'function') {
+          console.error("[Storage] getAllOrders - pool.query is not available");
+          return [];
+        }
         const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
         ordersOnly = (result.rows || []).map((row: any) => {
           // Map all order columns from snake_case to camelCase
@@ -1055,24 +1059,32 @@ export class DatabaseStorage implements IStorage {
         let allGuests: any[] = [];
         
         try {
-          const roomsResult = await pool.query('SELECT id, status, room_number FROM rooms');
-          allRooms = (roomsResult.rows || []).map((row: any) => ({
+          if (!pool || typeof pool.query !== 'function') {
+            console.warn("[Storage] getAllOrders - pool.query not available for rooms");
+          } else {
+            const roomsResult = await pool.query('SELECT id, status, room_number FROM rooms');
+            allRooms = (roomsResult.rows || []).map((row: any) => ({
             id: row.id,
             status: row.status,
             roomNumber: row.room_number,
           }));
+          }
         } catch (roomsError: any) {
           console.warn("[Storage] getAllOrders - Could not fetch rooms:", roomsError.message);
         }
         
         try {
-          const bookingsResult = await pool.query('SELECT id, guest_id, room_id, status FROM bookings LIMIT 10000');
-          allBookings = (bookingsResult.rows || []).map((row: any) => ({
+          if (!pool || typeof pool.query !== 'function') {
+            console.warn("[Storage] getAllOrders - pool.query not available for bookings");
+          } else {
+            const bookingsResult = await pool.query('SELECT id, guest_id, room_id, status FROM bookings LIMIT 10000');
+            allBookings = (bookingsResult.rows || []).map((row: any) => ({
             id: row.id,
             guestId: row.guest_id,
             roomId: row.room_id,
             status: row.status,
           }));
+          }
         } catch (bookingsError: any) {
           console.error("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
           console.error("[Storage] getAllOrders - Bookings error code:", bookingsError.code);
@@ -1081,12 +1093,16 @@ export class DatabaseStorage implements IStorage {
         }
         
         try {
-          const guestsResult = await pool.query('SELECT id, full_name, phone FROM guests');
-          allGuests = (guestsResult.rows || []).map((row: any) => ({
+          if (!pool || typeof pool.query !== 'function') {
+            console.warn("[Storage] getAllOrders - pool.query not available for guests");
+          } else {
+            const guestsResult = await pool.query('SELECT id, full_name, phone FROM guests');
+            allGuests = (guestsResult.rows || []).map((row: any) => ({
             id: row.id,
             fullName: row.full_name,
             phone: row.phone,
           }));
+          }
         } catch (guestsError: any) {
           console.warn("[Storage] getAllOrders - Could not fetch guests:", guestsError.message);
         }
@@ -1290,6 +1306,10 @@ export class DatabaseStorage implements IStorage {
       try {
         // Use raw SQL query via pool to avoid type casting errors
         // Map snake_case columns to camelCase for compatibility
+        if (!pool || typeof pool.query !== 'function') {
+          console.error("[Storage] getAllBills - pool.query is not available");
+          return [];
+        }
         const result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
         billsOnly = (result.rows || []).map((row: any) => ({
           id: row.id,
@@ -1342,6 +1362,10 @@ export class DatabaseStorage implements IStorage {
         try {
           // Try to fetch bookings - if this fails due to invalid data, we'll skip it
           // Use raw SQL to avoid type casting errors
+          if (!pool || typeof pool.query !== 'function') {
+            console.error("[Storage] getAllBills - pool.query is not available for bookings");
+            return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+          }
           const bookingsResult = await pool.query('SELECT id, property_id FROM bookings LIMIT 10000');
           allBookings = (bookingsResult.rows || []).map((row: any) => ({
             id: row.id,
