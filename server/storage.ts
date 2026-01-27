@@ -1022,34 +1022,57 @@ export class DatabaseStorage implements IStorage {
 
   // Order operations
   async getAllOrders(): Promise<any[]> {
-    const ordersWithDetails = await db
-      .select({
-        order: orders,
-        roomStatus: rooms.status,
-        roomNumber: rooms.roomNumber,
-        guestName: guests.fullName,
-        guestPhone: guests.phone,
-        // Check if there's an active checked-in booking for this room
-        hasCheckedInBooking: sql<boolean>`EXISTS (
-          SELECT 1 FROM ${bookings} 
-          WHERE ${bookings.roomId} = ${rooms.id} 
-          AND ${bookings.status} = 'checked-in'
-        )`,
-      })
-      .from(orders)
-      .leftJoin(rooms, eq(orders.roomId, rooms.id))
-      .leftJoin(bookings, orders.bookingId ? eq(orders.bookingId, bookings.id) : undefined)
-      .leftJoin(guests, bookings.guestId ? eq(bookings.guestId, guests.id) : undefined)
-      .orderBy(desc(orders.createdAt));
-    
-    return ordersWithDetails.map(row => ({
-      ...row.order,
-      roomStatus: row.roomStatus,
-      roomNumber: row.roomNumber,
-      customerName: row.guestName,
-      customerPhone: row.guestPhone,
-      hasCheckedInBooking: row.hasCheckedInBooking,
-    }));
+    try {
+      const ordersWithDetails = await db
+        .select({
+          order: orders,
+          roomStatus: rooms.status,
+          roomNumber: rooms.roomNumber,
+          guestName: guests.fullName,
+          guestPhone: guests.phone,
+          // Check if there's an active checked-in booking for this room
+          hasCheckedInBooking: sql<boolean>`EXISTS (
+            SELECT 1 FROM ${bookings} 
+            WHERE ${bookings.roomId} = ${rooms.id} 
+            AND ${bookings.status} = 'checked-in'
+          )`,
+        })
+        .from(orders)
+        .leftJoin(rooms, eq(orders.roomId, rooms.id))
+        .leftJoin(bookings, eq(orders.bookingId, bookings.id))
+        .leftJoin(guests, eq(bookings.guestId, guests.id))
+        .orderBy(desc(orders.createdAt));
+      
+      return ordersWithDetails.map(row => ({
+        ...row.order,
+        roomStatus: row.roomStatus,
+        roomNumber: row.roomNumber,
+        customerName: row.guestName,
+        customerPhone: row.guestPhone,
+        hasCheckedInBooking: row.hasCheckedInBooking,
+      }));
+    } catch (error: any) {
+      console.error("[Storage] getAllOrders - ERROR:", error.message);
+      // If join fails, try without joins
+      try {
+        console.log("[Storage] getAllOrders - retrying without joins");
+        const ordersOnly = await db
+          .select()
+          .from(orders)
+          .orderBy(desc(orders.createdAt));
+        return ordersOnly.map(order => ({
+          ...order,
+          roomStatus: null,
+          roomNumber: null,
+          customerName: null,
+          customerPhone: null,
+          hasCheckedInBooking: false,
+        }));
+      } catch (retryError: any) {
+        console.error("[Storage] getAllOrders - retry also failed:", retryError.message);
+        throw error; // Throw original error
+      }
+    }
   }
 
   async getOrdersByProperty(propertyId: number): Promise<any[]> {
