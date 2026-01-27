@@ -1673,7 +1673,25 @@ export class DatabaseStorage implements IStorage {
 
   // Message Template operations
   async getAllMessageTemplates(): Promise<MessageTemplate[]> {
-    return await db.select().from(messageTemplates).where(eq(messageTemplates.isActive, true));
+    // Ensure templateType is selected (fallback to category if templateType is null)
+    const templates = await db
+      .select({
+        id: messageTemplates.id,
+        name: messageTemplates.name,
+        content: messageTemplates.content,
+        templateType: messageTemplates.templateType,
+        isActive: messageTemplates.isActive,
+        createdAt: messageTemplates.createdAt,
+        updatedAt: messageTemplates.updatedAt,
+      })
+      .from(messageTemplates)
+      .where(eq(messageTemplates.isActive, true));
+    
+    // Map templateType from category if needed (for backward compatibility)
+    return templates.map(t => ({
+      ...t,
+      templateType: t.templateType || (t as any).category || null,
+    }));
   }
 
   async getMessageTemplate(id: number): Promise<MessageTemplate | undefined> {

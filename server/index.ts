@@ -69,6 +69,23 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Validate database schema at startup (fail fast if schema drift detected)
+  try {
+    const { validateDatabaseSchema } = await import("./db-validator");
+    const validation = await validateDatabaseSchema();
+    if (!validation.valid) {
+      console.error("[STARTUP] ❌ Database schema validation failed. Please run fix-schema-drift.sql");
+      console.error("[STARTUP] Errors:", validation.errors);
+      // Don't exit in production - allow app to start but log the issue
+      if (process.env.NODE_ENV === 'development') {
+        process.exit(1);
+      }
+    }
+  } catch (error: any) {
+    console.warn("[STARTUP] Could not validate database schema:", error.message);
+    // Continue startup even if validation fails
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

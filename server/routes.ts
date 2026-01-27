@@ -4344,14 +4344,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
-      // Return empty array immediately - no database queries needed
-      // This prevents any integer parsing errors from joins or queries
-      return res.json([]);
+      // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
+      const { bookings } = await import("@shared/schema");
+      const reminders = await db
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.status, "checked-in"),
+            sql`${bookings.checkOutDate} = CURRENT_DATE`
+          )
+        );
+      return res.json(reminders);
     } catch (error: any) {
       console.error("[/api/bookings/checkout-reminders] Error:", error.message);
       console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
       // Return empty array on error instead of 500
-      // Use res.status(200) to ensure it's not treated as an error
       return res.status(200).json([]);
     }
   });
@@ -5789,30 +5797,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // Get all orders and filter in JavaScript
-      // Use getAllOrders to avoid direct DB query issues
-      let allOrders: any[] = [];
-      try {
-        allOrders = await storage.getAllOrders();
-      } catch (storageError: any) {
-        console.error("[/api/orders/unmerged-cafe] Storage error:", storageError.message);
-        console.error("[/api/orders/unmerged-cafe] Storage error code:", storageError.code);
-        console.error("[/api/orders/unmerged-cafe] Storage error detail:", storageError.detail);
-        // Return empty array if storage fails
-        return sendResponse([]);
-      }
-      
-      // Safely filter for restaurant orders with null bookingId
-      let unmergedOrders: any[] = [];
-      try {
-        unmergedOrders = allOrders.filter(
-          (order: any) => order && order.orderType === "restaurant" && (order.bookingId === null || order.bookingId === undefined)
+      // Use Drizzle query with proper NULL check (not empty string)
+      // Filter for cafe/restaurant orders with NULL bookingId
+      const unmergedOrders = await db
+        .select()
+        .from(orders)
+        .where(
+          and(
+            or(
+              eq(orders.orderType, "cafe"),
+              eq(orders.orderType, "restaurant")
+            ),
+            isNull(orders.bookingId)
+          )
         );
-      } catch (filterError: any) {
-        console.error("[/api/orders/unmerged-cafe] Filter error:", filterError.message);
-        // Return empty array if filtering fails
-        return sendResponse([]);
-      }
       
       console.log(`Found ${unmergedOrders.length} unmerged café orders`);
       return sendResponse(unmergedOrders);
@@ -6205,10 +6203,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let pendingBills: any[] = [];
       try {
         pendingBills = allBills
-          .filter((bill: any) => bill && bill.paymentStatus === 'pending')
+          .filter((bill: any) => {
+            // Numeric-safe comparison: ensure balanceAmount is a valid number > 0
+            if (!bill || bill.paymentStatus !== 'pending') return false;
+            const balance = Number(bill.balanceAmount) || Number(bill.totalAmount) || 0;
+            return balance > 0;
+          })
           .map((bill: any) => ({
             ...bill,
-            balanceAmount: bill.balanceAmount || bill.totalAmount || "0",
+            balanceAmount: Number(bill.balanceAmount) || Number(bill.totalAmount) || 0,
           }));
         
         // Filter by property if specified
