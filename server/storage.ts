@@ -125,7 +125,7 @@ import {
   type DailyClosing,
   type InsertDailyClosing,
 } from "@shared/schema";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
 import { eventBus, EventTypes } from "./eventBus";
 
@@ -1024,15 +1024,15 @@ export class DatabaseStorage implements IStorage {
   async getAllOrders(): Promise<any[]> {
     try {
       // Get orders without joins to avoid type casting issues
+      // Use raw SQL to avoid Drizzle type casting issues with invalid data
       let ordersOnly: any[] = [];
       try {
-        ordersOnly = await db
-          .select()
-          .from(orders)
-          .orderBy(desc(orders.createdAt));
+        const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+        ordersOnly = result.rows || [];
       } catch (ordersError: any) {
         console.error("[Storage] getAllOrders - Error fetching orders:", ordersError.message);
         console.error("[Storage] getAllOrders - Orders error code:", ordersError.code);
+        console.error("[Storage] getAllOrders - Orders error detail:", ordersError.detail);
         // Return empty array if orders query fails
         return [];
       }
@@ -1045,22 +1045,24 @@ export class DatabaseStorage implements IStorage {
         let allGuests: any[] = [];
         
         try {
-          allRooms = await db.select({
-            id: rooms.id,
-            status: rooms.status,
-            roomNumber: rooms.roomNumber,
-          }).from(rooms);
+          const roomsResult = await pool.query('SELECT id, status, room_number FROM rooms');
+          allRooms = (roomsResult.rows || []).map((row: any) => ({
+            id: row.id,
+            status: row.status,
+            roomNumber: row.room_number,
+          }));
         } catch (roomsError: any) {
           console.warn("[Storage] getAllOrders - Could not fetch rooms:", roomsError.message);
         }
         
         try {
-          allBookings = await db.select({
-            id: bookings.id,
-            guestId: bookings.guestId,
-            roomId: bookings.roomId,
-            status: bookings.status,
-          }).from(bookings).limit(10000);
+          const bookingsResult = await pool.query('SELECT id, guest_id, room_id, status FROM bookings LIMIT 10000');
+          allBookings = (bookingsResult.rows || []).map((row: any) => ({
+            id: row.id,
+            guestId: row.guest_id,
+            roomId: row.room_id,
+            status: row.status,
+          }));
         } catch (bookingsError: any) {
           console.error("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
           console.error("[Storage] getAllOrders - Bookings error code:", bookingsError.code);
@@ -1069,11 +1071,12 @@ export class DatabaseStorage implements IStorage {
         }
         
         try {
-          allGuests = await db.select({
-            id: guests.id,
-            fullName: guests.fullName,
-            phone: guests.phone,
-          }).from(guests);
+          const guestsResult = await pool.query('SELECT id, full_name, phone FROM guests');
+          allGuests = (guestsResult.rows || []).map((row: any) => ({
+            id: row.id,
+            fullName: row.full_name,
+            phone: row.phone,
+          }));
         } catch (guestsError: any) {
           console.warn("[Storage] getAllOrders - Could not fetch guests:", guestsError.message);
         }
@@ -1272,16 +1275,16 @@ export class DatabaseStorage implements IStorage {
     try {
       console.log("[Storage] getAllBills - starting query");
       // Get bills without join first to avoid type casting issues
-      // Then enrich with propertyId from bookings separately if needed
+      // Use raw SQL to avoid Drizzle type casting issues with invalid data
       let billsOnly: any[] = [];
       try {
-        billsOnly = await db
-          .select()
-          .from(bills)
-          .orderBy(desc(bills.createdAt));
+        // Use raw SQL query via pool to avoid type casting errors
+        const result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
+        billsOnly = result.rows || [];
       } catch (billsError: any) {
         console.error("[Storage] getAllBills - Error fetching bills:", billsError.message);
         console.error("[Storage] getAllBills - Bills error code:", billsError.code);
+        console.error("[Storage] getAllBills - Bills error detail:", billsError.detail);
         // Return empty array if bills query fails
         return [];
       }
@@ -1295,16 +1298,14 @@ export class DatabaseStorage implements IStorage {
       // Use a safer approach: get all bookings first, then map
       // If bookings query fails, just return bills without propertyId
       let allBookings: any[] = [];
-      try {
-        // Try to fetch bookings - if this fails due to invalid data, we'll skip it
-        // Use explicit column selection to avoid reading problematic columns
-        allBookings = await db
-          .select({
-            id: bookings.id,
-            propertyId: bookings.propertyId,
-          })
-          .from(bookings)
-          .limit(10000); // Add limit to prevent issues with large datasets
+        try {
+          // Try to fetch bookings - if this fails due to invalid data, we'll skip it
+          // Use raw SQL to avoid type casting errors
+          const bookingsResult = await pool.query('SELECT id, property_id FROM bookings LIMIT 10000');
+          allBookings = (bookingsResult.rows || []).map((row: any) => ({
+            id: row.id,
+            propertyId: row.property_id,
+          }));
       } catch (bookingsError: any) {
         console.error("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId");
         console.error("[Storage] getAllBills - Bookings error:", bookingsError.message);
