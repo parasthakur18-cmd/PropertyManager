@@ -126,7 +126,7 @@ import {
   type InsertDailyClosing,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
 import { eventBus, EventTypes } from "./eventBus";
 
 export interface IStorage {
@@ -1165,6 +1165,7 @@ export class DatabaseStorage implements IStorage {
     try {
       console.log("[Storage] getAllBills - starting query");
       // Join with bookings to get propertyId for filtering
+      // leftJoin handles null bookingId automatically
       const result = await db
         .select({
           ...bills,
@@ -1178,7 +1179,18 @@ export class DatabaseStorage implements IStorage {
     } catch (error: any) {
       console.error("[Storage] getAllBills - ERROR:", error.message);
       console.error("[Storage] getAllBills - Stack:", error.stack);
-      throw error;
+      // If join fails, try without join and return bills without propertyId
+      try {
+        console.log("[Storage] getAllBills - retrying without join");
+        const billsOnly = await db
+          .select()
+          .from(bills)
+          .orderBy(desc(bills.createdAt));
+        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+      } catch (retryError: any) {
+        console.error("[Storage] getAllBills - retry also failed:", retryError.message);
+        throw error; // Throw original error
+      }
     }
   }
 
