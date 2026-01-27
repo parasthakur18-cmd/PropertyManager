@@ -16,6 +16,19 @@ ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS leaving_date TIMESTAMP;
 -- 1c. Add missing column to travel_agents table
 ALTER TABLE travel_agents ADD COLUMN IF NOT EXISTS bank_details TEXT;
 
+-- 1d. Add missing columns to existing tables (if tables already exist)
+ALTER TABLE salary_advances ADD COLUMN IF NOT EXISTS advance_type VARCHAR(20) DEFAULT 'regular';
+ALTER TABLE change_approvals ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS lease_duration_years INTEGER;
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS base_yearly_amount NUMERIC(10, 2);
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS yearly_increment_type VARCHAR(20);
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS yearly_increment_value NUMERIC(10, 2);
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS current_year_amount NUMERIC(10, 2);
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS is_overridden BOOLEAN DEFAULT false;
+ALTER TABLE property_leases ADD COLUMN IF NOT EXISTS carry_forward_amount NUMERIC(10, 2) DEFAULT 0;
+ALTER TABLE message_templates ADD COLUMN IF NOT EXISTS template_type VARCHAR(50);
+ALTER TABLE user_subscriptions ADD COLUMN IF NOT EXISTS next_billing_at TIMESTAMP;
+
 -- 2. Create tasks table
 CREATE TABLE IF NOT EXISTS tasks (
   id SERIAL PRIMARY KEY,
@@ -312,5 +325,69 @@ CREATE TABLE IF NOT EXISTS task_notification_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_task_notification_logs_user_id ON task_notification_logs(user_id);
+
+-- 17. Create subscription_plans table (if not exists)
+CREATE TABLE IF NOT EXISTS subscription_plans (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  slug VARCHAR(50) NOT NULL UNIQUE,
+  description TEXT,
+  monthly_price NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  yearly_price NUMERIC(10, 2),
+  max_properties INTEGER NOT NULL DEFAULT 1,
+  max_rooms INTEGER NOT NULL DEFAULT 10,
+  max_staff INTEGER DEFAULT 2,
+  features JSONB DEFAULT '[]',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  display_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_slug ON subscription_plans(slug);
+CREATE INDEX IF NOT EXISTS idx_subscription_plans_is_active ON subscription_plans(is_active);
+
+-- 18. Create user_subscriptions table (if not exists)
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_id INTEGER NOT NULL REFERENCES subscription_plans(id),
+  status VARCHAR(30) NOT NULL DEFAULT 'active',
+  billing_cycle VARCHAR(20) NOT NULL DEFAULT 'monthly',
+  start_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  end_date TIMESTAMP,
+  trial_ends_at TIMESTAMP,
+  cancelled_at TIMESTAMP,
+  razorpay_subscription_id VARCHAR(100),
+  razorpay_customer_id VARCHAR(100),
+  last_payment_at TIMESTAMP,
+  next_billing_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_plan_id ON user_subscriptions(plan_id);
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status);
+
+-- 19. Create subscription_payments table (if not exists)
+CREATE TABLE IF NOT EXISTS subscription_payments (
+  id SERIAL PRIMARY KEY,
+  subscription_id INTEGER NOT NULL REFERENCES user_subscriptions(id),
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount NUMERIC(10, 2) NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'INR',
+  status VARCHAR(30) NOT NULL DEFAULT 'pending',
+  razorpay_payment_id VARCHAR(100),
+  razorpay_order_id VARCHAR(100),
+  invoice_number VARCHAR(50),
+  invoice_url TEXT,
+  paid_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_subscription_id ON subscription_payments(subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_user_id ON subscription_payments(user_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_status ON subscription_payments(status);
 
 SELECT '✅ All missing tables and columns created successfully!' as status;

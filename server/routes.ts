@@ -6145,7 +6145,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all pending bills with guest and agent details  
   app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
     try {
-      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      let propertyId: number | null = null;
+      if (req.query.propertyId) {
+        const parsed = parseInt(req.query.propertyId as string, 10);
+        propertyId = isNaN(parsed) ? null : parsed;
+      }
       
       // Use getAllBills and filter for pending status
       const allBills = await storage.getAllBills();
@@ -6157,7 +6161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }));
       
       // Filter by property if specified
-      if (propertyId) {
+      if (propertyId !== null) {
         pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
       }
       
