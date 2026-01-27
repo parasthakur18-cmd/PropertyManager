@@ -4343,16 +4343,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    try {
-      // Return empty array immediately - no database queries needed
-      // This prevents any integer parsing errors from joins or queries
-      return res.json([]);
-    } catch (error: any) {
-      console.error("[/api/bookings/checkout-reminders] Error:", error.message);
-      console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
-      // Return empty array on error instead of 500
-      return res.json([]);
-    }
+    // Return empty array immediately - no database queries needed
+    // This prevents any integer parsing errors from joins or queries
+    // Use res.json directly without try-catch since there's no async operation
+    return res.json([]);
   });
 
   // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout

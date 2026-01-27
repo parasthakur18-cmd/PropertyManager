@@ -1024,10 +1024,18 @@ export class DatabaseStorage implements IStorage {
   async getAllOrders(): Promise<any[]> {
     try {
       // Get orders without joins to avoid type casting issues
-      const ordersOnly = await db
-        .select()
-        .from(orders)
-        .orderBy(desc(orders.createdAt));
+      let ordersOnly: any[] = [];
+      try {
+        ordersOnly = await db
+          .select()
+          .from(orders)
+          .orderBy(desc(orders.createdAt));
+      } catch (ordersError: any) {
+        console.error("[Storage] getAllOrders - Error fetching orders:", ordersError.message);
+        console.error("[Storage] getAllOrders - Orders error code:", ordersError.code);
+        // Return empty array if orders query fails
+        return [];
+      }
       
       // Get related data separately and map together
       try {
@@ -1068,35 +1076,67 @@ export class DatabaseStorage implements IStorage {
           console.warn("[Storage] getAllOrders - Could not fetch guests:", guestsError.message);
         }
         
-        const roomMap = new Map(allRooms.map(r => [r.id, r]));
-        const bookingMap = new Map(allBookings.map(b => [b.id, b]));
-        const guestMap = new Map(allGuests.map(g => [g.id, g]));
+        // Safely create maps - handle any errors
+        let roomMap: Map<number, any> = new Map();
+        let bookingMap: Map<number, any> = new Map();
+        let guestMap: Map<number, any> = new Map();
+        let activeBookingRooms: Set<number> = new Set();
         
-        // Check for active checked-in bookings by room
-        const activeBookingRooms = new Set(
-          allBookings
-            .filter(b => b.status === 'checked-in' && b.roomId)
-            .map(b => b.roomId!)
-        );
+        try {
+          roomMap = new Map(allRooms.map(r => [r.id, r]));
+        } catch (e) {
+          console.warn("[Storage] getAllOrders - Error creating room map");
+        }
+        
+        try {
+          bookingMap = new Map(allBookings.map(b => [b.id, b]));
+          // Check for active checked-in bookings by room
+          activeBookingRooms = new Set(
+            allBookings
+              .filter(b => b.status === 'checked-in' && b.roomId)
+              .map(b => b.roomId!)
+              .filter(id => id != null)
+          );
+        } catch (e) {
+          console.warn("[Storage] getAllOrders - Error creating booking map");
+        }
+        
+        try {
+          guestMap = new Map(allGuests.map(g => [g.id, g]));
+        } catch (e) {
+          console.warn("[Storage] getAllOrders - Error creating guest map");
+        }
         
         return ordersOnly.map(order => {
-          // Handle IDs as either number or string
-          const roomIdNum = order.roomId ? Number(order.roomId) : null;
-          const bookingIdNum = order.bookingId ? Number(order.bookingId) : null;
-          
-          const room = roomIdNum ? roomMap.get(roomIdNum) : null;
-          const booking = bookingIdNum ? bookingMap.get(bookingIdNum) : null;
-          const guestIdNum = booking?.guestId ? Number(booking.guestId) : null;
-          const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
-          
-          return {
-            ...order,
-            roomStatus: room?.status || null,
-            roomNumber: room?.roomNumber || null,
-            customerName: guest?.fullName || null,
-            customerPhone: guest?.phone || null,
-            hasCheckedInBooking: roomIdNum ? activeBookingRooms.has(roomIdNum) : false,
-          };
+          try {
+            // Handle IDs as either number or string
+            const roomIdNum = order.roomId ? Number(order.roomId) : null;
+            const bookingIdNum = order.bookingId ? Number(order.bookingId) : null;
+            
+            const room = roomIdNum ? roomMap.get(roomIdNum) : null;
+            const booking = bookingIdNum ? bookingMap.get(bookingIdNum) : null;
+            const guestIdNum = booking?.guestId ? Number(booking.guestId) : null;
+            const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
+            
+            return {
+              ...order,
+              roomStatus: room?.status || null,
+              roomNumber: room?.roomNumber || null,
+              customerName: guest?.fullName || null,
+              customerPhone: guest?.phone || null,
+              hasCheckedInBooking: roomIdNum ? activeBookingRooms.has(roomIdNum) : false,
+            };
+          } catch (mapError: any) {
+            // If mapping fails for a single order, return it with null values
+            return {
+              ...order,
+              roomStatus: null,
+              roomNumber: null,
+              customerName: null,
+              customerPhone: null,
+              hasCheckedInBooking: false,
+            };
+          }
         });
       } catch (joinError: any) {
         console.warn("[Storage] getAllOrders - Could not fetch related data, returning orders without it:", joinError.message);
@@ -1231,10 +1271,18 @@ export class DatabaseStorage implements IStorage {
       console.log("[Storage] getAllBills - starting query");
       // Get bills without join first to avoid type casting issues
       // Then enrich with propertyId from bookings separately if needed
-      const billsOnly = await db
-        .select()
-        .from(bills)
-        .orderBy(desc(bills.createdAt));
+      let billsOnly: any[] = [];
+      try {
+        billsOnly = await db
+          .select()
+          .from(bills)
+          .orderBy(desc(bills.createdAt));
+      } catch (billsError: any) {
+        console.error("[Storage] getAllBills - Error fetching bills:", billsError.message);
+        console.error("[Storage] getAllBills - Bills error code:", billsError.code);
+        // Return empty array if bills query fails
+        return [];
+      }
       
       // Get propertyId for bills that have valid bookingId
       // Use a safer approach: get all bookings first, then map
@@ -1257,20 +1305,31 @@ export class DatabaseStorage implements IStorage {
           return billsOnly.map(bill => ({ ...bill, propertyId: null }));
         }
         
-        const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
-        
-        return billsOnly.map(bill => {
-          // Handle bookingId as either number or string
-          const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
-          const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
-            ? bookingMap.get(bookingIdNum) 
-            : null;
+        // Safely create booking map - handle any errors in mapping
+        try {
+          const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
           
-          return {
-            ...bill,
-            propertyId,
-          };
-        });
+          return billsOnly.map(bill => {
+            try {
+              // Handle bookingId as either number or string
+              const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
+              const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
+                ? bookingMap.get(bookingIdNum) 
+                : null;
+              
+              return {
+                ...bill,
+                propertyId,
+              };
+            } catch (mapError: any) {
+              // If mapping fails for a single bill, return it without propertyId
+              return { ...bill, propertyId: null };
+            }
+          });
+        } catch (mapError: any) {
+          console.warn("[Storage] getAllBills - Error creating booking map, returning bills without propertyId:", mapError.message);
+          return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+        }
       } catch (joinError: any) {
         console.warn("[Storage] getAllBills - Could not fetch propertyId, returning bills without it:", joinError.message);
         return billsOnly.map(bill => ({ ...bill, propertyId: null }));
