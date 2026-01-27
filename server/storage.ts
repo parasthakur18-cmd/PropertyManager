@@ -1023,43 +1023,60 @@ export class DatabaseStorage implements IStorage {
   // Order operations
   async getAllOrders(): Promise<any[]> {
     try {
-      const ordersWithDetails = await db
-        .select({
-          order: orders,
-          roomStatus: rooms.status,
-          roomNumber: rooms.roomNumber,
-          guestName: guests.fullName,
-          guestPhone: guests.phone,
-          // Check if there's an active checked-in booking for this room
-          hasCheckedInBooking: sql<boolean>`EXISTS (
-            SELECT 1 FROM ${bookings} 
-            WHERE ${bookings.roomId} = ${rooms.id} 
-            AND ${bookings.status} = 'checked-in'
-          )`,
-        })
+      // Get orders without joins to avoid type casting issues
+      const ordersOnly = await db
+        .select()
         .from(orders)
-        .leftJoin(rooms, sql`${orders.roomId} IS NOT NULL AND (${orders.roomId}::text ~ '^[0-9]+$') AND ${orders.roomId}::integer = ${rooms.id}`)
-        .leftJoin(bookings, sql`${orders.bookingId} IS NOT NULL AND (${orders.bookingId}::text ~ '^[0-9]+$') AND ${orders.bookingId}::integer = ${bookings.id}`)
-        .leftJoin(guests, sql`${bookings.guestId} IS NOT NULL AND (${bookings.guestId}::text ~ '^[0-9]+$') AND ${bookings.guestId}::integer = ${guests.id}`)
         .orderBy(desc(orders.createdAt));
       
-      return ordersWithDetails.map(row => ({
-        ...row.order,
-        roomStatus: row.roomStatus,
-        roomNumber: row.roomNumber,
-        customerName: row.guestName,
-        customerPhone: row.guestPhone,
-        hasCheckedInBooking: row.hasCheckedInBooking,
-      }));
-    } catch (error: any) {
-      console.error("[Storage] getAllOrders - ERROR:", error.message);
-      // If join fails, try without joins
+      // Get related data separately and map together
       try {
-        console.log("[Storage] getAllOrders - retrying without joins");
-        const ordersOnly = await db
-          .select()
-          .from(orders)
-          .orderBy(desc(orders.createdAt));
+        const allRooms = await db.select({
+          id: rooms.id,
+          status: rooms.status,
+          roomNumber: rooms.roomNumber,
+        }).from(rooms);
+        
+        const allBookings = await db.select({
+          id: bookings.id,
+          guestId: bookings.guestId,
+          roomId: bookings.roomId,
+          status: bookings.status,
+        }).from(bookings);
+        
+        const allGuests = await db.select({
+          id: guests.id,
+          fullName: guests.fullName,
+          phone: guests.phone,
+        }).from(guests);
+        
+        const roomMap = new Map(allRooms.map(r => [r.id, r]));
+        const bookingMap = new Map(allBookings.map(b => [b.id, b]));
+        const guestMap = new Map(allGuests.map(g => [g.id, g]));
+        
+        // Check for active checked-in bookings by room
+        const activeBookingRooms = new Set(
+          allBookings
+            .filter(b => b.status === 'checked-in' && b.roomId)
+            .map(b => b.roomId!)
+        );
+        
+        return ordersOnly.map(order => {
+          const room = order.roomId ? roomMap.get(order.roomId) : null;
+          const booking = order.bookingId ? bookingMap.get(order.bookingId) : null;
+          const guest = booking?.guestId ? guestMap.get(booking.guestId) : null;
+          
+          return {
+            ...order,
+            roomStatus: room?.status || null,
+            roomNumber: room?.roomNumber || null,
+            customerName: guest?.fullName || null,
+            customerPhone: guest?.phone || null,
+            hasCheckedInBooking: order.roomId ? activeBookingRooms.has(order.roomId) : false,
+          };
+        });
+      } catch (joinError: any) {
+        console.warn("[Storage] getAllOrders - Could not fetch related data, returning orders without it:", joinError.message);
         return ordersOnly.map(order => ({
           ...order,
           roomStatus: null,
@@ -1068,10 +1085,12 @@ export class DatabaseStorage implements IStorage {
           customerPhone: null,
           hasCheckedInBooking: false,
         }));
-      } catch (retryError: any) {
-        console.error("[Storage] getAllOrders - retry also failed:", retryError.message);
-        throw error; // Throw original error
       }
+    } catch (error: any) {
+      console.error("[Storage] getAllOrders - ERROR:", error.message);
+      console.error("[Storage] getAllOrders - Stack:", error.stack);
+      // Return empty array on error instead of throwing
+      return [];
     }
   }
 
