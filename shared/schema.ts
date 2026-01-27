@@ -653,6 +653,11 @@ export const expenseCategories = pgTable("expense_categories", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  keywords: text("keywords"), // Comma-separated keywords
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type ExpenseCategory = typeof expenseCategories.$inferSelect;
@@ -1325,6 +1330,15 @@ export const userSessions = pgTable("user_sessions", {
 export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
   id: true,
   createdAt: true,
+});
+
+// Express-session table (created by connect-pg-simple)
+// This table is managed by express-session middleware, not by Drizzle
+// We include it here to prevent Drizzle from trying to delete it
+export const sessions = pgTable("sessions", {
+  sid: varchar("sid", { length: 255 }).primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire").notNull(),
 });
 
 export type UserSession = typeof userSessions.$inferSelect;

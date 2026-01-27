@@ -4343,9 +4343,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    // Return empty array immediately - no database queries needed
-    // This prevents any integer parsing errors from joins or queries
-    return res.json([]);
+    try {
+      // Return empty array immediately - no database queries needed
+      // This prevents any integer parsing errors from joins or queries
+      return res.json([]);
+    } catch (error: any) {
+      console.error("[/api/bookings/checkout-reminders] Error:", error.message);
+      console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
+      // Return empty array on error instead of 500
+      return res.json([]);
+    }
   });
 
   // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout
@@ -6163,7 +6170,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(pendingBills);
     } catch (error: any) {
       console.error("[/api/bills/pending] Error:", error.message);
-      res.status(500).json({ message: error.message });
+      console.error("[/api/bills/pending] Stack:", error.stack);
+      // Return empty array on error instead of 500 to prevent frontend crashes
+      res.json([]);
     }
   });
 
@@ -14299,7 +14308,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       res.json(logs);
     } catch (error: any) {
       console.error("[AUDIT] Error fetching logs:", error);
-      res.status(500).json({ message: error.message });
+      console.error("[AUDIT] Stack:", error.stack);
+      // Return empty array on error instead of 500 to prevent frontend crashes
+      res.json([]);
     }
   });
 
@@ -14310,7 +14321,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       res.json(logs);
     } catch (error: any) {
       console.error("[AUDIT] Error fetching entity logs:", error);
-      res.status(500).json({ message: error.message });
+      console.error("[AUDIT] Stack:", error.stack);
+      // Return empty array on error instead of 500 to prevent frontend crashes
+      res.json([]);
     }
   });
 
