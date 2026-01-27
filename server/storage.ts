@@ -1284,26 +1284,30 @@ export class DatabaseStorage implements IStorage {
         return [];
       }
       
+      // Skip fetching bookings if bills table is empty (optimization)
+      if (billsOnly.length === 0) {
+        return [];
+      }
+      
       // Get propertyId for bills that have valid bookingId
       // Use a safer approach: get all bookings first, then map
+      // If bookings query fails, just return bills without propertyId
+      let allBookings: any[] = [];
       try {
-        // Wrap in try-catch to handle any database errors
-        let allBookings: any[] = [];
-        try {
-          // Try to fetch bookings - if this fails due to invalid data, we'll skip it
-          allBookings = await db
-            .select({
-              id: bookings.id,
-              propertyId: bookings.propertyId,
-            })
-            .from(bookings)
-            .limit(10000); // Add limit to prevent issues with large datasets
-        } catch (bookingsError: any) {
-          console.warn("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId:", bookingsError.message);
-          console.warn("[Storage] getAllBills - Bookings error details:", bookingsError.code, bookingsError.detail);
-          // Return bills without propertyId if bookings query fails
-          return billsOnly.map(bill => ({ ...bill, propertyId: null }));
-        }
+        // Try to fetch bookings - if this fails due to invalid data, we'll skip it
+        allBookings = await db
+          .select({
+            id: bookings.id,
+            propertyId: bookings.propertyId,
+          })
+          .from(bookings)
+          .limit(10000); // Add limit to prevent issues with large datasets
+      } catch (bookingsError: any) {
+        console.warn("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId:", bookingsError.message);
+        console.warn("[Storage] getAllBills - Bookings error code:", bookingsError.code);
+        // Return bills without propertyId if bookings query fails
+        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+      }
         
         // Safely create booking map - handle any errors in mapping
         try {
