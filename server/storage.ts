@@ -1052,9 +1052,10 @@ export class DatabaseStorage implements IStorage {
             guestId: bookings.guestId,
             roomId: bookings.roomId,
             status: bookings.status,
-          }).from(bookings);
+          }).from(bookings).limit(10000);
         } catch (bookingsError: any) {
           console.warn("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
+          console.warn("[Storage] getAllOrders - Bookings error details:", bookingsError.code, bookingsError.detail);
         }
         
         try {
@@ -1241,14 +1242,18 @@ export class DatabaseStorage implements IStorage {
         // Wrap in try-catch to handle any database errors
         let allBookings: any[] = [];
         try {
+          // Try to fetch bookings - if this fails due to invalid data, we'll skip it
           allBookings = await db
             .select({
               id: bookings.id,
               propertyId: bookings.propertyId,
             })
-            .from(bookings);
+            .from(bookings)
+            .limit(10000); // Add limit to prevent issues with large datasets
         } catch (bookingsError: any) {
           console.warn("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId:", bookingsError.message);
+          console.warn("[Storage] getAllBills - Bookings error details:", bookingsError.code, bookingsError.detail);
+          // Return bills without propertyId if bookings query fails
           return billsOnly.map(bill => ({ ...bill, propertyId: null }));
         }
         
