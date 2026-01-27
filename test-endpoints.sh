@@ -3,23 +3,48 @@
 echo "=== Testing the three previously failing endpoints ==="
 echo ""
 
-# First, login to get session cookie
-echo "[1/4] Logging in..."
-LOGIN_RESPONSE=$(curl -s -X POST http://127.0.0.1:3000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"your-password"}' \
-  -c /tmp/cookies.txt)
-
-# Extract session cookie
-SESSION_COOKIE=$(grep -o 'connect.sid=[^;]*' /tmp/cookies.txt 2>/dev/null || echo "")
-
-if [ -z "$SESSION_COOKIE" ]; then
-  echo "⚠️  Could not get session cookie. Please login manually and update the script with valid credentials."
-  echo "   Or test endpoints directly with your session cookie."
-  exit 1
+# Check if session cookie is provided as argument
+if [ -n "$1" ]; then
+  SESSION_COOKIE="$1"
+  echo "✅ Using provided session cookie"
+else
+  # Try to login with environment variables or default credentials
+  EMAIL="${ADMIN_EMAIL:-admin@example.com}"
+  PASSWORD="${ADMIN_PASSWORD:-}"
+  
+  if [ -z "$PASSWORD" ]; then
+    echo "⚠️  No session cookie provided and no ADMIN_PASSWORD set."
+    echo ""
+    echo "Usage options:"
+    echo "  1. Provide session cookie: ./test-endpoints.sh 'connect.sid=YOUR_SESSION_ID'"
+    echo "  2. Set credentials: ADMIN_EMAIL=your@email.com ADMIN_PASSWORD=yourpass ./test-endpoints.sh"
+    echo "  3. Test manually through your application UI"
+    echo ""
+    echo "To get your session cookie:"
+    echo "  - Open browser dev tools (F12)"
+    echo "  - Go to Application/Storage > Cookies"
+    echo "  - Copy the 'connect.sid' value"
+    echo ""
+    exit 1
+  fi
+  
+  echo "[1/4] Logging in with email: $EMAIL..."
+  LOGIN_RESPONSE=$(curl -s -X POST http://127.0.0.1:3000/api/auth/login \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" \
+    -c /tmp/cookies.txt)
+  
+  # Extract session cookie
+  SESSION_COOKIE=$(grep -o 'connect.sid=[^;]*' /tmp/cookies.txt 2>/dev/null || echo "")
+  
+  if [ -z "$SESSION_COOKIE" ]; then
+    echo "❌ Login failed. Please check credentials or provide session cookie manually."
+    exit 1
+  fi
+  
+  echo "✅ Login successful"
 fi
 
-echo "✅ Login successful"
 echo ""
 
 # Test endpoint 1
@@ -72,5 +97,20 @@ echo ""
 
 # Cleanup
 rm -f /tmp/cookies.txt
+
+echo ""
+echo "=== Summary ==="
+if [ "$BILLS_HTTP_CODE" = "200" ] && [ "$CHECKOUT_HTTP_CODE" = "200" ] && [ "$ORDERS_HTTP_CODE" = "200" ]; then
+  echo "✅ All three endpoints returned 200 OK!"
+  echo "   The fixes are working correctly."
+else
+  echo "⚠️  Some endpoints may still have issues:"
+  [ "$BILLS_HTTP_CODE" != "200" ] && echo "   - /api/bills/pending returned $BILLS_HTTP_CODE"
+  [ "$CHECKOUT_HTTP_CODE" != "200" ] && echo "   - /api/bookings/checkout-reminders returned $CHECKOUT_HTTP_CODE"
+  [ "$ORDERS_HTTP_CODE" != "200" ] && echo "   - /api/orders/unmerged-cafe returned $ORDERS_HTTP_CODE"
+  echo ""
+  echo "Check PM2 logs for details:"
+  echo "   pm2 logs propertymanager --err --lines 50"
+fi
 
 echo "=== Test Complete ==="
