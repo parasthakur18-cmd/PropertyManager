@@ -5,9 +5,19 @@
 ALTER TABLE message_templates
 ADD COLUMN IF NOT EXISTS template_type VARCHAR(50);
 
-UPDATE message_templates
-SET template_type = category
-WHERE template_type IS NULL;
+-- Only update if category column exists (for backward compatibility)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'message_templates' 
+    AND column_name = 'category'
+  ) THEN
+    UPDATE message_templates
+    SET template_type = category
+    WHERE template_type IS NULL;
+  END IF;
+END $$;
 
 -- 2. Fix bills numeric expectations (only if columns are numeric/decimal)
 -- Check first: SELECT data_type FROM information_schema.columns WHERE table_name = 'bills' AND column_name IN ('subtotal', 'total_amount', 'balance_amount');
