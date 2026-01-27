@@ -115,4 +115,23 @@ CREATE TABLE IF NOT EXISTS feature_settings (
 
 CREATE INDEX IF NOT EXISTS idx_feature_settings_property_id ON feature_settings(property_id);
 
+-- 6. Create staff_invitations table (invite staff users to a property)
+CREATE TABLE IF NOT EXISTS staff_invitations (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  role VARCHAR(50) NOT NULL DEFAULT 'staff',
+  invited_by VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  invite_token VARCHAR(100) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  expires_at TIMESTAMP NOT NULL,
+  accepted_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_staff_invitations_email ON staff_invitations(email);
+CREATE INDEX IF NOT EXISTS idx_staff_invitations_property_id ON staff_invitations(property_id);
+CREATE INDEX IF NOT EXISTS idx_staff_invitations_status ON staff_invitations(status);
+CREATE INDEX IF NOT EXISTS idx_staff_invitations_invite_token ON staff_invitations(invite_token);
+
 SELECT '✅ All missing tables and columns created successfully!' as status;
