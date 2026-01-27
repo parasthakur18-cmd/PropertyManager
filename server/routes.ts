@@ -4352,12 +4352,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .where(
           and(
             eq(bookings.status, "checked-in"),
-            sql`${bookings.checkOutDate} = CURRENT_DATE`
+            sql`${bookings.checkOutDate}::date = CURRENT_DATE`
           )
         );
       return res.json(reminders);
     } catch (error: any) {
       console.error("[/api/bookings/checkout-reminders] Error:", error.message);
+      console.error("[/api/bookings/checkout-reminders] Error code:", error.code);
+      console.error("[/api/bookings/checkout-reminders] Error detail:", error.detail);
       console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
       // Return empty array on error instead of 500
       return res.status(200).json([]);
@@ -5815,8 +5817,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Found ${unmergedOrders.length} unmerged café orders`);
       return sendResponse(unmergedOrders);
     } catch (error: any) {
-      console.error("[/api/orders/unmerged-cafe] Unexpected error:", error.message);
-      console.error("[/api/orders/unmerged-cafe] Error stack:", error.stack);
+      console.error("[/api/orders/unmerged-cafe] Error:", error.message);
+      console.error("[/api/orders/unmerged-cafe] Error code:", error.code);
+      console.error("[/api/orders/unmerged-cafe] Error detail:", error.detail);
+      console.error("[/api/orders/unmerged-cafe] Stack:", error.stack);
       // Return empty array on error instead of 500
       return sendResponse([]);
     }
