@@ -1038,9 +1038,9 @@ export class DatabaseStorage implements IStorage {
           )`,
         })
         .from(orders)
-        .leftJoin(rooms, sql`${orders.roomId} IS NOT NULL AND ${orders.roomId} = ${rooms.id}`)
-        .leftJoin(bookings, sql`${orders.bookingId} IS NOT NULL AND ${orders.bookingId} = ${bookings.id}`)
-        .leftJoin(guests, sql`${bookings.guestId} IS NOT NULL AND ${bookings.guestId} = ${guests.id}`)
+        .leftJoin(rooms, sql`${orders.roomId} IS NOT NULL AND ${orders.roomId}::text = ${rooms.id}::text`)
+        .leftJoin(bookings, sql`${orders.bookingId} IS NOT NULL AND ${orders.bookingId}::text = ${bookings.id}::text`)
+        .leftJoin(guests, sql`${bookings.guestId} IS NOT NULL AND ${bookings.guestId}::text = ${guests.id}::text`)
         .orderBy(desc(orders.createdAt));
       
       return ordersWithDetails.map(row => ({
@@ -1198,7 +1198,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(bills)
         .leftJoin(bookings, 
-          sql`${bills.bookingId} IS NOT NULL AND ${bills.bookingId} = ${bookings.id}`
+          sql`${bills.bookingId} IS NOT NULL AND ${bills.bookingId}::text = ${bookings.id}::text`
         )
         .orderBy(desc(bills.createdAt));
       console.log("[Storage] getAllBills - success, count:", result.length);
