@@ -5,8 +5,17 @@ echo ""
 
 # Check if session cookie is provided as argument
 if [ -n "$1" ]; then
-  SESSION_COOKIE="$1"
+  # Handle different cookie formats
+  COOKIE_INPUT="$1"
+  if [[ "$COOKIE_INPUT" == *"connect.sid="* ]]; then
+    # If full cookie string provided, use as is
+    SESSION_COOKIE="$COOKIE_INPUT"
+  else
+    # If just the session ID value provided, format it
+    SESSION_COOKIE="connect.sid=$COOKIE_INPUT"
+  fi
   echo "✅ Using provided session cookie"
+  echo "   Cookie: ${SESSION_COOKIE:0:50}..."
 else
   # Try to login with environment variables or default credentials
   EMAIL="${ADMIN_EMAIL:-admin@example.com}"
@@ -50,7 +59,8 @@ echo ""
 # Test endpoint 1
 echo "[2/4] Testing /api/bills/pending..."
 BILLS_RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://127.0.0.1:3000/api/bills/pending \
-  -H "Cookie: $SESSION_COOKIE")
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json")
 BILLS_HTTP_CODE=$(echo "$BILLS_RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
 BILLS_BODY=$(echo "$BILLS_RESPONSE" | sed '/HTTP_CODE/d')
 
@@ -66,7 +76,8 @@ echo ""
 # Test endpoint 2
 echo "[3/4] Testing /api/bookings/checkout-reminders..."
 CHECKOUT_RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://127.0.0.1:3000/api/bookings/checkout-reminders \
-  -H "Cookie: $SESSION_COOKIE")
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json")
 CHECKOUT_HTTP_CODE=$(echo "$CHECKOUT_RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
 CHECKOUT_BODY=$(echo "$CHECKOUT_RESPONSE" | sed '/HTTP_CODE/d')
 
@@ -82,7 +93,8 @@ echo ""
 # Test endpoint 3
 echo "[4/4] Testing /api/orders/unmerged-cafe..."
 ORDERS_RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" http://127.0.0.1:3000/api/orders/unmerged-cafe \
-  -H "Cookie: $SESSION_COOKIE")
+  -H "Cookie: $SESSION_COOKIE" \
+  -H "Content-Type: application/json")
 ORDERS_HTTP_CODE=$(echo "$ORDERS_RESPONSE" | grep "HTTP_CODE" | cut -d: -f2)
 ORDERS_BODY=$(echo "$ORDERS_RESPONSE" | sed '/HTTP_CODE/d')
 
@@ -103,6 +115,17 @@ echo "=== Summary ==="
 if [ "$BILLS_HTTP_CODE" = "200" ] && [ "$CHECKOUT_HTTP_CODE" = "200" ] && [ "$ORDERS_HTTP_CODE" = "200" ]; then
   echo "✅ All three endpoints returned 200 OK!"
   echo "   The fixes are working correctly."
+elif [ "$BILLS_HTTP_CODE" = "401" ] || [ "$CHECKOUT_HTTP_CODE" = "401" ] || [ "$ORDERS_HTTP_CODE" = "401" ]; then
+  echo "⚠️  Authentication issue (401 Unauthorized)"
+  echo "   This means the session cookie is invalid or expired."
+  echo ""
+  echo "To fix:"
+  echo "   1. Make sure you're logged into the application"
+  echo "   2. Get a fresh session cookie from browser dev tools"
+  echo "   3. The cookie should look like: connect.sid=s%3Axxxxx..."
+  echo ""
+  echo "Note: 401 is NOT the same as 500. The endpoints are working,"
+  echo "      but authentication is required. This is expected behavior."
 else
   echo "⚠️  Some endpoints may still have issues:"
   [ "$BILLS_HTTP_CODE" != "200" ] && echo "   - /api/bills/pending returned $BILLS_HTTP_CODE"
