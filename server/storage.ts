@@ -1038,9 +1038,9 @@ export class DatabaseStorage implements IStorage {
           )`,
         })
         .from(orders)
-        .leftJoin(rooms, eq(orders.roomId, rooms.id))
-        .leftJoin(bookings, eq(orders.bookingId, bookings.id))
-        .leftJoin(guests, eq(bookings.guestId, guests.id))
+        .leftJoin(rooms, sql`CAST(${orders.roomId} AS INTEGER) = ${rooms.id} OR ${orders.roomId} IS NULL`)
+        .leftJoin(bookings, sql`CAST(${orders.bookingId} AS INTEGER) = ${bookings.id} OR ${orders.bookingId} IS NULL`)
+        .leftJoin(guests, sql`CAST(${bookings.guestId} AS INTEGER) = ${guests.id} OR ${bookings.guestId} IS NULL`)
         .orderBy(desc(orders.createdAt));
       
       return ordersWithDetails.map(row => ({
@@ -1197,7 +1197,9 @@ export class DatabaseStorage implements IStorage {
           propertyId: bookings.propertyId,
         })
         .from(bills)
-        .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+        .leftJoin(bookings, 
+          sql`CAST(${bills.bookingId} AS INTEGER) = ${bookings.id} OR ${bills.bookingId} IS NULL`
+        )
         .orderBy(desc(bills.createdAt));
       console.log("[Storage] getAllBills - success, count:", result.length);
       return result;
