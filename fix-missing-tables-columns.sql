@@ -7,6 +7,7 @@
 -- 1. Add missing columns to bills table
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_rooms BOOLEAN DEFAULT true;
 ALTER TABLE bills ADD COLUMN IF NOT EXISTS gst_on_food BOOLEAN DEFAULT false;
+ALTER TABLE bills ADD COLUMN IF NOT EXISTS payment_methods JSONB;
 
 -- 1b. Add missing column to staff_members table
 ALTER TABLE staff_members ADD COLUMN IF NOT EXISTS role VARCHAR(50);
