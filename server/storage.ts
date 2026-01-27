@@ -1027,8 +1027,18 @@ export class DatabaseStorage implements IStorage {
       // Use raw SQL to avoid Drizzle type casting issues with invalid data
       let ordersOnly: any[] = [];
       try {
+        // Use raw SQL and map snake_case to camelCase
         const result = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-        ordersOnly = result.rows || [];
+        ordersOnly = (result.rows || []).map((row: any) => {
+          // Map all order columns from snake_case to camelCase
+          const mapped: any = {};
+          for (const key in row) {
+            // Convert snake_case to camelCase
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+            mapped[camelKey] = row[key];
+          }
+          return mapped;
+        });
       } catch (ordersError: any) {
         console.error("[Storage] getAllOrders - Error fetching orders:", ordersError.message);
         console.error("[Storage] getAllOrders - Orders error code:", ordersError.code);
@@ -1279,8 +1289,39 @@ export class DatabaseStorage implements IStorage {
       let billsOnly: any[] = [];
       try {
         // Use raw SQL query via pool to avoid type casting errors
+        // Map snake_case columns to camelCase for compatibility
         const result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
-        billsOnly = result.rows || [];
+        billsOnly = (result.rows || []).map((row: any) => ({
+          id: row.id,
+          bookingId: row.booking_id,
+          guestId: row.guest_id,
+          roomCharges: row.room_charges,
+          foodCharges: row.food_charges,
+          extraCharges: row.extra_charges,
+          subtotal: row.subtotal,
+          gstRate: row.gst_rate,
+          gstAmount: row.gst_amount,
+          serviceChargeRate: row.service_charge_rate,
+          serviceChargeAmount: row.service_charge_amount,
+          totalAmount: row.total_amount,
+          paymentStatus: row.payment_status,
+          paymentMethod: row.payment_method,
+          paidAt: row.paid_at,
+          mergedBookingIds: row.merged_booking_ids,
+          advancePaid: row.advance_paid,
+          balanceAmount: row.balance_amount,
+          discountType: row.discount_type,
+          discountValue: row.discount_value,
+          discountAmount: row.discount_amount,
+          gstOnRooms: row.gst_on_rooms,
+          gstOnFood: row.gst_on_food,
+          includeServiceCharge: row.include_service_charge,
+          dueDate: row.due_date,
+          pendingReason: row.pending_reason,
+          paymentMethods: row.payment_methods,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }));
       } catch (billsError: any) {
         console.error("[Storage] getAllBills - Error fetching bills:", billsError.message);
         console.error("[Storage] getAllBills - Bills error code:", billsError.code);
