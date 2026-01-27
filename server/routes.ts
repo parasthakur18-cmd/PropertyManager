@@ -4345,17 +4345,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
       // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
-      const { bookings } = await import("@shared/schema");
-      const reminders = await db
-        .select()
-        .from(bookings)
-        .where(
-          and(
-            eq(bookings.status, "checked-in"),
-            sql`${bookings.checkOutDate}::date = CURRENT_DATE`
-          )
-        );
-      return res.json(reminders);
+      // Use raw SQL to avoid any type casting issues
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT * FROM bookings 
+        WHERE status = 'checked-in' 
+          AND check_out_date::date = CURRENT_DATE
+      `);
+      return res.json(result.rows || []);
     } catch (error: any) {
       console.error("[/api/bookings/checkout-reminders] Error:", error.message);
       console.error("[/api/bookings/checkout-reminders] Error code:", error.code);
@@ -5799,23 +5796,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // Use Drizzle query with proper NULL check (not empty string)
-      // Filter for cafe/restaurant orders with NULL bookingId
-      const unmergedOrders = await db
-        .select()
-        .from(orders)
-        .where(
-          and(
-            or(
-              eq(orders.orderType, "cafe"),
-              eq(orders.orderType, "restaurant")
-            ),
-            isNull(orders.bookingId)
-          )
-        );
+      // Use raw SQL to avoid any type casting issues with Drizzle
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT * FROM orders 
+        WHERE (order_type = 'cafe' OR order_type = 'restaurant')
+          AND booking_id IS NULL
+      `);
       
-      console.log(`Found ${unmergedOrders.length} unmerged café orders`);
-      return sendResponse(unmergedOrders);
+      console.log(`Found ${result.rows.length} unmerged café orders`);
+      return sendResponse(result.rows || []);
     } catch (error: any) {
       console.error("[/api/orders/unmerged-cafe] Error:", error.message);
       console.error("[/api/orders/unmerged-cafe] Error code:", error.code);

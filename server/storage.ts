@@ -1311,7 +1311,28 @@ export class DatabaseStorage implements IStorage {
           return [];
         }
         // Use simple SELECT * - columns are now INTEGER type after schema fix
-        const result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
+        // Wrap in try-catch to handle any PostgreSQL errors from invalid data
+        let result;
+        try {
+          result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
+        } catch (queryError: any) {
+          // If query fails due to invalid data, try selecting only safe columns
+          console.error("[Storage] getAllBills - Query failed, trying safe columns:", queryError.message);
+          result = await pool.query(`
+            SELECT 
+              id, booking_id, guest_id, room_charges, food_charges, extra_charges,
+              subtotal, gst_rate, gst_amount, service_charge_rate, service_charge_amount,
+              total_amount, payment_status, payment_method, paid_at,
+              merged_booking_ids, advance_paid, balance_amount,
+              discount_type, discount_value, discount_amount,
+              gst_on_rooms, gst_on_food, include_service_charge,
+              due_date, pending_reason, payment_methods,
+              created_at, updated_at
+            FROM bills 
+            WHERE booking_id IS NULL OR (booking_id::text ~ '^[0-9]+$' AND booking_id::text != 'NaN')
+            ORDER BY created_at DESC
+          `);
+        }
         billsOnly = (result.rows || []).map((row: any) => {
           // Safely convert booking_id and guest_id, handling NaN and invalid values
           let bookingId = null;
