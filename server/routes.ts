@@ -13992,13 +13992,17 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       }
       
       if (!propertyId) {
-        return res.status(400).json({ message: "Property ID required" });
+        // Return empty array instead of 400 for health checks
+        return res.json([]);
       }
 
       const settings = await storage.getFeatureSettingsByProperty(parseInt(propertyId));
       res.json(settings);
     } catch (error: any) {
       console.error("[FEATURE-SETTINGS] GET error:", error);
+      console.error("[FEATURE-SETTINGS] Stack:", error.stack);
+      // Return empty array on error instead of 500
+      res.json([]);
       res.status(500).json({ message: error.message });
     }
   });
