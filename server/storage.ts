@@ -1161,10 +1161,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bill operations
-  async getAllBills(): Promise<Bill[]> {
+  async getAllBills(): Promise<any[]> {
     try {
       console.log("[Storage] getAllBills - starting query");
-      const result = await db.select().from(bills).orderBy(desc(bills.createdAt));
+      // Join with bookings to get propertyId for filtering
+      const result = await db
+        .select({
+          ...bills,
+          propertyId: bookings.propertyId,
+        })
+        .from(bills)
+        .leftJoin(bookings, eq(bills.bookingId, bookings.id))
+        .orderBy(desc(bills.createdAt));
       console.log("[Storage] getAllBills - success, count:", result.length);
       return result;
     } catch (error: any) {
@@ -3115,14 +3123,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Salary Advance operations
-  async getAllAdvances(): Promise<SalaryAdvance[]> {
-    return await db.select().from(salaryAdvances).orderBy(desc(salaryAdvances.createdAt));
+  async getAllAdvances(): Promise<any[]> {
+    // Join with staffMembers to get propertyId for filtering
+    return await db
+      .select({
+        ...salaryAdvances,
+        propertyId: staffMembers.propertyId,
+      })
+      .from(salaryAdvances)
+      .leftJoin(staffMembers, eq(salaryAdvances.staffMemberId, staffMembers.id))
+      .orderBy(desc(salaryAdvances.createdAt));
   }
 
-  async getAdvancesByUser(userId: string): Promise<SalaryAdvance[]> {
+  async getAdvancesByUser(userId: string): Promise<any[]> {
+    // Join with staffMembers to get propertyId for filtering
     return await db
-      .select()
+      .select({
+        ...salaryAdvances,
+        propertyId: staffMembers.propertyId,
+      })
       .from(salaryAdvances)
+      .leftJoin(staffMembers, eq(salaryAdvances.staffMemberId, staffMembers.id))
       .where(eq(salaryAdvances.userId, userId))
       .orderBy(desc(salaryAdvances.advanceDate));
   }
