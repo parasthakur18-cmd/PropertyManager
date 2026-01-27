@@ -14003,7 +14003,6 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       console.error("[FEATURE-SETTINGS] Stack:", error.stack);
       // Return empty array on error instead of 500
       res.json([]);
-      res.status(500).json({ message: error.message });
     }
   });
 
