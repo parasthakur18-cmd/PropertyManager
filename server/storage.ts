@@ -1310,11 +1310,29 @@ export class DatabaseStorage implements IStorage {
           console.error("[Storage] getAllBills - pool.query is not available");
           return [];
         }
+        // Use simple SELECT * - PostgreSQL will return data as-is
+        // We'll handle invalid values in JavaScript
         const result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
-        billsOnly = (result.rows || []).map((row: any) => ({
-          id: row.id,
-          bookingId: row.booking_id,
-          guestId: row.guest_id,
+        billsOnly = (result.rows || []).map((row: any) => {
+          // Safely convert booking_id and guest_id, handling NaN and invalid values
+          let bookingId = null;
+          if (row.booking_id != null) {
+            const parsed = Number(row.booking_id);
+            if (!isNaN(parsed) && isFinite(parsed)) {
+              bookingId = parsed;
+            }
+          }
+          let guestId = null;
+          if (row.guest_id != null) {
+            const parsed = Number(row.guest_id);
+            if (!isNaN(parsed) && isFinite(parsed)) {
+              guestId = parsed;
+            }
+          }
+          return {
+            id: row.id,
+            bookingId,
+            guestId,
           roomCharges: row.room_charges,
           foodCharges: row.food_charges,
           extraCharges: row.extra_charges,
@@ -1341,7 +1359,8 @@ export class DatabaseStorage implements IStorage {
           paymentMethods: row.payment_methods,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
-        }));
+          };
+        });
       } catch (billsError: any) {
         console.error("[Storage] getAllBills - Error fetching bills:", billsError.message);
         console.error("[Storage] getAllBills - Bills error code:", billsError.code);
