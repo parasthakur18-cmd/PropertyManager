@@ -1031,24 +1031,41 @@ export class DatabaseStorage implements IStorage {
       
       // Get related data separately and map together
       try {
-        const allRooms = await db.select({
-          id: rooms.id,
-          status: rooms.status,
-          roomNumber: rooms.roomNumber,
-        }).from(rooms);
+        // Wrap each query in try-catch to handle any database errors
+        let allRooms: any[] = [];
+        let allBookings: any[] = [];
+        let allGuests: any[] = [];
         
-        const allBookings = await db.select({
-          id: bookings.id,
-          guestId: bookings.guestId,
-          roomId: bookings.roomId,
-          status: bookings.status,
-        }).from(bookings);
+        try {
+          allRooms = await db.select({
+            id: rooms.id,
+            status: rooms.status,
+            roomNumber: rooms.roomNumber,
+          }).from(rooms);
+        } catch (roomsError: any) {
+          console.warn("[Storage] getAllOrders - Could not fetch rooms:", roomsError.message);
+        }
         
-        const allGuests = await db.select({
-          id: guests.id,
-          fullName: guests.fullName,
-          phone: guests.phone,
-        }).from(guests);
+        try {
+          allBookings = await db.select({
+            id: bookings.id,
+            guestId: bookings.guestId,
+            roomId: bookings.roomId,
+            status: bookings.status,
+          }).from(bookings);
+        } catch (bookingsError: any) {
+          console.warn("[Storage] getAllOrders - Could not fetch bookings:", bookingsError.message);
+        }
+        
+        try {
+          allGuests = await db.select({
+            id: guests.id,
+            fullName: guests.fullName,
+            phone: guests.phone,
+          }).from(guests);
+        } catch (guestsError: any) {
+          console.warn("[Storage] getAllOrders - Could not fetch guests:", guestsError.message);
+        }
         
         const roomMap = new Map(allRooms.map(r => [r.id, r]));
         const bookingMap = new Map(allBookings.map(b => [b.id, b]));
@@ -1221,12 +1238,19 @@ export class DatabaseStorage implements IStorage {
       // Get propertyId for bills that have valid bookingId
       // Use a safer approach: get all bookings first, then map
       try {
-        const allBookings = await db
-          .select({
-            id: bookings.id,
-            propertyId: bookings.propertyId,
-          })
-          .from(bookings);
+        // Wrap in try-catch to handle any database errors
+        let allBookings: any[] = [];
+        try {
+          allBookings = await db
+            .select({
+              id: bookings.id,
+              propertyId: bookings.propertyId,
+            })
+            .from(bookings);
+        } catch (bookingsError: any) {
+          console.warn("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId:", bookingsError.message);
+          return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+        }
         
         const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
         
