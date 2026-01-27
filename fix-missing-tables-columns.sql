@@ -134,4 +134,132 @@ CREATE INDEX IF NOT EXISTS idx_staff_invitations_property_id ON staff_invitation
 CREATE INDEX IF NOT EXISTS idx_staff_invitations_status ON staff_invitations(status);
 CREATE INDEX IF NOT EXISTS idx_staff_invitations_invite_token ON staff_invitations(invite_token);
 
+-- 7. Create user_permissions table (for granular permission control)
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bookings VARCHAR(20) NOT NULL DEFAULT 'none',
+  calendar VARCHAR(20) NOT NULL DEFAULT 'none',
+  rooms VARCHAR(20) NOT NULL DEFAULT 'none',
+  guests VARCHAR(20) NOT NULL DEFAULT 'none',
+  food_orders VARCHAR(20) NOT NULL DEFAULT 'none',
+  menu_management VARCHAR(20) NOT NULL DEFAULT 'none',
+  payments VARCHAR(20) NOT NULL DEFAULT 'none',
+  reports VARCHAR(20) NOT NULL DEFAULT 'none',
+  settings VARCHAR(20) NOT NULL DEFAULT 'none',
+  tasks VARCHAR(20) NOT NULL DEFAULT 'none',
+  staff VARCHAR(20) NOT NULL DEFAULT 'none',
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_permissions_user_id ON user_permissions(user_id);
+
+-- 8. Create attendance_records table (for staff attendance tracking)
+CREATE TABLE IF NOT EXISTS attendance_records (
+  id SERIAL PRIMARY KEY,
+  staff_id INTEGER NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+  attendance_date DATE NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  remarks TEXT,
+  property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_records_staff_id ON attendance_records(staff_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_property_id ON attendance_records(property_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_records_attendance_date ON attendance_records(attendance_date);
+
+-- 9. Create message_templates table (for WhatsApp/email templates)
+CREATE TABLE IF NOT EXISTS message_templates (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  content TEXT NOT NULL,
+  template_type VARCHAR(50),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_templates_is_active ON message_templates(is_active);
+
+-- 10. Create property_leases table (for property lease management)
+CREATE TABLE IF NOT EXISTS property_leases (
+  id SERIAL PRIMARY KEY,
+  property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  total_amount NUMERIC(10, 2),
+  start_date TIMESTAMP,
+  end_date TIMESTAMP,
+  payment_frequency VARCHAR(50),
+  landlord_name VARCHAR(255),
+  landlord_contact VARCHAR(255),
+  notes TEXT,
+  is_active BOOLEAN DEFAULT true,
+  lease_duration_years INTEGER,
+  base_yearly_amount NUMERIC(10, 2),
+  yearly_increment_type VARCHAR(20),
+  yearly_increment_value NUMERIC(10, 2),
+  current_year_amount NUMERIC(10, 2),
+  is_overridden BOOLEAN DEFAULT false,
+  carry_forward_amount NUMERIC(10, 2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_property_leases_property_id ON property_leases(property_id);
+CREATE INDEX IF NOT EXISTS idx_property_leases_is_active ON property_leases(is_active);
+
+-- 11. Create lease_history table (for tracking lease changes)
+CREATE TABLE IF NOT EXISTS lease_history (
+  id SERIAL PRIMARY KEY,
+  lease_id INTEGER NOT NULL REFERENCES property_leases(id) ON DELETE CASCADE,
+  change_type VARCHAR(50) NOT NULL,
+  field_changed VARCHAR(100),
+  old_value TEXT,
+  new_value TEXT,
+  changed_by VARCHAR(255),
+  change_reason TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lease_history_lease_id ON lease_history(lease_id);
+
+-- 12. Create lease_payments table (for tracking lease payments)
+CREATE TABLE IF NOT EXISTS lease_payments (
+  id SERIAL PRIMARY KEY,
+  lease_id INTEGER NOT NULL REFERENCES property_leases(id) ON DELETE CASCADE,
+  amount NUMERIC(10, 2),
+  payment_date TIMESTAMP,
+  payment_method VARCHAR(50),
+  reference_number VARCHAR(100),
+  notes TEXT,
+  created_by VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lease_payments_lease_id ON lease_payments(lease_id);
+
+-- 13. Create salary_advances table (for staff salary advances)
+CREATE TABLE IF NOT EXISTS salary_advances (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) REFERENCES users(id) ON DELETE CASCADE,
+  salary_id INTEGER REFERENCES staff_salaries(id) ON DELETE CASCADE,
+  amount NUMERIC(10, 2) NOT NULL,
+  advance_date TIMESTAMP,
+  reason TEXT,
+  repayment_status VARCHAR(20),
+  deducted_from_salary_id INTEGER,
+  approved_by VARCHAR(255),
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  staff_member_id INTEGER REFERENCES staff_members(id) ON DELETE CASCADE,
+  advance_type VARCHAR(20) DEFAULT 'regular'
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_advances_user_id ON salary_advances(user_id);
+CREATE INDEX IF NOT EXISTS idx_salary_advances_staff_member_id ON salary_advances(staff_member_id);
+CREATE INDEX IF NOT EXISTS idx_salary_advances_salary_id ON salary_advances(salary_id);
+
 SELECT '✅ All missing tables and columns created successfully!' as status;
