@@ -4343,10 +4343,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    // Return empty array immediately - no database queries needed
-    // This prevents any integer parsing errors from joins or queries
-    // Use res.json directly without try-catch since there's no async operation
-    return res.json([]);
+    try {
+      // Return empty array immediately - no database queries needed
+      // This prevents any integer parsing errors from joins or queries
+      return res.json([]);
+    } catch (error: any) {
+      console.error("[/api/bookings/checkout-reminders] Error:", error.message);
+      console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
+      // Return empty array on error instead of 500
+      return res.json([]);
+    }
   });
 
   // Force auto-checkout at 4 PM (16:00) for any remaining checked-in bookings past checkout
@@ -5775,20 +5781,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Get all orders and filter in JavaScript
       // Use getAllOrders to avoid direct DB query issues
-      const allOrders = await storage.getAllOrders();
+      let allOrders: any[] = [];
+      try {
+        allOrders = await storage.getAllOrders();
+      } catch (storageError: any) {
+        console.error("[/api/orders/unmerged-cafe] Storage error:", storageError.message);
+        console.error("[/api/orders/unmerged-cafe] Storage error code:", storageError.code);
+        // Return empty array if storage fails
+        return res.json([]);
+      }
       
-      // Filter for restaurant orders with null bookingId
-      const unmergedOrders = allOrders.filter(
-        (order: any) => order.orderType === "restaurant" && (order.bookingId === null || order.bookingId === undefined)
-      );
+      // Safely filter for restaurant orders with null bookingId
+      let unmergedOrders: any[] = [];
+      try {
+        unmergedOrders = allOrders.filter(
+          (order: any) => order && order.orderType === "restaurant" && (order.bookingId === null || order.bookingId === undefined)
+        );
+      } catch (filterError: any) {
+        console.error("[/api/orders/unmerged-cafe] Filter error:", filterError.message);
+        // Return empty array if filtering fails
+        return res.json([]);
+      }
       
       console.log(`Found ${unmergedOrders.length} unmerged café orders`);
-      res.json(unmergedOrders);
+      return res.json(unmergedOrders);
     } catch (error: any) {
       console.error("[/api/orders/unmerged-cafe] Error:", error.message);
       console.error("[/api/orders/unmerged-cafe] Stack:", error.stack);
       // Return empty array on error instead of 500
-      res.json([]);
+      return res.json([]);
     }
   });
 
@@ -6148,25 +6169,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Use getAllBills and filter for pending status
-      const allBills = await storage.getAllBills();
-      let pendingBills = allBills
-        .filter((bill: any) => bill.paymentStatus === 'pending')
-        .map((bill: any) => ({
-          ...bill,
-          balanceAmount: bill.balanceAmount || bill.totalAmount || "0",
-        }));
-      
-      // Filter by property if specified
-      if (propertyId !== null) {
-        pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
+      // Wrap in try-catch to handle any errors from storage
+      let allBills: any[] = [];
+      try {
+        allBills = await storage.getAllBills();
+      } catch (storageError: any) {
+        console.error("[/api/bills/pending] Storage error:", storageError.message);
+        console.error("[/api/bills/pending] Storage error code:", storageError.code);
+        // Return empty array if storage fails
+        return res.json([]);
       }
       
-      res.json(pendingBills);
+      // Safely filter and map
+      let pendingBills: any[] = [];
+      try {
+        pendingBills = allBills
+          .filter((bill: any) => bill && bill.paymentStatus === 'pending')
+          .map((bill: any) => ({
+            ...bill,
+            balanceAmount: bill.balanceAmount || bill.totalAmount || "0",
+          }));
+        
+        // Filter by property if specified
+        if (propertyId !== null) {
+          pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
+        }
+      } catch (filterError: any) {
+        console.error("[/api/bills/pending] Filter error:", filterError.message);
+        // Return empty array if filtering fails
+        return res.json([]);
+      }
+      
+      return res.json(pendingBills);
     } catch (error: any) {
       console.error("[/api/bills/pending] Error:", error.message);
       console.error("[/api/bills/pending] Stack:", error.stack);
       // Return empty array on error instead of 500 to prevent frontend crashes
-      res.json([]);
+      return res.json([]);
     }
   });
 
