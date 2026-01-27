@@ -262,4 +262,55 @@ CREATE INDEX IF NOT EXISTS idx_salary_advances_user_id ON salary_advances(user_i
 CREATE INDEX IF NOT EXISTS idx_salary_advances_staff_member_id ON salary_advances(staff_member_id);
 CREATE INDEX IF NOT EXISTS idx_salary_advances_salary_id ON salary_advances(salary_id);
 
+-- 14. Create change_approvals table (for change request approvals)
+CREATE TABLE IF NOT EXISTS change_approvals (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  change_type VARCHAR(50) NOT NULL,
+  booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+  room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
+  description TEXT,
+  old_value TEXT,
+  new_value TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  approved_by VARCHAR(255) REFERENCES users(id),
+  approved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_approvals_user_id ON change_approvals(user_id);
+CREATE INDEX IF NOT EXISTS idx_change_approvals_status ON change_approvals(status);
+CREATE INDEX IF NOT EXISTS idx_change_approvals_booking_id ON change_approvals(booking_id);
+
+-- 15. Create employee_performance_metrics table (for staff performance tracking)
+CREATE TABLE IF NOT EXISTS employee_performance_metrics (
+  id SERIAL PRIMARY KEY,
+  staff_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  total_tasks_assigned INTEGER NOT NULL DEFAULT 0,
+  tasks_completed_on_time INTEGER NOT NULL DEFAULT 0,
+  tasks_completed_late INTEGER NOT NULL DEFAULT 0,
+  average_completion_time_minutes INTEGER NOT NULL DEFAULT 0,
+  performance_score NUMERIC(5, 2) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_performance_metrics_staff_id ON employee_performance_metrics(staff_id);
+
+-- 16. Create task_notification_logs table (for task reminder tracking)
+CREATE TABLE IF NOT EXISTS task_notification_logs (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_type VARCHAR(100) NOT NULL,
+  task_count INTEGER NOT NULL DEFAULT 0,
+  reminder_count INTEGER NOT NULL DEFAULT 0,
+  completion_time INTEGER DEFAULT 0,
+  last_reminded_at TIMESTAMP,
+  all_tasks_completed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_notification_logs_user_id ON task_notification_logs(user_id);
+
 SELECT '✅ All missing tables and columns created successfully!' as status;
