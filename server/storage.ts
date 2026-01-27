@@ -1038,21 +1038,9 @@ export class DatabaseStorage implements IStorage {
           )`,
         })
         .from(orders)
-        .leftJoin(rooms, sql`(CASE 
-          WHEN ${orders.roomId} IS NULL OR ${orders.roomId} = '' THEN FALSE
-          WHEN ${orders.roomId} ~ '^[0-9]+$' THEN ${orders.roomId}::integer = ${rooms.id}
-          ELSE FALSE
-        END)`)
-        .leftJoin(bookings, sql`(CASE 
-          WHEN ${orders.bookingId} IS NULL OR ${orders.bookingId} = '' THEN FALSE
-          WHEN ${orders.bookingId} ~ '^[0-9]+$' THEN ${orders.bookingId}::integer = ${bookings.id}
-          ELSE FALSE
-        END)`)
-        .leftJoin(guests, sql`(CASE 
-          WHEN ${bookings.guestId} IS NULL OR ${bookings.guestId} = '' THEN FALSE
-          WHEN ${bookings.guestId} ~ '^[0-9]+$' THEN ${bookings.guestId}::integer = ${guests.id}
-          ELSE FALSE
-        END)`)
+        .leftJoin(rooms, eq(orders.roomId, rooms.id))
+        .leftJoin(bookings, eq(orders.bookingId, bookings.id))
+        .leftJoin(guests, eq(bookings.guestId, guests.id))
         .orderBy(desc(orders.createdAt));
       
       return ordersWithDetails.map(row => ({
@@ -1210,11 +1198,7 @@ export class DatabaseStorage implements IStorage {
         })
         .from(bills)
         .leftJoin(bookings, 
-          sql`(CASE 
-            WHEN ${bills.bookingId} IS NULL OR ${bills.bookingId} = '' THEN FALSE
-            WHEN ${bills.bookingId} ~ '^[0-9]+$' THEN ${bills.bookingId}::integer = ${bookings.id}
-            ELSE FALSE
-          END)`
+          sql`${bills.bookingId} = ${bookings.id}`
         )
         .orderBy(desc(bills.createdAt));
       console.log("[Storage] getAllBills - success, count:", result.length);
