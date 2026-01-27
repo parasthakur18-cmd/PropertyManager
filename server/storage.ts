@@ -1308,34 +1308,30 @@ export class DatabaseStorage implements IStorage {
         // Return bills without propertyId if bookings query fails
         return billsOnly.map(bill => ({ ...bill, propertyId: null }));
       }
+      
+      // Safely create booking map - handle any errors in mapping
+      try {
+        const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
         
-        // Safely create booking map - handle any errors in mapping
-        try {
-          const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
-          
-          return billsOnly.map(bill => {
-            try {
-              // Handle bookingId as either number or string
-              const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
-              const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
-                ? bookingMap.get(bookingIdNum) 
-                : null;
-              
-              return {
-                ...bill,
-                propertyId,
-              };
-            } catch (mapError: any) {
-              // If mapping fails for a single bill, return it without propertyId
-              return { ...bill, propertyId: null };
-            }
-          });
-        } catch (mapError: any) {
-          console.warn("[Storage] getAllBills - Error creating booking map, returning bills without propertyId:", mapError.message);
-          return billsOnly.map(bill => ({ ...bill, propertyId: null }));
-        }
-      } catch (joinError: any) {
-        console.warn("[Storage] getAllBills - Could not fetch propertyId, returning bills without it:", joinError.message);
+        return billsOnly.map(bill => {
+          try {
+            // Handle bookingId as either number or string
+            const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
+            const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
+              ? bookingMap.get(bookingIdNum) 
+              : null;
+            
+            return {
+              ...bill,
+              propertyId,
+            };
+          } catch (mapError: any) {
+            // If mapping fails for a single bill, return it without propertyId
+            return { ...bill, propertyId: null };
+          }
+        });
+      } catch (mapError: any) {
+        console.warn("[Storage] getAllBills - Error creating booking map, returning bills without propertyId:", mapError.message);
         return billsOnly.map(bill => ({ ...bill, propertyId: null }));
       }
     } catch (error: any) {
