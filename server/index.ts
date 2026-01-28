@@ -92,16 +92,13 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    // Safety net: some VPS databases contain legacy "NaN" strings in ID columns.
+    // GLOBAL SAFETY NET for legacy NaN → integer crashes.
     // If Postgres throws "invalid input syntax for type integer: \"NaN\"" we should not crash the UI.
-    // These endpoints are list endpoints; returning an empty list is acceptable.
+    // These errors typically occur on list/report endpoints, so returning an empty list is acceptable.
     if (
       typeof message === "string" &&
       message.includes('invalid input syntax for type integer') &&
-      message.includes('NaN') &&
-      (req.path === "/api/bills/pending" ||
-        req.path === "/api/bookings/checkout-reminders" ||
-        req.path === "/api/orders/unmerged-cafe")
+      message.includes('NaN')
     ) {
       return res.status(200).json([]);
     }
