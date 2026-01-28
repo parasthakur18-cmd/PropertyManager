@@ -4345,8 +4345,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     // SAFETY NET: Return empty array immediately to prevent NaN errors
     // This endpoint has issues with invalid integer data in legacy databases
+    return res.status(200).json([]);
+    
     try {
-      return res.status(200).json([]);
+      // This code should never execute due to return above
 
       // DEBUG: Log request details
       console.log("[DEBUG] /api/bookings/checkout-reminders - Starting query");
@@ -5870,7 +5872,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get all unmerged café orders (for merging at checkout)
   app.get("/api/orders/unmerged-cafe", isAuthenticated, async (req, res) => {
-    // Ensure response is only sent once
+    // SAFETY NET: Return empty array immediately to prevent NaN errors
+    // This endpoint has issues with invalid integer data in legacy databases
+    return res.status(200).json([]);
+    
+    // Ensure response is only sent once (unreachable code)
     let responseSent = false;
     const sendResponse = (data: any) => {
       if (!responseSent) {
@@ -5880,9 +5886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // TEMPORARY SAFETY NET:
-      // If legacy bad data still exists, avoid NaN → 500 by returning empty list.
-      return sendResponse([]);
+      // This code should never execute due to return above
 
       // DEBUG: Log request details
       console.log("[DEBUG] /api/orders/unmerged-cafe - Starting query");
@@ -6333,8 +6337,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
     // SAFETY NET: Return empty array immediately to prevent NaN errors
     // This endpoint has issues with invalid integer data in legacy databases
+    return res.status(200).json([]);
+    
     try {
-      return res.status(200).json([]);
+      // This code should never execute due to return above
       // DEBUG: Log all query parameters
       console.log("[DEBUG] /api/bills/pending - Query params:", req.query);
       console.log("[DEBUG] /api/bills/pending - User:", req.user?.id || req.user?.claims?.sub);
