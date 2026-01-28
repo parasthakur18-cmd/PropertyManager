@@ -4345,11 +4345,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
       // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
-      // Use raw SQL to avoid any type casting issues
+      // Filter out rows with "NaN" strings in date columns
       const { pool } = await import("./db");
       const result = await pool.query(`
         SELECT * FROM bookings 
         WHERE status = 'checked-in' 
+          AND check_out_date IS NOT NULL
+          AND check_out_date::text != 'NaN'
+          AND check_out_date::text != ''
           AND check_out_date::date = CURRENT_DATE
       `);
       return res.json(result.rows || []);
@@ -5797,11 +5800,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       // Use raw SQL to avoid any type casting issues with Drizzle
+      // Filter out rows with "NaN" strings in booking_id column
       const { pool } = await import("./db");
       const result = await pool.query(`
         SELECT * FROM orders 
         WHERE (order_type = 'cafe' OR order_type = 'restaurant')
-          AND booking_id IS NULL
+          AND (
+            booking_id IS NULL 
+            OR (booking_id::text != 'NaN' AND booking_id::text != '')
+          )
       `);
       
       console.log(`Found ${result.rows.length} unmerged café orders`);

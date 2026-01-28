@@ -1311,12 +1311,23 @@ export class DatabaseStorage implements IStorage {
           return [];
         }
         // Use simple SELECT * - columns are now INTEGER type after schema fix
-        // Wrap in try-catch to handle any PostgreSQL errors from invalid data
+        // Filter out rows with "NaN" strings in integer columns to prevent PostgreSQL errors
         let result;
         try {
-          result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
+          result = await pool.query(`
+            SELECT * FROM bills 
+            WHERE (
+              booking_id IS NULL 
+              OR (booking_id::text != 'NaN' AND booking_id::text != '' AND booking_id::text ~ '^[0-9]+$')
+            )
+            AND (
+              guest_id IS NULL 
+              OR (guest_id::text != 'NaN' AND guest_id::text != '' AND guest_id::text ~ '^[0-9]+$')
+            )
+            ORDER BY created_at DESC
+          `);
         } catch (queryError: any) {
-          // If query fails due to invalid data, try selecting only safe columns
+          // If query fails due to invalid data, try selecting only safe columns with explicit filtering
           console.error("[Storage] getAllBills - Query failed, trying safe columns:", queryError.message);
           result = await pool.query(`
             SELECT 
@@ -1329,7 +1340,14 @@ export class DatabaseStorage implements IStorage {
               due_date, pending_reason, payment_methods,
               created_at, updated_at
             FROM bills 
-            WHERE booking_id IS NULL OR (booking_id::text ~ '^[0-9]+$' AND booking_id::text != 'NaN')
+            WHERE (
+              booking_id IS NULL 
+              OR (booking_id::text != 'NaN' AND booking_id::text != '' AND booking_id::text ~ '^[0-9]+$')
+            )
+            AND (
+              guest_id IS NULL 
+              OR (guest_id::text != 'NaN' AND guest_id::text != '' AND guest_id::text ~ '^[0-9]+$')
+            )
             ORDER BY created_at DESC
           `);
         }
