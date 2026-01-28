@@ -4,3 +4,22 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment files
+.env
+.env.local
+.env.production
+*.env
+
+# Logs
+logs/
+*.log
+pm2-error.log
+pm2-out.log
+
+# PM2
+.pm2/
+
+# Deployment artifacts
+deploy/
+deploy.tar.gz

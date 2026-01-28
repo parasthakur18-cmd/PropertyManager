@@ -1,0 +1,55 @@
+name: Deploy to VPS (Simple - Git Pull)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            
+            echo "🚀 Starting deployment..."
+            
+            # Navigate to app directory
+            cd /var/www/myapp
+            
+            # Pull latest code
+            echo "📥 Pulling latest code from GitHub..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Clean and rebuild
+            echo "🔨 Building application..."
+            rm -rf dist
+            npm ci
+            npm run build
+            
+            # Restart PM2
+            echo "🔄 Restarting PM2..."
+            pm2 restart propertymanager --update-env || pm2 start ecosystem.config.cjs
+            
+            # Wait for app to start
+            sleep 3
+            
+            # Check status
+            echo "📊 PM2 Status:"
+            pm2 status
+            
+            # Show recent logs
+            echo "📋 Recent logs:"
+            pm2 logs propertymanager --lines 10 --nostream || true
+            
+            echo "✅ Deployment complete!"
