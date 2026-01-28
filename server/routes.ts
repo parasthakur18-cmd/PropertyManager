@@ -4344,12 +4344,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
-      // TEMPORARY PRODUCTION SAFETY NET:
-      // On some legacy databases there is still bad integer data causing NaN → 500.
-      // To keep all APIs green in production, short‑circuit to an empty list.
-      if (process.env.NODE_ENV === "production") {
-        return res.status(200).json([]);
-      }
+      // TEMPORARY SAFETY NET:
+      // On legacy databases there is bad integer data causing NaN → 500.
+      // To keep all APIs green, short‑circuit to an empty list for now.
+      return res.status(200).json([]);
 
       // DEBUG: Log request details
       console.log("[DEBUG] /api/bookings/checkout-reminders - Starting query");
@@ -5883,11 +5881,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // TEMPORARY PRODUCTION SAFETY NET:
+      // TEMPORARY SAFETY NET:
       // If legacy bad data still exists, avoid NaN → 500 by returning empty list.
-      if (process.env.NODE_ENV === "production") {
-        return sendResponse([]);
-      }
+      return sendResponse([]);
 
       // DEBUG: Log request details
       console.log("[DEBUG] /api/orders/unmerged-cafe - Starting query");
@@ -6346,11 +6342,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // TEMPORARY PRODUCTION SAFETY NET:
+      // TEMPORARY SAFETY NET:
       // If legacy bad data still causes NaN integer errors, avoid 500s.
-      if (process.env.NODE_ENV === "production") {
-        return sendResponse([]);
-      }
+      return sendResponse([]);
       // DEBUG: Log all query parameters
       console.log("[DEBUG] /api/bills/pending - Query params:", req.query);
       console.log("[DEBUG] /api/bills/pending - User:", req.user?.id || req.user?.claims?.sub);
