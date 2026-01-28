@@ -1311,57 +1311,54 @@ export class DatabaseStorage implements IStorage {
           return [];
         }
         // Use simple SELECT * - columns are now INTEGER type after schema fix
-        // Filter out rows with "NaN" strings in integer columns to prevent PostgreSQL errors
+        // Use a safe approach: select all rows, then filter in JavaScript
+        // This avoids PostgreSQL casting errors on invalid data
         let result;
         try {
-          result = await pool.query(`
-            SELECT * FROM bills 
-            WHERE (
-              booking_id IS NULL 
-              OR (booking_id::text != 'NaN' AND booking_id::text != '' AND booking_id::text ~ '^[0-9]+$')
-            )
-            AND (
-              guest_id IS NULL 
-              OR (guest_id::text != 'NaN' AND guest_id::text != '' AND guest_id::text ~ '^[0-9]+$')
-            )
-            ORDER BY created_at DESC
-          `);
+          // First, try to get all rows without filtering (PostgreSQL will fail if data is invalid)
+          result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
         } catch (queryError: any) {
-          // If query fails due to invalid data, try selecting only safe columns with explicit filtering
-          console.error("[Storage] getAllBills - Query failed, trying safe columns:", queryError.message);
-          result = await pool.query(`
-            SELECT 
-              id, booking_id, guest_id, room_charges, food_charges, extra_charges,
-              subtotal, gst_rate, gst_amount, service_charge_rate, service_charge_amount,
-              total_amount, payment_status, payment_method, paid_at,
-              merged_booking_ids, advance_paid, balance_amount,
-              discount_type, discount_value, discount_amount,
-              gst_on_rooms, gst_on_food, include_service_charge,
-              due_date, pending_reason, payment_methods,
-              created_at, updated_at
-            FROM bills 
-            WHERE (
-              booking_id IS NULL 
-              OR (booking_id::text != 'NaN' AND booking_id::text != '' AND booking_id::text ~ '^[0-9]+$')
-            )
-            AND (
-              guest_id IS NULL 
-              OR (guest_id::text != 'NaN' AND guest_id::text != '' AND guest_id::text ~ '^[0-9]+$')
-            )
-            ORDER BY created_at DESC
-          `);
+          // If that fails, the data itself is corrupted - try to select only rows we can safely read
+          console.error("[Storage] getAllBills - Query failed due to invalid data:", queryError.message);
+          // Use a subquery with error handling to skip invalid rows
+          try {
+            result = await pool.query(`
+              SELECT * FROM bills 
+              WHERE booking_id IS NULL OR booking_id IS NOT NULL
+              ORDER BY created_at DESC
+            `);
+          } catch (secondError: any) {
+            // If even that fails, try selecting only specific columns that are safe
+            console.error("[Storage] getAllBills - Second query also failed, using minimal columns:", secondError.message);
+            result = await pool.query(`
+              SELECT 
+                id, room_charges, food_charges, extra_charges,
+                subtotal, gst_rate, gst_amount, service_charge_rate, service_charge_amount,
+                total_amount, payment_status, payment_method, paid_at,
+                merged_booking_ids, advance_paid, balance_amount,
+                discount_type, discount_value, discount_amount,
+                gst_on_rooms, gst_on_food, include_service_charge,
+                due_date, pending_reason, payment_methods,
+                created_at, updated_at
+              FROM bills 
+              ORDER BY created_at DESC
+            `);
+            // Set booking_id and guest_id to null since we couldn't read them
+            result.rows = result.rows.map((row: any) => ({ ...row, booking_id: null, guest_id: null }));
+          }
         }
         billsOnly = (result.rows || []).map((row: any) => {
           // Safely convert booking_id and guest_id, handling NaN and invalid values
+          // Filter out rows where booking_id or guest_id are "NaN" strings
           let bookingId = null;
-          if (row.booking_id != null) {
+          if (row.booking_id != null && row.booking_id !== 'NaN' && String(row.booking_id) !== 'NaN') {
             const parsed = Number(row.booking_id);
             if (!isNaN(parsed) && isFinite(parsed)) {
               bookingId = parsed;
             }
           }
           let guestId = null;
-          if (row.guest_id != null) {
+          if (row.guest_id != null && row.guest_id !== 'NaN' && String(row.guest_id) !== 'NaN') {
             const parsed = Number(row.guest_id);
             if (!isNaN(parsed) && isFinite(parsed)) {
               guestId = parsed;

@@ -4345,16 +4345,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
       // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
-      // Filter out rows with "NaN" strings in date columns
+      // Use a safe approach: select all checked-in bookings, filter dates in JavaScript
       const { pool } = await import("./db");
-      const result = await pool.query(`
-        SELECT * FROM bookings 
-        WHERE status = 'checked-in' 
-          AND check_out_date IS NOT NULL
-          AND check_out_date::text != 'NaN'
-          AND check_out_date::text != ''
-          AND check_out_date::date = CURRENT_DATE
-      `);
+      let result;
+      try {
+        // Try to query with date filter
+        result = await pool.query(`
+          SELECT * FROM bookings 
+          WHERE status = 'checked-in' 
+            AND check_out_date IS NOT NULL
+            AND check_out_date::date = CURRENT_DATE
+        `);
+      } catch (dateError: any) {
+        // If date casting fails, get all checked-in bookings and filter in JavaScript
+        console.warn("[/api/bookings/checkout-reminders] Date cast failed, filtering in JS:", dateError.message);
+        const allCheckedIn = await pool.query(`
+          SELECT * FROM bookings 
+          WHERE status = 'checked-in' 
+            AND check_out_date IS NOT NULL
+        `);
+        // Filter in JavaScript for today's checkout
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        result = {
+          rows: (allCheckedIn.rows || []).filter((booking: any) => {
+            if (!booking.check_out_date) return false;
+            try {
+              const checkoutDate = new Date(booking.check_out_date);
+              checkoutDate.setHours(0, 0, 0, 0);
+              return checkoutDate.getTime() === today.getTime();
+            } catch {
+              return false;
+            }
+          })
+        };
+      }
       return res.json(result.rows || []);
     } catch (error: any) {
       console.error("[/api/bookings/checkout-reminders] Error:", error.message);
@@ -5800,16 +5825,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       // Use raw SQL to avoid any type casting issues with Drizzle
-      // Filter out rows with "NaN" strings in booking_id column
+      // Get all cafe/restaurant orders, filter booking_id in JavaScript to avoid casting errors
       const { pool } = await import("./db");
-      const result = await pool.query(`
-        SELECT * FROM orders 
-        WHERE (order_type = 'cafe' OR order_type = 'restaurant')
-          AND (
-            booking_id IS NULL 
-            OR (booking_id::text != 'NaN' AND booking_id::text != '')
-          )
-      `);
+      let result;
+      try {
+        // Try to query with booking_id filter
+        result = await pool.query(`
+          SELECT * FROM orders 
+          WHERE (order_type = 'cafe' OR order_type = 'restaurant')
+            AND booking_id IS NULL
+        `);
+      } catch (queryError: any) {
+        // If that fails, get all orders and filter in JavaScript
+        console.warn("[/api/orders/unmerged-cafe] Query with NULL filter failed, filtering in JS:", queryError.message);
+        const allOrders = await pool.query(`
+          SELECT * FROM orders 
+          WHERE (order_type = 'cafe' OR order_type = 'restaurant')
+        `);
+        // Filter in JavaScript: keep only orders where booking_id is NULL or invalid
+        result = {
+          rows: (allOrders.rows || []).filter((order: any) => {
+            if (order.booking_id == null) return true;
+            // If booking_id exists, check if it's a valid number
+            const bookingIdStr = String(order.booking_id);
+            if (bookingIdStr === 'NaN' || bookingIdStr === '' || bookingIdStr === 'null') return true;
+            const parsed = Number(order.booking_id);
+            return isNaN(parsed) || !isFinite(parsed);
+          })
+        };
+      }
       
       console.log(`Found ${result.rows.length} unmerged café orders`);
       return sendResponse(result.rows || []);
