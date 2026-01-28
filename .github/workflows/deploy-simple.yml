@@ -73,11 +73,11 @@ jobs:
             sleep 3
             
             # Check status
-            echo "📊 PM2 Status:"
+            echo "Recent PM2 Status:"
             pm2 status
             
             # Show recent logs
-            echo "📋 Recent logs:"
+            echo " Recent logs:"
             pm2 logs propertymanager --lines 10 --nostream || true
             
-            echo "✅ Deployment complete!"
+            echo " Deployment complete!"
