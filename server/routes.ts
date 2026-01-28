@@ -35,7 +35,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc, sql, eq, and, isNull, not, or, gt, lt, param, inArray } from "drizzle-orm";
+import { desc, sql, eq, and, isNull, not, or, gt, gte, lt, lte, param, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";

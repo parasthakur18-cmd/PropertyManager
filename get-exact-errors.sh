@@ -1,37 +1,49 @@
-#!/bin/bash
-# Get exact error messages for the three failing endpoints
+#!/usr/bin/env bash
+# Get exact error messages for the three failing endpoints.
+# Uses the same login flow as check-all-endpoints.sh (super-admin-login).
 
-BASE_URL="http://127.0.0.1:3000"
+set -euo pipefail
+
+BASE_URL="${1:-http://127.0.0.1:3000}"
+EMAIL="${2:-admin@hostezee.in}"
+PASSWORD="${3:-admin@123}"
+COOKIE_JAR="/tmp/api-cookies.txt"
+RESP_FILE="/tmp/response.json"
 
 echo "=== Getting exact error messages for failing endpoints ==="
+echo "Base URL: $BASE_URL"
 echo ""
 
-# Login first
-LOGIN_RESPONSE=$(curl -s -c /tmp/cookies.txt -X POST "$BASE_URL/api/auth/login" \
+echo "[1/2] Logging in..."
+LOGIN_RESPONSE=$(curl -s -c "$COOKIE_JAR" -X POST "$BASE_URL/api/auth/super-admin-login" \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@hostezee.in","password":"admin@123"}')
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 
-if echo "$LOGIN_RESPONSE" | grep -q "token\|user"; then
+if echo "$LOGIN_RESPONSE" | grep -q "Login successful\|message.*successful"; then
   echo "✅ Login OK"
 else
-  echo "❌ Login failed: $LOGIN_RESPONSE"
+  echo "❌ Login failed:"
+  echo "$LOGIN_RESPONSE"
   exit 1
 fi
 
 echo ""
-echo "Testing endpoints and capturing full error messages..."
+echo "[2/2] Testing endpoints (showing full response bodies)..."
 echo ""
 
-# Test each endpoint and show full response
 for endpoint in "/api/bills/pending" "/api/bookings/checkout-reminders" "/api/orders/unmerged-cafe"; do
   echo "=========================================="
   echo "Testing: $endpoint"
   echo "=========================================="
-  HTTP_CODE=$(curl -s -o /tmp/response.json -w "%{http_code}" -b /tmp/cookies.txt "$BASE_URL$endpoint")
+  HTTP_CODE=$(curl -s -o "$RESP_FILE" -w "%{http_code}" -b "$COOKIE_JAR" "$BASE_URL$endpoint")
   echo "HTTP Code: $HTTP_CODE"
   echo "Response:"
-  cat /tmp/response.json | jq '.' 2>/dev/null || cat /tmp/response.json
+  if command -v jq >/dev/null 2>&1; then
+    jq '.' "$RESP_FILE" 2>/dev/null || cat "$RESP_FILE"
+  else
+    cat "$RESP_FILE"
+  fi
   echo ""
 done
 
-rm -f /tmp/cookies.txt /tmp/response.json
+rm -f "$COOKIE_JAR" "$RESP_FILE"
