@@ -1,0 +1,137 @@
+Build a comprehensive Property Management System (PMS) for managing multiple properties, bookings, guests, restaurant orders, billing, and reports — all from one platform.
+The system will be multi-property, mobile-friendly, and ready for resale to other stays.
+
+⚙️ Core Modules
+1. Multi-Property Management
+
+Add and manage unlimited properties.
+
+View combined stats or filter by property.
+
+Switch properties easily from a top menu or sidebar.
+
+Assign staff per property with specific access levels.
+
+2. Room Management
+
+Add, edit, or delete rooms under each property.
+
+View room status: Available / Occupied / Maintenance / Cleaning.
+
+Assign housekeeping staff and track cleaning updates.
+
+Room inventory tracking with real-time sync.
+
+3. Booking & Reservation System
+
+Create new bookings (manual, website, or OTA integration).
+
+Track check-in / check-out status.
+
+Auto-room assignment based on availability.
+
+Modify booking duration, change rooms, or extend stay.
+
+Guest receives automated WhatsApp/SMS/email confirmation.
+
+4. Guest Management
+
+Maintain guest profiles with history of stays and preferences.
+
+Auto-update guest status during check-in/out.
+
+Auto-send welcome and checkout messages.
+
+Store ID proof, contact, and billing info securely.
+
+5. Restaurant & Food Ordering
+
+Guests can order food via:
+
+QR menu (in-room)
+
+WhatsApp link (auto-fetches room info)
+
+Orders linked directly to guest’s room bill.
+
+Kitchen panel to manage orders (Preparing / Ready / Delivered).
+
+Real-time sync between guest order, kitchen, and billing.
+
+6. Billing & Invoicing
+
+Auto-generate bills that include:
+
+Room charges
+
+Food orders
+
+Extra services (taxi, laundry, etc.)
+
+Combine into a single invoice at checkout.
+
+Auto-send final bill to guest via WhatsApp/email.
+
+Accept payments via Razorpay, Paytm, or Stripe.
+
+Auto-GST and service charge calculation.
+
+7. Staff Access & Roles
+
+Admin: Full access across all properties.
+
+Manager: Manage bookings, billing, and reports for assigned property.
+
+Staff: Limited access (housekeeping, kitchen, etc.)
+
+Role-based dashboards and permissions.
+
+8. Reports & Analytics
+
+Revenue breakdown by property, room, and restaurant.
+
+Occupancy statistics and trends.
+
+Guest and booking analytics (returning guests, popular rooms).
+
+Downloadable reports (PDF, Excel).
+
+Visual charts and cards on the dashboard.
+
+🌿 Automation & Smart Features
+
+Auto Room Assignment – Assign rooms automatically when a booking is made.
+
+Dynamic Pricing – Adjust prices based on demand or occupancy.
+
+Auto Messaging – Automated WhatsApp/email for booking, check-in, and checkout.
+
+Auto Invoice Generation – Send final bills automatically upon checkout.
+
+Inventory Management – Track stock for kitchen and housekeeping.
+
+Loyalty & Discounts – Offer loyalty points and special pricing for repeat guests.
+
+Feedback System – Auto-send feedback form on checkout.
+
+📱 Design Language
+
+Mountain resort theme to match “Pahari” identity.
+
+Warm teal and blue color palette.
+
+Card-based dashboard with real-time stats.
+
+Responsive design for mobile, tablet, and desktop.
+
+Clean data tables with quick-action buttons.
+
+📊 Integrations (Future Scope)
+
+Booking.com, Airbnb, MakeMyTrip API Sync
+
+WhatsApp Business API for automated messages.
+
+Email marketing (Mailchimp, Zoho CRM) for re-engagement.
+
+Razorpay/Stripe for online payments.

@@ -1,0 +1,42 @@
+name,category,price,description,isVeg,isAvailable,variants,addOns
+Plain Omelette,Breakfast,120,Two egg plain omelette,False,True,"Single:0,Double:60",Cheese:30
+Masala Omelette,Breakfast,150,Spicy masala omelette,False,True,"Single:0,Double:60",Cheese:30
+Boiled Eggs,Breakfast,80,Boiled eggs served with salt,False,True,"2 Eggs:0,4 Eggs:40",Extra Egg:20
+Aloo Paratha,Breakfast,140,Stuffed aloo paratha with butter,True,True,"Single:0,Double:80","Butter:20,Curd:30"
+Paneer Paratha,Breakfast,170,Paneer stuffed paratha,True,True,"Single:0,Double:90","Butter:20,Curd:30"
+Poha,Breakfast,120,Light poha with peanuts,True,True,"Regular:0,Jain:0",Extra Lemon:10
+Pancakes,Breakfast,220,Pancakes served with syrup,True,True,"2 pcs:0,4 pcs:100","Honey:30,Chocolate Syrup:40"
+Tomato Soup,Soups,160,Creamy tomato soup,True,True,"Cup:0,Bowl:40",Croutons:20
+Veg Clear Soup,Soups,150,Light vegetable soup,True,True,"Cup:0,Bowl:40",Extra Veg:30
+Chicken Soup,Soups,190,Hot chicken soup,False,True,"Cup:0,Bowl:50",Extra Chicken:50
+Veg Pakora,Starters,180,Crispy mixed veg pakora,True,True,"Half:0,Full:120",Extra Chutney:20
+Paneer Tikka,Starters,280,Tandoori paneer tikka,True,True,"Half:0,Full:150",Extra Paneer:80
+Mushroom Chilli,Starters,260,Spicy chilli mushroom,True,True,"Half:0,Full:140",Extra Sauce:30
+Chicken Pakora,Starters,260,Crispy chicken pakora,False,True,"Half:0,Full:160",Extra Chicken:90
+Chicken Tikka,Starters,320,Smoky chicken tikka,False,True,"Half:0,Full:180",Extra Chicken:100
+Chicken Chilli,Starters,300,Spicy chilli chicken,False,True,"Half:0,Full:160",Extra Sauce:30
+Dal Tadka,Main Course,240,Yellow dal with tadka,True,True,"Half:0,Full:140",Extra Ghee:30
+Dal Makhani,Main Course,280,Creamy black dal,True,True,"Half:0,Full:160",Extra Butter:40
+Shahi Paneer,Main Course,320,Rich paneer gravy,True,True,"Half:0,Full:180",Extra Paneer:90
+Mix Veg,Main Course,260,Seasonal vegetable curry,True,True,"Half:0,Full:150",Extra Veg:50
+Chicken Curry,Main Course,340,Traditional chicken curry,False,True,"Half:0,Full:200",Extra Chicken:120
+Butter Chicken,Main Course,380,Creamy butter chicken,False,True,"Half:0,Full:220",Extra Chicken:120
+Mutton Curry,Main Course,420,Slow cooked mutton curry,False,True,"Half:0,Full:260",Extra Mutton:150
+Plain Rice,Rice,120,Steamed basmati rice,True,True,"Half:0,Full:80",Extra Rice:60
+Jeera Rice,Rice,160,Jeera flavored rice,True,True,"Half:0,Full:90",Extra Rice:60
+Veg Biryani,Biryani,320,Aromatic veg biryani,True,True,"Half:0,Full:160",Extra Raita:40
+Chicken Biryani,Biryani,380,Hyderabadi chicken biryani,False,True,"Half:0,Full:180","Extra Raita:40,Extra Chicken:120"
+Mutton Biryani,Biryani,460,Slow cooked mutton biryani,False,True,"Half:0,Full:220",Extra Raita:40
+Tandoori Roti,Breads,30,Clay oven roti,True,True,Single:0,Butter:10
+Butter Roti,Breads,40,Roti with butter,True,True,Single:0,Extra Butter:10
+Plain Naan,Breads,70,Soft naan,True,True,Single:0,Butter:10
+Butter Naan,Breads,90,Naan with butter,True,True,Single:0,Extra Butter:10
+Garlic Naan,Breads,110,Garlic flavoured naan,True,True,Single:0,Extra Garlic:20
+Tea,Beverages,50,Hot masala tea,True,True,"Small:0,Large:20",Extra Sugar:10
+Coffee,Beverages,70,Hot coffee,True,True,"Small:0,Large:30",Extra Milk:20
+Cold Coffee,Beverages,160,Cold coffee with ice cream,True,True,"Regular:0,Large:60",Extra Ice Cream:40
+Fresh Lime Soda,Beverages,120,Refreshing lime soda,True,True,"Sweet:0,Salted:0",Mint:20
+Soft Drink,Beverages,80,Chilled soft drink,True,True,"Can:0,Bottle:40",Ice:10
+Gulab Jamun,Desserts,120,Soft gulab jamun,True,True,"2 pcs:0,4 pcs:60",Extra Piece:30
+Ice Cream,Desserts,150,Vanilla ice cream scoop,True,True,"Single Scoop:0,Double Scoop:80",Chocolate Syrup:30
+Brownie,Desserts,220,Chocolate brownie,True,True,Single:0,Ice Cream:50

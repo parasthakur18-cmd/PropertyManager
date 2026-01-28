@@ -1,0 +1,127 @@
+Now coming to the Salary and Lease module.
+
+1. Salary Management (Carry Forward System)
+
+Salary auto-marking is already implemented, which is good. However, we need a proper carry-forward mechanism for pending salary.
+
+Example:
+
+Monthly salary: ₹20,000
+
+December:
+
+Paid: ₹15,000
+
+Pending: ₹5,000
+
+January salary: ₹20,000
+
+Total payable in January = ₹25,000 (₹20,000 + ₹5,000 pending)
+
+Required behavior:
+
+Pending salary should automatically carry forward to the next month
+
+The payable amount should be recalculated automatically
+
+2. Salary Breakup, Advances & Extra Advance Tracking
+
+There should be a detailed salary breakup view that clearly shows:
+
+Monthly salary
+
+Previous pending amount
+
+Payments made
+
+Regular advances
+
+Extra advances (clearly marked as “Extra Advance”)
+
+Remaining balance
+
+If any extra advance is given, it should be separately visible and adjustable in future salary calculations.
+
+3. Attendance Impact (Absent / Leave Issue)
+
+Currently, the Absent and Leave functionality is not working properly.
+
+Expected behavior:
+
+When a staff member is marked:
+
+Absent → salary should be deducted automatically
+
+Leave / Half-day → salary should adjust as per rules
+
+These changes should reflect correctly in the salary calculation
+
+Admin should be able to define:
+
+Per-day salary calculation
+
+Leave deduction rules
+
+4. Lease Management (Carry Forward & Automation)
+
+Lease payments should also follow a carry-forward system similar to salary.
+
+Required features:
+
+Track lease payments made to the property owner
+
+Pending lease amounts from previous months or years should carry forward automatically
+
+Lease setup should include:
+
+Start date
+
+End date
+
+Lease duration (number of years)
+
+Yearly increment (percentage or fixed amount)
+
+The system should auto-calculate lease value every year based on the increment.
+
+5. Lease Edit, Override & History
+
+Admin should be able to:
+
+Edit or update lease terms
+
+Override auto-calculated values when required
+
+All edits should be logged
+
+6. Lease Payment Summary & Downloadable Ledger
+
+There should be a complete lease payment summary, including:
+
+Total lease amount
+
+Payments made
+
+Pending balance
+
+Payment dates and number of payments
+
+Admin should be able to:
+
+View a ledger-style report
+
+Download the ledger (PDF / Excel)
+
+Expected Outcome
+
+Accurate salary calculation with carry-forward
+
+Clear tracking of advances and extra advances
+
+Proper attendance-based salary deductions
+
+Automated and flexible lease management
+
+Full transparency with downloadable ledgers
+
+Please review and implement the above improvements.

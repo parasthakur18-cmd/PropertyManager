@@ -1,0 +1,147 @@
+1. Multi-Wallet / Multi-Account Support (Very Important)
+
+Instead of only one cash + one bank, allow:
+
+Multiple bank accounts (HDFC, SBI, ICICI, etc.)
+
+Separate wallets:
+
+Cash Counter
+
+UPI (GPay / PhonePe / Paytm)
+
+Online OTA settlements
+
+Why this helps
+
+Matches real-life hotel operations
+
+Easier reconciliation
+
+Clear audit trail
+
+2. Auto-Split Revenue by Payment Mode
+
+When a payment is received:
+
+Select payment mode (Cash / UPI / Bank / Card / OTA)
+
+Amount should auto-credit the correct wallet
+
+Example:
+
+₹3,000 room booking
+
+₹1,000 Cash
+
+₹2,000 UPI
+→ Cash balance +₹1,000
+→ Bank/UPI balance +₹2,000
+
+3. Revenue vs Receivable vs Collected (Clarity Layer)
+
+Add three clear numbers on the dashboard:
+
+Total Revenue (earned today)
+
+Collected Amount (cash/bank actually received)
+
+Pending Receivable (to be collected later)
+
+This avoids confusion when:
+
+Partial payments
+
+Pay-at-checkout bookings
+
+OTA settlements
+
+4. Daily Closing & Carry Forward (Hotel Style)
+
+Add a “Day Closing” feature:
+
+At end of the day:
+
+Admin clicks Close Day
+
+System locks today’s numbers
+
+Carries forward:
+
+Cash balance
+
+Bank balance
+
+Pending receivables
+
+Next day opens with exact closing balance of previous day.
+
+This is a BIG trust & control feature.
+
+5. Expense Entry at Source (Real-Time P&L)
+
+While adding expenses:
+
+Tag expense as:
+
+Food cost
+
+Salary
+
+Vendor payment
+
+Maintenance
+
+Miscellaneous
+
+Select payment mode (cash/bank)
+
+This way:
+
+Expense instantly reduces balance
+
+P&L updates in real time
+
+No manual reconciliation later
+
+6. Property-Wise & Date-Wise View
+
+Allow filters:
+
+Property-wise revenue & balance
+
+Date-wise (Today / Yesterday / Custom range)
+
+Shift-wise (Morning / Evening – optional)
+
+Useful when you manage multiple properties (your case).
+
+7. Alerts & Mismatch Warnings
+
+Smart alerts like:
+
+Cash received ≠ bills generated
+
+Day not closed
+
+Negative balance warning
+
+High cancellation impact on revenue
+
+This prevents leakage.
+
+8. Downloadable Reports (Owner-Level)
+
+Allow download of:
+
+Daily Summary Report
+
+Cash Book
+
+Bank Book
+
+Revenue Breakup (Room / Food / Add-ons)
+
+Monthly P&L snapshot
+
+PDF + Excel both.
