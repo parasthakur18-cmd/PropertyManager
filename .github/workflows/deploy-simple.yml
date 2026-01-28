@@ -34,7 +34,8 @@ jobs:
             # Clean and rebuild
             echo "🔨 Building application..."
             rm -rf dist
-            npm ci
+            # Try npm ci first (faster), fallback to npm install if lock file is out of sync
+            npm ci || npm install
             npm run build
             
             # Restart PM2
