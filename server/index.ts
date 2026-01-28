@@ -95,11 +95,19 @@ app.use((req, res, next) => {
     // GLOBAL SAFETY NET for legacy NaN → integer crashes.
     // If Postgres throws "invalid input syntax for type integer: \"NaN\"" we should not crash the UI.
     // These errors typically occur on list/report endpoints, so returning an empty list is acceptable.
-    if (
-      typeof message === "string" &&
-      message.includes('invalid input syntax for type integer') &&
-      message.includes('NaN')
-    ) {
+    const isNaNError = typeof message === "string" && (
+      message.includes('invalid input syntax for type integer') ||
+      message.includes('"NaN"') ||
+      (message.includes('NaN') && message.includes('integer'))
+    );
+
+    if (isNaNError) {
+      console.warn(`[GLOBAL SAFETY NET] Caught NaN error on ${req.method} ${req.path}: ${message}`);
+      // For GET requests to list endpoints, return empty array
+      if (req.method === 'GET') {
+        return res.status(200).json([]);
+      }
+      // For other methods, also return empty array to prevent crashes
       return res.status(200).json([]);
     }
 

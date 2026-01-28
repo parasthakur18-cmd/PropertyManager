@@ -27,19 +27,19 @@ jobs:
             cd /var/www/myapp
             
             # Pull latest code
-            echo "📥 Pulling latest code from GitHub..."
+            echo " Pulling latest code from GitHub..."
             git fetch origin
             git reset --hard origin/main
             
             # Clean and rebuild
-            echo "🔨 Building application..."
+            echo " Building application..."
             rm -rf dist
             # Try npm ci first (faster), fallback to npm install if lock file is out of sync
             npm ci || npm install
             npm run build
             
             # Restart PM2
-            echo "🔄 Restarting PM2..."
+            echo " Restarting PM2..."
             pm2 restart propertymanager --update-env || pm2 start ecosystem.config.cjs
             
             # Wait for app to start
