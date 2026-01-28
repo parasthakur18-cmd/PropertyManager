@@ -7,13 +7,13 @@ echo "=== Full error context for failing endpoints ==="
 echo ""
 
 echo "[1/2] Error log (filtered)"
-pm2 logs propertymanager --err --lines 800 --nostream \
-  | grep -n -E "invalid input|22P02|bills/pending|checkout-reminders|unmerged-cafe|\\[Storage\\]|\\[/api/" \
+pm2 logs propertymanager --err --lines 800 --nostream 2>/dev/null \
+  | grep -n -E "invalid input|22P02|bills/pending|checkout-reminders|unmerged-cafe|Storage|/api/" \
   | tail -250 || true
 
 echo ""
 echo "[2/2] Output log (filtered)"
-pm2 logs propertymanager --out --lines 800 --nostream \
+pm2 logs propertymanager --out --lines 800 --nostream 2>/dev/null \
   | grep -n -E "GET /api/bills/pending|GET /api/bookings/checkout-reminders|GET /api/orders/unmerged-cafe|invalid input|22P02" \
   | tail -250 || true
 

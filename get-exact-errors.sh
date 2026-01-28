@@ -15,12 +15,15 @@ echo "Base URL: $BASE_URL"
 echo ""
 
 echo "[1/2] Logging in..."
+rm -f "$COOKIE_JAR"
 LOGIN_RESPONSE=$(curl -s -c "$COOKIE_JAR" -X POST "$BASE_URL/api/auth/super-admin-login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
 
 if echo "$LOGIN_RESPONSE" | grep -q "Login successful\|message.*successful"; then
   echo "✅ Login OK"
+  # Small delay to ensure session is saved
+  sleep 0.5
 else
   echo "❌ Login failed:"
   echo "$LOGIN_RESPONSE"
