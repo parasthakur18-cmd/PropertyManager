@@ -1310,26 +1310,59 @@ export class DatabaseStorage implements IStorage {
           console.error("[Storage] getAllBills - pool.query is not available");
           return [];
         }
-        // Use simple SELECT * - columns are now INTEGER type after schema fix
-        // Use a safe approach: select all rows, then filter in JavaScript
-        // This avoids PostgreSQL casting errors on invalid data
+        // Use SQL that safely handles "NaN" values by filtering them out before casting
+        // This prevents "invalid input syntax for type integer: 'NaN'" errors
         let result;
         try {
-          // First, try to get all rows without filtering (PostgreSQL will fail if data is invalid)
-          result = await pool.query('SELECT * FROM bills ORDER BY created_at DESC');
+          // First, try to select all columns but filter out rows with "NaN" in integer columns
+          // Use a subquery to safely cast text to integer, handling "NaN" as NULL
+          result = await pool.query(`
+            SELECT 
+              id,
+              CASE 
+                WHEN booking_id::text ~ '^[0-9]+$' THEN booking_id::integer
+                ELSE NULL
+              END as booking_id,
+              CASE 
+                WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
+                ELSE NULL
+              END as guest_id,
+              room_charges, food_charges, extra_charges,
+              subtotal, gst_rate, gst_amount, service_charge_rate, service_charge_amount,
+              total_amount, payment_status, payment_method, paid_at,
+              merged_booking_ids, advance_paid, balance_amount,
+              discount_type, discount_value, discount_amount,
+              gst_on_rooms, gst_on_food, include_service_charge,
+              due_date, pending_reason, payment_methods,
+              created_at, updated_at
+            FROM bills 
+            ORDER BY created_at DESC
+          `);
         } catch (queryError: any) {
-          // If that fails, the data itself is corrupted - try to select only rows we can safely read
-          console.error("[Storage] getAllBills - Query failed due to invalid data:", queryError.message);
-          // Use a subquery with error handling to skip invalid rows
+          // If regex matching fails, try a simpler approach: select only safe columns
+          console.error("[Storage] getAllBills - Query with regex failed:", queryError.message);
+          console.error("[Storage] getAllBills - Error code:", queryError.code);
+          console.error("[Storage] getAllBills - Error detail:", queryError.detail);
           try {
+            // Try selecting all columns except the problematic ones, then add them as NULL
             result = await pool.query(`
-              SELECT * FROM bills 
-              WHERE booking_id IS NULL OR booking_id IS NOT NULL
+              SELECT 
+                id, room_charges, food_charges, extra_charges,
+                subtotal, gst_rate, gst_amount, service_charge_rate, service_charge_amount,
+                total_amount, payment_status, payment_method, paid_at,
+                merged_booking_ids, advance_paid, balance_amount,
+                discount_type, discount_value, discount_amount,
+                gst_on_rooms, gst_on_food, include_service_charge,
+                due_date, pending_reason, payment_methods,
+                created_at, updated_at,
+                NULL::integer as booking_id,
+                NULL::integer as guest_id
+              FROM bills 
               ORDER BY created_at DESC
             `);
           } catch (secondError: any) {
-            // If even that fails, try selecting only specific columns that are safe
-            console.error("[Storage] getAllBills - Second query also failed, using minimal columns:", secondError.message);
+            // If even that fails, select only the absolutely safe columns
+            console.error("[Storage] getAllBills - Minimal query also failed:", secondError.message);
             result = await pool.query(`
               SELECT 
                 id, room_charges, food_charges, extra_charges,

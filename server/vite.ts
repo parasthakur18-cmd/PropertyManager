@@ -76,11 +76,19 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
-  const distPath = path.resolve(import.meta.dirname, "..", "dist", "public");
+  // Historical builds used /dist/public, newer builds may output /dist/client.
+  // Support both so production doesn't crash with ENOENT.
+  const distPublicPath = path.resolve(import.meta.dirname, "..", "dist", "public");
+  const distClientPath = path.resolve(import.meta.dirname, "..", "dist", "client");
 
-  if (!fs.existsSync(distPath)) {
+  const distPath = fs.existsSync(distPublicPath)
+    ? distPublicPath
+    : (fs.existsSync(distClientPath) ? distClientPath : null);
+
+  if (!distPath) {
     throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
+      `Could not find the build directory. Looked for: ${distPublicPath} and ${distClientPath}. ` +
+      `Make sure to build the client first (e.g. npm run build).`,
     );
   }
 

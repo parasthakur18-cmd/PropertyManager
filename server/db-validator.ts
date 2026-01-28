@@ -5,6 +5,23 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
   const errors: string[] = [];
   
   try {
+    // Non-critical tables: ensure they exist so background features don't spam logs
+    // (e.g. audit logs are optional and should never break core APIs)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id SERIAL PRIMARY KEY,
+        entity_type VARCHAR(50) NOT NULL,
+        entity_id VARCHAR(255) NOT NULL,
+        action VARCHAR(50) NOT NULL,
+        user_id VARCHAR(255) NOT NULL,
+        user_role VARCHAR(50),
+        property_context VARCHAR(255)[],
+        change_set JSONB,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Check critical columns exist
     const criticalChecks = [
       {

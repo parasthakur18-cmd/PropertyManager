@@ -4344,41 +4344,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
     try {
+      // DEBUG: Log request details
+      console.log("[DEBUG] /api/bookings/checkout-reminders - Starting query");
+      console.log("[DEBUG] /api/bookings/checkout-reminders - User:", req.user?.id || req.user?.claims?.sub);
+      
       // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
-      // Use a safe approach: select all checked-in bookings, filter dates in JavaScript
+      // Use SQL that safely handles invalid data by converting "NaN" to NULL
       const { pool } = await import("./db");
       let result;
       try {
-        // Try to query with date filter
+        // Use a query that safely handles invalid integer columns
+        // Filter out rows with "NaN" in integer columns using regex pattern matching
         result = await pool.query(`
-          SELECT * FROM bookings 
+          SELECT 
+            id,
+            CASE 
+              WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
+              ELSE NULL
+            END as property_id,
+            CASE 
+              WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
+              ELSE NULL
+            END as room_id,
+            CASE 
+              WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
+              ELSE NULL
+            END as guest_id,
+            status, check_in_date, check_out_date, nights, guests_count,
+            total_amount, advance_paid, balance_amount, payment_status,
+            reference_id, booking_source, special_requests, created_at, updated_at
+          FROM bookings 
           WHERE status = 'checked-in' 
             AND check_out_date IS NOT NULL
+            AND check_out_date::text != 'NaN'
+            AND check_out_date::text ~ '^[0-9]'
             AND check_out_date::date = CURRENT_DATE
         `);
+        console.log("[DEBUG] /api/bookings/checkout-reminders - Query successful, found", result.rows.length, "bookings");
       } catch (dateError: any) {
         // If date casting fails, get all checked-in bookings and filter in JavaScript
         console.warn("[/api/bookings/checkout-reminders] Date cast failed, filtering in JS:", dateError.message);
-        const allCheckedIn = await pool.query(`
-          SELECT * FROM bookings 
-          WHERE status = 'checked-in' 
-            AND check_out_date IS NOT NULL
-        `);
-        // Filter in JavaScript for today's checkout
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        result = {
-          rows: (allCheckedIn.rows || []).filter((booking: any) => {
-            if (!booking.check_out_date) return false;
-            try {
-              const checkoutDate = new Date(booking.check_out_date);
-              checkoutDate.setHours(0, 0, 0, 0);
-              return checkoutDate.getTime() === today.getTime();
-            } catch {
-              return false;
-            }
-          })
-        };
+        console.warn("[/api/bookings/checkout-reminders] Error code:", dateError.code);
+        console.warn("[/api/bookings/checkout-reminders] Error detail:", dateError.detail);
+        try {
+          const allCheckedIn = await pool.query(`
+            SELECT 
+              id,
+              CASE 
+                WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
+                ELSE NULL
+              END as property_id,
+              CASE 
+                WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
+                ELSE NULL
+              END as room_id,
+              CASE 
+                WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
+                ELSE NULL
+              END as guest_id,
+              status, check_in_date, check_out_date, nights, guests_count,
+              total_amount, advance_paid, balance_amount, payment_status,
+              reference_id, booking_source, special_requests, created_at, updated_at
+            FROM bookings 
+            WHERE status = 'checked-in' 
+              AND check_out_date IS NOT NULL
+              AND check_out_date::text != 'NaN'
+              AND check_out_date::text ~ '^[0-9]'
+          `);
+          // Filter in JavaScript for today's checkout
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          result = {
+            rows: (allCheckedIn.rows || []).filter((booking: any) => {
+              if (!booking.check_out_date) return false;
+              try {
+                const checkoutDate = new Date(booking.check_out_date);
+                checkoutDate.setHours(0, 0, 0, 0);
+                return checkoutDate.getTime() === today.getTime();
+              } catch {
+                return false;
+              }
+            })
+          };
+          console.log("[DEBUG] /api/bookings/checkout-reminders - JS filter found", result.rows.length, "bookings");
+        } catch (fallbackError: any) {
+          console.error("[/api/bookings/checkout-reminders] Fallback query also failed:", fallbackError.message);
+          result = { rows: [] };
+        }
       }
       return res.json(result.rows || []);
     } catch (error: any) {
@@ -5824,35 +5876,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      // Use raw SQL to avoid any type casting issues with Drizzle
-      // Get all cafe/restaurant orders, filter booking_id in JavaScript to avoid casting errors
+      // DEBUG: Log request details
+      console.log("[DEBUG] /api/orders/unmerged-cafe - Starting query");
+      console.log("[DEBUG] /api/orders/unmerged-cafe - User:", req.user?.id || req.user?.claims?.sub);
+      
+      // Use raw SQL that safely handles "NaN" values in integer columns
+      // Convert "NaN" strings to NULL before PostgreSQL tries to cast them
       const { pool } = await import("./db");
       let result;
       try {
-        // Try to query with booking_id filter
+        // Use SQL that safely handles "NaN" values by using regex to validate integers
         result = await pool.query(`
-          SELECT * FROM orders 
+          SELECT 
+            id,
+            CASE 
+              WHEN booking_id::text ~ '^[0-9]+$' THEN booking_id::integer
+              ELSE NULL
+            END as booking_id,
+            CASE 
+              WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
+              ELSE NULL
+            END as guest_id,
+            CASE 
+              WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
+              ELSE NULL
+            END as property_id,
+            CASE 
+              WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
+              ELSE NULL
+            END as room_id,
+            order_type, order_status, items, total_amount, payment_status,
+            special_instructions, created_at, updated_at
+          FROM orders 
           WHERE (order_type = 'cafe' OR order_type = 'restaurant')
-            AND booking_id IS NULL
+            AND (
+              booking_id IS NULL 
+              OR booking_id::text !~ '^[0-9]+$'
+            )
         `);
+        console.log("[DEBUG] /api/orders/unmerged-cafe - Query successful, found", result.rows.length, "orders");
       } catch (queryError: any) {
         // If that fails, get all orders and filter in JavaScript
         console.warn("[/api/orders/unmerged-cafe] Query with NULL filter failed, filtering in JS:", queryError.message);
-        const allOrders = await pool.query(`
-          SELECT * FROM orders 
-          WHERE (order_type = 'cafe' OR order_type = 'restaurant')
-        `);
-        // Filter in JavaScript: keep only orders where booking_id is NULL or invalid
-        result = {
-          rows: (allOrders.rows || []).filter((order: any) => {
-            if (order.booking_id == null) return true;
-            // If booking_id exists, check if it's a valid number
-            const bookingIdStr = String(order.booking_id);
-            if (bookingIdStr === 'NaN' || bookingIdStr === '' || bookingIdStr === 'null') return true;
-            const parsed = Number(order.booking_id);
-            return isNaN(parsed) || !isFinite(parsed);
-          })
-        };
+        console.warn("[/api/orders/unmerged-cafe] Error code:", queryError.code);
+        console.warn("[/api/orders/unmerged-cafe] Error detail:", queryError.detail);
+        try {
+          const allOrders = await pool.query(`
+            SELECT 
+              id,
+              CASE 
+                WHEN booking_id::text ~ '^[0-9]+$' THEN booking_id::integer
+                ELSE NULL
+              END as booking_id,
+              CASE 
+                WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
+                ELSE NULL
+              END as guest_id,
+              CASE 
+                WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
+                ELSE NULL
+              END as property_id,
+              CASE 
+                WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
+                ELSE NULL
+              END as room_id,
+              order_type, order_status, items, total_amount, payment_status,
+              special_instructions, created_at, updated_at
+            FROM orders 
+            WHERE (order_type = 'cafe' OR order_type = 'restaurant')
+          `);
+          // Filter in JavaScript: keep only orders where booking_id is NULL or invalid
+          result = {
+            rows: (allOrders.rows || []).filter((order: any) => {
+              if (order.booking_id == null) return true;
+              // If booking_id exists, check if it's a valid number
+              const bookingIdStr = String(order.booking_id);
+              if (bookingIdStr === 'NaN' || bookingIdStr === '' || bookingIdStr === 'null') return true;
+              const parsed = Number(order.booking_id);
+              return isNaN(parsed) || !isFinite(parsed);
+            })
+          };
+          console.log("[DEBUG] /api/orders/unmerged-cafe - JS filter found", result.rows.length, "orders");
+        } catch (fallbackError: any) {
+          console.error("[/api/orders/unmerged-cafe] Fallback query also failed:", fallbackError.message);
+          result = { rows: [] };
+        }
       }
       
       console.log(`Found ${result.rows.length} unmerged café orders`);
@@ -6225,21 +6333,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
+      // DEBUG: Log all query parameters
+      console.log("[DEBUG] /api/bills/pending - Query params:", req.query);
+      console.log("[DEBUG] /api/bills/pending - User:", req.user?.id || req.user?.claims?.sub);
+      
       let propertyId: number | null = null;
       if (req.query.propertyId) {
-        const parsed = parseInt(req.query.propertyId as string, 10);
-        propertyId = isNaN(parsed) ? null : parsed;
+        const propertyIdRaw = req.query.propertyId as string;
+        console.log("[DEBUG] /api/bills/pending - propertyId raw:", propertyIdRaw, "type:", typeof propertyIdRaw);
+        const parsed = parseInt(propertyIdRaw, 10);
+        console.log("[DEBUG] /api/bills/pending - propertyId parsed:", parsed, "isNaN:", isNaN(parsed));
+        if (!Number.isInteger(parsed) || isNaN(parsed)) {
+          console.warn("[DEBUG] /api/bills/pending - Invalid propertyId, using null");
+          propertyId = null;
+        } else {
+          propertyId = parsed;
+        }
       }
+      console.log("[DEBUG] /api/bills/pending - Final propertyId:", propertyId);
       
       // Use getAllBills and filter for pending status
       // Wrap in try-catch to handle any errors from storage
       let allBills: any[] = [];
       try {
         allBills = await storage.getAllBills();
+        console.log("[DEBUG] /api/bills/pending - getAllBills returned", allBills.length, "bills");
       } catch (storageError: any) {
         console.error("[/api/bills/pending] Storage error:", storageError.message);
         console.error("[/api/bills/pending] Storage error code:", storageError.code);
         console.error("[/api/bills/pending] Storage error detail:", storageError.detail);
+        console.error("[/api/bills/pending] Storage error stack:", storageError.stack);
         // Return empty array if storage fails
         return sendResponse([]);
       }
@@ -6260,11 +6383,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }));
         
         // Filter by property if specified
-        if (propertyId !== null) {
-          pendingBills = pendingBills.filter((bill: any) => bill.propertyId === propertyId);
+        if (propertyId !== null && Number.isInteger(propertyId)) {
+          pendingBills = pendingBills.filter((bill: any) => {
+            const billPropertyId = bill.propertyId ? Number(bill.propertyId) : null;
+            return billPropertyId !== null && Number.isInteger(billPropertyId) && billPropertyId === propertyId;
+          });
         }
+        console.log("[DEBUG] /api/bills/pending - Filtered to", pendingBills.length, "pending bills");
       } catch (filterError: any) {
         console.error("[/api/bills/pending] Filter error:", filterError.message);
+        console.error("[/api/bills/pending] Filter error stack:", filterError.stack);
         // Return empty array if filtering fails
         return sendResponse([]);
       }
@@ -6272,6 +6400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return sendResponse(pendingBills);
     } catch (error: any) {
       console.error("[/api/bills/pending] Unexpected error:", error.message);
+      console.error("[/api/bills/pending] Error code:", error.code);
+      console.error("[/api/bills/pending] Error detail:", error.detail);
       console.error("[/api/bills/pending] Error stack:", error.stack);
       // Return empty array on error instead of 500 to prevent frontend crashes
       return sendResponse([]);
