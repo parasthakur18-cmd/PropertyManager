@@ -61,7 +61,7 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
       }
     }
 
-    // Check data types for bills (should be integer, not numeric/decimal)
+    // Check data types for bills (numeric/decimal is correct for monetary values)
     const billsTypeCheck = await pool.query(`
       SELECT column_name, data_type 
       FROM information_schema.columns 
@@ -70,8 +70,10 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     `);
     
     for (const row of billsTypeCheck.rows) {
-      if (row.data_type === 'numeric' || row.data_type === 'decimal') {
-        errors.push(`bills.${row.column_name} should be INTEGER, but is ${row.data_type}`);
+      // Accept numeric, decimal, or integer for monetary columns
+      const validTypes = ['numeric', 'decimal', 'integer', 'bigint'];
+      if (!validTypes.includes(row.data_type)) {
+        errors.push(`bills.${row.column_name} has unexpected type: ${row.data_type}`);
       }
     }
 
