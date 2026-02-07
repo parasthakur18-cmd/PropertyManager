@@ -9432,7 +9432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashedPassword = await bcrypt.hash(password, 10);
       
       await db.update(users).set({
-        passwordHash: hashedPassword,
+        password: hashedPassword,
         updatedAt: new Date(),
       }).where(eq(users.id, user.id));
 
