@@ -2,6 +2,7 @@ import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
 import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
@@ -327,6 +328,134 @@ export async function setupAuth(app: Express) {
   app.get("/api/logout", handleLogout);
   app.post("/api/logout", handleLogout);
 
+  // Setup Google OAuth if credentials are available
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const domains = process.env.REPLIT_DOMAINS?.split(",") || [];
+    const primaryDomain = domains[0] || `localhost:5000`;
+    const protocol = domains.length > 0 ? 'https' : 'http';
+    const callbackURL = `${protocol}://${primaryDomain}/api/auth/google/callback`;
+    
+    console.log(`[GOOGLE-AUTH] Setting up Google OAuth with callback: ${callbackURL}`);
+    
+    passport.use('google', new GoogleStrategy({
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL,
+      scope: ['profile', 'email'],
+    }, async (accessToken, refreshToken, profile, done) => {
+      try {
+        const email = profile.emails?.[0]?.value;
+        if (!email) {
+          return done(new Error('No email found in Google profile'));
+        }
+        
+        const googleId = `google-${profile.id}`;
+        const firstName = profile.name?.givenName || '';
+        const lastName = profile.name?.familyName || '';
+        const profileImage = profile.photos?.[0]?.value || null;
+        
+        const claims = {
+          sub: googleId,
+          email,
+          first_name: firstName,
+          last_name: lastName,
+          profile_image_url: profileImage,
+        };
+        
+        await upsertUser(claims);
+        
+        const dbUser = await storage.getUser(googleId);
+        if (!dbUser) {
+          const [existingByEmail] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+          if (existingByEmail) {
+            return done(null, { 
+              claims: { sub: existingByEmail.id, email },
+              isGoogleAuth: true 
+            });
+          }
+          return done(new Error('Failed to create user'));
+        }
+        
+        return done(null, { 
+          claims: { sub: dbUser.id, email: dbUser.email },
+          isGoogleAuth: true 
+        });
+      } catch (error) {
+        console.error('[GOOGLE-AUTH] Error:', error);
+        return done(error as Error);
+      }
+    }));
+    
+    app.get('/api/auth/google', passport.authenticate('google', {
+      scope: ['profile', 'email'],
+      prompt: 'select_account',
+    }));
+    
+    app.get('/api/auth/google/callback', passport.authenticate('google', {
+      failureRedirect: '/login?error=google_auth_failed',
+    }), async (req, res) => {
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub;
+        
+        if (userId && req.sessionID) {
+          const userAgent = req.get('User-Agent') || '';
+          const ipAddress = req.ip || req.socket.remoteAddress || '';
+          
+          let browser = 'Unknown';
+          let os = 'Unknown';
+          if (userAgent.includes('Chrome')) browser = 'Chrome';
+          else if (userAgent.includes('Firefox')) browser = 'Firefox';
+          else if (userAgent.includes('Safari')) browser = 'Safari';
+          else if (userAgent.includes('Edge')) browser = 'Edge';
+          
+          if (userAgent.includes('Windows')) os = 'Windows';
+          else if (userAgent.includes('Mac')) os = 'macOS';
+          else if (userAgent.includes('Linux')) os = 'Linux';
+          else if (userAgent.includes('Android')) os = 'Android';
+          else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) os = 'iOS';
+          
+          await storage.createUserSession({
+            userId,
+            sessionToken: req.sessionID,
+            deviceInfo: userAgent.substring(0, 255),
+            browser,
+            os,
+            ipAddress: ipAddress.substring(0, 45),
+            isActive: true,
+          });
+          
+          const dbUser = await storage.getUser(userId);
+          if (dbUser) {
+            await storage.createActivityLog({
+              userId,
+              userEmail: dbUser.email,
+              userName: `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || dbUser.email,
+              action: 'login',
+              category: 'auth',
+              details: { method: 'google', role: dbUser.role },
+              ipAddress: ipAddress.substring(0, 45),
+              userAgent: userAgent.substring(0, 500),
+            });
+            
+            updateUserLocationFromIp(userId, ipAddress).catch(() => {});
+          }
+          
+          console.log(`[GOOGLE-AUTH] Login successful for user ${userId}`);
+        }
+        
+        res.redirect('/');
+      } catch (error) {
+        console.error('[GOOGLE-AUTH] Callback error:', error);
+        res.redirect('/');
+      }
+    });
+    
+    console.log('[GOOGLE-AUTH] Google OAuth routes registered');
+  } else {
+    console.log('[GOOGLE-AUTH] Google OAuth not configured (missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET)');
+  }
+
   // Only setup Replit OIDC auth if on Replit and not disabled
   // On VPS, skip Replit auth and use local email/password auth only
   // Check DISABLE_REPLIT_AUTH first - if true, completely skip OIDC setup
@@ -547,12 +676,36 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return next();
   }
 
+  // Handle Google OAuth authentication
+  if (req.isAuthenticated && req.isAuthenticated() && req.user) {
+    const user = req.user as any;
+    if (user.isGoogleAuth && user.claims?.sub) {
+      const userId = user.claims.sub;
+      try {
+        const dbUser = await storage.getUser(userId);
+        if (dbUser) {
+          if (dbUser.status === 'inactive' || dbUser.status === 'suspended') {
+            console.log(`[isAuthenticated] Blocked deactivated Google user: ${userId}`);
+            return res.status(403).json({ 
+              message: "Your account has been deactivated. Please contact your administrator.",
+              isDeactivated: true
+            });
+          }
+          (req as any).user.id = dbUser.id;
+          (req as any).user.role = dbUser.role;
+          (req as any).user.assignedPropertyIds = dbUser.assignedPropertyIds;
+          return next();
+        }
+      } catch (err) {
+        console.error("[isAuthenticated] Error loading Google auth user from DB:", err);
+      }
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+  }
+
   // Handle Replit Auth (OIDC-based)
   // Skip Replit OIDC auth if disabled (use email/password auth only)
   if (process.env.DISABLE_REPLIT_AUTH === 'true') {
-    // Replit auth is disabled, so this middleware should only handle email/password auth
-    // If user is authenticated via email/password, they should have already been handled above
-    // If we reach here, user is NOT authenticated - return 401
     return res.status(401).json({ message: "Unauthorized" });
   }
 
@@ -562,7 +715,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const user = req.user as any;
   
-  // If no claims or expires_at, user not properly authenticated
+  // If no claims or expires_at, user not properly authenticated (Replit OIDC)
+  // Google auth users are already handled above
   if (!user.claims || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }

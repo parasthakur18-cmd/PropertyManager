@@ -193,7 +193,7 @@ export default function Login() {
   
   // Handle Google Login
   const handleGoogleLogin = () => {
-    window.location.href = "/api/login";
+    window.location.href = "/api/auth/google";
   };
   
   // Pending Status Screen
