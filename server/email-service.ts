@@ -66,6 +66,7 @@ async function getAgentMailClient() {
     return null;
   }
   return new AgentMailClient({
+    baseUrl: "https://api.agentmail.to",
     apiKey: credentials.apiKey
   });
 }
