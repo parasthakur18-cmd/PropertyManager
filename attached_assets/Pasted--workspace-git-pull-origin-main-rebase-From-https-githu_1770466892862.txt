@@ -1,0 +1,48 @@
+~/workspace$ git pull origin main --rebase
+From https://github.com/parasthakur18-cmd/PropertyManager
+ * branch            main       -> FETCH_HEAD
+Current branch main is up to date.
+~/workspace$ git push origin main
+Enumerating objects: 58, done.
+Counting objects: 100% (58/58), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (45/45), done.
+Writing objects: 100% (45/45), 418.49 KiB | 13.50 MiB/s, done.
+Total 45 (delta 37), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (37/37), completed with 13 local objects.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:     
+remote:       —— Google OAuth Client ID ————————————————————————————
+remote:        locations:
+remote:          - commit: 089ec73129d47c8a09ac8a813a7c88dbe3b08be1
+remote:            path: .replit:52
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/parasthakur18-cmd/PropertyManager/security/secret-scanning/unblock-secret/39LDlUUHkbZZARS45PtJEpxiDa6
+remote:     
+remote:     
+remote:       —— Google OAuth Client Secret ————————————————————————
+remote:        locations:
+remote:          - commit: 089ec73129d47c8a09ac8a813a7c88dbe3b08be1
+remote:            path: .replit:53
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/parasthakur18-cmd/PropertyManager/security/secret-scanning/unblock-secret/39LDlUzg7CHfUN1iBwltBIZNuIA
+remote:     
+remote: 
+remote: 
+To https://github.com/parasthakur18-cmd/PropertyManager
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/parasthakur18-cmd/PropertyManager'
+~/workspace$ 
