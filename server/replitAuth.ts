@@ -288,7 +288,8 @@ export async function setupAuth(app: Express) {
     const domains = process.env.REPLIT_DOMAINS?.split(",") || [];
     const primaryDomain = domains[0] || `localhost:5000`;
     const protocol = domains.length > 0 ? 'https' : 'http';
-    const callbackURL = `${protocol}://${primaryDomain}/api/auth/google/callback`;
+    const baseUrl = process.env.APP_BASE_URL || `${protocol}://${primaryDomain}`;
+    const callbackURL = `${baseUrl}/api/auth/google/callback`;
     
     console.log(`[GOOGLE-AUTH] Setting up Google OAuth with callback: ${callbackURL}`);
     
