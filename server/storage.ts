@@ -512,14 +512,10 @@ export class DatabaseStorage implements IStorage {
       if (userData.email) {
         const existingByEmail = await db.select().from(users).where(eq(users.email, userData.email)).limit(1);
         if (existingByEmail.length > 0) {
-          // Email already taken by another user - update that user's ID to the new OIDC ID
-          // This handles the case where a user logged in via a different auth method before
+          // Update profile only; do NOT change id - would violate FK from activity_logs, sessions, etc.
           const [updated] = await db
             .update(users)
-            .set({ 
-              id: userData.id,
-              ...updateFields 
-            })
+            .set(updateFields)
             .where(eq(users.email, userData.email))
             .returning();
           return updated;

@@ -136,28 +136,34 @@ async function upsertUser(
     const [existingByEmail] = await db.select().from(users).where(eq(users.email, claims["email"])).limit(1);
     
     if (existingByEmail) {
-      // User with this email exists - update their ID to the new OIDC ID and update profile
-      console.log(`[GOOGLE-AUTH] Email ${claims["email"]} exists with different ID - updating to new OIDC ID`);
+      // User with this email exists (e.g. signed up with email) - update profile only, do NOT change id.
+      // Changing id would violate FK from activity_logs, sessions, etc.
+      console.log(`[GOOGLE-AUTH] Email ${claims["email"]} exists with different ID - updating profile only`);
       
-      // Preserve super-admin role - never downgrade
       const existingIsSuperAdmin = existingByEmail.role === 'super-admin';
       const roleToSet = existingIsSuperAdmin ? 'super-admin' : (isAdmin ? 'admin' : existingByEmail.role);
       
-      const [updated] = await db
-        .update(users)
-        .set({
-          id: claims["sub"],
-          firstName: claims["first_name"] || existingByEmail.firstName,
-          lastName: claims["last_name"] || existingByEmail.lastName,
-          profileImageUrl: claims["profile_image_url"] || existingByEmail.profileImageUrl,
-          role: roleToSet,
-          signupMethod: 'google',
-          updatedAt: new Date(),
-        })
-        .where(eq(users.email, claims["email"]))
-        .returning();
-      
-      // Note: Admin users only see properties they're explicitly assigned to
+      try {
+        await db
+          .update(users)
+          .set({
+            firstName: claims["first_name"] || existingByEmail.firstName,
+            lastName: claims["last_name"] || existingByEmail.lastName,
+            profileImageUrl: claims["profile_image_url"] || existingByEmail.profileImageUrl,
+            role: roleToSet,
+            signupMethod: 'google',
+            updatedAt: new Date(),
+          })
+          .where(eq(users.email, claims["email"]));
+      } catch (err: any) {
+        // If FK or other DB error (e.g. trigger), don't fail login - fallback will use existing user by email
+        if (err?.code === '23503') {
+          console.warn('[GOOGLE-AUTH] Profile update skipped (constraint); using existing user by email');
+        } else {
+          throw err;
+        }
+      }
+      // Strategy _verify will use existingByEmail.id via the existingByEmail fallback (getUser(googleId) returns null)
       return;
     }
     
