@@ -1,0 +1,135 @@
+Perfect 👌 now we do this the correct production way (not hardcoding).
+
+Since your source of truth is Replit, you should fix it there and then push to VPS.
+
+⸻
+
+🎯 What Is Actually Wrong?
+
+Your backend is generating:
+
+redirect_uri=http://localhost:5000/api/auth/google/callback
+
+That means in your Replit code:
+	•	It is detecting domain as localhost
+	•	It is not using production domain
+	•	Or it is not respecting NODE_ENV=production
+
+⸻
+
+✅ PROPER FIX (Clean & Production Safe)
+
+We will:
+	1.	Add a new env variable: APP_BASE_URL
+	2.	Use it for Google callback
+	3.	Push to GitHub
+	4.	Pull on VPS
+	5.	Rebuild
+
+This is the clean DevOps way.
+
+⸻
+
+🛠 STEP 1 — Update Code in Replit
+
+Open this file in Replit:
+
+server/replitAuth.ts
+
+Find this line:
+
+const callbackURL = `${protocol}://${primaryDomain}/api/auth/google/callback`;
+
+
+⸻
+
+🔥 Replace It With This:
+
+const baseUrl =
+  process.env.APP_BASE_URL ||
+  `${protocol}://${primaryDomain}`;
+
+const callbackURL = `${baseUrl}/api/auth/google/callback`;
+
+
+⸻
+
+🛠 STEP 2 — Add Environment Variable in VPS
+
+Edit your PM2 config (ecosystem.config.cjs):
+
+Add this:
+
+APP_BASE_URL: 'https://hostezee.in',
+
+Inside env block.
+
+Example:
+
+env: {
+  NODE_ENV: 'production',
+  PORT: '3000',
+  APP_BASE_URL: 'https://hostezee.in',
+  GOOGLE_CLIENT_ID: '911079886676-6pefghc3dtg3jrmu8dbb7si41u6lj6gk.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: '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',
+  ...
+}
+
+
+⸻
+
+🛠 STEP 3 — Push From Replit
+
+In Replit shell:
+
+git add .
+git commit -m "Fix Google OAuth callback URL for production"
+git push origin main
+
+
+⸻
+
+🛠 STEP 4 — Pull on VPS
+
+On VPS:
+
+cd /var/www/myapp
+git pull origin main
+rm -rf dist
+npm run build
+pm2 restart propertymanager --update-env
+pm2 save
+
+
+⸻
+
+🛠 STEP 5 — Verify
+
+Run:
+
+curl -I https://hostezee.in/api/auth/google
+
+You should now see:
+
+redirect_uri=https://hostezee.in/api/auth/google/callback
+
+If you see localhost → something still wrong
+If you see hostezee.in → Google login will work immediately
+
+⸻
+
+🧠 Why This Is Best Practice
+
+Hardcoding domain ❌ bad
+Using env variable ✅ correct DevOps pattern
+
+Now your app works:
+	•	On Replit (dev)
+	•	On VPS (prod)
+	•	On any future domain
+
+⸻
+
+After you push + rebuild, paste your new curl output.
+
+We finish this cleanly 🚀
