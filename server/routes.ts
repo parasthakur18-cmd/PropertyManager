@@ -4343,108 +4343,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get checkout reminders (12 PM onwards, not yet auto-checked out)
   app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    // SAFETY NET: Return empty array immediately to prevent NaN errors
-    // This endpoint has issues with invalid integer data in legacy databases
-    return res.status(200).json([]);
-    
     try {
-      // This code should never execute due to return above
-
-      // DEBUG: Log request details
-      console.log("[DEBUG] /api/bookings/checkout-reminders - Starting query");
-      console.log("[DEBUG] /api/bookings/checkout-reminders - User:", req.user?.id || req.user?.claims?.sub);
-      
-      // Get bookings with checkout date = today (DATE comparison, not TIMESTAMP)
-      // Use SQL that safely handles invalid data by converting "NaN" to NULL
       const { pool } = await import("./db");
-      let result;
-      try {
-        // Use a query that safely handles invalid integer columns
-        // Filter out rows with "NaN" in integer columns using regex pattern matching
-        result = await pool.query(`
-          SELECT 
-            id,
-            CASE 
-              WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
-              ELSE NULL
-            END as property_id,
-            CASE 
-              WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
-              ELSE NULL
-            END as room_id,
-            CASE 
-              WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
-              ELSE NULL
-            END as guest_id,
-            status, check_in_date, check_out_date, nights, guests_count,
-            total_amount, advance_paid, balance_amount, payment_status,
-            reference_id, booking_source, special_requests, created_at, updated_at
-          FROM bookings 
-          WHERE status = 'checked-in' 
-            AND check_out_date IS NOT NULL
-            AND check_out_date::text != 'NaN'
-            AND check_out_date::text ~ '^[0-9]'
-            AND check_out_date::date = CURRENT_DATE
-        `);
-        console.log("[DEBUG] /api/bookings/checkout-reminders - Query successful, found", result.rows.length, "bookings");
-      } catch (dateError: any) {
-        // If date casting fails, get all checked-in bookings and filter in JavaScript
-        console.warn("[/api/bookings/checkout-reminders] Date cast failed, filtering in JS:", dateError.message);
-        console.warn("[/api/bookings/checkout-reminders] Error code:", dateError.code);
-        console.warn("[/api/bookings/checkout-reminders] Error detail:", dateError.detail);
-        try {
-          const allCheckedIn = await pool.query(`
-            SELECT 
-              id,
-              CASE 
-                WHEN property_id::text ~ '^[0-9]+$' THEN property_id::integer
-                ELSE NULL
-              END as property_id,
-              CASE 
-                WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer
-                ELSE NULL
-              END as room_id,
-              CASE 
-                WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer
-                ELSE NULL
-              END as guest_id,
-              status, check_in_date, check_out_date, nights, guests_count,
-              total_amount, advance_paid, balance_amount, payment_status,
-              reference_id, booking_source, special_requests, created_at, updated_at
-            FROM bookings 
-            WHERE status = 'checked-in' 
-              AND check_out_date IS NOT NULL
-              AND check_out_date::text != 'NaN'
-              AND check_out_date::text ~ '^[0-9]'
-          `);
-          // Filter in JavaScript for today's checkout
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          result = {
-            rows: (allCheckedIn.rows || []).filter((booking: any) => {
-              if (!booking.check_out_date) return false;
-              try {
-                const checkoutDate = new Date(booking.check_out_date);
-                checkoutDate.setHours(0, 0, 0, 0);
-                return checkoutDate.getTime() === today.getTime();
-              } catch {
-                return false;
-              }
-            })
-          };
-          console.log("[DEBUG] /api/bookings/checkout-reminders - JS filter found", result.rows.length, "bookings");
-        } catch (fallbackError: any) {
-          console.error("[/api/bookings/checkout-reminders] Fallback query also failed:", fallbackError.message);
-          result = { rows: [] };
-        }
-      }
+      // Safe comparison: works for both date and timestamp columns (::date normalizes)
+      const result = await pool.query(`
+        SELECT id, property_id, room_id, guest_id, status, check_in_date, check_out_date,
+               number_of_guests as guests_count, total_amount, advance_amount as advance_paid,
+               (COALESCE(total_amount, 0) - COALESCE(advance_amount, 0)) as balance_amount,
+               source as booking_source, special_requests, created_at, updated_at
+        FROM bookings
+        WHERE status = 'checked-in'
+          AND check_out_date IS NOT NULL
+          AND (check_out_date::date) = CURRENT_DATE
+      `);
       return res.json(result.rows || []);
     } catch (error: any) {
-      console.error("[/api/bookings/checkout-reminders] Error:", error.message);
-      console.error("[/api/bookings/checkout-reminders] Error code:", error.code);
-      console.error("[/api/bookings/checkout-reminders] Error detail:", error.detail);
-      console.error("[/api/bookings/checkout-reminders] Stack:", error.stack);
-      // Return empty array on error instead of 500
+      console.warn("[/api/bookings/checkout-reminders] Error:", error.message);
       return res.status(200).json([]);
     }
   });
@@ -12606,7 +12520,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== REGULAR ADMIN/STAFF EMAIL/PASSWORD LOGIN =====
-  app.post("/api/auth/email-login", async (req, res) => {
+  // Both /api/auth/login and /api/auth/email-login (frontend uses email-login; alias for curl/consistency)
+  app.post(["/api/auth/login", "/api/auth/email-login"], async (req, res) => {
     try {
       const { email, password } = req.body;
 
@@ -13053,15 +12968,17 @@ Be helpful, professional, and concise. If a user asks about something outside yo
         });
       }
 
-      // Generate AI summary using OpenAI
+      // Generate AI summary using OpenAI (skip API call if key missing or placeholder)
       const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const useFallback = !openaiKey || openaiKey === '_DUMMY_API_KEY_' || openaiKey.startsWith('_DUMMY');
       
-      if (!openaiKey) {
+      if (useFallback) {
+        const shouldNotify = totalPending >= 3;
         return res.json({
-          shouldNotify: totalPending > 0,
-          cleaningRooms: { count: cleaningCount, message: `${cleaningCount} rooms need attention for cleaning or maintenance.` },
-          pendingEnquiries: { count: enquiriesCount, message: `${enquiriesCount} new customer inquiries awaiting response.` },
-          pendingBills: { count: billsCount, message: `${billsCount} unpaid invoices pending collection.` },
+          shouldNotify,
+          cleaningRooms: { count: cleaningCount, message: cleaningCount > 0 ? `${cleaningCount} rooms need attention for cleaning or maintenance.` : "" },
+          pendingEnquiries: { count: enquiriesCount, message: enquiriesCount > 0 ? `${enquiriesCount} new customer inquiries awaiting response.` : "" },
+          pendingBills: { count: billsCount, message: billsCount > 0 ? `${billsCount} unpaid invoices pending collection.` : "" },
           overallInsight: "Ensure all tasks are handled promptly to maintain service quality.",
         });
       }
