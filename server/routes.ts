@@ -264,11 +264,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get presigned upload URL for guest ID proofs
   app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
     try {
-      // Check if MinIO is configured (VPS)
-      const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
-      if (isMinIOConfigured()) {
+      // Use MinIO presigned URL only when MinIO is on a public endpoint (browser must reach it).
+      // If MinIO is on 127.0.0.1, presigned URL would point to localhost and upload would fail.
+      const { isMinIOConfigured, isMinIOPublicEndpoint, MinIOStorageService } = await import('./minioStorage');
+      if (isMinIOConfigured() && isMinIOPublicEndpoint()) {
         try {
-          console.log("[Object Upload] Using MinIO storage");
+          console.log("[Object Upload] Using MinIO storage (public endpoint)");
           const minioService = new MinIOStorageService();
           const objectName = minioService.generateObjectName('id-proofs');
           const uploadURL = await minioService.getPresignedUploadURL(objectName);
@@ -277,9 +278,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         } catch (minioError: any) {
           console.error("[Object Upload] MinIO error:", minioError.message);
-          console.error("[Object Upload] MinIO error stack:", minioError.stack);
           // Fall through to VPS fallback
         }
+      } else if (isMinIOConfigured() && !isMinIOPublicEndpoint()) {
+        console.log("[Object Upload] MinIO on localhost - using VPS direct upload so browser can upload");
       } else {
         console.log("[Object Upload] MinIO not configured, checking Replit storage");
       }
@@ -312,13 +314,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public upload endpoint for guest self-checkin (no auth required)
   app.post("/api/guest/upload", async (req, res) => {
     try {
-      // Check if MinIO is configured (VPS)
-      const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
-      if (isMinIOConfigured()) {
+      // Use MinIO presigned URL only when endpoint is public (browser-reachable)
+      const { isMinIOConfigured, isMinIOPublicEndpoint, MinIOStorageService } = await import('./minioStorage');
+      if (isMinIOConfigured() && isMinIOPublicEndpoint()) {
         const minioService = new MinIOStorageService();
         const objectName = minioService.generateObjectName('id-proofs');
         const uploadURL = await minioService.getPresignedUploadURL(objectName);
         res.json({ uploadURL, objectName, isMinIO: true });
+        return;
+      }
+      if (isMinIOConfigured() && !isMinIOPublicEndpoint()) {
+        // MinIO on localhost: use VPS direct upload
+        const objectId = randomUUID();
+        res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
         return;
       }
 

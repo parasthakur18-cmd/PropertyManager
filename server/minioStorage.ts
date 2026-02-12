@@ -146,3 +146,17 @@ export function isMinIOConfigured(): boolean {
     (process.env.S3_ENDPOINT || process.env.MINIO_ENDPOINT)
   );
 }
+
+// Presigned URLs use the endpoint host. If MinIO is on localhost/127.0.0.1,
+// the browser cannot reach it. Use this to prefer VPS direct upload for browser uploads.
+export function isMinIOPublicEndpoint(): boolean {
+  const endpoint = process.env.S3_ENDPOINT || process.env.MINIO_ENDPOINT || '';
+  if (!endpoint) return false;
+  try {
+    const url = endpoint.startsWith('http') ? new URL(endpoint) : new URL(`http://${endpoint}`);
+    const host = (url.hostname || '').toLowerCase();
+    return host !== 'localhost' && host !== '127.0.0.1';
+  } catch {
+    return false;
+  }
+}

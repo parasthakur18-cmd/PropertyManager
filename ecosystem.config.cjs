@@ -13,6 +13,9 @@ module.exports = {
       SESSION_SECRET: 'OhzxIBcqP5K1E/mZ4mP15oD2xk6Q18yYRvFoSBMicrxv0Iw67yDaiAPihK0VikCp51K50qwESdWLOXKEmKgnPg==',
       // Disable Replit auth for VPS
       DISABLE_REPLIT_AUTH: 'true',
+      // Base URL for emails/WhatsApp links (VPS - no REPLIT_DOMAINS)
+      APP_BASE_URL: 'https://hostezee.in',
+      REPLIT_DOMAINS: 'hostezee.in',
       // Optional: Object Storage
       // For Replit (if using Replit object storage):
       DEFAULT_OBJECT_STORAGE_BUCKET_ID: 'replit-objstore-dadf9949-2217-4c0b-a3b4-c84c1a6f6bff',
