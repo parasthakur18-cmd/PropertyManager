@@ -101,11 +101,12 @@ export default function Vendors() {
   // Helper to get wallet balance by payment method type
   const getWalletBalance = (method: string): number => {
     const lowerMethod = (method || '').toLowerCase();
-    let walletType = 'cash';
-    if (lowerMethod.includes('bank') || lowerMethod.includes('cheque') || lowerMethod.includes('transfer')) walletType = 'bank';
-    else if (lowerMethod.includes('upi')) walletType = 'upi';
-    const wallet = wallets.find(w => w.type === walletType);
-    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+    if (lowerMethod === 'cash' || lowerMethod.includes('cash')) {
+      const cashWallets = wallets.filter(w => w.type === 'cash');
+      return cashWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
+    }
+    const upiWallets = wallets.filter(w => w.type === 'upi' || w.type === 'bank');
+    return upiWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
   };
 
   const vendorForm = useForm({
@@ -847,17 +848,6 @@ export default function Vendors() {
                                 </span>
                               </div>
                             </SelectItem>
-                            <SelectItem value="Bank Transfer">
-                              <div className="flex items-center justify-between w-full gap-4">
-                                <div className="flex items-center gap-2">
-                                  <Building2 className="h-4 w-4" />
-                                  <span>Bank Transfer</span>
-                                </div>
-                                <span className={`text-xs ${getWalletBalance('bank') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                  ₹{getWalletBalance('bank').toLocaleString('en-IN')}
-                                </span>
-                              </div>
-                            </SelectItem>
                             <SelectItem value="UPI">
                               <div className="flex items-center justify-between w-full gap-4">
                                 <div className="flex items-center gap-2">
@@ -866,17 +856,6 @@ export default function Vendors() {
                                 </div>
                                 <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
                                   ₹{getWalletBalance('upi').toLocaleString('en-IN')}
-                                </span>
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="Cheque">
-                              <div className="flex items-center justify-between w-full gap-4">
-                                <div className="flex items-center gap-2">
-                                  <Wallet className="h-4 w-4" />
-                                  <span>Cheque</span>
-                                </div>
-                                <span className={`text-xs ${getWalletBalance('cheque') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                  ₹{getWalletBalance('bank').toLocaleString('en-IN')}
                                 </span>
                               </div>
                             </SelectItem>

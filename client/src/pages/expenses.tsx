@@ -82,11 +82,12 @@ export default function Expenses() {
   // Helper to get wallet balance by payment method type
   const getWalletBalance = (method: string): number => {
     const lowerMethod = (method || '').toLowerCase();
-    let walletType = 'cash';
-    if (lowerMethod.includes('bank') || lowerMethod.includes('cheque') || lowerMethod.includes('transfer')) walletType = 'bank';
-    else if (lowerMethod.includes('upi')) walletType = 'upi';
-    const wallet = wallets.find(w => w.type === walletType);
-    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+    if (lowerMethod === 'cash' || lowerMethod.includes('cash')) {
+      const cashWallets = wallets.filter(w => w.type === 'cash');
+      return cashWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
+    }
+    const upiWallets = wallets.filter(w => w.type === 'upi' || w.type === 'bank');
+    return upiWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
   };
 
   const { data: expenses = [], isLoading } = useQuery<PropertyExpense[]>({
