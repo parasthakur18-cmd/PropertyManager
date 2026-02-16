@@ -130,3 +130,21 @@ Schema changes are managed via `drizzle-kit push` (direct push to DB) or migrati
 - **GitHub Actions** — CI/CD workflows for VPS deployment (`.github/workflows/`)
 - **esbuild** — Server bundling for production
 - **Vite** — Frontend build tooling
+
+## Recent Changes
+
+### Payment System Simplification (Feb 2026)
+- Merged 10+ payment modes (Cash, UPI, Card, Bank Transfer, Cheque, Online, etc.) into just 2: **Cash** and **UPI**
+- UPI now covers ALL digital/non-cash payments (bank transfers, cards, cheques, online, etc.)
+- Updated all payment dropdowns across: billing, bookings, expenses, salaries, vendors, leases, pending-payments
+- Wallets page shows only Cash and UPI types; legacy "bank" wallets are treated as UPI at runtime
+- `getWalletBalance()` in vendors/expenses/salaries pages aggregates both `upi` and legacy `bank` wallet types
+- Server-side `/api/reports/bank-book` endpoint includes both UPI and legacy bank wallets
+- No destructive data migration — backward compatibility via runtime `type === 'upi' || type === 'bank'` checks
+
+### Billing Page Enhancements (Feb 2026)
+- Added property dropdown filter and search by guest/invoice/booking
+- Improved pending calculations based on actual balance amounts
+
+### Vendor Dialog Fix (Feb 2026)
+- Save/Cancel buttons moved outside ScrollArea for always-visible sticky behavior
