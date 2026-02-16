@@ -124,6 +124,9 @@ import {
   type InsertWalletTransaction,
   type DailyClosing,
   type InsertDailyClosing,
+  leaseYearOverrides,
+  type LeaseYearOverride,
+  type InsertLeaseYearOverride,
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
@@ -275,6 +278,11 @@ export interface IStorage {
   getLeaseHistory(leaseId: number): Promise<LeaseHistory[]>;
   createLeaseHistory(history: InsertLeaseHistory): Promise<LeaseHistory>;
   
+  // Lease Year Override operations
+  getLeaseYearOverrides(leaseId: number): Promise<LeaseYearOverride[]>;
+  createLeaseYearOverride(data: InsertLeaseYearOverride): Promise<LeaseYearOverride>;
+  deleteLeaseYearOverride(leaseId: number, yearNumber: number): Promise<void>;
+
   // Lease calculation helpers
   calculateCurrentYearAmount(lease: PropertyLease): number;
   calculateLeaseSummary(leaseId: number): Promise<any>;
@@ -1910,6 +1918,40 @@ export class DatabaseStorage implements IStorage {
   async createLeaseHistory(historyData: InsertLeaseHistory): Promise<LeaseHistory> {
     const [history] = await db.insert(leaseHistory).values(historyData).returning();
     return history;
+  }
+
+  async getLeaseYearOverrides(leaseId: number): Promise<LeaseYearOverride[]> {
+    return await db.select().from(leaseYearOverrides)
+      .where(eq(leaseYearOverrides.leaseId, leaseId))
+      .orderBy(leaseYearOverrides.yearNumber);
+  }
+
+  async createLeaseYearOverride(data: InsertLeaseYearOverride): Promise<LeaseYearOverride> {
+    const existing = await db.select().from(leaseYearOverrides)
+      .where(and(
+        eq(leaseYearOverrides.leaseId, data.leaseId),
+        eq(leaseYearOverrides.yearNumber, data.yearNumber)
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db.update(leaseYearOverrides)
+        .set({ amount: data.amount, reason: data.reason, createdBy: data.createdBy, updatedAt: new Date() })
+        .where(eq(leaseYearOverrides.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [override] = await db.insert(leaseYearOverrides).values(data).returning();
+    return override;
+  }
+
+  async deleteLeaseYearOverride(leaseId: number, yearNumber: number): Promise<void> {
+    await db.delete(leaseYearOverrides)
+      .where(and(
+        eq(leaseYearOverrides.leaseId, leaseId),
+        eq(leaseYearOverrides.yearNumber, yearNumber)
+      ));
   }
 
   // Calculate the current year amount based on increment settings

@@ -26,6 +26,7 @@ export default function SalariesPage() {
   const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [advanceReason, setAdvanceReason] = useState("");
   const [advanceType, setAdvanceType] = useState<string>("regular");
+  const [advancePaymentMode, setAdvancePaymentMode] = useState<string>("cash");
   
   // Payment dialog state
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -127,7 +128,7 @@ export default function SalariesPage() {
 
   // Mutation to add salary advance
   const addAdvanceMutation = useMutation({
-    mutationFn: async (data: { staffMemberId: number; amount: number; advanceDate: string; reason: string; advanceType: string }) => {
+    mutationFn: async (data: { staffMemberId: number; amount: number; advanceDate: string; reason: string; advanceType: string; paymentMode: string }) => {
       return await apiRequest("/api/salary-advances", "POST", data);
     },
     onSuccess: () => {
@@ -138,6 +139,7 @@ export default function SalariesPage() {
       setAdvanceDate(new Date().toISOString().split('T')[0]);
       setAdvanceReason("");
       setAdvanceType("regular");
+      setAdvancePaymentMode("cash");
       toast({
         title: "Success",
         description: "Salary advance recorded successfully",
@@ -167,6 +169,7 @@ export default function SalariesPage() {
       advanceDate: advanceDate,
       reason: advanceReason,
       advanceType: advanceType,
+      paymentMode: advancePaymentMode,
     });
   };
 
@@ -234,6 +237,32 @@ export default function SalariesPage() {
       periodEnd: endDate.toISOString(),
     });
   };
+
+  const markAllPresentMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectivePropertyId) throw new Error("No property selected");
+      const todayStr = new Date().toISOString().split('T')[0];
+      return await apiRequest("/api/attendance/mark-all-present", "POST", {
+        date: todayStr,
+        propertyId: effectivePropertyId,
+      });
+    },
+    onSuccess: async (response) => {
+      const data = await response.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      toast({
+        title: "All Marked Present",
+        description: `${data.created} staff members marked present for today`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark all present",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Calculate totals including carry-forward
   const totals = {
@@ -345,6 +374,15 @@ export default function SalariesPage() {
           
           {/* Action Buttons */}
           <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              onClick={() => markAllPresentMutation.mutate()}
+              disabled={markAllPresentMutation.isPending}
+              data-testid="button-mark-all-present"
+            >
+              <Check className="h-4 w-4 mr-2" />
+              {markAllPresentMutation.isPending ? "Marking..." : "Mark All Present"}
+            </Button>
             <Button variant="outline" onClick={exportSalaryReport} data-testid="button-export-report">
               <Download className="h-4 w-4 mr-2" />
               Export Report
@@ -412,6 +450,18 @@ export default function SalariesPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Regular: Standard monthly advances. Extra: Additional advances beyond regular.
                   </p>
+                </div>
+                <div>
+                  <Label htmlFor="advance-payment-mode">Payment Mode</Label>
+                  <Select value={advancePaymentMode} onValueChange={setAdvancePaymentMode}>
+                    <SelectTrigger data-testid="select-advance-payment-mode">
+                      <SelectValue placeholder="Select payment mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label htmlFor="advance-reason">Reason (Optional)</Label>

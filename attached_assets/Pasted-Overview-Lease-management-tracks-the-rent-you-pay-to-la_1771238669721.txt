@@ -1,0 +1,324 @@
+Overview
+Lease management tracks the rent you pay to landlords for each property. Previously it was basic — just record lease and payments. Now it has full editing, year-wise custom amounts, pro-rata calculations, carry-forward tracking, and a detailed ledger.
+
+Change 12: Edit Lease Details
+What to do:
+Add an "Edit" button on each lease record that opens a dialog to modify lease details.
+
+Editable fields:
+
+┌──────────────────────────────────────┐
+│         Edit Lease Details           │
+│──────────────────────────────────────│
+│                                      │
+│  Landlord Name *  [________________] │
+│  Start Date *     [📅 dd/mm/yyyy   ] │
+│  End Date *       [📅 dd/mm/yyyy   ] │
+│  Base Amount *    [₹ _____________ ] │
+│  Increment Type * [Percentage ▼    ] │
+│                    • Percentage      │
+│                    • Fixed Amount    │
+│  Increment Value *[________________] │
+│  Duration (years) [________________] │
+│  Notes            [________________] │
+│                                      │
+│  Reason for change * [_____________] │
+│                                      │
+│            [Cancel]  [Save Changes]  │
+└──────────────────────────────────────┘
+Validation:
+
+Landlord name required
+Start date required, must be before end date
+Base amount required, must be > 0
+Increment type required: "percentage" or "fixed"
+Increment value required, must be >= 0
+Reason for change is required (for audit trail)
+Backend:
+
+PATCH /api/property-leases/:leaseId
+Body includes all editable fields + reason for the history log.
+
+Change 13: Year-wise Amount Overrides
+What to do:
+Normally, lease amounts are auto-calculated based on base amount + increment each year. But sometimes the landlord and tenant agree on a custom amount for a specific year. This feature lets admins set custom fixed amounts for individual years.
+
+How it works:
+
+If base rent is ₹50,000/month with 10% annual increment:
+
+Year 1: ₹50,000  (base)
+Year 2: ₹55,000  (auto: +10%)
+Year 3: ₹60,500  (auto: +10%)
+Year 4: ₹65,000  (CUSTOM override — user set this manually)
+Year 5: ₹73,205  (auto: +10% from Year 4's custom amount)
+UI on lease detail page — Year-wise breakdown table:
+
+| Year | Period              | Monthly Amount | Type      | Action          |
+|------|---------------------|----------------|-----------|-----------------|
+| 1    | Jan 2024 - Dec 2024 | ₹50,000        | Auto      | [Set Custom]    |
+| 2    | Jan 2025 - Dec 2025 | ₹55,000        | Auto      | [Set Custom]    |
+| 3    | Jan 2026 - Dec 2026 | ₹60,500        | Auto      | [Set Custom]    |
+| 4    | Jan 2027 - Dec 2027 | ₹65,000        | Custom ⭐ | [Reset to Auto] |
+| 5    | Jan 2028 - Dec 2028 | ₹73,205        | Auto      | [Set Custom]    |
+"Set Custom" dialog:
+
+┌─────────────────────────────────┐
+│   Set Custom Amount for Year 4  │
+│                                 │
+│  Auto-calculated: ₹66,550      │
+│  Custom Amount *  [₹ ________] │
+│  Reason *         [__________]  │
+│                                 │
+│        [Cancel] [Save]          │
+└─────────────────────────────────┘
+New table: lease_year_overrides
+
+id         - serial, primary key
+lease_id   - integer, references property_leases(id)
+year_number - integer (1, 2, 3, etc.)
+amount     - numeric, the custom monthly amount
+reason     - text, why it was overridden
+set_by     - varchar, user who set it
+created_at - timestamp
+API endpoints:
+
+POST   /api/property-leases/:leaseId/year-overrides    — Set a custom amount for a year
+DELETE /api/property-leases/:leaseId/year-overrides/:yearNumber  — Reset to auto
+GET    /api/property-leases/:leaseId/year-overrides     — Get all overrides for a lease
+Change 14: Reset to Auto
+When a year has a custom override, show a "Reset to Auto" button instead of "Set Custom." Clicking it removes the override and the amount reverts to the auto-calculated value based on increment rules.
+
+Change 15: Lease History Tracking
+What to do:
+Every time a lease is edited or a year override is set/removed, log it.
+
+New table: lease_history
+
+id         - serial, primary key
+lease_id   - integer, references property_leases(id)
+action     - varchar ("edited", "year_override_set", "year_override_removed", "payment_recorded")
+details    - text (JSON string with old/new values)
+changed_by - varchar, user who made the change
+created_at - timestamp
+Show history on lease detail page:
+
+─── CHANGE HISTORY ───────────────────────────────
+| Date       | User  | Action                        | Details                           |
+|------------|-------|-------------------------------|-----------------------------------|
+| Feb 10     | Admin | Edited lease details          | Base amount: ₹50,000 → ₹55,000   |
+| Feb 08     | Admin | Year 4 override set           | Custom amount: ₹65,000            |
+| Feb 05     | Admin | Year 3 override removed       | Reverted to auto: ₹60,500        |
+| Jan 25     | Admin | Payment recorded              | ₹50,000 for Jan 2026             |
+Change 16: Pro-rata Amounts and Carry-forward in Lease Ledger
+What to do:
+The lease ledger should show monthly breakdown with:
+
+Pro-rata calculation: If the lease starts mid-month (e.g., Jan 15), the first month's rent is calculated proportionally (17 days out of 31 = ₹27,419 instead of full ₹50,000)
+Carry-forward: If a month's rent is not fully paid, the unpaid amount carries forward to the next month
+Lease Ledger display:
+
+─── LEASE LEDGER: Mountain View Resort ──────────────────────────
+| Month    | Rent Due   | Carried Fwd | Total Due  | Paid      | Pending   |
+|----------|------------|-------------|------------|-----------|-----------|
+| Jan 2026 | ₹27,419    | ₹0          | ₹27,419    | ₹27,419   | ₹0        |
+| Feb 2026 | ₹50,000    | ₹0          | ₹50,000    | ₹50,000   | ₹0        |
+| Mar 2026 | ₹50,000    | ₹0          | ₹50,000    | ₹30,000   | ₹20,000   |
+| Apr 2026 | ₹50,000    | ₹20,000     | ₹70,000    | ₹0        | ₹70,000   |
+Pro-rata formula:
+
+proRataAmount = (monthlyRent / daysInMonth) * daysRemaining
+Where daysRemaining = days from lease start date to end of that month.
+
+Change 17-18: Past Date and Past Year Selection for Lease Payments
+What to do:
+When recording a lease payment, allow selecting past dates and past years. Previously the date picker was restricted to current/future dates only.
+
+Fix:
+
+Remove any minDate restriction on the payment date picker
+Allow the year selector to go back to the lease start year
+This is needed because sometimes payments are recorded late
+Change 19: Lease Payment Allocation Including Late Payments
+What to do:
+When a payment is recorded for a past month, allocate it correctly in the ledger. The payment should reduce the pending amount for that specific month, which then affects carry-forward calculations for subsequent months.
+
+Change 20: Enhanced Lease Payment Summary
+What to do:
+The lease summary card/section should show:
+
+┌─────────────────────────────────────────────────┐
+│  LEASE: Mountain View Resort                    │
+│                                                 │
+│  Landlord: Mr. Rajesh Kumar                     │
+│  Period: Jan 2024 — Dec 2028 (5 years)          │
+│  Base Rent: ₹50,000/month                       │
+│  Increment: 10% yearly                          │
+│                                                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │Total Due │ │Total Paid│ │Pending   │        │
+│  │₹12,50,000│ │₹10,00,000│ │₹2,50,000 │        │
+│  └──────────┘ └──────────┘ └──────────┘        │
+└─────────────────────────────────────────────────┘
+Change 21: Scrollable Lease Summary Table
+Make the year-wise breakdown table horizontally scrollable on mobile, with the Action column always visible (sticky right).
+
+Change 22: Role Permissions for Lease Editing
+Who can do what:
+
+Action	Super Admin	Admin	Manager	Staff
+View lease	Yes	Yes	Yes	No
+Edit lease details	Yes	Yes	No	No
+Set year overrides	Yes	Yes	No	No
+Record payments	Yes	Yes	Yes	No
+View history	Yes	Yes	Yes	No
+Change 23: Accrued Lease Rent in P&L Statement
+What to do:
+In the Profit & Loss report, show lease rent as an expense based on accrual (what is owed), not just cash (what was paid).
+
+Example:
+
+Monthly rent due: ₹50,000
+Actually paid in January: ₹30,000
+Old P&L (cash basis): Lease expense = ₹30,000
+New P&L (accrual basis): Lease expense = ₹50,000
+
+This gives a more accurate picture of the actual costs.
+
+PROMPT FOR PROPERTY MANAGER 2 — SALARY & ATTENDANCE ENHANCEMENTS
+
+Change 39: Automatic Attendance Marking
+What to do:
+Add a feature to automatically mark all staff as "Present" for today with one click. This saves time because most days everyone is present, and you only need to change the few who aren't.
+
+UI — On the attendance page, add a button:
+
+[Mark All Present]  Date: [📅 Feb 10, 2026]
+| Staff Name     | Status      |
+|----------------|-------------|
+| Raju           | Present ✅  |
+| Amit           | Present ✅  |
+| Suresh         | Present ✅  |
+| Priya          | Present ✅  |
+How it works:
+
+Click "Mark All Present"
+System creates attendance records for ALL active staff members for the selected date with status = "present"
+If records already exist for that date, don't overwrite them
+After bulk marking, admin can individually change any staff member's status to "absent", "leave", or "half-day"
+API:
+
+POST /api/attendance/mark-all-present
+Body: { "date": "2026-02-10", "property_id": 1 }
+Change 40: Advance Payment Method Selection
+What to do:
+When giving a salary advance to a staff member, allow selecting the payment method (Cash or UPI). Previously it didn't track how the advance was paid.
+
+Updated advance dialog:
+
+┌──────────────────────────────────┐
+│      Record Salary Advance       │
+│                                  │
+│  Staff: Raju Kumar               │
+│  Amount *     [₹ _____________]  │
+│  Date *       [📅 dd/mm/yyyy  ]  │
+│  Type *       [Regular ▼      ]  │
+│                • Regular          │
+│                • Extra            │
+│  Payment Mode [Cash ▼         ]  │
+│                • Cash             │
+│                • UPI              │
+│  Note         [_______________]  │
+│                                  │
+│        [Cancel] [Save Advance]   │
+└──────────────────────────────────┘
+Changes to salary_advances table:
+Add a payment_mode column (varchar, default "cash") if it doesn't exist.
+
+The advance should also create a wallet transaction — deducting from the appropriate wallet (Cash or UPI).
+
+Change 41: Salary CSV Export
+What to do:
+Add a "Download CSV" button on the salary management page that exports salary data as a spreadsheet.
+
+Button location:
+
+Salary Management — February 2026    [Download CSV 📥]
+CSV columns:
+
+Staff Name, Base Salary, Days Present, Days Absent, Leave Days, Half Days, Attendance Deduction, Regular Advances, Extra Advances, Previous Pending, Total Payable, Total Paid, Pending
+Example CSV output:
+
+Staff Name,Base Salary,Days Present,Days Absent,Leave,Half Days,Deduction,Regular Adv,Extra Adv,Prev Pending,Total Payable,Paid,Pending
+Raju Kumar,15000,26,2,1,1,1500,2000,0,5000,16500,10000,6500
+Amit Singh,12000,28,0,2,0,0,1000,500,0,10500,10500,0
+Suresh,10000,25,3,1,1,1750,0,0,3000,11250,8000,3250
+Implementation:
+
+function downloadCSV(salaryData) {
+  const headers = ["Staff Name", "Base Salary", "Days Present", ...];
+  const rows = salaryData.map(s => [
+    s.staffName,
+    s.baseSalary,
+    s.daysPresent,
+    // ... all columns
+  ]);
+  
+  const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+  
+  // Trigger browser download
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `salary_${month}_${year}.csv`;
+  a.click();
+}
+Salary Calculation Reference (Already Implemented, for Context)
+The salary system uses these rules:
+
+Attendance-based deductions:
+
+Present = no deduction
+Leave = no deduction (paid leave)
+Absent = full day deduction
+Half-day = 0.5 day deduction
+Deduction formula:
+
+dailyRate = baseSalary / totalWorkingDays
+deduction = (absentDays + (halfDays × 0.5)) × dailyRate
+Advance types:
+
+Regular = normal salary advance (deducted from salary)
+Extra = additional advance beyond salary (also deducted but tracked separately)
+Carry-forward:
+If salary is not fully paid in a month, the remaining amount carries forward to next month as "Previous Pending."
+
+Salary breakup:
+
+Base Salary:           ₹15,000
+- Attendance Deduction: -₹1,500  (3 absent days)
+- Regular Advances:     -₹2,000
+- Extra Advances:       -₹0
++ Previous Pending:     +₹5,000  (from last month)
+─────────────────────────────────
+Total Payable:          ₹16,500
+Paid This Month:        ₹10,000
+─────────────────────────────────
+Pending (carries fwd):  ₹6,500
+Summary of All Lease + Salary Changes:
+#	Change	Feature Area	Complexity
+12	Edit lease details dialog	Lease	Medium
+13	Year-wise amount overrides	Lease	High
+14	Reset to auto-calculated	Lease	Low
+15	Lease history tracking	Lease	Medium
+16	Pro-rata & carry-forward ledger	Lease	High
+17-18	Past date/year selection	Lease	Low
+19	Late payment allocation	Lease	Medium
+20	Enhanced lease summary display	Lease	Low
+21	Scrollable table with sticky column	Lease	Low
+22	Role permissions for lease	Lease	Medium
+23	Accrued rent in P&L	Lease/P&L	Medium
+39	Auto mark all present	Attendance	Low
+40	Advance payment method selection	Salary	Low
+41	Salary CSV export	Salary	Low
