@@ -462,9 +462,6 @@ export default function PendingPayments() {
                 <SelectContent>
                   <SelectItem value="Cash">Cash</SelectItem>
                   <SelectItem value="UPI">UPI</SelectItem>
-                  <SelectItem value="Card">Card</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
                 </SelectContent>
               </Select>
             </div>

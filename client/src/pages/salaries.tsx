@@ -112,11 +112,13 @@ export default function SalariesPage() {
 
   // Helper to get wallet balance by payment method type
   const getWalletBalance = (method: string): number => {
-    let walletType = 'cash';
-    if (method.includes('bank') || method.includes('cheque')) walletType = 'bank';
-    else if (method.includes('upi')) walletType = 'upi';
-    const wallet = wallets.find(w => w.type === walletType);
-    return wallet ? parseFloat(wallet.currentBalance || '0') : 0;
+    const lowerMethod = (method || '').toLowerCase();
+    if (lowerMethod === 'cash' || lowerMethod.includes('cash')) {
+      const cashWallets = wallets.filter(w => w.type === 'cash');
+      return cashWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
+    }
+    const upiWallets = wallets.filter(w => w.type === 'upi' || w.type === 'bank');
+    return upiWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance || '0'), 0);
   };
 
   const selectedWalletBalance = getWalletBalance(paymentMethod);
