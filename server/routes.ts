@@ -6255,86 +6255,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all pending bills with guest and agent details  
   app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
-    // SAFETY NET: Return empty array immediately to prevent NaN errors
-    // This endpoint has issues with invalid integer data in legacy databases
-    return res.status(200).json([]);
-    
     try {
-      // This code should never execute due to return above
-      // DEBUG: Log all query parameters
-      console.log("[DEBUG] /api/bills/pending - Query params:", req.query);
-      console.log("[DEBUG] /api/bills/pending - User:", req.user?.id || req.user?.claims?.sub);
-      
       let propertyId: number | null = null;
       if (req.query.propertyId) {
-        const propertyIdRaw = req.query.propertyId as string;
-        console.log("[DEBUG] /api/bills/pending - propertyId raw:", propertyIdRaw, "type:", typeof propertyIdRaw);
-        const parsed = parseInt(propertyIdRaw, 10);
-        console.log("[DEBUG] /api/bills/pending - propertyId parsed:", parsed, "isNaN:", isNaN(parsed));
-        if (!Number.isInteger(parsed) || isNaN(parsed)) {
-          console.warn("[DEBUG] /api/bills/pending - Invalid propertyId, using null");
-          propertyId = null;
-        } else {
+        const parsed = parseInt(req.query.propertyId as string, 10);
+        if (Number.isInteger(parsed) && !isNaN(parsed)) {
           propertyId = parsed;
         }
       }
-      console.log("[DEBUG] /api/bills/pending - Final propertyId:", propertyId);
-      
-      // Use getAllBills and filter for pending status
-      // Wrap in try-catch to handle any errors from storage
+
       let allBills: any[] = [];
       try {
         allBills = await storage.getAllBills();
-        console.log("[DEBUG] /api/bills/pending - getAllBills returned", allBills.length, "bills");
       } catch (storageError: any) {
         console.error("[/api/bills/pending] Storage error:", storageError.message);
-        console.error("[/api/bills/pending] Storage error code:", storageError.code);
-        console.error("[/api/bills/pending] Storage error detail:", storageError.detail);
-        console.error("[/api/bills/pending] Storage error stack:", storageError.stack);
-        // Return empty array if storage fails
-        return sendResponse([]);
+        return res.status(200).json([]);
       }
-      
-      // Safely filter and map
-      let pendingBills: any[] = [];
-      try {
-        pendingBills = allBills
-          .filter((bill: any) => {
-            // Numeric-safe comparison: ensure balanceAmount is a valid number > 0
-            if (!bill || bill.paymentStatus !== 'pending') return false;
-            const balance = Number(bill.balanceAmount) || Number(bill.totalAmount) || 0;
-            return balance > 0;
-          })
-          .map((bill: any) => ({
-            ...bill,
-            balanceAmount: Number(bill.balanceAmount) || Number(bill.totalAmount) || 0,
-          }));
-        
-        // Filter by property if specified
-        if (propertyId !== null && Number.isInteger(propertyId)) {
-          pendingBills = pendingBills.filter((bill: any) => {
-            const billPropertyId = bill.propertyId ? Number(bill.propertyId) : null;
-            return billPropertyId !== null && Number.isInteger(billPropertyId) && billPropertyId === propertyId;
-          });
-        }
-        console.log("[DEBUG] /api/bills/pending - Filtered to", pendingBills.length, "pending bills");
-      } catch (filterError: any) {
-        console.error("[/api/bills/pending] Filter error:", filterError.message);
-        console.error("[/api/bills/pending] Filter error stack:", filterError.stack);
-        // Return empty array if filtering fails
-        return sendResponse([]);
+
+      const getBillBalance = (bill: any) => {
+        const balance = Number(bill.balanceAmount) || 0;
+        if (balance > 0) return balance;
+        return Math.max(0, (Number(bill.totalAmount) || 0) - (Number(bill.advancePaid) || 0));
+      };
+
+      let pendingBills = allBills.filter((bill: any) => {
+        if (!bill) return false;
+        return getBillBalance(bill) > 0 && bill.paymentStatus !== 'paid';
+      }).map((bill: any) => ({
+        ...bill,
+        balanceAmount: getBillBalance(bill),
+      }));
+
+      if (propertyId !== null) {
+        const allBookings = await storage.getAllBookings();
+        const bookingPropertyMap = new Map<number, number>();
+        allBookings.forEach((b: any) => {
+          if (b.id && b.propertyId) bookingPropertyMap.set(b.id, b.propertyId);
+        });
+        pendingBills = pendingBills.filter((bill: any) => {
+          const billPropertyId = bill.bookingId ? bookingPropertyMap.get(bill.bookingId) : null;
+          return billPropertyId === propertyId;
+        });
       }
-      
-      return sendResponse(pendingBills);
+
+      return res.status(200).json(pendingBills);
     } catch (error: any) {
-      console.error("[/api/bills/pending] Unexpected error:", error.message);
-      console.error("[/api/bills/pending] Error code:", error.code);
-      console.error("[/api/bills/pending] Error detail:", error.detail);
-      console.error("[/api/bills/pending] Error stack:", error.stack);
-      // Return empty array on error instead of 500 to prevent frontend crashes
-      return sendResponse([]);
+      console.error("[/api/bills/pending] Error:", error.message);
+      return res.status(200).json([]);
     }
   });
 
