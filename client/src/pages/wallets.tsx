@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Wallet, CreditCard, Building2, Banknote, ArrowUpRight, ArrowDownRight, Clock, Lock, RefreshCw, AlertTriangle, CheckCircle2, Download, Eye, Trash2, Pencil } from "lucide-react";
+import { Plus, Wallet, CreditCard, Banknote, ArrowUpRight, ArrowDownRight, Clock, Lock, RefreshCw, AlertTriangle, CheckCircle2, Download, Eye, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,7 +23,7 @@ import type { Property, Wallet as WalletType, WalletTransaction, DailyClosing } 
 
 const walletFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  type: z.enum(["cash", "upi", "bank"]),
+  type: z.enum(["cash", "upi"]),
   accountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
   upiId: z.string().optional(),
@@ -107,7 +107,7 @@ export default function Wallets() {
     resolver: zodResolver(walletFormSchema),
     defaultValues: {
       name: "",
-      type: "bank" as const,
+      type: "upi" as const,
       accountNumber: "",
       ifscCode: "",
       upiId: "",
@@ -217,7 +217,7 @@ export default function Wallets() {
       queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
       toast({
         title: "Wallets initialized",
-        description: "Default payment accounts (Cash, UPI, Bank) have been created.",
+        description: "Default payment accounts (Cash, UPI) have been created.",
       });
     },
     onError: (error: any) => {
@@ -356,7 +356,7 @@ export default function Wallets() {
     setEditingWallet(wallet);
     walletForm.reset({
       name: wallet.name,
-      type: wallet.type as "cash" | "upi" | "bank",
+      type: (wallet.type === "bank" ? "upi" : wallet.type) as "cash" | "upi",
       accountNumber: wallet.accountNumber || "",
       ifscCode: wallet.ifscCode || "",
       upiId: wallet.upiId || "",
@@ -383,8 +383,7 @@ export default function Wallets() {
     switch (type) {
       case "cash": return Banknote;
       case "upi": return CreditCard;
-      case "bank": return Building2;
-      default: return Wallet;
+      default: return CreditCard;
     }
   };
 
@@ -392,15 +391,13 @@ export default function Wallets() {
     switch (type) {
       case "cash": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
       case "upi": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
-      case "bank": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+      default: return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
     }
   };
 
   const totalBalance = wallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
   const cashBalance = wallets.filter(w => w.type === "cash").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
-  const upiBalance = wallets.filter(w => w.type === "upi").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
-  const bankBalance = wallets.filter(w => w.type === "bank").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
+  const upiBalance = wallets.filter(w => w.type === "upi" || w.type === "bank").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
 
   const todayTransactions = transactions.filter(t => {
     const txDate = new Date(t.transactionDate);
@@ -446,7 +443,7 @@ export default function Wallets() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
@@ -477,17 +474,6 @@ export default function Wallets() {
                     <p className="text-2xl font-bold text-purple-600" data-testid="text-upi-balance">₹{upiBalance.toLocaleString()}</p>
                   </div>
                   <CreditCard className="h-8 w-8 text-purple-500" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Bank</p>
-                    <p className="text-2xl font-bold text-blue-600" data-testid="text-bank-balance">₹{bankBalance.toLocaleString()}</p>
-                  </div>
-                  <Building2 className="h-8 w-8 text-blue-500" />
                 </div>
               </CardContent>
             </Card>
@@ -654,7 +640,7 @@ export default function Wallets() {
                 <Card className="p-8 text-center">
                   <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">No Wallets Found</h3>
-                  <p className="text-muted-foreground mb-4">Click "Initialize Default Wallets" to create Cash, UPI, and Bank accounts</p>
+                  <p className="text-muted-foreground mb-4">Click "Initialize Default Wallets" to create Cash and UPI accounts</p>
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -684,12 +670,6 @@ export default function Wallets() {
                                 ₹{parseFloat(wallet.currentBalance?.toString() || "0").toLocaleString()}
                               </p>
                             </div>
-                            {wallet.type === "bank" && wallet.accountNumber && (
-                              <div className="text-sm">
-                                <span className="text-muted-foreground">A/C: </span>
-                                <span>****{wallet.accountNumber.slice(-4)}</span>
-                              </div>
-                            )}
                             {wallet.type === "upi" && wallet.upiId && (
                               <div className="text-sm">
                                 <span className="text-muted-foreground">UPI: </span>
@@ -1091,43 +1071,12 @@ export default function Wallets() {
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
                         <SelectItem value="upi">UPI</SelectItem>
-                        <SelectItem value="bank">Bank Account</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {walletForm.watch("type") === "bank" && (
-                <>
-                  <FormField
-                    control={walletForm.control}
-                    name="accountNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Account Number</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Account number" {...field} data-testid="input-account-number" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={walletForm.control}
-                    name="ifscCode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>IFSC Code</FormLabel>
-                        <FormControl>
-                          <Input placeholder="IFSC code" {...field} data-testid="input-ifsc" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </>
-              )}
               {walletForm.watch("type") === "upi" && (
                 <FormField
                   control={walletForm.control}

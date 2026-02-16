@@ -1,0 +1,163 @@
+PROMPT FOR PROPERTY MANAGER 2 — PAYMENT SYSTEM SIMPLIFICATION (MERGE WALLETS)
+
+What Was the Problem
+Previously the system had multiple payment/wallet types:
+
+Cash
+UPI
+Bank Transfer
+GPay
+PhonePe
+Paytm
+Online Payment
+Cheque
+This was confusing — too many options for staff to choose from, and the financial reports had too many columns. In reality, there are only 2 ways money comes in:
+
+Cash — Physical cash handed over
+Digital/UPI — Everything else (UPI, bank transfer, GPay, PhonePe, Paytm, online, card, etc.)
+What We Changed
+Simplified to just 2 wallet types:
+
+Before (Old)	After (New)
+Cash	Cash
+UPI	UPI (covers all digital)
+Bank Transfer	Merged into UPI
+GPay	Merged into UPI
+PhonePe	Merged into UPI
+Paytm	Merged into UPI
+Online Payment	Merged into UPI
+Cheque	Merged into UPI
+"UPI" is just the label — it actually means "all digital/non-cash payments."
+
+Changes Required Across the System
+1. Wallets Table
+
+Each property should have exactly 2 wallets:
+
+type: "cash" — Cash wallet
+type: "upi" — Digital wallet (covers all non-cash)
+Remove or merge any existing wallets of type "bank", "gpay", "phonepe", etc. into the UPI wallet. Their balances should be combined into the UPI wallet balance.
+
+2. Payment Mode Dropdowns (Everywhere in the App)
+
+Every place where the user selects a payment method, simplify the dropdown to only 2 options:
+
+Payment Mode:
+  • Cash
+  • UPI
+This applies to ALL these forms/dialogs:
+
+Booking payment collection
+Checkout payment
+Food order payment
+Expense recording
+Vendor payment
+Salary payment / advance payment
+Agent payment recording
+Lease payment recording
+Any other payment form
+3. Wallets Page
+
+Previously showed separate cards for Cash, UPI, Bank, etc. Now show only 2 cards:
+
+┌─────────────────────┐  ┌─────────────────────┐
+│   💵 CASH WALLET    │  │   📱 UPI WALLET     │
+│                     │  │  (All Digital)       │
+│  Balance: ₹45,000   │  │  Balance: ₹1,25,000  │
+│                     │  │                      │
+│  Revenue: ₹1,20,000 │  │  Revenue: ₹3,50,000  │
+│  Collected: ₹95,000 │  │  Collected: ₹2,80,000│
+│  Pending: ₹25,000   │  │  Pending: ₹70,000    │
+└─────────────────────┘  └─────────────────────┘
+4. Wallet Transactions
+
+When recording a transaction (booking payment, food order, expense, etc.), the payment_mode field should only accept:
+
+"cash" → records to the Cash wallet
+"upi" → records to the UPI wallet
+Any existing transaction records with old payment modes ("bank", "gpay", "phonepe", etc.) should be treated as "upi" when displaying.
+
+5. Daily Closing
+
+The daily closing feature should show closing for 2 wallets only:
+
+Daily Closing — Feb 10, 2026
+Cash Wallet:
+  Opening Balance: ₹30,000
+  Today's Inflow:  ₹15,000
+  Today's Outflow: ₹5,000
+  Closing Balance: ₹40,000
+UPI Wallet:
+  Opening Balance: ₹1,00,000
+  Today's Inflow:  ₹25,000
+  Today's Outflow: ₹10,000
+  Closing Balance: ₹1,15,000
+6. Financial Reports (Cash Book, Bank Book)
+
+Cash Book → Shows only Cash wallet transactions
+Bank Book → Rename to "Digital Book" or "UPI Book" → Shows all UPI/digital wallet transactions
+Daily Summary → Shows 2 columns: Cash and UPI
+7. Auto-Split Revenue Logic
+
+When a payment comes in, the system auto-records it to the correct wallet:
+
+function getWalletForPayment(paymentMode: string, propertyId: number) {
+  if (paymentMode === "cash") {
+    return getWallet(propertyId, "cash");
+  } else {
+    // All non-cash payments go to UPI wallet
+    return getWallet(propertyId, "upi");
+  }
+}
+8. Migration of Old Data
+
+For existing data that has old payment modes:
+
+Any wallet_transaction with payment_mode = "bank", "gpay", "phonepe", "paytm", "online", "cheque" → treat as "upi" in reports
+If you have separate wallet records for bank/gpay/etc., merge their balances into the UPI wallet
+Don't delete old transaction records — just map them to the correct wallet when displaying
+9. Remove Old Payment Method References
+
+Search the entire codebase for old payment method references and remove/simplify them:
+
+// OLD (remove these):
+const PAYMENT_MODES = ["cash", "upi", "bank", "gpay", "phonepe", "paytm", "online", "cheque"];
+// NEW (replace with):
+const PAYMENT_MODES = ["cash", "upi"];
+Also update any enum/type definitions, validation schemas, and display labels.
+
+10. Vendor Dialog Scrolling Fix
+
+While working on payment forms, also fix the vendor dialog: when the form is long, the "Save" button was getting pushed below the visible area. Fix by making the dialog content scrollable while keeping the Save/Cancel buttons always visible at the bottom.
+
+┌──────────────────────────┐
+│  Add/Edit Vendor         │
+│──────────────────────────│
+│ ┌──────────────────────┐ │
+│ │ Vendor Name *        │ │
+│ │ [________________]   │ │
+│ │                      │ │
+│ │ Phone               │ │
+│ │ [________________]   │ │
+│ │                      │ │
+│ │ Category            │ │
+│ │ [________________]   │ │
+│ │                      │ │
+│ │ ... more fields ...  │ │ ← This area scrolls
+│ │                      │ │
+│ └──────────────────────┘ │
+│──────────────────────────│
+│     [Cancel] [Save]      │ ← Always visible
+└──────────────────────────┘
+Summary of All Payment Changes:
+#	What to Change	Where
+1	Only 2 wallet types: Cash and UPI	Wallets table/creation
+2	Simplify all payment dropdowns to Cash/UPI	Every payment form
+3	Show only 2 wallet cards	Wallets page
+4	Map all transactions to Cash or UPI	Wallet transactions
+5	Daily closing for 2 wallets only	Daily closing feature
+6	Cash Book + Digital/UPI Book reports	Financial reports
+7	Auto-split to correct wallet	Payment recording logic
+8	Migrate old data (bank/gpay → upi)	Database cleanup
+9	Remove old payment mode constants	Codebase cleanup
+10	Vendor dialog scroll fix	Vendor management
