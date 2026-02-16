@@ -181,19 +181,6 @@ export default function Billing() {
     setDetailDialogOpen(true);
   };
 
-  if (isLoading) {
-    return (
-      <div className="p-6 md:p-8">
-        <Skeleton className="h-10 w-64 mb-6" />
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-48" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   const billsWithProperty = useMemo(() => {
     return (bills || []).map(bill => {
       const booking = allBookings.find(b => b.id === bill.bookingId);
@@ -242,8 +229,20 @@ export default function Billing() {
     });
   }, [billsWithProperty, paymentFilter, propertyFilter, agentFilter, searchText, allBookings]);
 
-  // Always show all travel agents (not just those with bills)
   const agentsToShow = travelAgents || [];
+
+  if (isLoading) {
+    return (
+      <div className="p-6 md:p-8">
+        <Skeleton className="h-10 w-64 mb-6" />
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-48" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-8">
