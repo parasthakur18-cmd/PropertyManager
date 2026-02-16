@@ -1,0 +1,119 @@
+Change 1: Property and Search Filters on Billing Management Page
+What to do:
+On the billing/bills management page, add two filters at the top:
+
+Property Filter (Dropdown) — A dropdown showing all properties. When selected, only bills from that property are shown. Default is "All Properties."
+
+Search Box — A text input that filters bills by guest name or booking ID. It should filter in real-time as the user types.
+
+How it works:
+
+The billing page fetches all bills from the API
+On the frontend, filter the bills list based on the selected property AND the search text
+The search should match against: guest name, booking ID, or bill number
+Both filters work together (e.g., show only bills from "Mountain Resort" where guest name contains "Sharma")
+Show the count of filtered results (e.g., "Showing 12 of 276 bills")
+UI Layout:
+
+[Property Dropdown: All Properties ▼]  [🔍 Search by guest name or booking ID...]
+[Bills Table]
+Change 2: Show All Travel Agents in Billing Filter
+What to do:
+Add a third filter dropdown for Travel Agent on the billing page.
+
+Current problem: If you only show agents who already have bills, new agents won't appear in the filter.
+
+Fix: The agent filter dropdown should show ALL travel agents from the travel_agents table, not just those who have existing bills.
+
+How it works:
+
+Fetch all travel agents from /api/travel-agents
+Show them in a dropdown: "All Agents", then list all agent names
+When an agent is selected, filter bills to show only bookings where travel_agent_id matches
+This filter should work alongside the property filter and search box
+UI Layout:
+
+[Property: All ▼]  [Agent: All Agents ▼]  [🔍 Search...]
+[Bills Table]
+Change 3: Correct Pending Bills Count Display
+What to do:
+At the top of the billing page, show summary cards with correct counts.
+
+Cards to show:
+
+Total Bills — Count of all bills (filtered by current filters)
+Pending Bills — Count of bills where payment is not fully collected
+Completed Bills — Count of bills that are fully paid
+Total Revenue — Sum of all bill amounts (filtered)
+The fix:
+Previously the pending count was wrong because it wasn't accounting for partial payments. The correct logic is:
+
+Pending = bills where (total_amount - amount_paid) > 0
+Completed = bills where (total_amount - amount_paid) <= 0
+Not just checking a status field — actually calculate based on amounts.
+
+Change 4: Correctly Display Split Payments and Extended Stay Charges on Bills
+What to do:
+When viewing a bill detail or generating a bill at checkout, the bill should clearly show:
+
+A. Split Payment Breakdown:
+If a booking had multiple payments (e.g., advance + final payment), show each payment as a separate line item:
+
+Payment Breakdown:
+  Advance Payment (Cash)     ₹2,000
+  Final Payment (UPI)        ₹3,000
+  ───────────────────────────────
+  Total Paid                 ₹5,000
+B. Extended Stay Charges:
+If the guest checked out AFTER the original checkout date, show:
+
+Room Charges (3 nights × ₹2,000)        ₹6,000
+Extended Stay (1 extra night × ₹2,000)  ₹2,000
+Food Orders                              ₹1,500
+Extra Services                           ₹500
+───────────────────────────────────────────
+Grand Total                              ₹10,000
+The extended stay calculation:
+
+Compare actual checkout time vs booked checkout date
+If actual > booked, calculate extra nights
+Extra night rate = same as the per-night room rate (custom_price or default room price)
+Show as a separate line item on the bill
+Change 5: Include Taxes and Fees in Billing/Ledger Calculations
+What to do:
+Update the billing calculations so that when showing totals in the ledger or bill summary, taxes and fees are included.
+
+Logic:
+
+Bill total = Room charges + Extra services + Food orders + Extended stay charges + Taxes
+When calculating "pending amount," use: bill_total - total_payments_received
+When showing agent ledger amounts, include the full bill amount (with taxes)
+The ledger "paid" vs "pending" columns should reflect actual payment amounts vs the full bill total
+Change 6: Prevent Errors When No Pending Bills
+What to do:
+On the API endpoint that fetches pending bills (e.g., /api/bills/pending or similar), if there are no pending bills, return an empty array [] instead of throwing an error or returning null.
+
+Backend fix:
+
+// Before (broken):
+const pendingBills = await db.query(...);
+return res.json(pendingBills); // Could be null/undefined
+// After (fixed):
+const pendingBills = await db.query(...);
+return res.json(pendingBills || []);  // Always return array
+Frontend fix:
+When rendering the pending bills list, handle the empty case gracefully:
+
+if (pendingBills.length === 0) {
+  Show "No pending bills" message
+} else {
+  Show the bills table
+}
+Summary of All Changes:
+#	Change	Type
+1	Property + search filters on billing page	New feature
+2	Show all travel agents in billing agent filter	Bug fix
+3	Correct pending bills count display	Bug fix
+4	Display split payments + extended stay on bills	Enhancement
+5	Include taxes/fees in ledger calculations	Bug fix
+6	Handle empty pending bills without errors	Bug fix

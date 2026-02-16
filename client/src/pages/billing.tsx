@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign } from "lucide-react";
+import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
@@ -53,6 +54,8 @@ export default function Billing() {
   const printRef = useRef<HTMLDivElement>(null);
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "pending">("all");
   const [agentFilter, setAgentFilter] = useState<number | "all">("all");
+  const [propertyFilter, setPropertyFilter] = useState<number | "all">("all");
+  const [searchText, setSearchText] = useState("");
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -71,6 +74,10 @@ export default function Billing() {
 
   const { data: travelAgents = [] } = useQuery<any[]>({
     queryKey: ["/api/travel-agents"],
+  });
+
+  const { data: properties = [] } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
   });
 
   const { data: billDetails } = useQuery<BillDetails>({
@@ -187,31 +194,53 @@ export default function Billing() {
     );
   }
 
-  // Revenue = Only PAID bills (actual money received)
-  const totalRevenue = bills?.filter(bill => bill.paymentStatus === "paid").reduce((sum, bill) => sum + parseFloat(bill.totalAmount), 0) || 0;
-  
-  // Pending Receivables = Money owed but not yet received
-  const pendingReceivables = bills?.filter(bill => bill.paymentStatus === "pending").reduce((sum, bill) => sum + parseFloat(bill.balanceAmount || bill.totalAmount), 0) || 0;
-  
-  const paidBills = bills?.filter((bill) => bill.paymentStatus === "paid").length || 0;
-  const pendingBills = bills?.filter((bill) => bill.paymentStatus === "pending").length || 0;
-
-  // Filter bills based on selected filters
-  const filteredBills = bills?.filter(bill => {
-    // Payment status filter
-    let matchesPaymentFilter = true;
-    if (paymentFilter === "paid") matchesPaymentFilter = bill.paymentStatus === "paid";
-    if (paymentFilter === "pending") matchesPaymentFilter = bill.paymentStatus === "pending";
-    
-    // Agent filter - need to check the booking's travel agent
-    let matchesAgentFilter = true;
-    if (agentFilter !== "all") {
+  const billsWithProperty = useMemo(() => {
+    return (bills || []).map(bill => {
       const booking = allBookings.find(b => b.id === bill.bookingId);
-      matchesAgentFilter = booking?.travelAgentId === agentFilter;
-    }
-    
-    return matchesPaymentFilter && matchesAgentFilter;
-  }) || [];
+      return { ...bill, _propertyId: booking?.propertyId || null };
+    });
+  }, [bills, allBookings]);
+
+  const getBillBalance = (bill: Bill) => {
+    const balance = parseFloat(bill.balanceAmount || "0");
+    if (balance > 0) return balance;
+    return Math.max(0, parseFloat(bill.totalAmount || "0") - parseFloat(bill.advancePaid || "0"));
+  };
+
+  const isBillPending = (bill: Bill) => {
+    return getBillBalance(bill) > 0 && bill.paymentStatus !== "paid";
+  };
+
+  const totalRevenue = billsWithProperty.filter(bill => bill.paymentStatus === "paid").reduce((sum, bill) => sum + parseFloat(bill.totalAmount), 0) || 0;
+  
+  const pendingReceivables = billsWithProperty.filter(isBillPending).reduce((sum, bill) => sum + getBillBalance(bill), 0);
+  
+  const paidBills = billsWithProperty.filter((bill) => bill.paymentStatus === "paid").length || 0;
+  const pendingBills = billsWithProperty.filter(isBillPending).length || 0;
+
+  const filteredBills = useMemo(() => {
+    return billsWithProperty.filter(bill => {
+      if (paymentFilter === "paid" && bill.paymentStatus !== "paid") return false;
+      if (paymentFilter === "pending" && !isBillPending(bill)) return false;
+
+      if (propertyFilter !== "all" && bill._propertyId !== propertyFilter) return false;
+
+      if (agentFilter !== "all") {
+        const booking = allBookings.find(b => b.id === bill.bookingId);
+        if (booking?.travelAgentId !== agentFilter) return false;
+      }
+
+      if (searchText.trim()) {
+        const q = searchText.toLowerCase().trim();
+        const guestName = ((bill as any).guestName || "").toLowerCase();
+        const invoiceId = `#${bill.id}`;
+        const bookingId = `#${bill.bookingId}`;
+        if (!guestName.includes(q) && !invoiceId.includes(q) && !bookingId.includes(q)) return false;
+      }
+
+      return true;
+    });
+  }, [billsWithProperty, paymentFilter, propertyFilter, agentFilter, searchText, allBookings]);
 
   // Always show all travel agents (not just those with bills)
   const agentsToShow = travelAgents || [];
@@ -372,43 +401,76 @@ export default function Billing() {
       </div>
 
       {/* Filters */}
-      <div className="mb-6 flex flex-col md:flex-row gap-4 items-start md:items-center">
-        <Tabs value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as "all" | "paid" | "pending")}>
-          <TabsList>
-            <TabsTrigger value="all" data-testid="tab-all-bills">
-              All Bills ({bills?.length || 0})
-            </TabsTrigger>
-            <TabsTrigger value="paid" data-testid="tab-paid-bills">
-              Paid ({paidBills})
-            </TabsTrigger>
-            <TabsTrigger value="pending" data-testid="tab-pending-bills">
-              Pending ({pendingBills})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      <div className="mb-6 flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+          <Tabs value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as "all" | "paid" | "pending")}>
+            <TabsList>
+              <TabsTrigger value="all" data-testid="tab-all-bills">
+                All Bills ({bills?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="paid" data-testid="tab-paid-bills">
+                Paid ({paidBills})
+              </TabsTrigger>
+              <TabsTrigger value="pending" data-testid="tab-pending-bills">
+                Pending ({pendingBills})
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
-        {/* Agent Filter */}
-        {agentsToShow.length > 0 && (
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Filter by Agent:</label>
-            <Select 
-              value={agentFilter === "all" ? "all" : agentFilter.toString()} 
-              onValueChange={(value) => setAgentFilter(value === "all" ? "all" : parseInt(value))}
-            >
-              <SelectTrigger className="w-[200px]" data-testid="select-agent-filter">
-                <SelectValue placeholder="All Agents" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Agents</SelectItem>
-                {agentsToShow.map(agent => (
-                  <SelectItem key={agent.id} value={agent.id.toString()}>
-                    {agent.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+          {properties.length > 1 && (
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <Select 
+                value={propertyFilter === "all" ? "all" : propertyFilter.toString()} 
+                onValueChange={(value) => setPropertyFilter(value === "all" ? "all" : parseInt(value))}
+              >
+                <SelectTrigger className="w-[200px]" data-testid="select-property-filter">
+                  <SelectValue placeholder="All Properties" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Properties</SelectItem>
+                  {properties.map(prop => (
+                    <SelectItem key={prop.id} value={prop.id.toString()}>
+                      {prop.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {agentsToShow.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Select 
+                value={agentFilter === "all" ? "all" : agentFilter.toString()} 
+                onValueChange={(value) => setAgentFilter(value === "all" ? "all" : parseInt(value))}
+              >
+                <SelectTrigger className="w-[200px]" data-testid="select-agent-filter">
+                  <SelectValue placeholder="All Agents" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Agents</SelectItem>
+                  {agentsToShow.map(agent => (
+                    <SelectItem key={agent.id} value={agent.id.toString()}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by guest name, invoice # or booking #"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="pl-9"
+            data-testid="input-bill-search"
+          />
+        </div>
       </div>
 
       {!filteredBills || filteredBills.length === 0 ? (
@@ -445,6 +507,15 @@ export default function Billing() {
                           Merged Bill
                         </Badge>
                       )}
+                      {(() => {
+                        const prop = properties.find(p => p.id === (bill as any)._propertyId);
+                        return prop && properties.length > 1 ? (
+                          <Badge variant="outline">
+                            <Building2 className="h-3 w-3 mr-1" />
+                            {prop.name}
+                          </Badge>
+                        ) : null;
+                      })()}
                       {(() => {
                         const booking = allBookings.find(b => b.id === bill.bookingId);
                         const agent = booking?.travelAgentId ? travelAgents.find(a => a.id === booking.travelAgentId) : null;
