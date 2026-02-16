@@ -628,50 +628,8 @@ export default function Expenses() {
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="cash">
-                                  <div className="flex items-center justify-between w-full gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <Banknote className="h-4 w-4" />
-                                      <span>Cash</span>
-                                    </div>
-                                    <span className={`text-xs ${getWalletBalance('cash') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                      ₹{getWalletBalance('cash').toLocaleString('en-IN')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="bank_transfer">
-                                  <div className="flex items-center justify-between w-full gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <Building2 className="h-4 w-4" />
-                                      <span>Bank Transfer</span>
-                                    </div>
-                                    <span className={`text-xs ${getWalletBalance('bank') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                      ₹{getWalletBalance('bank').toLocaleString('en-IN')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="upi">
-                                  <div className="flex items-center justify-between w-full gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <CreditCard className="h-4 w-4" />
-                                      <span>UPI</span>
-                                    </div>
-                                    <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                      ₹{getWalletBalance('upi').toLocaleString('en-IN')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
-                                <SelectItem value="cheque">
-                                  <div className="flex items-center justify-between w-full gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <Wallet className="h-4 w-4" />
-                                      <span>Cheque</span>
-                                    </div>
-                                    <span className={`text-xs ${getWalletBalance('cheque') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                      ₹{getWalletBalance('bank').toLocaleString('en-IN')}
-                                    </span>
-                                  </div>
-                                </SelectItem>
+                                <SelectItem value="cash">Cash</SelectItem>
+                                <SelectItem value="upi">UPI</SelectItem>
                               </SelectContent>
                             </Select>
                             {isInsufficient && (

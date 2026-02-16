@@ -1643,9 +1643,6 @@ export default function ActiveBookings() {
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
                         <SelectItem value="upi">UPI</SelectItem>
-                        <SelectItem value="card">Card</SelectItem>
-                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="split">Split Payment</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

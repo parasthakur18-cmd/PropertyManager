@@ -88,9 +88,7 @@ function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: numbe
                 </div>
                 <div className="flex justify-between items-center mt-1">
                   <Badge variant="secondary" className="text-xs">
-                    {payment.paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 
-                     payment.paymentMethod === 'check' ? 'Check' : 
-                     payment.paymentMethod === 'online' ? 'Online' : 'Cash'}
+                    {payment.paymentMethod === 'cash' ? 'Cash' : 'UPI'}
                   </Badge>
                   {payment.notes && (
                     <span className="text-xs text-muted-foreground truncate max-w-[120px]">
@@ -180,7 +178,7 @@ export default function Leases() {
     defaultValues: {
       amount: "",
       paymentDate: new Date().toISOString().split("T")[0],
-      paymentMethod: "bank_transfer",
+      paymentMethod: "cash",
       notes: "",
     },
   });
@@ -271,7 +269,7 @@ export default function Leases() {
       paymentForm.reset({
         amount: "",
         paymentDate: new Date().toISOString().split("T")[0],
-        paymentMethod: "bank_transfer",
+        paymentMethod: "cash",
         notes: "",
       });
       toast({
@@ -806,9 +804,7 @@ export default function Leases() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                          <SelectItem value="check">Check</SelectItem>
-                          <SelectItem value="online">Online Payment</SelectItem>
+                          <SelectItem value="upi">UPI</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

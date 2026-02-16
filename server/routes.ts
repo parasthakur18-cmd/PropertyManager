@@ -7611,7 +7611,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get Bank Book report (all bank wallet transactions)
+  // Get UPI/Digital Book report (all non-cash wallet transactions)
   app.get("/api/reports/bank-book", isAuthenticated, async (req, res) => {
     try {
       const { propertyId, startDate, endDate } = req.query;
@@ -7623,16 +7623,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1));
       const end = endDate ? new Date(endDate as string) : new Date();
       
-      // Get bank wallet(s)
       const allWallets = await storage.getWalletsByProperty(propertyIdNum);
-      const bankWallets = allWallets.filter(w => w.type === 'bank');
+      const digitalWallets = allWallets.filter(w => w.type === 'upi' || w.type === 'bank');
       
-      if (bankWallets.length === 0) {
+      if (digitalWallets.length === 0) {
         return res.json({ transactions: [], openingBalance: 0, closingBalance: 0, summary: { totalCredits: 0, totalDebits: 0 } });
       }
       
       const allTransactions: any[] = [];
-      for (const wallet of bankWallets) {
+      for (const wallet of digitalWallets) {
         const txns = await storage.getWalletTransactions(wallet.id);
         allTransactions.push(...txns.map(t => ({ ...t, walletName: wallet.name, accountNumber: wallet.accountNumber })));
       }
@@ -7644,11 +7643,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const totalCredits = filtered.filter(t => t.transactionType === 'credit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
       const totalDebits = filtered.filter(t => t.transactionType === 'debit').reduce((sum, t) => sum + parseFloat(t.amount?.toString() || '0'), 0);
-      const closingBalance = bankWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
+      const closingBalance = digitalWallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || '0'), 0);
       const openingBalance = closingBalance - totalCredits + totalDebits;
       
       res.json({
-        walletType: 'bank',
+        walletType: 'upi',
         startDate: start.toISOString(),
         endDate: end.toISOString(),
         transactions: filtered,
