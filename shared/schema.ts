@@ -602,6 +602,26 @@ export const insertLeaseHistorySchema = createInsertSchema(leaseHistory).omit({
 });
 export type InsertLeaseHistory = z.infer<typeof insertLeaseHistorySchema>;
 
+// Lease Year Overrides table - custom amounts for specific lease years
+export const leaseYearOverrides = pgTable("lease_year_overrides", {
+  id: serial("id").primaryKey(),
+  leaseId: integer("lease_id").notNull().references(() => propertyLeases.id, { onDelete: 'cascade' }),
+  yearNumber: integer("year_number").notNull(),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  reason: text("reason"),
+  createdBy: varchar("created_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type LeaseYearOverride = typeof leaseYearOverrides.$inferSelect;
+export const insertLeaseYearOverrideSchema = createInsertSchema(leaseYearOverrides).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertLeaseYearOverride = z.infer<typeof insertLeaseYearOverrideSchema>;
+
 // Lease Payments table - matches actual database
 export const leasePayments = pgTable("lease_payments", {
   id: serial("id").primaryKey(),
@@ -612,6 +632,8 @@ export const leasePayments = pgTable("lease_payments", {
   referenceNumber: varchar("reference_number", { length: 100 }),
   notes: text("notes"),
   createdBy: varchar("created_by", { length: 255 }),
+  appliesToMonth: integer("applies_to_month"),
+  appliesToYear: integer("applies_to_year"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -752,6 +774,7 @@ export const salaryAdvances = pgTable("salary_advances", {
   createdAt: timestamp("created_at").defaultNow(),
   staffMemberId: integer("staff_member_id").references(() => staffMembers.id, { onDelete: 'cascade' }),
   advanceType: varchar("advance_type", { length: 20 }).default("regular"), // 'regular' or 'extra'
+  paymentMode: varchar("payment_mode", { length: 20 }).default("cash"), // 'cash' or 'upi'
 });
 
 export type SalaryAdvance = typeof salaryAdvances.$inferSelect;

@@ -7083,12 +7083,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/leases/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/leases/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const lease = await storage.updateLease(parseInt(req.params.id), req.body);
-      if (!lease) {
+      const leaseId = parseInt(req.params.id);
+      const { reason, ...updateData } = req.body;
+
+      const existingLease = await storage.getLease(leaseId);
+      if (!existingLease) {
         return res.status(404).json({ message: "Lease not found" });
       }
+
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const changedByName = currentUser?.firstName
+        ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+        : currentUser?.email || userId;
+
+      const lease = await storage.updateLease(leaseId, updateData);
+
+      const trackFields = [
+        'totalAmount', 'baseYearlyAmount', 'yearlyIncrementType', 'yearlyIncrementValue',
+        'currentYearAmount', 'lessorName', 'landlordName', 'startDate', 'endDate',
+        'paymentFrequency', 'securityDeposit', 'status', 'isOverridden', 'propertyId',
+      ];
+
+      for (const field of trackFields) {
+        const oldVal = (existingLease as any)[field];
+        const newVal = (updateData as any)[field];
+        if (newVal !== undefined && String(newVal) !== String(oldVal)) {
+          await storage.createLeaseHistory({
+            leaseId,
+            changeType: 'update',
+            fieldChanged: field,
+            oldValue: oldVal != null ? String(oldVal) : null,
+            newValue: String(newVal),
+            changedBy: changedByName,
+            changeReason: reason || null,
+          });
+        }
+      }
+
       res.json(lease);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -7221,6 +7255,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json(updatedLease);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease Year Override endpoints
+  app.get("/api/leases/:leaseId/year-overrides", isAuthenticated, async (req, res) => {
+    try {
+      const overrides = await storage.getLeaseYearOverrides(parseInt(req.params.leaseId));
+      res.json(overrides);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/leases/:leaseId/year-overrides", isAuthenticated, async (req: any, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const { yearNumber, amount, reason } = req.body;
+
+      if (!yearNumber || !amount) {
+        return res.status(400).json({ message: "yearNumber and amount are required" });
+      }
+
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const changedByName = currentUser?.firstName
+        ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+        : currentUser?.email || userId;
+
+      const override = await storage.createLeaseYearOverride({
+        leaseId,
+        yearNumber: parseInt(yearNumber),
+        amount: amount.toString(),
+        reason: reason || null,
+        createdBy: changedByName,
+      });
+
+      await storage.createLeaseHistory({
+        leaseId,
+        changeType: 'year_override',
+        fieldChanged: `year${yearNumber}Amount`,
+        oldValue: null,
+        newValue: amount.toString(),
+        changedBy: changedByName,
+        changeReason: reason || `Set custom amount for year ${yearNumber}`,
+      });
+
+      res.status(201).json(override);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/leases/:leaseId/year-overrides/:yearNumber", isAuthenticated, async (req: any, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const yearNumber = parseInt(req.params.yearNumber);
+
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const changedByName = currentUser?.firstName
+        ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+        : currentUser?.email || userId;
+
+      await storage.deleteLeaseYearOverride(leaseId, yearNumber);
+
+      await storage.createLeaseHistory({
+        leaseId,
+        changeType: 'year_override_removed',
+        fieldChanged: `year${yearNumber}Amount`,
+        oldValue: null,
+        newValue: null,
+        changedBy: changedByName,
+        changeReason: `Reset year ${yearNumber} to auto-calculated amount`,
+      });
+
+      res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8719,6 +8831,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // POST /api/attendance/mark-all-present - Mark all active staff as present for a given date
+  app.post("/api/attendance/mark-all-present", isAuthenticated, async (req: any, res) => {
+    try {
+      const { date, propertyId } = req.body;
+      if (!date || !propertyId) {
+        return res.status(400).json({ message: "date and propertyId are required" });
+      }
+
+      const propId = parseInt(propertyId);
+      const staffList = await storage.getStaffMembersByProperty(propId);
+      const activeStaff = staffList.filter(s => s.isActive !== false);
+
+      const existingRecords = await storage.getAttendanceByProperty(propId);
+      const dateStr = String(date).split('T')[0];
+
+      const existingSet = new Set(
+        existingRecords
+          .filter((r: any) => {
+            const rd = r.attendance_date || r.attendanceDate;
+            const recordDate = typeof rd === 'string' ? rd.split('T')[0] : rd instanceof Date ? rd.toISOString().split('T')[0] : '';
+            return recordDate === dateStr;
+          })
+          .map((r: any) => r.staff_id !== undefined ? r.staff_id : r.staffId)
+      );
+
+      let created = 0;
+      for (const staff of activeStaff) {
+        if (!existingSet.has(staff.id)) {
+          await storage.createAttendance({
+            staffId: staff.id,
+            propertyId: propId,
+            attendanceDate: dateStr,
+            status: 'present',
+            remarks: null,
+          });
+          created++;
+        }
+      }
+
+      res.json({ success: true, created, total: activeStaff.length });
+    } catch (error: any) {
+      console.error('[MARK ALL PRESENT ERROR]:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/attendance/stats - Get attendance statistics
   // NEW LOGIC: All staff are "Present" by default - only exceptions are recorded
   app.get("/api/attendance/stats", isAuthenticated, async (req: any, res) => {
@@ -8885,6 +9043,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
+      const paymentMode = req.body.paymentMode || 'cash';
+
       // Prepare the data for insertion - amount must be a string for decimal type
       const advanceData = {
         staffMemberId: parseInt(req.body.staffMemberId),
@@ -8894,6 +9054,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         repaymentStatus: 'pending',
         approvedBy: user.firstName || user.email || user.id,
         notes: req.body.notes || null,
+        advanceType: req.body.advanceType || 'regular',
+        paymentMode: paymentMode,
       };
 
       const advance = await storage.createAdvance(advanceData as any);
@@ -8906,7 +9068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             staffMember.propertyId,
             advance.id,
             parseFloat(advance.amount.toString()),
-            'cash',
+            paymentMode,
             staffMember.name || 'Staff',
             user.claims?.sub || user.id || null
           );
@@ -8936,6 +9098,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteAdvance(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/salary-export - Export salary data as CSV
+  app.get("/api/salary-export", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const { month, year, propertyId } = req.query;
+      if (!month || !year || !propertyId) {
+        return res.status(400).json({ message: "month, year, and propertyId are required" });
+      }
+
+      const propId = parseInt(propertyId as string);
+      const monthNum = parseInt(month as string);
+      const yearNum = parseInt(year as string);
+      const monthStr = `${yearNum}-${String(monthNum).padStart(2, '0')}`;
+
+      const staffList = await storage.getStaffMembersByProperty(propId);
+      const allAttendanceRecords = await storage.getAttendanceByProperty(propId);
+      const allAdvances = await storage.getAllAdvances();
+      const allPayments = await storage.getPaymentsByProperty(propId);
+
+      const monthStart = new Date(yearNum, monthNum - 1, 1);
+      const monthEnd = new Date(yearNum, monthNum, 0);
+
+      let workingDaysInMonth = 0;
+      for (let d = new Date(monthStart); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+        if (d.getDay() !== 0) workingDaysInMonth++;
+      }
+
+      const csvRows: string[] = [];
+      csvRows.push('Staff Name,Role,Base Salary,Working Days,Present Days,Absent Days,Leave Days,Half Days,Attendance Deduction,Regular Advances,Extra Advances,Previous Pending,Total Payable,Paid,Pending');
+
+      for (const staff of staffList) {
+        let staffWorkDays = workingDaysInMonth;
+        if (staff.joiningDate) {
+          const joinDate = new Date(staff.joiningDate);
+          if (joinDate > monthStart && joinDate <= monthEnd) {
+            staffWorkDays = 0;
+            for (let d = new Date(joinDate); d <= monthEnd; d.setDate(d.getDate() + 1)) {
+              if (d.getDay() !== 0) staffWorkDays++;
+            }
+          }
+        }
+
+        const staffAttendance = allAttendanceRecords.filter((record: any) => {
+          const staffId = record.staff_id !== undefined ? record.staff_id : record.staffId;
+          if (staffId !== staff.id) return false;
+          const dateVal = record.attendance_date || record.attendanceDate;
+          const recordDate = typeof dateVal === 'string' ? dateVal.split('T')[0] : dateVal instanceof Date ? dateVal.toISOString().split('T')[0] : '';
+          return recordDate.startsWith(monthStr);
+        });
+
+        const absentDays = staffAttendance.filter((a: any) => a.status === "absent").length;
+        const leaveDays = staffAttendance.filter((a: any) => a.status === "leave").length;
+        const halfDays = staffAttendance.filter((a: any) => a.status === "half-day").length;
+        const presentDays = staffWorkDays - absentDays - (halfDays * 0.5);
+
+        const baseSalary = parseFloat(String(staff.baseSalary || 0));
+        const deductionPerDay = staffWorkDays > 0 ? baseSalary / staffWorkDays : 0;
+        const attendanceDeduction = (deductionPerDay * absentDays) + (deductionPerDay * halfDays * 0.5);
+
+        const staffAdvances = allAdvances.filter(
+          (adv: any) => adv.staffMemberId === staff.id && adv.repaymentStatus === 'pending'
+        );
+        const regularAdvances = staffAdvances
+          .filter((a: any) => (a.advanceType || 'regular') === 'regular')
+          .reduce((sum: number, a: any) => sum + parseFloat(String(a.amount || 0)), 0);
+        const extraAdvances = staffAdvances
+          .filter((a: any) => a.advanceType === 'extra')
+          .reduce((sum: number, a: any) => sum + parseFloat(String(a.amount || 0)), 0);
+
+        const periodPayments = allPayments.filter((p: any) => {
+          if (p.staffMemberId !== staff.id) return false;
+          if (p.periodStart && p.periodEnd) {
+            const pStart = new Date(p.periodStart);
+            const pEnd = new Date(p.periodEnd);
+            return pStart >= monthStart && pEnd <= new Date(yearNum, monthNum, 0, 23, 59, 59);
+          }
+          return false;
+        });
+        const totalPaid = periodPayments.reduce((sum: number, p: any) => sum + parseFloat(String(p.amount || 0)), 0);
+
+        const previousPending = 0;
+        const totalPayable = Math.max(0, baseSalary - attendanceDeduction - regularAdvances - extraAdvances + previousPending);
+        const pending = Math.max(0, totalPayable - totalPaid);
+
+        const escapeCsv = (val: any) => {
+          const str = String(val ?? '');
+          return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+        };
+
+        csvRows.push([
+          escapeCsv(staff.name),
+          escapeCsv(staff.role || staff.jobTitle || ''),
+          baseSalary.toFixed(2),
+          staffWorkDays,
+          Math.max(0, presentDays).toFixed(1),
+          absentDays,
+          leaveDays,
+          halfDays,
+          attendanceDeduction.toFixed(2),
+          regularAdvances.toFixed(2),
+          extraAdvances.toFixed(2),
+          previousPending.toFixed(2),
+          totalPayable.toFixed(2),
+          totalPaid.toFixed(2),
+          pending.toFixed(2),
+        ].join(','));
+      }
+
+      const csvContent = csvRows.join('\n');
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename=salary-report-${monthStr}.csv`);
+      res.send(csvContent);
+    } catch (error: any) {
+      console.error('[SALARY EXPORT ERROR]:', error);
       res.status(500).json({ message: error.message });
     }
   });

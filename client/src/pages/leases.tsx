@@ -9,12 +9,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { type PropertyLease, type Property } from "@shared/schema";
+import { type PropertyLease, type Property, type LeaseYearOverride } from "@shared/schema";
 import { z } from "zod";
-import { format } from "date-fns";
-import { Plus, IndianRupee, Calendar, CreditCard, Edit, ChevronDown, History, Download, FileText, TrendingUp, AlertCircle } from "lucide-react";
+import { format, getDaysInMonth, differenceInDays, startOfMonth, endOfMonth, addMonths, isBefore, isAfter } from "date-fns";
+import { Plus, IndianRupee, Calendar, CreditCard, Edit, ChevronDown, History, Download, FileText, TrendingUp, AlertCircle, Pencil, RotateCcw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +37,8 @@ const paymentFormSchema = z.object({
   paymentDate: z.string().min(1, "Payment date is required"),
   paymentMethod: z.string().optional(),
   notes: z.string().optional(),
+  appliesToMonth: z.string().optional(),
+  appliesToYear: z.string().optional(),
 });
 
 const editAmountFormSchema = z.object({
@@ -44,6 +47,23 @@ const editAmountFormSchema = z.object({
 
 const overrideFormSchema = z.object({
   currentYearAmount: z.string().min(1, "Amount is required"),
+  reason: z.string().min(1, "Reason is required"),
+});
+
+const editLeaseFormSchema = z.object({
+  landlordName: z.string().min(1, "Landlord name is required"),
+  startDate: z.string().min(1, "Start date is required"),
+  endDate: z.string().optional(),
+  baseYearlyAmount: z.string().min(1, "Base amount is required").refine(v => parseFloat(v) > 0, "Must be greater than 0"),
+  yearlyIncrementType: z.string().optional(),
+  yearlyIncrementValue: z.string().optional().refine(v => !v || parseFloat(v) >= 0, "Must be >= 0"),
+  leaseDurationYears: z.string().optional(),
+  notes: z.string().optional(),
+  reason: z.string().min(1, "Reason for change is required"),
+});
+
+const yearOverrideFormSchema = z.object({
+  amount: z.string().min(1, "Custom amount is required").refine(v => parseFloat(v) > 0, "Must be greater than 0"),
   reason: z.string().min(1, "Reason is required"),
 });
 
@@ -105,6 +125,116 @@ function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: numbe
   );
 }
 
+function LeaseLedger({ lease, payments }: { lease: any; payments: any[] }) {
+  if (!lease?.startDate) return <div className="text-sm text-muted-foreground text-center py-4">No start date set</div>;
+
+  const leaseStartDate = new Date(lease.startDate);
+  const leaseEndDate = lease.endDate ? new Date(lease.endDate) : null;
+  const now = new Date();
+  const lastDate = leaseEndDate && isBefore(leaseEndDate, now) ? leaseEndDate : now;
+
+  const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
+  const monthlyRent = baseAmount / 12;
+
+  const months: Date[] = [];
+  let current = startOfMonth(leaseStartDate);
+  const end = endOfMonth(lastDate);
+
+  while (isBefore(current, end) || current.getTime() === end.getTime()) {
+    months.push(new Date(current));
+    current = addMonths(current, 1);
+    if (months.length > 120) break;
+  }
+
+  const allocatedPayments = payments.filter((p: any) => p.appliesToMonth && p.appliesToYear);
+  const unallocatedPayments = payments.filter((p: any) => !p.appliesToMonth || !p.appliesToYear)
+    .sort((a: any, b: any) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
+
+  let paymentIndex = 0;
+  let carryForward = 0;
+
+  const ledgerRows = months.map((month, idx) => {
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(month);
+    const daysInMonth = getDaysInMonth(month);
+    const monthNum = month.getMonth() + 1;
+    const yearNum = month.getFullYear();
+
+    let rentDue = monthlyRent;
+    if (idx === 0 && leaseStartDate.getDate() > 1) {
+      const daysRemaining = daysInMonth - leaseStartDate.getDate() + 1;
+      rentDue = (monthlyRent / daysInMonth) * daysRemaining;
+    }
+    if (leaseEndDate && idx === months.length - 1 && leaseEndDate.getDate() < daysInMonth) {
+      const daysUsed = leaseEndDate.getDate();
+      rentDue = (monthlyRent / daysInMonth) * daysUsed;
+    }
+
+    const prevCarry = carryForward;
+    const totalDue = rentDue + prevCarry;
+
+    let paid = 0;
+    const monthAllocated = allocatedPayments.filter(
+      (p: any) => parseInt(p.appliesToMonth) === monthNum && parseInt(p.appliesToYear) === yearNum
+    );
+    monthAllocated.forEach((p: any) => { paid += parseFloat(p.amount || "0"); });
+
+    while (paymentIndex < unallocatedPayments.length) {
+      const p = unallocatedPayments[paymentIndex];
+      const pDate = new Date(p.paymentDate);
+      if (pDate >= monthStart && pDate <= monthEnd) {
+        paid += parseFloat(p.amount || "0");
+        paymentIndex++;
+      } else {
+        break;
+      }
+    }
+
+    const pending = Math.max(0, totalDue - paid);
+    carryForward = pending;
+
+    return {
+      month: format(month, "MMM yyyy"),
+      rentDue: Math.round(rentDue),
+      carriedFwd: Math.round(prevCarry),
+      totalDue: Math.round(totalDue),
+      paid: Math.round(paid),
+      pending: Math.round(pending),
+    };
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm" data-testid="table-lease-ledger">
+        <thead className="bg-muted/50">
+          <tr>
+            <th className="text-left p-2">Month</th>
+            <th className="text-right p-2">Rent Due</th>
+            <th className="text-right p-2">Carried Fwd</th>
+            <th className="text-right p-2">Total Due</th>
+            <th className="text-right p-2">Paid</th>
+            <th className="text-right p-2">Pending</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ledgerRows.map((row, idx) => (
+            <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/30"} data-testid={`ledger-row-${idx}`}>
+              <td className="p-2">{row.month}</td>
+              <td className="text-right p-2 font-mono">₹{row.rentDue.toLocaleString()}</td>
+              <td className="text-right p-2 font-mono text-muted-foreground">₹{row.carriedFwd.toLocaleString()}</td>
+              <td className="text-right p-2 font-mono">₹{row.totalDue.toLocaleString()}</td>
+              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{row.paid.toLocaleString()}</td>
+              <td className={`text-right p-2 font-mono ${row.pending > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                ₹{row.pending.toLocaleString()}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Leases() {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -114,11 +244,17 @@ export default function Leases() {
   const [isEditAmountDialogOpen, setIsEditAmountDialogOpen] = useState(false);
   const [isOverrideDialogOpen, setIsOverrideDialogOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [isEditLeaseDialogOpen, setIsEditLeaseDialogOpen] = useState(false);
+  const [isYearOverrideDialogOpen, setIsYearOverrideDialogOpen] = useState(false);
+  const [yearOverrideTarget, setYearOverrideTarget] = useState<{ yearNumber: number; autoAmount: number } | null>(null);
   const [leaseToEdit, setLeaseToEdit] = useState<PropertyLease | null>(null);
   const [leaseForSummary, setLeaseForSummary] = useState<number | null>(null);
   const [expandedLeases, setExpandedLeases] = useState<Set<number>>(new Set());
+  const [selectedLeaseForPayment, setSelectedLeaseForPayment] = useState<PropertyLease | null>(null);
 
-  // Toggle expanded state for payment history
+  const canEditLease = user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'manager';
+  const canOverrideYears = user?.role === 'admin' || user?.role === 'super-admin';
+
   const toggleLeaseExpanded = (leaseId: number) => {
     setExpandedLeases(prev => {
       const next = new Set(prev);
@@ -144,6 +280,21 @@ export default function Leases() {
     enabled: !!selectedLease,
   });
 
+  const { data: leaseSummary, isLoading: isSummaryLoading } = useQuery<any>({
+    queryKey: ["/api/leases", leaseForSummary, "summary"],
+    enabled: !!leaseForSummary,
+  });
+
+  const { data: yearOverrides = [] } = useQuery<LeaseYearOverride[]>({
+    queryKey: ["/api/leases", leaseForSummary, "year-overrides"],
+    enabled: !!leaseForSummary,
+  });
+
+  const { data: summaryPayments = [] } = useQuery<any[]>({
+    queryKey: ["/api/leases", leaseForSummary, "payments"],
+    enabled: !!leaseForSummary,
+  });
+
   const leaseForm = useForm({
     resolver: zodResolver(leaseFormSchema),
     defaultValues: {
@@ -167,12 +318,6 @@ export default function Leases() {
     },
   });
 
-  // Query for lease summary when viewing details
-  const { data: leaseSummary, isLoading: isSummaryLoading } = useQuery<any>({
-    queryKey: ["/api/leases", leaseForSummary, "summary"],
-    enabled: !!leaseForSummary,
-  });
-
   const paymentForm = useForm({
     resolver: zodResolver(paymentFormSchema),
     defaultValues: {
@@ -180,6 +325,8 @@ export default function Leases() {
       paymentDate: new Date().toISOString().split("T")[0],
       paymentMethod: "cash",
       notes: "",
+      appliesToMonth: "",
+      appliesToYear: "",
     },
   });
 
@@ -187,6 +334,29 @@ export default function Leases() {
     resolver: zodResolver(editAmountFormSchema),
     defaultValues: {
       totalAmount: "",
+    },
+  });
+
+  const editLeaseForm = useForm({
+    resolver: zodResolver(editLeaseFormSchema),
+    defaultValues: {
+      landlordName: "",
+      startDate: "",
+      endDate: "",
+      baseYearlyAmount: "",
+      yearlyIncrementType: "percentage",
+      yearlyIncrementValue: "",
+      leaseDurationYears: "",
+      notes: "",
+      reason: "",
+    },
+  });
+
+  const yearOverrideForm = useForm({
+    resolver: zodResolver(yearOverrideFormSchema),
+    defaultValues: {
+      amount: "",
+      reason: "",
     },
   });
 
@@ -210,17 +380,10 @@ export default function Leases() {
       queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
       setIsLeaseDialogOpen(false);
       leaseForm.reset();
-      toast({
-        title: "Lease created",
-        description: "Property lease has been created successfully.",
-      });
+      toast({ title: "Lease created", description: "Property lease has been created successfully." });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create lease",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to create lease", variant: "destructive" });
     },
   });
 
@@ -239,50 +402,43 @@ export default function Leases() {
       setIsOverrideDialogOpen(false);
       setLeaseToEdit(null);
       overrideForm.reset();
-      toast({
-        title: "Override applied",
-        description: "Lease amount has been overridden successfully.",
-      });
+      toast({ title: "Override applied", description: "Lease amount has been overridden successfully." });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to override lease amount",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to override lease amount", variant: "destructive" });
     },
   });
 
   const createPaymentMutation = useMutation({
     mutationFn: async (data: z.infer<typeof paymentFormSchema>) => {
       const response = await apiRequest(`/api/leases/${selectedLease}/payments`, "POST", {
-        ...data,
         amount: data.amount,
         paymentDate: data.paymentDate,
+        paymentMethod: data.paymentMethod,
+        notes: data.notes,
+        appliesToMonth: data.appliesToMonth ? parseInt(data.appliesToMonth) : null,
+        appliesToYear: data.appliesToYear ? parseInt(data.appliesToYear) : null,
       });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease, "payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease, "summary"] });
       setIsPaymentDialogOpen(false);
       paymentForm.reset({
         amount: "",
         paymentDate: new Date().toISOString().split("T")[0],
         paymentMethod: "cash",
         notes: "",
+        appliesToMonth: "",
+        appliesToYear: "",
       });
-      toast({
-        title: "Payment recorded",
-        description: "Lease payment has been recorded successfully.",
-      });
+      toast({ title: "Payment recorded", description: "Lease payment has been recorded successfully." });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to record payment",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to record payment", variant: "destructive" });
     },
   });
 
@@ -299,17 +455,83 @@ export default function Leases() {
       setIsEditAmountDialogOpen(false);
       setLeaseToEdit(null);
       editAmountForm.reset();
-      toast({
-        title: "Amount updated",
-        description: "Lease amount has been updated successfully.",
-      });
+      toast({ title: "Amount updated", description: "Lease amount has been updated successfully." });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update lease amount",
-        variant: "destructive",
+      toast({ title: "Error", description: error.message || "Failed to update lease amount", variant: "destructive" });
+    },
+  });
+
+  const editLeaseMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editLeaseFormSchema>) => {
+      if (!leaseToEdit) throw new Error("No lease selected");
+      const { reason, ...fields } = data;
+      const response = await apiRequest(`/api/leases/${leaseToEdit.id}`, "PATCH", {
+        landlordName: fields.landlordName,
+        startDate: new Date(fields.startDate).toISOString(),
+        endDate: fields.endDate ? new Date(fields.endDate).toISOString() : null,
+        baseYearlyAmount: fields.baseYearlyAmount,
+        yearlyIncrementType: fields.yearlyIncrementType || null,
+        yearlyIncrementValue: fields.yearlyIncrementValue || null,
+        leaseDurationYears: fields.leaseDurationYears ? parseInt(fields.leaseDurationYears) : null,
+        notes: fields.notes || null,
+        reason,
       });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      if (leaseToEdit) {
+        queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseToEdit.id, "summary"] });
+      }
+      setIsEditLeaseDialogOpen(false);
+      setLeaseToEdit(null);
+      editLeaseForm.reset();
+      toast({ title: "Lease updated", description: "Lease details have been updated successfully." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update lease", variant: "destructive" });
+    },
+  });
+
+  const setYearOverrideMutation = useMutation({
+    mutationFn: async (data: { yearNumber: number; amount: string; reason: string }) => {
+      if (!leaseForSummary) throw new Error("No lease selected");
+      const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides`, "POST", {
+        yearNumber: data.yearNumber,
+        amount: parseFloat(data.amount),
+        reason: data.reason,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "year-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      setIsYearOverrideDialogOpen(false);
+      setYearOverrideTarget(null);
+      yearOverrideForm.reset();
+      toast({ title: "Year override set", description: "Custom amount has been set for this year." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to set year override", variant: "destructive" });
+    },
+  });
+
+  const removeYearOverrideMutation = useMutation({
+    mutationFn: async (yearNumber: number) => {
+      if (!leaseForSummary) throw new Error("No lease selected");
+      const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides/${yearNumber}`, "DELETE");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "year-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      toast({ title: "Override removed", description: "Year amount has been reset to auto-calculated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to remove override", variant: "destructive" });
     },
   });
 
@@ -329,6 +551,23 @@ export default function Leases() {
     overrideMutation.mutate(data);
   };
 
+  const handleEditLease = (data: z.infer<typeof editLeaseFormSchema>) => {
+    if (data.endDate && data.startDate && new Date(data.endDate) <= new Date(data.startDate)) {
+      editLeaseForm.setError("endDate", { message: "End date must be after start date" });
+      return;
+    }
+    editLeaseMutation.mutate(data);
+  };
+
+  const handleSetYearOverride = (data: z.infer<typeof yearOverrideFormSchema>) => {
+    if (!yearOverrideTarget) return;
+    setYearOverrideMutation.mutate({
+      yearNumber: yearOverrideTarget.yearNumber,
+      amount: data.amount,
+      reason: data.reason,
+    });
+  };
+
   const openEditAmountDialog = (lease: PropertyLease) => {
     setLeaseToEdit(lease);
     editAmountForm.reset({ totalAmount: lease.totalAmount || "" });
@@ -337,16 +576,38 @@ export default function Leases() {
 
   const openOverrideDialog = (lease: PropertyLease) => {
     setLeaseToEdit(lease);
-    overrideForm.reset({ 
-      currentYearAmount: lease.currentYearAmount || lease.baseYearlyAmount || lease.totalAmount || "", 
-      reason: "" 
+    overrideForm.reset({
+      currentYearAmount: lease.currentYearAmount || lease.baseYearlyAmount || lease.totalAmount || "",
+      reason: ""
     });
     setIsOverrideDialogOpen(true);
+  };
+
+  const openEditLeaseDialog = (lease: PropertyLease) => {
+    setLeaseToEdit(lease);
+    editLeaseForm.reset({
+      landlordName: lease.landlordName || "",
+      startDate: lease.startDate ? new Date(lease.startDate).toISOString().split("T")[0] : "",
+      endDate: lease.endDate ? new Date(lease.endDate).toISOString().split("T")[0] : "",
+      baseYearlyAmount: lease.baseYearlyAmount || lease.totalAmount || "",
+      yearlyIncrementType: lease.yearlyIncrementType || "percentage",
+      yearlyIncrementValue: lease.yearlyIncrementValue || "",
+      leaseDurationYears: lease.leaseDurationYears?.toString() || "",
+      notes: lease.notes || "",
+      reason: "",
+    });
+    setIsEditLeaseDialogOpen(true);
   };
 
   const openSummaryDialog = (leaseId: number) => {
     setLeaseForSummary(leaseId);
     setIsSummaryDialogOpen(true);
+  };
+
+  const openYearOverrideDialog = (yearNumber: number, autoAmount: number) => {
+    setYearOverrideTarget({ yearNumber, autoAmount });
+    yearOverrideForm.reset({ amount: "", reason: "" });
+    setIsYearOverrideDialogOpen(true);
   };
 
   const downloadLedger = async (leaseId: number) => {
@@ -364,16 +625,9 @@ export default function Leases() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      toast({
-        title: "Downloaded",
-        description: "Lease ledger has been downloaded.",
-      });
+      toast({ title: "Downloaded", description: "Lease ledger has been downloaded." });
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to download ledger",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Failed to download ledger", variant: "destructive" });
     }
   };
 
@@ -384,6 +638,27 @@ export default function Leases() {
   const calculateBalance = (lease: any) => {
     return lease.pendingBalance || 0;
   };
+
+  const getOverrideForYear = (yearNumber: number): LeaseYearOverride | undefined => {
+    return yearOverrides.find((o: LeaseYearOverride) => o.yearNumber === yearNumber);
+  };
+
+  const getSummaryLease = () => {
+    return leases.find((l: any) => l.id === leaseForSummary);
+  };
+
+  const getLeaseYears = (lease: PropertyLease | null | undefined): number[] => {
+    if (!lease?.startDate) return [];
+    const startYear = new Date(lease.startDate).getFullYear();
+    const duration = lease.leaseDurationYears || 5;
+    const years: number[] = [];
+    for (let i = 0; i < duration; i++) {
+      years.push(startYear + i);
+    }
+    return years;
+  };
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
   if (isLoading) {
     return (
@@ -617,7 +892,7 @@ export default function Leases() {
             {leases.map((lease: any) => {
               const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
               const carryForward = parseFloat(lease.carryForwardAmount || "0");
-              
+
               return (
                 <Card key={lease.id} className="hover-elevate" data-testid={`card-lease-${lease.id}`}>
                   <CardHeader>
@@ -654,8 +929,8 @@ export default function Leases() {
                             Yearly Increment
                           </span>
                           <span className="font-mono text-blue-600 dark:text-blue-400">
-                            {lease.yearlyIncrementType === 'percentage' 
-                              ? `${lease.yearlyIncrementValue}%` 
+                            {lease.yearlyIncrementType === 'percentage'
+                              ? `${lease.yearlyIncrementValue}%`
                               : `₹${parseFloat(lease.yearlyIncrementValue).toLocaleString()}`}
                           </span>
                         </div>
@@ -701,6 +976,7 @@ export default function Leases() {
                           size="sm"
                           onClick={() => {
                             setSelectedLease(lease.id);
+                            setSelectedLeaseForPayment(lease);
                             setIsPaymentDialogOpen(true);
                           }}
                           data-testid={`button-record-payment-${lease.id}`}
@@ -728,7 +1004,7 @@ export default function Leases() {
                           <Download className="h-4 w-4 mr-1" />
                           Ledger
                         </Button>
-                        {(user?.role === 'admin' || user?.role === 'manager') && (
+                        {canEditLease && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -740,6 +1016,18 @@ export default function Leases() {
                           </Button>
                         )}
                       </div>
+                      {canEditLease && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => openEditLeaseDialog(lease)}
+                          data-testid={`button-edit-lease-${lease.id}`}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit Lease
+                        </Button>
+                      )}
                     </div>
 
                     <LeasePaymentHistory leaseId={lease.id} isExpanded={expandedLeases.has(lease.id)} onToggle={() => toggleLeaseExpanded(lease.id)} />
@@ -750,6 +1038,7 @@ export default function Leases() {
           </div>
         )}
 
+        {/* Payment Dialog */}
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -805,12 +1094,64 @@ export default function Leases() {
                         <SelectContent>
                           <SelectItem value="cash">Cash</SelectItem>
                           <SelectItem value="upi">UPI</SelectItem>
+                          <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                          <SelectItem value="cheque">Cheque</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={paymentForm.control}
+                    name="appliesToMonth"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Applies to Month</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-applies-to-month">
+                              <SelectValue placeholder="Optional" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Not specified</SelectItem>
+                            {monthNames.map((m, idx) => (
+                              <SelectItem key={idx} value={(idx + 1).toString()}>{m}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={paymentForm.control}
+                    name="appliesToYear"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Applies to Year</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-applies-to-year">
+                              <SelectValue placeholder="Optional" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Not specified</SelectItem>
+                            {getLeaseYears(selectedLeaseForPayment).map(y => (
+                              <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={paymentForm.control}
@@ -844,6 +1185,7 @@ export default function Leases() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Amount Dialog */}
         <Dialog open={isEditAmountDialogOpen} onOpenChange={setIsEditAmountDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -891,6 +1233,7 @@ export default function Leases() {
           </DialogContent>
         </Dialog>
 
+        {/* Override Dialog */}
         <Dialog open={isOverrideDialogOpen} onOpenChange={setIsOverrideDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -959,144 +1302,498 @@ export default function Leases() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Lease Details Dialog */}
+        <Dialog open={isEditLeaseDialogOpen} onOpenChange={(open) => {
+          setIsEditLeaseDialogOpen(open);
+          if (!open) setLeaseToEdit(null);
+        }}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit Lease Details</DialogTitle>
+            </DialogHeader>
+            <Form {...editLeaseForm}>
+              <form onSubmit={editLeaseForm.handleSubmit(handleEditLease)} className="space-y-4">
+                <FormField
+                  control={editLeaseForm.control}
+                  name="landlordName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Landlord Name *</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="Landlord name" data-testid="input-edit-landlord-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Start Date *</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="date" data-testid="input-edit-start-date" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>End Date</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="date" data-testid="input-edit-end-date" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="baseYearlyAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Base Yearly Amount *</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" placeholder="1200000" data-testid="input-edit-base-amount" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="leaseDurationYears"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Duration (Years)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" placeholder="5" data-testid="input-edit-duration" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="yearlyIncrementType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Increment Type</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-edit-increment-type">
+                              <SelectValue placeholder="Select type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="percentage">Percentage (%)</SelectItem>
+                            <SelectItem value="fixed">Fixed Amount</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editLeaseForm.control}
+                    name="yearlyIncrementValue"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Increment Value</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" placeholder="10" data-testid="input-edit-increment-value" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={editLeaseForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} value={field.value || ""} placeholder="Optional notes" data-testid="input-edit-notes" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={editLeaseForm.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reason for Change *</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} placeholder="Why are you making this change?" data-testid="input-edit-reason" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditLeaseDialogOpen(false);
+                      setLeaseToEdit(null);
+                    }}
+                    data-testid="button-cancel-edit-lease"
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={editLeaseMutation.isPending} data-testid="button-submit-edit-lease">
+                    {editLeaseMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Year Override Dialog */}
+        <Dialog open={isYearOverrideDialogOpen} onOpenChange={(open) => {
+          setIsYearOverrideDialogOpen(open);
+          if (!open) setYearOverrideTarget(null);
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Set Custom Year Amount</DialogTitle>
+            </DialogHeader>
+            {yearOverrideTarget && (
+              <div className="text-sm text-muted-foreground mb-2">
+                Year {yearOverrideTarget.yearNumber} - Auto-calculated: ₹{yearOverrideTarget.autoAmount.toLocaleString()}
+              </div>
+            )}
+            <Form {...yearOverrideForm}>
+              <form onSubmit={yearOverrideForm.handleSubmit(handleSetYearOverride)} className="space-y-4">
+                <FormField
+                  control={yearOverrideForm.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custom Amount *</FormLabel>
+                      <FormControl>
+                        <Input {...field} type="number" placeholder="Enter custom amount" data-testid="input-year-override-amount" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={yearOverrideForm.control}
+                  name="reason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Reason *</FormLabel>
+                      <FormControl>
+                        <Textarea {...field} placeholder="Why are you overriding this year's amount?" data-testid="input-year-override-reason" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={() => setIsYearOverrideDialogOpen(false)} data-testid="button-cancel-year-override">
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={setYearOverrideMutation.isPending} data-testid="button-submit-year-override">
+                    {setYearOverrideMutation.isPending ? "Setting..." : "Set Custom Amount"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Summary Dialog */}
         <Dialog open={isSummaryDialogOpen} onOpenChange={(open) => {
           setIsSummaryDialogOpen(open);
           if (!open) setLeaseForSummary(null);
         }}>
-          <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>Lease Payment Summary</DialogTitle>
+              <DialogTitle>Lease Summary</DialogTitle>
             </DialogHeader>
             {isSummaryLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading summary...</div>
             ) : leaseSummary ? (
-              <div className="space-y-6 overflow-y-auto flex-1 pr-2">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">Total Lease Value</p>
-                    <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.totalLeaseValue).toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">Year {leaseSummary.summary.currentYearNumber} Amount</p>
-                    <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.currentYearAmount).toLocaleString()}</p>
-                    {leaseSummary.summary.isOverridden && (
-                      <Badge variant="secondary" className="mt-1 text-xs">Overridden</Badge>
-                    )}
-                  </div>
-                  <div className="p-4 rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">Monthly Amount</p>
-                    <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.monthlyAmount).toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30">
-                    <p className="text-sm text-muted-foreground">Total Paid</p>
-                    <p className="text-xl font-semibold font-mono text-green-600 dark:text-green-400">₹{parseFloat(leaseSummary.summary.totalPaid).toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">{leaseSummary.summary.paymentsCount} payments</p>
-                  </div>
-                  <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30">
-                    <p className="text-sm text-muted-foreground">Carry Forward (Previous Years)</p>
-                    <p className="text-xl font-semibold font-mono text-red-600 dark:text-red-400">₹{parseFloat(leaseSummary.summary.carryForward).toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30">
-                    <p className="text-sm text-muted-foreground">Total Pending</p>
-                    <p className="text-xl font-semibold font-mono text-orange-600 dark:text-orange-400">₹{parseFloat(leaseSummary.summary.totalPending).toLocaleString()}</p>
-                  </div>
-                </div>
+              <Tabs defaultValue="summary" className="flex-1 overflow-hidden flex flex-col">
+                <TabsList className="w-full" data-testid="tabs-summary">
+                  <TabsTrigger value="summary" data-testid="tab-summary">Summary</TabsTrigger>
+                  <TabsTrigger value="ledger" data-testid="tab-ledger">Lease Ledger</TabsTrigger>
+                  <TabsTrigger value="history" data-testid="tab-history">History</TabsTrigger>
+                </TabsList>
 
-                {leaseSummary.summary.yearlyBreakdown && leaseSummary.summary.yearlyBreakdown.length > 0 && (
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">Year-by-Year Breakdown</h4>
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted/50">
-                          <tr>
-                            <th className="text-left p-2">Year</th>
-                            <th className="text-right p-2">Due</th>
-                            <th className="text-right p-2">Paid</th>
-                            <th className="text-right p-2">Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {leaseSummary.summary.yearlyBreakdown.map((yr: any) => (
-                            <tr key={yr.year} className={yr.isCurrentYear ? "bg-blue-50 dark:bg-blue-950/30" : ""}>
-                              <td className="p-2">
-                                Year {yr.year}
-                                {yr.isCurrentYear && <Badge variant="outline" className="ml-2 text-xs">Current</Badge>}
-                              </td>
-                              <td className="text-right p-2 font-mono">₹{parseFloat(yr.amountDue).toLocaleString()}</td>
-                              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{parseFloat(yr.amountPaid).toLocaleString()}</td>
-                              <td className={`text-right p-2 font-mono ${parseFloat(yr.balance) > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                                ₹{parseFloat(yr.balance).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                <TabsContent value="summary" className="flex-1 overflow-y-auto pr-2 space-y-6">
+                  {/* Landlord & Period info */}
+                  <div className="p-4 rounded-lg bg-muted/30 space-y-1">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Landlord</p>
+                        <p className="font-semibold text-lg" data-testid="text-summary-landlord">
+                          {getSummaryLease()?.landlordName || "N/A"}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Lease Period</p>
+                        <p className="font-medium" data-testid="text-summary-period">
+                          {getSummaryLease()?.startDate ? format(new Date(getSummaryLease()!.startDate!), "MMM d, yyyy") : "N/A"}
+                          {" - "}
+                          {getSummaryLease()?.endDate ? format(new Date(getSummaryLease()!.endDate!), "MMM d, yyyy") : "Ongoing"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 flex-wrap text-sm text-muted-foreground pt-1">
+                      <span>Base: ₹{parseFloat(getSummaryLease()?.baseYearlyAmount || getSummaryLease()?.totalAmount || "0").toLocaleString()}/yr</span>
+                      {getSummaryLease()?.yearlyIncrementValue && (
+                        <span>
+                          Increment: {getSummaryLease()?.yearlyIncrementType === 'percentage'
+                            ? `${getSummaryLease()?.yearlyIncrementValue}%`
+                            : `₹${parseFloat(getSummaryLease()?.yearlyIncrementValue || "0").toLocaleString()}`} / yr
+                        </span>
+                      )}
+                      {getSummaryLease()?.leaseDurationYears && (
+                        <span>Duration: {getSummaryLease()?.leaseDurationYears} yrs</span>
+                      )}
                     </div>
                   </div>
-                )}
 
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Lease Details</h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Duration:</span>
-                      <span>{leaseSummary.summary.leaseDurationYears} years</span>
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Total Lease Value</p>
+                      <p className="text-xl font-semibold font-mono" data-testid="text-total-lease-value">₹{parseFloat(leaseSummary.summary.totalLeaseValue).toLocaleString()}</p>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Elapsed:</span>
-                      <span>{leaseSummary.summary.elapsedYears} years</span>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Year {leaseSummary.summary.currentYearNumber} Amount</p>
+                      <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.currentYearAmount).toLocaleString()}</p>
+                      {leaseSummary.summary.isOverridden && (
+                        <Badge variant="secondary" className="mt-1 text-xs">Overridden</Badge>
+                      )}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Current Year:</span>
-                      <span>Year {leaseSummary.summary.currentYearNumber}</span>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Monthly Amount</p>
+                      <p className="text-xl font-semibold font-mono">₹{parseFloat(leaseSummary.summary.monthlyAmount).toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30">
+                      <p className="text-sm text-muted-foreground">Total Paid</p>
+                      <p className="text-xl font-semibold font-mono text-green-600 dark:text-green-400" data-testid="text-summary-total-paid">₹{parseFloat(leaseSummary.summary.totalPaid).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{leaseSummary.summary.paymentsCount} payments</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30">
+                      <p className="text-sm text-muted-foreground">Carry Forward</p>
+                      <p className="text-xl font-semibold font-mono text-red-600 dark:text-red-400">₹{parseFloat(leaseSummary.summary.carryForward).toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                      <p className="text-sm text-muted-foreground">Total Pending</p>
+                      <p className="text-xl font-semibold font-mono text-orange-600 dark:text-orange-400" data-testid="text-summary-pending">₹{parseFloat(leaseSummary.summary.totalPending).toLocaleString()}</p>
                     </div>
                   </div>
-                </div>
 
-                {leaseSummary.history && leaseSummary.history.length > 0 && (
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-2">Change History</h4>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {leaseSummary.history.map((h: any) => (
-                        <div key={h.id} className="text-sm p-2 bg-muted/50 rounded">
-                          <div className="flex justify-between">
-                            <Badge variant="outline">{h.changeType}</Badge>
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(h.createdAt), "MMM d, yyyy HH:mm")}
-                            </span>
-                          </div>
-                          {h.fieldChanged && (
-                            <p className="text-xs mt-1">
-                              <span className="text-muted-foreground">{h.fieldChanged}:</span> {h.oldValue} → {h.newValue}
-                            </p>
-                          )}
-                          {h.changeReason && (
-                            <p className="text-xs text-muted-foreground mt-1">Reason: {h.changeReason}</p>
-                          )}
+                  {/* Year-by-Year Breakdown with overrides */}
+                  {leaseSummary.summary.yearlyBreakdown && leaseSummary.summary.yearlyBreakdown.length > 0 && (
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2">Year-by-Year Breakdown</h4>
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm" data-testid="table-yearly-breakdown">
+                            <thead className="bg-muted/50">
+                              <tr>
+                                <th className="text-left p-2">Year</th>
+                                <th className="text-right p-2">Monthly</th>
+                                <th className="text-right p-2">Due</th>
+                                <th className="text-right p-2">Paid</th>
+                                <th className="text-right p-2">Balance</th>
+                                <th className="text-center p-2">Type</th>
+                                {canOverrideYears && (
+                                  <th className="text-right p-2 sticky right-0 bg-muted/50">Action</th>
+                                )}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {leaseSummary.summary.yearlyBreakdown.map((yr: any) => {
+                                const override = getOverrideForYear(yr.year);
+                                const isCustom = !!override;
+                                const displayAmount = isCustom ? parseFloat(override.amount) : parseFloat(yr.amountDue);
+                                const monthlyAmount = displayAmount / 12;
+
+                                return (
+                                  <tr key={yr.year} className={yr.isCurrentYear ? "bg-blue-50 dark:bg-blue-950/30" : ""} data-testid={`year-row-${yr.year}`}>
+                                    <td className="p-2">
+                                      Year {yr.year}
+                                      {yr.isCurrentYear && <Badge variant="outline" className="ml-2 text-xs">Current</Badge>}
+                                    </td>
+                                    <td className="text-right p-2 font-mono">₹{Math.round(monthlyAmount).toLocaleString()}</td>
+                                    <td className="text-right p-2 font-mono">₹{Math.round(displayAmount).toLocaleString()}</td>
+                                    <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{parseFloat(yr.amountPaid).toLocaleString()}</td>
+                                    <td className={`text-right p-2 font-mono ${parseFloat(yr.balance) > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                                      ₹{parseFloat(yr.balance).toLocaleString()}
+                                    </td>
+                                    <td className="text-center p-2">
+                                      <Badge variant={isCustom ? "default" : "secondary"} className="text-xs" data-testid={`badge-year-type-${yr.year}`}>
+                                        {isCustom ? "Custom" : "Auto"}
+                                      </Badge>
+                                    </td>
+                                    {canOverrideYears && (
+                                      <td className="text-right p-2 sticky right-0 bg-background">
+                                        {isCustom ? (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => removeYearOverrideMutation.mutate(yr.year)}
+                                            disabled={removeYearOverrideMutation.isPending}
+                                            data-testid={`button-reset-year-${yr.year}`}
+                                          >
+                                            <RotateCcw className="h-3 w-3 mr-1" />
+                                            Reset
+                                          </Button>
+                                        ) : (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => openYearOverrideDialog(yr.year, parseFloat(yr.amountDue))}
+                                            data-testid={`button-set-custom-${yr.year}`}
+                                          >
+                                            <Pencil className="h-3 w-3 mr-1" />
+                                            Set Custom
+                                          </Button>
+                                        )}
+                                      </td>
+                                    )}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
-                      ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lease Details */}
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Lease Details</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Duration:</span>
+                        <span>{leaseSummary.summary.leaseDurationYears} years</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Elapsed:</span>
+                        <span>{leaseSummary.summary.elapsedYears} years</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Current Year:</span>
+                        <span>Year {leaseSummary.summary.currentYearNumber}</span>
+                      </div>
                     </div>
                   </div>
-                )}
 
-                <div className="flex justify-end gap-2 pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => leaseForSummary && downloadLedger(leaseForSummary)}
-                    data-testid="button-download-from-summary"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download Ledger
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsSummaryDialogOpen(false)}
-                    data-testid="button-close-summary"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      onClick={() => leaseForSummary && downloadLedger(leaseForSummary)}
+                      data-testid="button-download-from-summary"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download Ledger
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsSummaryDialogOpen(false)}
+                      data-testid="button-close-summary"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="ledger" className="flex-1 overflow-y-auto pr-2">
+                  <h4 className="font-medium mb-3">Monthly Lease Ledger</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Pro-rata calculation applied for partial first month. Unpaid amounts carry forward.
+                  </p>
+                  <div className="border rounded-lg overflow-hidden">
+                    <LeaseLedger lease={getSummaryLease()} payments={summaryPayments} />
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="history" className="flex-1 overflow-y-auto pr-2">
+                  <h4 className="font-medium mb-3">Change History</h4>
+                  {leaseSummary.history && leaseSummary.history.length > 0 ? (
+                    <div className="space-y-2">
+                      {leaseSummary.history.map((h: any) => {
+                        const typeLabel = (() => {
+                          switch (h.changeType) {
+                            case 'edited': case 'update': return 'Edited';
+                            case 'year_override_set': return 'Year Override Set';
+                            case 'year_override_removed': return 'Year Override Removed';
+                            case 'payment_recorded': case 'payment': return 'Payment Recorded';
+                            case 'override': return 'Override';
+                            case 'create': return 'Created';
+                            default: return h.changeType;
+                          }
+                        })();
+
+                        const typeVariant = (() => {
+                          switch (h.changeType) {
+                            case 'edited': case 'update': return 'outline' as const;
+                            case 'year_override_set': case 'override': return 'default' as const;
+                            case 'year_override_removed': return 'secondary' as const;
+                            case 'payment_recorded': case 'payment': return 'outline' as const;
+                            default: return 'outline' as const;
+                          }
+                        })();
+
+                        return (
+                          <div key={h.id} className="text-sm p-3 bg-muted/50 rounded-md" data-testid={`history-item-${h.id}`}>
+                            <div className="flex justify-between items-start flex-wrap gap-1">
+                              <Badge variant={typeVariant}>{typeLabel}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(h.createdAt), "MMM d, yyyy HH:mm")}
+                              </span>
+                            </div>
+                            {h.fieldChanged && (
+                              <p className="text-xs mt-1">
+                                <span className="text-muted-foreground">{h.fieldChanged}:</span> {h.oldValue} → {h.newValue}
+                              </p>
+                            )}
+                            {h.changeReason && (
+                              <p className="text-xs text-muted-foreground mt-1">Reason: {h.changeReason}</p>
+                            )}
+                            {h.changedBy && (
+                              <p className="text-xs text-muted-foreground mt-1">By: {h.changedBy}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-center py-4">No change history available</div>
+                  )}
+                </TabsContent>
+              </Tabs>
             ) : (
               <div className="text-center py-8 text-muted-foreground">No summary available</div>
             )}

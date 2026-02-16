@@ -146,5 +146,14 @@ Schema changes are managed via `drizzle-kit push` (direct push to DB) or migrati
 - Added property dropdown filter and search by guest/invoice/booking
 - Improved pending calculations based on actual balance amounts
 
+### Lease Management Enhancements (Feb 2026)
+- **Schema**: Added `lease_year_overrides` table (id, lease_id, year_number, amount, reason, created_by), `payment_mode` on salary_advances, `applies_to_month`/`applies_to_year` on lease_payments
+- **Backend**: Lease year override CRUD routes (GET/POST/DELETE `/api/leases/:id/year-overrides`), enhanced PATCH `/api/leases/:id` with field-level change history and reason tracking
+- **Backend**: POST `/api/attendance/mark-all-present`, salary advance payment mode support, GET `/api/salary-export` CSV endpoint
+- **Frontend Lease Page**: Edit lease dialog (with reason tracking), year-wise override UI (Set Custom/Reset to Auto), enhanced ledger with pro-rata first/last month calculations, carry-forward tracking, payment allocation by month/year, tabbed summary (Summary/Ledger/History)
+- **Frontend Salary Page**: Mark All Present button, advance payment mode selector (Cash/UPI), CSV salary export
+- **Role Permissions**: `canEditLease` = admin/super-admin/manager; `canOverrideYears` = admin/super-admin only
+- **Pro-rata calculation**: First partial month = (monthlyRent / daysInMonth) * daysRemaining; Last partial month = (monthlyRent / daysInMonth) * daysUsed
+
 ### Vendor Dialog Fix (Feb 2026)
 - Save/Cancel buttons moved outside ScrollArea for always-visible sticky behavior
