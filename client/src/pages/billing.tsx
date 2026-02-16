@@ -535,26 +535,8 @@ export default function Billing() {
                     )}
                   </div>
                   <div className="text-right">
-                    {(() => {
-                      const advanceAmount = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
-                      const totalAmount = parseFloat(String(bill.totalAmount || "0"));
-                      const balanceDue = Math.max(0, totalAmount - advanceAmount);
-                      
-                      if (advanceAmount > 0) {
-                        return (
-                          <>
-                            <p className="text-sm text-muted-foreground">Amount Collected</p>
-                            <p className="text-2xl font-bold font-mono text-green-600" data-testid={`text-bill-total-${bill.id}`}>₹{balanceDue.toFixed(2)}</p>
-                          </>
-                        );
-                      }
-                      return (
-                        <>
-                          <p className="text-sm text-muted-foreground">Total Amount</p>
-                          <p className="text-2xl font-bold font-mono" data-testid={`text-bill-total-${bill.id}`}>₹{bill.totalAmount}</p>
-                        </>
-                      );
-                    })()}
+                    <p className="text-sm text-muted-foreground">Total Bill Amount</p>
+                    <p className="text-2xl font-bold font-mono" data-testid={`text-bill-total-${bill.id}`}>₹{parseFloat(bill.totalAmount || "0").toFixed(2)}</p>
                   </div>
                 </div>
               </CardHeader>
@@ -576,36 +558,40 @@ export default function Billing() {
                     <p className="text-muted-foreground mb-1">Subtotal</p>
                     <p className="font-semibold font-mono" data-testid={`text-bill-subtotal-${bill.id}`}>₹{parseFloat(bill.subtotal || "0").toFixed(2)}</p>
                   </div>
-                  {(bill.gstOnRooms || bill.gstOnFood) && (
-                    <div>
-                      <p className="text-muted-foreground mb-1">GST ({bill.gstRate}%)</p>
-                      <p className="font-semibold font-mono" data-testid={`text-bill-gst-${bill.id}`}>₹{bill.gstAmount}</p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-muted-foreground mb-1">GST ({parseFloat(bill.gstRate || "0")}%)</p>
+                    <p className="font-semibold font-mono" data-testid={`text-bill-gst-${bill.id}`}>₹{parseFloat(bill.gstAmount || "0").toFixed(2)}</p>
+                  </div>
                   {bill.includeServiceCharge && (
                     <div>
                       <p className="text-muted-foreground mb-1">Service Charge ({bill.serviceChargeRate}%)</p>
-                      <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{bill.serviceChargeAmount}</p>
+                      <p className="font-semibold font-mono" data-testid={`text-bill-service-charge-${bill.id}`}>₹{parseFloat(bill.serviceChargeAmount || "0").toFixed(2)}</p>
                     </div>
                   )}
-                  {/* Show Advance Payment if exists */}
-                  {parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")) > 0 && (
-                    <div>
-                      <p className="text-muted-foreground mb-1">Advance Paid</p>
-                      <p className="font-semibold font-mono text-green-600" data-testid={`text-bill-advance-${bill.id}`}>
-                        -₹{parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")).toFixed(2)}
-                      </p>
-                    </div>
-                  )}
-                  {/* Show Balance Due if there was advance */}
-                  {parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")) > 0 && (
-                    <div>
-                      <p className="text-muted-foreground mb-1">Balance Due</p>
-                      <p className="font-semibold font-mono text-orange-600" data-testid={`text-bill-balance-${bill.id}`}>
-                        ₹{Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"))).toFixed(2)}
-                      </p>
-                    </div>
-                  )}
+                  <div>
+                    <p className="text-muted-foreground mb-1">Advance Paid</p>
+                    <p className="font-semibold font-mono text-green-600" data-testid={`text-bill-advance-${bill.id}`}>
+                      ₹{parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0")).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Balance Due</p>
+                    <p className="font-semibold font-mono text-orange-600" data-testid={`text-bill-balance-${bill.id}`}>
+                      ₹{Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"))).toFixed(2)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground mb-1">Amount Collected</p>
+                    <p className="font-semibold font-mono text-green-600" data-testid={`text-bill-collected-${bill.id}`}>
+                      ₹{(() => {
+                        const total = parseFloat(String(bill.totalAmount || "0"));
+                        const advance = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
+                        const balance = Math.max(0, total - advance);
+                        if (bill.paymentStatus === "paid") return total.toFixed(2);
+                        return advance.toFixed(2);
+                      })()}
+                    </p>
+                  </div>
                   {/* Payment Method/Split Payment Display */}
                   {bill.paymentMethods && Array.isArray(bill.paymentMethods) && bill.paymentMethods.length > 0 ? (
                     <div className="col-span-2">
