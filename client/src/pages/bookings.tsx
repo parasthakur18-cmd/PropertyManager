@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send } from "lucide-react";
@@ -45,6 +45,9 @@ export default function Bookings() {
     email: "",
     idProofImage: "",
   });
+  const updateGuestField = useCallback((field: string, value: string) => {
+    setQuickGuestData(prev => ({ ...prev, [field]: value }));
+  }, []);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -928,50 +931,47 @@ export default function Bookings() {
     );
   }
 
-  // Filter bookings based on tab, search query, and check-in date
-  const filteredBookings = bookings?.filter((booking) => {
-    // Filter by tab
-    let tabMatch = true;
-    if (activeTab === "active") {
-      tabMatch = booking.status === "confirmed" || booking.status === "checked-in" || booking.status === "pending";
-    } else if (activeTab === "completed") {
-      tabMatch = booking.status === "checked-out";
-    } else if (activeTab === "cancelled") {
-      tabMatch = booking.status === "cancelled";
-    }
-    
-    if (!tabMatch) return false;
-    
-    // Filter by check-in date if selected
-    if (checkinDateFilter) {
-      const bookingCheckInDate = format(new Date(booking.checkInDate), "yyyy-MM-dd");
-      if (bookingCheckInDate !== checkinDateFilter) return false;
-    }
-    
-    // Filter by search query
-    if (!searchQuery) return true;
-    
-    const query = searchQuery.toLowerCase();
-    const property = properties?.find(p => p.id === booking.propertyId);
-    const guest = guests?.find(g => g.id === booking.guestId);
-    const room = rooms?.find(r => r.id === booking.roomId);
-    
-    return (
-      guest?.fullName?.toLowerCase().includes(query) ||
-      guest?.phone?.toLowerCase().includes(query) ||
-      property?.name?.toLowerCase().includes(query) ||
-      room?.roomNumber?.toLowerCase().includes(query) ||
-      booking.status?.toLowerCase().includes(query)
-    );
-  });
+  const filteredBookings = useMemo(() => {
+    return bookings?.filter((booking) => {
+      let tabMatch = true;
+      if (activeTab === "active") {
+        tabMatch = booking.status === "confirmed" || booking.status === "checked-in" || booking.status === "pending";
+      } else if (activeTab === "completed") {
+        tabMatch = booking.status === "checked-out";
+      } else if (activeTab === "cancelled") {
+        tabMatch = booking.status === "cancelled";
+      }
 
-  // Count bookings by category for badges
-  const bookingCounts = {
+      if (!tabMatch) return false;
+
+      if (checkinDateFilter) {
+        const bookingCheckInDate = format(new Date(booking.checkInDate), "yyyy-MM-dd");
+        if (bookingCheckInDate !== checkinDateFilter) return false;
+      }
+
+      if (!searchQuery) return true;
+
+      const query = searchQuery.toLowerCase();
+      const property = properties?.find(p => p.id === booking.propertyId);
+      const guest = guests?.find(g => g.id === booking.guestId);
+      const room = rooms?.find(r => r.id === booking.roomId);
+
+      return (
+        guest?.fullName?.toLowerCase().includes(query) ||
+        guest?.phone?.toLowerCase().includes(query) ||
+        property?.name?.toLowerCase().includes(query) ||
+        room?.roomNumber?.toLowerCase().includes(query) ||
+        booking.status?.toLowerCase().includes(query)
+      );
+    });
+  }, [bookings, activeTab, checkinDateFilter, searchQuery, properties, guests, rooms]);
+
+  const bookingCounts = useMemo(() => ({
     all: (bookings ?? []).length,
     active: (bookings ?? []).filter(b => b.status === "confirmed" || b.status === "checked-in" || b.status === "pending").length,
     completed: (bookings ?? []).filter(b => b.status === "checked-out").length,
     cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
-  };
+  }), [bookings]);
 
 
   return (
@@ -1081,14 +1081,14 @@ export default function Bookings() {
                   <Input
                     placeholder="Full Name *"
                     value={quickGuestData.fullName}
-                    onChange={(e) => setQuickGuestData({ ...quickGuestData, fullName: e.target.value })}
+                    onChange={(e) => updateGuestField('fullName', e.target.value)}
                     data-testid="input-guest-name"
                     className={`bg-background ${validationAttempted && !quickGuestData.fullName ? 'border-destructive border-2' : ''}`}
                   />
                   <Input
                     placeholder="Phone Number *"
                     value={quickGuestData.phone}
-                    onChange={(e) => setQuickGuestData({ ...quickGuestData, phone: e.target.value })}
+                    onChange={(e) => updateGuestField('phone', e.target.value)}
                     data-testid="input-guest-phone"
                     className={`bg-background ${validationAttempted && !quickGuestData.phone ? 'border-destructive border-2' : ''}`}
                   />
@@ -1096,13 +1096,13 @@ export default function Bookings() {
                     placeholder="Email (optional)"
                     type="email"
                     value={quickGuestData.email}
-                    onChange={(e) => setQuickGuestData({ ...quickGuestData, email: e.target.value })}
+                    onChange={(e) => updateGuestField('email', e.target.value)}
                     data-testid="input-guest-email"
                     className="bg-background"
                   />
                   <IdVerificationUpload
                     onUploadComplete={(objectKey) => {
-                      setQuickGuestData({ ...quickGuestData, idProofImage: objectKey });
+                      updateGuestField('idProofImage', objectKey);
                     }}
                   />
                 </div>
