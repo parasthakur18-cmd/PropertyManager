@@ -54,6 +54,7 @@ export default function Menu() {
   const [selectedAddOns, setSelectedAddOns] = useState<{ id: number; name: string; price: string; quantity: number; }[]>([]);
   const [isAddOnsSheetOpen, setIsAddOnsSheetOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [categoryInitialized, setCategoryInitialized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
   
@@ -97,6 +98,18 @@ export default function Menu() {
     queryKey: [`/api/public/menu-items/${selectedItem?.id}/add-ons`],
     enabled: !!selectedItem,
   });
+
+  useEffect(() => {
+    if (!categoryInitialized && menuCategories && menuCategories.length > 0 && menuItems) {
+      const availableCategories = menuCategories.filter(cat => 
+        menuItems.some(item => item.categoryId === cat.id && item.isAvailable)
+      );
+      if (availableCategories.length > 0) {
+        setSelectedCategoryId(availableCategories[0].id);
+        setCategoryInitialized(true);
+      }
+    }
+  }, [menuCategories, menuItems, categoryInitialized]);
 
   const isLoading = categoriesLoading || itemsLoading;
 
@@ -327,14 +340,15 @@ export default function Menu() {
     );
   }, [menuItems, searchTerm]);
 
-  // Group by category using new category system
-  const groupedByCategory = menuCategories
-    ?.filter((cat) => selectedCategoryId === null || cat.id === selectedCategoryId)
-    .map((category) => ({
-      category,
-      items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
-    }))
-    .filter(group => group.items.length > 0);
+  const groupedByCategory = selectedCategoryId === null
+    ? []
+    : menuCategories
+        ?.filter((cat) => cat.id === selectedCategoryId)
+        .map((category) => ({
+          category,
+          items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
+        }))
+        .filter(group => group.items.length > 0);
 
   if (isLoading) {
     return (
@@ -604,14 +618,6 @@ export default function Menu() {
         <div className="border-b bg-background">
           <div className="overflow-x-auto overflow-y-hidden px-4 py-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
             <div className="flex gap-2 w-max">
-              <Badge
-                variant={selectedCategoryId === null ? "default" : "outline"}
-                className="cursor-pointer hover-elevate whitespace-nowrap flex-shrink-0"
-                onClick={() => setSelectedCategoryId(null)}
-                data-testid="badge-category-all"
-              >
-                All ({filteredItems?.filter((item) => item.isAvailable).length || 0})
-              </Badge>
               {menuCategories.map((category) => {
                 const itemCount = filteredItems?.filter(
                   (item) => item.categoryId === category.id && item.isAvailable
