@@ -75,8 +75,8 @@ export default function FoodOrdersReport() {
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
-    refetchInterval: 10000,
-    staleTime: 0,
+    refetchInterval: 30000,
+    staleTime: 5000,
     refetchOnWindowFocus: true,
   });
 

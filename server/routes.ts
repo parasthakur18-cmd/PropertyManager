@@ -1800,15 +1800,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Apply tenant-based room filtering
       const rooms = filterByPropertyAccess(tenant, allRooms);
       
-      console.log("[ROOMS ENDPOINT] Tenant filtering:", { 
-        userId: tenant.userId,
-        role: tenant.role,
-        isSuperAdmin: tenant.isSuperAdmin,
-        assignedPropertyIds: tenant.assignedPropertyIds,
-        allRoomsCount: allRooms.length,
-        filteredCount: rooms.length
-      });
-      
       res.json(rooms);
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
