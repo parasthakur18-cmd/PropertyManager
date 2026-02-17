@@ -129,7 +129,7 @@ export default function CustomerMenu() {
         : true
     );
 
-  const showAllFromSearch = searchQuery.length > 0 && selectedCategoryId === "none";
+  const showAllFromSearch = searchQuery.length > 0;
 
   const groupedByCategory = showAllFromSearch
     ? categories
@@ -344,7 +344,6 @@ export default function CustomerMenu() {
         </div>
       )}
 
-      {/* Prompt to select category */}
       {selectedCategoryId === "none" && !searchQuery && (
         <div className="max-w-7xl mx-auto px-4 py-12 text-center">
           <p className="text-muted-foreground text-lg">
