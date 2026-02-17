@@ -653,11 +653,6 @@ export default function Bookings() {
     // Mark that validation has been attempted
     setValidationAttempted(true);
     
-    console.log("onSubmit called with data:", data);
-    console.log("Booking type:", bookingType);
-    console.log("Selected room IDs:", selectedRoomIds);
-    console.log("Quick guest data:", quickGuestData);
-    
     // First, validate and create the guest
     if (!quickGuestData.fullName || !quickGuestData.phone) {
       toast({
@@ -757,7 +752,6 @@ export default function Bookings() {
         travelAgentId: data.travelAgentId || null,
       };
       
-      console.log("Final bookingData being sent:", bookingData);
       createMutation.mutate(bookingData as InsertBooking);
     } catch (error: any) {
       toast({
