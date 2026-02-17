@@ -2728,14 +2728,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const data = bookingInputSchema.parse(req.body);
       
-      console.log('🔍 [DEBUG] Booking creation - parsed data:', {
-        roomId: data.roomId,
-        numberOfGuests: data.numberOfGuests,
-        bedsBooked: data.bedsBooked,
-        hasBedsBooked: 'bedsBooked' in data,
-        bedsBookedType: typeof data.bedsBooked
-      });
-      
       // Check room availability before creating booking
       const checkIn = new Date(data.checkInDate);
       const checkOut = new Date(data.checkOutDate);
@@ -2818,89 +2810,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const booking = await storage.createBooking(data);
       
-      // Create notification for admins about new booking
-      try {
-        const allUsers = await storage.getAllUsers();
-        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
-        const guest = await storage.getGuest(booking.guestId);
-        
-        for (const admin of adminUsers) {
-          await db.insert(notifications).values({
-            userId: admin.id,
-            type: "new_booking",
-            title: "New Booking Created",
-            message: `Booking #${booking.id} created for ${guest?.fullName || 'Guest'}. Check-in: ${format(new Date(booking.checkInDate), "MMM dd, yyyy")}`,
-            soundType: "info",
-            relatedId: booking.id,
-            relatedType: "booking",
-          });
-        }
-        console.log(`[NOTIFICATIONS] New booking notification created for ${adminUsers.length} admins`);
-      } catch (notifError: any) {
-        console.error(`[NOTIFICATIONS] Failed to create booking notification:`, notifError.message);
-      }
-      
-      // Send booking confirmation email to guest
-      try {
-        const guest = await storage.getGuest(booking.guestId);
-        const property = await storage.getProperty(booking.propertyId);
-        const room = await storage.getRoom(booking.roomId);
-        
-        if (guest && guest.email && property && room) {
-          const { sendBookingConfirmationEmail } = await import("./email-service");
-          const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
-          const checkOutDate = format(new Date(booking.checkOutDate), "MMM dd, yyyy");
-          
-          await sendBookingConfirmationEmail(
-            guest.email,
-            guest.fullName,
-            property.name,
-            checkInDate,
-            checkOutDate,
-            room.roomNumber,
-            booking.id
-          );
-          console.log(`[EMAIL] Booking confirmation sent to ${guest.email}`);
-        }
-      } catch (emailError: any) {
-        console.error(`[EMAIL] Failed to send booking confirmation email:`, emailError.message);
-      }
-      
-      // WhatsApp booking confirmation DISABLED per user request (only using check-in and checkout notifications)
-      
-      // Activity log for booking creation
-      try {
-        const user = req.user as any;
-        const userId = user?.claims?.sub || user?.id || (req.session as any)?.userId;
-        const dbUser = userId ? await storage.getUser(userId) : null;
-        const guest = await storage.getGuest(booking.guestId);
-        const property = await storage.getProperty(booking.propertyId);
-        
-        await storage.createActivityLog({
-          userId: userId || null,
-          userEmail: dbUser?.email || null,
-          userName: dbUser ? `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() : null,
-          action: 'create_booking',
-          category: 'booking',
-          resourceType: 'booking',
-          resourceId: String(booking.id),
-          resourceName: `Booking #${booking.id} - ${guest?.fullName || 'Guest'}`,
-          propertyId: booking.propertyId,
-          propertyName: property?.name || null,
-          details: { 
-            guestName: guest?.fullName, 
-            checkIn: booking.checkInDate, 
-            checkOut: booking.checkOutDate,
-            roomId: booking.roomId 
-          },
-          ipAddress: (req.ip || req.socket.remoteAddress || '').substring(0, 45),
-          userAgent: (req.get('User-Agent') || '').substring(0, 500),
-        });
-      } catch (logErr) {
-        console.error('[ACTIVITY] Error logging booking creation:', logErr);
-      }
-      
+      // Send response immediately - don't make user wait for notifications/emails/logs
       res.status(201).json(booking);
+      
+      // Run post-booking tasks in background (non-blocking)
+      const bgUser = req.user as any;
+      const bgUserId = bgUser?.claims?.sub || bgUser?.id || (req.session as any)?.userId;
+      
+      setImmediate(async () => {
+        // Create notification for admins
+        try {
+          const allUsers = await storage.getAllUsers();
+          const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+          const guest = await storage.getGuest(booking.guestId);
+          
+          for (const admin of adminUsers) {
+            await db.insert(notifications).values({
+              userId: admin.id,
+              type: "new_booking",
+              title: "New Booking Created",
+              message: `Booking #${booking.id} created for ${guest?.fullName || 'Guest'}. Check-in: ${format(new Date(booking.checkInDate), "MMM dd, yyyy")}`,
+              soundType: "info",
+              relatedId: booking.id,
+              relatedType: "booking",
+            });
+          }
+        } catch (notifError: any) {
+          console.error(`[NOTIFICATIONS] Failed to create booking notification:`, notifError.message);
+        }
+        
+        // Send booking confirmation email
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          const property = await storage.getProperty(booking.propertyId);
+          const room = await storage.getRoom(booking.roomId);
+          
+          if (guest && guest.email && property && room) {
+            const { sendBookingConfirmationEmail } = await import("./email-service");
+            const checkInDate = format(new Date(booking.checkInDate), "MMM dd, yyyy");
+            const checkOutDate = format(new Date(booking.checkOutDate), "MMM dd, yyyy");
+            
+            await sendBookingConfirmationEmail(
+              guest.email,
+              guest.fullName,
+              property.name,
+              checkInDate,
+              checkOutDate,
+              room.roomNumber,
+              booking.id
+            );
+          }
+        } catch (emailError: any) {
+          console.error(`[EMAIL] Failed to send booking confirmation email:`, emailError.message);
+        }
+        
+        // Activity log
+        try {
+          const dbUser = bgUserId ? await storage.getUser(bgUserId) : null;
+          const guest = await storage.getGuest(booking.guestId);
+          const property = await storage.getProperty(booking.propertyId);
+          
+          await storage.createActivityLog({
+            userId: bgUserId || null,
+            userEmail: dbUser?.email || null,
+            userName: dbUser ? `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() : null,
+            action: 'create_booking',
+            category: 'booking',
+            resourceType: 'booking',
+            resourceId: String(booking.id),
+            resourceName: `Booking #${booking.id} - ${guest?.fullName || 'Guest'}`,
+            propertyId: booking.propertyId,
+            propertyName: property?.name || null,
+            details: { 
+              guestName: guest?.fullName, 
+              checkIn: booking.checkInDate, 
+              checkOut: booking.checkOutDate,
+              roomId: booking.roomId 
+            },
+            ipAddress: '',
+            userAgent: '',
+          });
+        } catch (logErr) {
+          console.error('[ACTIVITY] Error logging booking creation:', logErr);
+        }
+      });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         console.error("Booking validation errors:", JSON.stringify(error.errors, null, 2));
