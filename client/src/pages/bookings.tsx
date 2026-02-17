@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send } from "lucide-react";
@@ -25,6 +25,67 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 
+const GuestInputFields = memo(function GuestInputFields({ 
+  guestDataRef, 
+  resetKey, 
+  validationAttempted 
+}: { 
+  guestDataRef: React.MutableRefObject<{ fullName: string; phone: string; email: string; idProofImage: string }>;
+  resetKey: number;
+  validationAttempted: boolean;
+}) {
+  const [localName, setLocalName] = useState("");
+  const [localPhone, setLocalPhone] = useState("");
+  const [localEmail, setLocalEmail] = useState("");
+
+  useEffect(() => {
+    setLocalName("");
+    setLocalPhone("");
+    setLocalEmail("");
+  }, [resetKey]);
+
+  return (
+    <>
+      <Input
+        placeholder="Full Name *"
+        value={localName}
+        onChange={(e) => {
+          setLocalName(e.target.value);
+          guestDataRef.current.fullName = e.target.value;
+        }}
+        data-testid="input-guest-name"
+        className={`bg-background ${validationAttempted && !localName ? 'border-destructive border-2' : ''}`}
+      />
+      <Input
+        placeholder="Phone Number *"
+        value={localPhone}
+        onChange={(e) => {
+          setLocalPhone(e.target.value);
+          guestDataRef.current.phone = e.target.value;
+        }}
+        data-testid="input-guest-phone"
+        className={`bg-background ${validationAttempted && !localPhone ? 'border-destructive border-2' : ''}`}
+      />
+      <Input
+        placeholder="Email (optional)"
+        type="email"
+        value={localEmail}
+        onChange={(e) => {
+          setLocalEmail(e.target.value);
+          guestDataRef.current.email = e.target.value;
+        }}
+        data-testid="input-guest-email"
+        className="bg-background"
+      />
+      <IdVerificationUpload
+        onUploadComplete={(objectKey) => {
+          guestDataRef.current.idProofImage = objectKey;
+        }}
+      />
+    </>
+  );
+});
+
 const statusColors = {
   pending: "bg-amber-500 text-white",
   pending_advance: "bg-orange-500 text-white",
@@ -39,15 +100,8 @@ export default function Bookings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [quickGuestData, setQuickGuestData] = useState({
-    fullName: "",
-    phone: "",
-    email: "",
-    idProofImage: "",
-  });
-  const updateGuestField = useCallback((field: string, value: string) => {
-    setQuickGuestData(prev => ({ ...prev, [field]: value }));
-  }, []);
+  const guestDataRef = useRef({ fullName: "", phone: "", email: "", idProofImage: "" });
+  const guestInputResetKey = useRef(0);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -335,7 +389,8 @@ export default function Bookings() {
       });
       setIsDialogOpen(false);
       form.reset();
-      setQuickGuestData({ fullName: "", phone: "", email: "", idProofImage: "" });
+      guestDataRef.current = { fullName: "", phone: "", email: "", idProofImage: "" };
+      guestInputResetKey.current += 1;
     },
     onError: (error: Error) => {
       toast({
@@ -657,7 +712,7 @@ export default function Bookings() {
     setValidationAttempted(true);
     
     // First, validate and create the guest
-    if (!quickGuestData.fullName || !quickGuestData.phone) {
+    if (!guestDataRef.current.fullName || !guestDataRef.current.phone) {
       toast({
         title: "Missing Required Fields",
         description: "Please enter guest name and phone number (marked with red border)",
@@ -691,10 +746,10 @@ export default function Bookings() {
     // Create guest first (ID proof is optional)
     try {
       const guestData = {
-        fullName: quickGuestData.fullName,
-        phone: quickGuestData.phone,
-        email: quickGuestData.email || null,
-        idProofImage: quickGuestData.idProofImage || null,
+        fullName: guestDataRef.current.fullName,
+        phone: guestDataRef.current.phone,
+        email: guestDataRef.current.email || null,
+        idProofImage: guestDataRef.current.idProofImage || null,
         idProofType: null,
         idProofNumber: null,
         address: null,
@@ -1044,7 +1099,8 @@ export default function Bookings() {
               setIsDialogOpen(open);
               if (!open) {
                 form.reset();
-                setQuickGuestData({ fullName: "", phone: "", email: "", idProofImage: "" });
+                guestDataRef.current = { fullName: "", phone: "", email: "", idProofImage: "" };
+                guestInputResetKey.current += 1;
                 setBookingType("single");
                 setSelectedRoomIds([]);
               }
@@ -1078,32 +1134,10 @@ export default function Bookings() {
                     Guest Details
                     <Badge variant="destructive" className="ml-auto text-xs">Required</Badge>
                   </h3>
-                  <Input
-                    placeholder="Full Name *"
-                    value={quickGuestData.fullName}
-                    onChange={(e) => updateGuestField('fullName', e.target.value)}
-                    data-testid="input-guest-name"
-                    className={`bg-background ${validationAttempted && !quickGuestData.fullName ? 'border-destructive border-2' : ''}`}
-                  />
-                  <Input
-                    placeholder="Phone Number *"
-                    value={quickGuestData.phone}
-                    onChange={(e) => updateGuestField('phone', e.target.value)}
-                    data-testid="input-guest-phone"
-                    className={`bg-background ${validationAttempted && !quickGuestData.phone ? 'border-destructive border-2' : ''}`}
-                  />
-                  <Input
-                    placeholder="Email (optional)"
-                    type="email"
-                    value={quickGuestData.email}
-                    onChange={(e) => updateGuestField('email', e.target.value)}
-                    data-testid="input-guest-email"
-                    className="bg-background"
-                  />
-                  <IdVerificationUpload
-                    onUploadComplete={(objectKey) => {
-                      updateGuestField('idProofImage', objectKey);
-                    }}
+                  <GuestInputFields
+                    guestDataRef={guestDataRef}
+                    resetKey={guestInputResetKey.current}
+                    validationAttempted={validationAttempted}
                   />
                 </div>
 
