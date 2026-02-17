@@ -38,7 +38,7 @@ export default function CustomerMenu() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | "none">("none");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -129,13 +129,24 @@ export default function CustomerMenu() {
         : true
     );
 
-  const groupedByCategory = categories
-    ?.filter((cat) => selectedCategoryId === null || cat.id === selectedCategoryId)
-    .map((category) => ({
-      category,
-      items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
-    }))
-    .filter(group => group.items.length > 0);
+  const showAllFromSearch = searchQuery.length > 0 && selectedCategoryId === "none";
+
+  const groupedByCategory = showAllFromSearch
+    ? categories
+        ?.map((category) => ({
+          category,
+          items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
+        }))
+        .filter(group => group.items.length > 0)
+    : selectedCategoryId === "none"
+      ? []
+      : categories
+          ?.filter((cat) => cat.id === selectedCategoryId)
+          .map((category) => ({
+            category,
+            items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
+          }))
+          .filter(group => group.items.length > 0);
 
   const handleSelectItem = (item: MenuItem) => {
     setSelectedItem(item);
@@ -309,14 +320,6 @@ export default function CustomerMenu() {
         <div className="border-b bg-background sticky top-[145px] z-10">
           <div className="overflow-x-auto overflow-y-hidden px-4 py-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
             <div className="flex gap-2 w-max">
-              <Badge
-                variant={selectedCategoryId === null ? "default" : "outline"}
-                className="cursor-pointer hover-elevate whitespace-nowrap flex-shrink-0"
-                onClick={() => setSelectedCategoryId(null)}
-                data-testid="badge-category-all"
-              >
-                All ({filteredItems?.length || 0})
-              </Badge>
               {categories.map((category) => {
                 const itemCount = filteredItems?.filter(
                   (item) => item.categoryId === category.id
@@ -327,7 +330,9 @@ export default function CustomerMenu() {
                     key={category.id}
                     variant={selectedCategoryId === category.id ? "default" : "outline"}
                     className="cursor-pointer hover-elevate whitespace-nowrap flex-shrink-0"
-                    onClick={() => setSelectedCategoryId(category.id)}
+                    onClick={() => setSelectedCategoryId(
+                      selectedCategoryId === category.id ? "none" : category.id
+                    )}
                     data-testid={`badge-category-${category.id}`}
                   >
                     {category.name} ({itemCount})
@@ -336,6 +341,15 @@ export default function CustomerMenu() {
               })}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Prompt to select category */}
+      {selectedCategoryId === "none" && !searchQuery && (
+        <div className="max-w-7xl mx-auto px-4 py-12 text-center">
+          <p className="text-muted-foreground text-lg">
+            Tap a category above to browse the menu
+          </p>
         </div>
       )}
 
