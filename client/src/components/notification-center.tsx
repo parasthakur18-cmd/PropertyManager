@@ -76,7 +76,7 @@ export function NotificationCenter() {
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000); // Refresh every 5 seconds
+    const interval = setInterval(fetchNotifications, 30000); // Refresh every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
