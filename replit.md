@@ -157,3 +157,11 @@ Schema changes are managed via `drizzle-kit push` (direct push to DB) or migrati
 
 ### Vendor Dialog Fix (Feb 2026)
 - Save/Cancel buttons moved outside ScrollArea for always-visible sticky behavior
+
+### Performance Optimizations (Feb 2026)
+- **Response logging**: Removed expensive `JSON.stringify` of full API response bodies in request logger; now only logs error messages for 4xx/5xx responses
+- **Compression**: Added gzip compression via `compression` middleware for all API and static responses
+- **Polling intervals**: Reduced food-orders-report from 10s to 30s; notification polling at 30s; restaurant orders at 15s; pending-items at 60s; AI summary at 5 minutes
+- **Database indexes**: Added indexes on frequently queried columns: bookings (property_id, status, room_id, guest_id), rooms (property_id), orders (status, property_id), menu_items (property_id, category_id), bills (booking_id, guest_id, payment_status), notifications (user_id, is_read), audit_logs (user_id)
+- **Request timeouts**: Increased frontend API timeout from 3s to 15s for data queries; added 1 retry for failed queries
+- **Verbose logging**: Removed per-request console.log from rooms endpoint tenant filtering

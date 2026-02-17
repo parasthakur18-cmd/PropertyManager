@@ -9,11 +9,14 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import path from "path";
 
 const app = express();
+
+app.use(compression());
 
 declare module 'http' {
   interface IncomingMessage {
@@ -53,12 +56,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (res.statusCode >= 400 && capturedJsonResponse) {
+        const errMsg = capturedJsonResponse.message || capturedJsonResponse.error || '';
+        logLine += errMsg ? ` :: ${errMsg}` : ` :: ${res.statusCode}`;
       }
 
       log(logLine);
