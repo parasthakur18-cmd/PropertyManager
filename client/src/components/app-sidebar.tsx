@@ -191,10 +191,7 @@ export function AppSidebar() {
   const { setOpen, isMobile } = useSidebar();
   const { hasAccess, isLoading: permissionsLoading } = usePermissions();
 
-  // Always keep sidebar open
-  useEffect(() => {
-    setOpen(true);
-  }, [setOpen]);
+
 
   // Get menu items based on role AND permissions
   const getMenuConfig = () => {
@@ -295,10 +292,7 @@ export function AppSidebar() {
     : "U";
 
   const handleNavClick = () => {
-    // Close sidebar on navigation (especially useful on mobile/tablet)
-    if (isMobile) {
-      setOpen(false);
-    }
+    setOpen(false);
   };
 
   return (
