@@ -62,8 +62,7 @@ export const getQueryFn: <T>(options: {
   async ({ queryKey }) => {
     try {
       const url = queryKey.join("/") as string;
-      // Use shorter timeout for auth endpoint
-      const timeout = url.includes("/auth/") ? 2000 : 3000;
+      const timeout = url.includes("/auth/") ? 3000 : 15000;
       
       const res = await fetchWithTimeout(url, { credentials: "include" }, timeout);
 
@@ -101,7 +100,7 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
-      retry: false,
+      retry: 1,
     },
     mutations: {
       retry: false,
