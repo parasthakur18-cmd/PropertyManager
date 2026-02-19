@@ -70,10 +70,15 @@ export default function SalariesPage() {
         { credentials: "include" }
       );
       if (!response.ok) {
+        let message = "Failed to fetch salary details";
+        try {
+          const errBody = await response.json();
+          if (errBody?.message) message = errBody.message;
+        } catch (_) {}
         if (response.status === 403) {
-          toast({ title: "Error", description: "You don't have access to this property", variant: "destructive" });
+          toast({ title: "Error", description: message, variant: "destructive" });
         }
-        throw new Error("Failed to fetch salary details");
+        throw new Error(message);
       }
       const data = await response.json();
       return data;
@@ -692,7 +697,8 @@ export default function SalariesPage() {
           ) : error ? (
             <Card className="border-red-200 bg-red-50">
               <CardContent className="pt-6">
-                <p className="text-red-700">Failed to load salary data. Please try again.</p>
+                <p className="text-red-700 font-medium">Failed to load salary data. Please try again.</p>
+                <p className="text-red-600 text-sm mt-1">{error instanceof Error ? error.message : "Unknown error"}</p>
               </CardContent>
             </Card>
           ) : salaries.length === 0 ? (

@@ -9,9 +9,9 @@ export interface TenantContext {
   verificationStatus: string;
 }
 
-function parsePropertyIds(ids: string[] | null | undefined): number[] {
-  if (!ids || ids.length === 0) return [];
-  return ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+function parsePropertyIds(ids: string[] | number[] | null | undefined): number[] {
+  if (!ids || !Array.isArray(ids) || ids.length === 0) return [];
+  return ids.map((id: string | number) => typeof id === "number" ? id : parseInt(String(id), 10)).filter(id => !isNaN(id));
 }
 
 export function getTenantContext(user: User): TenantContext {
