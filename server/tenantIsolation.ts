@@ -27,7 +27,7 @@ export function getTenantContext(user: User): TenantContext {
   };
 }
 
-export function canAccessProperty(tenant: TenantContext, propertyId: number): boolean {
+export function canAccessProperty(tenant: TenantContext, propertyId: number | string | null | undefined): boolean {
   if (tenant.hasUnlimitedAccess) {
     return true;
   }
@@ -36,7 +36,9 @@ export function canAccessProperty(tenant: TenantContext, propertyId: number): bo
     return false;
   }
   
-  return tenant.assignedPropertyIds.includes(propertyId);
+  const id = typeof propertyId === "number" ? propertyId : parseInt(String(propertyId), 10);
+  if (isNaN(id)) return false;
+  return tenant.assignedPropertyIds.includes(id);
 }
 
 export function filterByPropertyAccess<T extends { propertyId: number }>(
