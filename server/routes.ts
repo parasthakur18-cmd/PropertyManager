@@ -7041,7 +7041,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         leases = await storage.getLeasesByProperty(propId);
       } else {
         const allLeases = await storage.getAllLeases();
-        leases = allLeases.filter(l => l.propertyId && canAccessProperty(tenant, l.propertyId));
+        leases = allLeases.filter(l => l.propertyId != null && canAccessProperty(tenant, l.propertyId));
       }
       res.json(leases);
     } catch (error: any) {
