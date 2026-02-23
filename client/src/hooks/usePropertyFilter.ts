@@ -10,15 +10,12 @@ export function usePropertyFilter() {
     queryKey: ["/api/properties"],
   });
 
-  const isSuperAdmin = user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super-admin";
 
   const availableProperties = useMemo(() => {
     if (!properties) return [];
-    if (isSuperAdmin) return properties;
-    return properties.filter((p) =>
-      user?.assignedPropertyIds?.includes(String(p.id))
-    );
-  }, [properties, user, isSuperAdmin]);
+    return properties;
+  }, [properties]);
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(
     () => {
