@@ -973,19 +973,6 @@ export default function Bookings() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="p-6 md:p-8">
-        <Skeleton className="h-10 w-64 mb-6" />
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   const filteredBookings = useMemo(() => {
     return bookings?.filter((booking) => {
       let tabMatch = true;
@@ -1028,6 +1015,18 @@ export default function Bookings() {
     cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
   }), [bookings]);
 
+  if (isLoading) {
+    return (
+      <div className="p-6 md:p-8">
+        <Skeleton className="h-10 w-64 mb-6" />
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 p-6 md:p-8">
