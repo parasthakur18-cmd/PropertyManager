@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ReportIssueButton } from "@/components/report-issue";
 import { useAuth } from "@/hooks/useAuth";
 import { connectToEventStream } from "@/lib/eventHandlers";
 import { useEffect, useRef, useState } from "react";
@@ -465,6 +466,7 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
       {children}
       <Chatbot />
       <CompletionNotifications />
+      <ReportIssueButton />
     </div>
   );
 }

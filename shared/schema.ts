@@ -1606,3 +1606,28 @@ export const insertDailyClosingSchema = createInsertSchema(dailyClosings).omit({
 
 export type DailyClosing = typeof dailyClosings.$inferSelect;
 export type InsertDailyClosing = z.infer<typeof insertDailyClosingSchema>;
+
+export const errorReports = pgTable("error_reports", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }),
+  userName: varchar("user_name", { length: 255 }),
+  propertyId: integer("property_id"),
+  page: varchar("page", { length: 255 }),
+  errorMessage: text("error_message"),
+  errorDetails: text("error_details"),
+  userDescription: text("user_description"),
+  browserInfo: text("browser_info"),
+  status: varchar("status", { length: 20 }).notNull().default("open"),
+  resolvedAt: timestamp("resolved_at"),
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertErrorReportSchema = createInsertSchema(errorReports).omit({
+  id: true,
+  createdAt: true,
+  resolvedAt: true,
+});
+
+export type ErrorReport = typeof errorReports.$inferSelect;
+export type InsertErrorReport = z.infer<typeof insertErrorReportSchema>;
