@@ -2,7 +2,7 @@ import { Building2, Calendar, Users, BarChart3, ArrowRight, Sparkles, UtensilsCr
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Chatbot } from "@/components/chatbot";
+
 import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
 
 const features = [
@@ -691,8 +691,6 @@ export default function Landing() {
         </div>
       </div>
 
-      {/* Chatbot */}
-      <Chatbot />
     </div>
   );
 }
