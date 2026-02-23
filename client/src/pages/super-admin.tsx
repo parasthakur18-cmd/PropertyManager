@@ -2208,6 +2208,19 @@ export default function SuperAdmin() {
                           {er.userDescription}
                         </p>
                       )}
+                      {er.imageUrl && (
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">Attached Screenshot:</p>
+                          <a href={er.imageUrl} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={er.imageUrl}
+                              alt="Issue screenshot"
+                              className="max-h-48 rounded border object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                              data-testid={`img-error-report-${er.id}`}
+                            />
+                          </a>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                         {er.browserInfo && <span>Browser: {er.browserInfo.substring(0, 80)}...</span>}
                         <span>&bull;</span>
