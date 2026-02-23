@@ -6527,11 +6527,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.post("/api/enquiries", isAuthenticated, async (req, res) => {
     try {
-      const data = insertEnquirySchema.parse(req.body);
+      const body = {
+        ...req.body,
+        checkInDate: req.body.checkInDate ? new Date(req.body.checkInDate) : undefined,
+        checkOutDate: req.body.checkOutDate ? new Date(req.body.checkOutDate) : undefined,
+      };
+      const data = insertEnquirySchema.parse(body);
       const enquiry = await storage.createEnquiry(data);
       res.status(201).json(enquiry);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
+        console.error("[ENQUIRY] Validation errors:", JSON.stringify(error.errors));
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
       }
       res.status(500).json({ message: error.message });
