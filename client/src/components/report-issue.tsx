@@ -70,10 +70,11 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
         onClick={() => setIsOpen(true)}
         variant="outline"
         size="icon"
-        className="fixed bottom-16 right-4 z-40 h-8 w-8 rounded-full shadow-sm"
+        className="fixed bottom-28 right-5 z-50 h-8 w-8 rounded-full shadow-md border-primary/30 bg-background"
         data-testid="button-report-issue"
+        title="Report an issue"
       >
-        <Bug className="h-3.5 w-3.5" />
+        <Bug className="h-3.5 w-3.5 text-primary" />
       </Button>
 
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsOpen(false); setSubmitted(false); } }}>
