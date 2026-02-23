@@ -33,7 +33,7 @@ export function usePropertyFilter() {
         if (selectedPropertyId !== availableProperties[0].id) {
           setSelectedPropertyId(availableProperties[0].id);
         }
-      } else if (selectedPropertyId && !availableProperties.some(p => p.id === selectedPropertyId)) {
+      } else if (!selectedPropertyId || !availableProperties.some(p => p.id === selectedPropertyId)) {
         setSelectedPropertyId(availableProperties[0].id);
       }
     }
