@@ -177,3 +177,11 @@ Schema changes are managed via `drizzle-kit push` (direct push to DB) or migrati
 - **Integration**: Automatically triggers after onboarding wizard completes/skips if the user's property has no rooms
 - Uses OpenAI (gpt-5-mini) to parse natural language room descriptions into structured room data
 - Rooms query loading state is checked before triggering to avoid false positives
+
+### Tenant Data Isolation Fix (Feb 2026)
+- **Critical security fix**: Resolved cross-tenant data leakage where users could see orders, notifications, and other data from properties they don't have access to
+- **Helper**: Added `getAuthenticatedTenant(req)` utility in routes.ts for consistent user+tenant resolution across all endpoints
+- **Endpoints fixed** (24+ endpoints): orders, menu-items, menu-categories, extra-services, bills, bills/pending, guests, notifications, wallets, wallet-transactions, daily-closings, reports (cash-book, bank-book, daily-summary), expense-categories, expenses (POST), staff-members, salaries, salary-advances, leases, vendors, attendance, enquiries, travel-agents, dashboard/stats, analytics, bookings/with-details, properties/:id/pnl, enquiry/booking communications
+- **Pattern**: All GET endpoints now use `getTenantContext` + `filterByPropertyAccess` (or `canAccessProperty` for single-entity queries). All mutations verify `canAccessProperty` before creating/updating.
+- **Null propertyId handling**: Items with null propertyId are only visible to super-admins (`tenant.hasUnlimitedAccess`)
+- **Multi-tenancy model**: Super-admins see all data; other roles (admin, manager, staff, kitchen) see only data for their `assignedPropertyIds`
