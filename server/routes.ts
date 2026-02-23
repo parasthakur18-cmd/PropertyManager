@@ -911,14 +911,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard stats
   app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
     try {
-      // Get current user to check role and property assignment
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      // Security: If user not found in storage (deleted/stale session), deny access
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found. Please log in again." });
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { currentUser, tenant } = auth;
       
       // Security: Pending users should see empty dashboard
       if (currentUser.verificationStatus === 'pending') {
@@ -937,11 +932,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Check if user has unlimited access (only super-admin)
-      const hasUnlimitedAccess = currentUser.role === 'super-admin';
-      
       // Security: Non-admin users with no assigned properties should see empty data
-      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
         return res.json({
           totalProperties: 0,
           totalRooms: 0,
@@ -962,13 +954,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (req.query.propertyId) {
         propertyId = parseInt(req.query.propertyId);
-        // Security: Non-admin users can only view their assigned properties
-        if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+        if (!canAccessProperty(tenant, propertyId)) {
           return res.status(403).json({ message: "Access denied to this property" });
         }
-      } else if (!hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        // Non-admin users default to first assigned property
-        propertyId = currentUser.assignedPropertyIds[0];
+      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+        propertyId = tenant.assignedPropertyIds[0];
       }
       
       const stats = await storage.getDashboardStats(propertyId);
@@ -981,22 +971,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics
   app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found" });
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { currentUser, tenant } = auth;
       
       // Security: Pending users see empty analytics
       if (currentUser.verificationStatus === 'pending') {
         return res.json({ bookingsByMonth: [], revenueByMonth: [], occupancyByMonth: [] });
       }
       
-      const hasUnlimitedAccess = currentUser.role === 'super-admin';
-      
       // Security: Non-super-admin with no properties sees empty data
-      if (!hasUnlimitedAccess && (!currentUser.assignedPropertyIds || currentUser.assignedPropertyIds.length === 0)) {
+      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
         return res.json({ 
           bookingsByMonth: [], 
           revenueByMonth: [], 
@@ -1015,12 +1000,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
       
       // Security: Non-admin can only see their assigned properties
-      if (propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && !currentUser.assignedPropertyIds.includes(propertyId)) {
+      if (propertyId && !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied to this property" });
       }
       
-      if (!propertyId && !hasUnlimitedAccess && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        propertyId = currentUser.assignedPropertyIds[0];
+      if (!propertyId && !tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+        propertyId = tenant.assignedPropertyIds[0];
       }
       
       const analytics = await storage.getAnalytics(propertyId);
@@ -2440,22 +2425,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Travel Agents
   app.get("/api/travel-agents", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found" });
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
 
       const { propertyId } = req.query;
-      let agents = propertyId 
+      let allAgents = propertyId 
         ? await storage.getTravelAgentsByProperty(parseInt(propertyId as string))
         : await storage.getAllTravelAgents();
       
-      // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        agents = agents.filter(agent => currentUser.assignedPropertyIds!.includes(agent.propertyId));
-      }
+      const agents = filterByPropertyAccess(tenant, allAgents);
       
       res.json(agents);
     } catch (error: any) {
@@ -2465,22 +2444,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/travel-agents/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found" });
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
 
       const agent = await storage.getTravelAgent(parseInt(req.params.id));
       if (!agent) {
         return res.status(404).json({ message: "Travel agent not found" });
       }
 
-      // Check authorization for managers/kitchen
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && 
-          currentUser.assignedPropertyIds && 
-          !currentUser.assignedPropertyIds.includes(agent.propertyId)) {
+      if (!canAccessProperty(tenant, agent.propertyId)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -2804,36 +2777,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(403).json({ message: "User not found" });
       }
 
+      const tenant = getTenantContext(currentUser);
       let allBookings = await storage.getAllBookings();
       const allGuests = await storage.getAllGuests();
       const allRooms = await storage.getAllRooms();
       const allProperties = await storage.getAllProperties();
 
-      // Apply property filtering for managers and kitchen users
-      if ((currentUser.role === 'manager' || currentUser.role === 'kitchen') && currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
+      if (!tenant.hasUnlimitedAccess) {
         allBookings = allBookings.filter(booking => {
-          // Handle single room bookings
+          if (booking.propertyId) {
+            return tenant.assignedPropertyIds.includes(booking.propertyId);
+          }
           if (booking.roomId) {
             const room = allRooms.find(r => r.id === booking.roomId);
-            if (!room) {
-              console.warn(`Room ${booking.roomId} not found for booking ${booking.id}`);
-              return false;
-            }
-            return currentUser.assignedPropertyIds!.includes(room.propertyId);
+            return room ? tenant.assignedPropertyIds.includes(room.propertyId) : false;
           }
-          // Handle group bookings (multiple rooms)
           if (booking.roomIds && booking.roomIds.length > 0) {
             const bookingRooms = booking.roomIds
               .map(roomId => allRooms.find(r => r.id === roomId))
-              .filter((room): room is NonNullable<typeof room> => {
-                if (!room) {
-                  console.warn(`Room not found in roomIds for booking ${booking.id}`);
-                  return false;
-                }
-                return true;
-              });
-            
-            return bookingRooms.some(room => currentUser.assignedPropertyIds!.includes(room.propertyId));
+              .filter((room): room is NonNullable<typeof room> => !!room);
+            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
           }
           return false;
         });
@@ -6528,7 +6491,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Enquiries
   app.get("/api/enquiries", isAuthenticated, async (req, res) => {
     try {
-      const enquiries = await storage.getAllEnquiries();
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allEnquiries = await storage.getAllEnquiries();
+      const enquiries = allEnquiries.filter(item => {
+        if (!item.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(item.propertyId);
+      });
       res.json(enquiries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -6537,9 +6508,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/enquiries/:id", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const enquiry = await storage.getEnquiry(parseInt(req.params.id));
       if (!enquiry) {
         return res.status(404).json({ message: "Enquiry not found" });
+      }
+      if (enquiry.propertyId && !canAccessProperty(tenant, enquiry.propertyId)) {
+        return res.status(403).json({ message: "Access denied to this enquiry" });
       }
       res.json(enquiry);
     } catch (error: any) {
@@ -6905,6 +6883,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Message Templates endpoints
   app.get("/api/message-templates", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+
       const templates = await storage.getAllMessageTemplates();
       res.json(templates);
     } catch (error: any) {
@@ -7002,6 +6983,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/enquiries/:id/communications", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const enquiry = await storage.getEnquiry(parseInt(req.params.id));
+      if (!enquiry) {
+        return res.status(404).json({ message: "Enquiry not found" });
+      }
+      if (enquiry.propertyId && !canAccessProperty(tenant, enquiry.propertyId)) {
+        return res.status(403).json({ message: "Access denied to this enquiry" });
+      }
+
       const communications = await storage.getCommunicationsByEnquiry(parseInt(req.params.id));
       res.json(communications);
     } catch (error: any) {
@@ -7011,6 +7004,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/bookings/:id/communications", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const booking = await storage.getBooking(parseInt(req.params.id));
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      if (booking.propertyId && !canAccessProperty(tenant, booking.propertyId)) {
+        return res.status(403).json({ message: "Access denied to this booking" });
+      }
+
       const communications = await storage.getCommunicationsByBooking(parseInt(req.params.id));
       res.json(communications);
     } catch (error: any) {
@@ -7202,7 +7207,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         leases = await storage.getLeasesByProperty(propId);
       } else {
         const allLeases = await storage.getAllLeases();
-        leases = allLeases.filter(l => l.propertyId != null && canAccessProperty(tenant, l.propertyId));
+        leases = allLeases.filter(l => {
+          if (!l.propertyId) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, l.propertyId);
+        });
       }
       res.json(leases);
     } catch (error: any) {
@@ -7578,17 +7586,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get wallets for a property
   app.get("/api/wallets", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId } = req.query;
       if (!propertyId) {
-        // Return empty array instead of 400 for health checks and when propertyId is not provided
         return res.json([]);
       }
-      const walletList = await storage.getWalletsByProperty(parseInt(propertyId as string));
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      const walletList = await storage.getWalletsByProperty(propId);
       res.json(walletList);
     } catch (error: any) {
       console.error("[/api/wallets] Error:", error.message);
       console.error("[/api/wallets] Stack:", error.stack);
-      // Return empty array on error instead of 500
       res.json([]);
     }
   });
@@ -7596,17 +7610,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get wallet summary for property
   app.get("/api/wallets/summary", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId } = req.query;
       if (!propertyId) {
-        // Return empty summary instead of 400 for health checks
         return res.json({ totalBalance: "0", walletCount: 0, wallets: [] });
       }
-      const summary = await storage.getPropertyWalletSummary(parseInt(propertyId as string));
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      const summary = await storage.getPropertyWalletSummary(propId);
       res.json(summary);
     } catch (error: any) {
       console.error("[/api/wallets/summary] Error:", error.message);
       console.error("[/api/wallets/summary] Stack:", error.stack);
-      // Return empty summary on error instead of 500
       res.json({ totalBalance: "0", walletCount: 0, wallets: [] });
     }
   });
@@ -7614,9 +7634,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get single wallet
   app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const wallet = await storage.getWallet(parseInt(req.params.id));
       if (!wallet) {
         return res.status(404).json({ message: "Wallet not found" });
+      }
+      if (!canAccessProperty(tenant, wallet.propertyId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
       }
       res.json(wallet);
     } catch (error: any) {
@@ -7681,17 +7708,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get all transactions for a property
   app.get("/api/wallet-transactions", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId } = req.query;
       if (!propertyId) {
-        // Return empty array instead of 400 for health checks
         return res.json([]);
       }
-      const transactions = await storage.getTransactionsByProperty(parseInt(propertyId as string));
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      const transactions = await storage.getTransactionsByProperty(propId);
       res.json(transactions);
     } catch (error: any) {
       console.error("[/api/wallet-transactions] Error:", error.message);
       console.error("[/api/wallet-transactions] Stack:", error.stack);
-      // Return empty array on error instead of 500
       res.json([]);
     }
   });
@@ -7781,11 +7814,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get daily closings for property
   app.get("/api/daily-closings", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId } = req.query;
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
       }
-      const closings = await storage.getDailyClosingsByProperty(parseInt(propertyId as string));
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+      const closings = await storage.getDailyClosingsByProperty(propId);
       res.json(closings);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -7795,12 +7836,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get day status (is day open/closed)
   app.get("/api/daily-closings/status", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId, date } = req.query;
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
       }
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
       const dateObj = date ? new Date(date as string) : new Date();
-      const status = await storage.getDayStatus(parseInt(propertyId as string), dateObj);
+      const status = await storage.getDayStatus(propId, dateObj);
       res.json(status);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -7834,12 +7883,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get Cash Book report (all cash wallet transactions)
   app.get("/api/reports/cash-book", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId, startDate, endDate } = req.query;
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
       }
       
       const propertyIdNum = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propertyIdNum)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
       const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1)); // First of month
       const end = endDate ? new Date(endDate as string) : new Date();
       
@@ -7887,12 +7943,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get UPI/Digital Book report (all non-cash wallet transactions)
   app.get("/api/reports/bank-book", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId, startDate, endDate } = req.query;
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
       }
       
       const propertyIdNum = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propertyIdNum)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
       const start = startDate ? new Date(startDate as string) : new Date(new Date().setDate(1));
       const end = endDate ? new Date(endDate as string) : new Date();
       
@@ -7936,12 +7999,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Get Daily Summary report
   app.get("/api/reports/daily-summary", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId, date } = req.query;
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
       }
       
       const propertyIdNum = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propertyIdNum)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
       const reportDate = date ? new Date(date as string) : new Date();
       reportDate.setHours(0, 0, 0, 0);
       const nextDay = new Date(reportDate);
@@ -8001,11 +8071,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Expense Category endpoints
   app.get("/api/expense-categories", isAuthenticated, async (req, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       const { propertyId } = req.query;
-      const categories = propertyId
-        ? await storage.getExpenseCategoriesByProperty(parseInt(propertyId as string))
-        : await storage.getAllExpenseCategories();
-      res.json(categories);
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "Access denied to this property" });
+        }
+        const categories = await storage.getExpenseCategoriesByProperty(propId);
+        res.json(categories);
+      } else {
+        const allCategories = await storage.getAllExpenseCategories();
+        const filtered = allCategories.filter((cat: any) => {
+          if (!cat.propertyId) return true;
+          return canAccessProperty(tenant, cat.propertyId);
+        });
+        res.json(filtered);
+      }
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8079,9 +8164,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.post("/api/expenses", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      if (req.body.propertyId && !canAccessProperty(tenant, req.body.propertyId)) {
+        return res.status(403).json({ message: "Access denied to this property" });
+      }
+
       const { insertPropertyExpenseSchema } = await import("@shared/schema");
       
-      // Transform the data to match schema expectations
       const transformedData = {
         ...req.body,
         expenseDate: req.body.expenseDate ? new Date(req.body.expenseDate) : new Date(),
@@ -8159,21 +8251,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // P&L Report endpoint (lease-period based with total lease amount)
   app.get("/api/properties/:propertyId/pnl", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
       const propertyId = parseInt(req.params.propertyId);
       const { leaseId, month } = req.query;
 
-      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
-      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
 
-      // Check property access for managers
-      if (user.role === 'manager') {
-        const propertyIds = user.assignedPropertyIds || [];
-        if (!propertyIds.includes(propertyId)) {
-          return res.status(403).json({ message: "You don't have access to this property" });
-        }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You don't have access to this property" });
       }
 
       // If month filter provided (format: YYYY-MM), use monthly P&L
@@ -8241,25 +8327,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Staff Member endpoints (non-app staff) - All authenticated users
   app.get("/api/staff-members", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
       const { propertyId } = req.query;
-      
-      // Get tenant context for property filtering
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      const tenant = currentUser ? getTenantContext(currentUser) : null;
 
       let staffMembers;
       if (propertyId) {
-        staffMembers = await storage.getStaffMembersByProperty(parseInt(propertyId as string));
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
+        }
+        staffMembers = await storage.getStaffMembersByProperty(propId);
       } else {
         const allMembers = await storage.getAllStaffMembers();
-        // Apply tenant filtering for non-super-admin users
-        if (tenant && !tenant.isSuperAdmin) {
-          staffMembers = allMembers.filter(m => m.propertyId && canAccessProperty(tenant, m.propertyId));
-        } else {
-          staffMembers = allMembers;
-        }
+        staffMembers = allMembers.filter(m => {
+          if (!m.propertyId) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, m.propertyId);
+        });
       }
 
       res.json(staffMembers);
@@ -8383,27 +8468,34 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Staff Salary endpoints (Admin/Manager only)
   app.get("/api/salaries", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant, currentUser } = auth;
       const { userId, propertyId } = req.query;
 
-      if (!['admin', 'manager'].includes(user.role)) {
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
       let salaries;
-      if (userId) {
-        salaries = await storage.getSalariesByUser(userId as string);
-      } else if (propertyId) {
-        salaries = await storage.getSalariesByProperty(parseInt(propertyId as string));
-      } else if (user.role === 'manager') {
-        const propertyIds = user.assignedPropertyIds || [];
-        if (propertyIds.length === 0) {
-          return res.json([]);
+      if (propertyId) {
+        const propId = parseInt(propertyId as string);
+        if (!canAccessProperty(tenant, propId)) {
+          return res.status(403).json({ message: "You do not have access to this property" });
         }
-        const allSalaries = await storage.getAllSalaries();
-        salaries = allSalaries.filter(s => s.propertyId && propertyIds.includes(s.propertyId));
+        salaries = await storage.getSalariesByProperty(propId);
+      } else if (userId) {
+        const allForUser = await storage.getSalariesByUser(userId as string);
+        salaries = allForUser.filter(s => {
+          if (!s.propertyId) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, s.propertyId);
+        });
       } else {
-        salaries = await storage.getAllSalaries();
+        const allSalaries = await storage.getAllSalaries();
+        salaries = allSalaries.filter(s => {
+          if (!s.propertyId) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, s.propertyId);
+        });
       }
 
       res.json(salaries);
@@ -8895,8 +8987,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       if (staffMemberId) {
         const records = await storage.getAttendanceByStaffMember(parseInt(staffMemberId as string));
-        // Filter by property access
-        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        const filtered = records.filter(r => {
+          const pid = r.propertyId || (r as any).property_id;
+          if (!pid) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, pid);
+        });
         return res.json(filtered);
       }
 
@@ -8912,13 +9007,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (attendanceDate) {
         const date = new Date(attendanceDate as string);
         const records = await storage.getAttendanceByDate(date);
-        const filtered = records.filter(r => r.propertyId && canAccessProperty(tenant, r.propertyId));
+        const filtered = records.filter(r => {
+          const pid = r.propertyId || (r as any).property_id;
+          if (!pid) return tenant.hasUnlimitedAccess;
+          return canAccessProperty(tenant, pid);
+        });
         return res.json(filtered);
       }
 
       const allRecords = await storage.getAllAttendance();
-      // Filter by property access
-      const filteredByTenant = allRecords.filter(r => (r.property_id || r.propertyId) && canAccessProperty(tenant, r.property_id || r.propertyId));
+      const filteredByTenant = allRecords.filter(r => {
+        const pid = (r as any).property_id || r.propertyId;
+        if (!pid) return tenant.hasUnlimitedAccess;
+        return canAccessProperty(tenant, pid);
+      });
       
       console.log(`[ATTENDANCE DEBUG] Raw records from storage: ${allRecords.length} records, filtered: ${filteredByTenant.length}`);
       
@@ -9186,8 +9288,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const advances = await storage.getAllAdvances();
-      // Filter by property access
-      const filtered = advances.filter(a => a.propertyId && canAccessProperty(tenant, a.propertyId));
+      const filtered = advances.filter(a => {
+        if (!a.propertyId) return tenant.hasUnlimitedAccess;
+        return canAccessProperty(tenant, a.propertyId);
+      });
       res.json(filtered);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -9487,26 +9591,30 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // GET /api/vendors - Get all vendors for a property (with balances)
   app.get("/api/vendors", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      
-      // Support both role spellings used across deployments: "super-admin" (hyphen) and "super_admin" (underscore)
-      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant, currentUser } = auth;
+
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(currentUser.role)) {
         return res.status(403).json({ message: "Unauthorized" });
       }
 
       const { propertyId } = req.query;
       
       if (!propertyId) {
-        // Return empty array instead of 400 for health checks
         return res.json([]);
       }
 
-      const vendors = await storage.getVendorsWithBalance(parseInt(propertyId as string));
+      const propId = parseInt(propertyId as string);
+      if (!canAccessProperty(tenant, propId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+
+      const vendors = await storage.getVendorsWithBalance(propId);
       res.json(vendors);
     } catch (error: any) {
       console.error("[/api/vendors] Error:", error.message);
       console.error("[/api/vendors] Stack:", error.stack);
-      // Return empty array on error instead of 500
       res.json([]);
     }
   });
