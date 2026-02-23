@@ -19,8 +19,10 @@ import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fn
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 import { AIPendingNotifications } from "@/components/ai-pending-notifications";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
+import { AIRoomSetup } from "@/components/ai-room-setup";
 import type { Booking, Guest, Room, Property, Enquiry } from "@shared/schema";
 
 interface Order {
@@ -89,17 +91,7 @@ type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(() => {
-    const saved = localStorage.getItem('selectedPropertyId');
-    return saved ? parseInt(saved) : null;
-  });
-  
-  // Save property selection to localStorage
-  useEffect(() => {
-    if (selectedPropertyId) {
-      localStorage.setItem('selectedPropertyId', selectedPropertyId.toString());
-    }
-  }, [selectedPropertyId]);
+  const { selectedPropertyId, setSelectedPropertyId, availableProperties, showPropertySwitcher, isSuperAdmin, properties } = usePropertyFilter();
   const [mobileTab, setMobileTab] = useState<MobileTab>("inhouse");
   const [, setLocation] = useLocation();
   const [recentPayments, setRecentPayments] = useState<PaymentNotification[]>([]);
@@ -128,12 +120,11 @@ export default function Dashboard() {
   const [expenseDescription, setExpenseDescription] = useState("");
   const [expenseVendor, setExpenseVendor] = useState("");
   
-  // Onboarding wizard state - show for new users who haven't completed onboarding
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAISetup, setShowAISetup] = useState(false);
   
   const { toast } = useToast();
   
-  // Check if user needs onboarding on first load
   useEffect(() => {
     if (user && user.hasCompletedOnboarding === false) {
       setShowOnboarding(true);
@@ -162,10 +153,6 @@ export default function Dashboard() {
 
   const { data: rooms, isLoading: roomsLoading } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
-  });
-
-  const { data: properties, isLoading: propertiesLoading } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
@@ -446,7 +433,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [shownReminderIds, toast, seenPaymentIds]);
 
-  const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || propertiesLoading || ordersLoading || enquiriesLoading;
+  const isLoading = statsLoading || bookingsLoading || guestsLoading || roomsLoading || ordersLoading || enquiriesLoading;
 
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
@@ -1223,17 +1210,19 @@ export default function Dashboard() {
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <h1 className="text-lg md:text-xl font-bold">Dashboard</h1>
-            <select
-              value={selectedPropertyId || ""}
-              onChange={(e) => setSelectedPropertyId(e.target.value ? parseInt(e.target.value) : null)}
-              className="px-2 py-1 rounded-md border bg-background text-xs md:text-sm"
-              data-testid="select-property"
-            >
-              <option value="">All Properties</option>
-              {properties?.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            {showPropertySwitcher && (
+              <select
+                value={selectedPropertyId || ""}
+                onChange={(e) => setSelectedPropertyId(e.target.value ? parseInt(e.target.value) : null)}
+                className="px-2 py-1 rounded-md border bg-background text-xs md:text-sm"
+                data-testid="select-property"
+              >
+                {isSuperAdmin && <option value="">All Properties</option>}
+                {availableProperties.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="flex gap-2">
             <Button
@@ -2208,13 +2197,31 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Onboarding wizard for new users */}
       <OnboardingWizard
         isOpen={showOnboarding}
-        onComplete={() => setShowOnboarding(false)}
+        onComplete={() => {
+          setShowOnboarding(false);
+          if (!roomsLoading && availableProperties.length > 0) {
+            const userRooms = rooms?.filter(r => 
+              availableProperties.some(p => p.id === r.propertyId)
+            );
+            if (!userRooms || userRooms.length === 0) {
+              setTimeout(() => setShowAISetup(true), 500);
+            }
+          }
+        }}
         userName={user?.firstName || user?.email?.split('@')[0]}
-        propertyName={properties?.[0]?.name}
+        propertyName={availableProperties?.[0]?.name}
       />
+
+      {showAISetup && availableProperties.length > 0 && (
+        <AIRoomSetup
+          isOpen={showAISetup}
+          onClose={() => setShowAISetup(false)}
+          propertyId={availableProperties[0].id}
+          propertyName={availableProperties[0].name}
+        />
+      )}
     </div>
   );
 }

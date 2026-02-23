@@ -1609,6 +1609,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/ai-setup/create-rooms", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return res.status(403).json({ message: "User not found" });
+      }
+
+      const { propertyId, rooms: roomsData } = req.body;
+      if (!propertyId || !roomsData || !Array.isArray(roomsData) || roomsData.length === 0) {
+        return res.status(400).json({ message: "propertyId and rooms array are required" });
+      }
+
+      const tenant = getTenantContext(currentUser);
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+
+      const createdRooms = [];
+      for (const roomData of roomsData) {
+        try {
+          const parsed = insertRoomSchema.parse({
+            propertyId,
+            roomNumber: roomData.roomNumber,
+            roomType: roomData.roomType,
+            pricePerNight: String(roomData.pricePerNight),
+            maxOccupancy: roomData.maxOccupancy || 2,
+            status: "available",
+            totalBeds: roomData.totalBeds || 1,
+            amenities: roomData.amenities || [],
+          });
+          const room = await storage.createRoom(parsed);
+          createdRooms.push(room);
+        } catch (err: any) {
+          console.error(`[AI-SETUP] Failed to create room ${roomData.roomNumber}:`, err.message);
+        }
+      }
+
+      console.log(`[AI-SETUP] Created ${createdRooms.length} rooms for property ${propertyId}`);
+      res.json({ success: true, rooms: createdRooms, count: createdRooms.length });
+    } catch (error: any) {
+      console.error("[AI-SETUP] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ai-setup/parse-rooms", isAuthenticated, async (req: any, res) => {
+    try {
+      const { message, conversationHistory } = req.body;
+      if (!message) {
+        return res.status(400).json({ message: "message is required" });
+      }
+
+      const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || "https://api.openai.com/v1";
+      
+      if (!openaiKey) {
+        return res.status(500).json({ message: "AI service not configured" });
+      }
+
+      const systemPrompt = `You are a friendly hotel setup assistant for Hostezee PMS. You help new hotel owners set up their rooms quickly through a simple conversation.
+
+Your goal: Collect information to create rooms for the user's property. You need:
+1. How many rooms they have (total count)
+2. Room types (e.g., Deluxe, Standard, Suite, etc.)  
+3. How many rooms of each type
+4. Price per night for each type (in Indian Rupees)
+5. Max occupancy per type (default 2 if not specified)
+6. Room numbering (ask them or generate like 101, 102, etc.)
+
+Keep your responses SHORT, friendly, and conversational. Ask ONE question at a time.
+
+When you have enough information to create all rooms, respond with a JSON block in this EXACT format:
+\`\`\`json
+{
+  "ready": true,
+  "rooms": [
+    {"roomNumber": "101", "roomType": "Deluxe", "pricePerNight": 2000, "maxOccupancy": 2, "totalBeds": 1},
+    {"roomNumber": "102", "roomType": "Deluxe", "pricePerNight": 2000, "maxOccupancy": 2, "totalBeds": 1}
+  ],
+  "summary": "I'll create X rooms: Y Deluxe rooms at ₹Z/night..."
+}
+\`\`\`
+
+If the user hasn't provided enough info yet, respond with a normal conversational message (no JSON). Start by asking how many rooms they have.`;
+
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+      ];
+
+      if (conversationHistory && Array.isArray(conversationHistory)) {
+        for (const msg of conversationHistory) {
+          messages.push({ role: msg.role, content: msg.content });
+        }
+      }
+      messages.push({ role: "user", content: message });
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-5-mini",
+          messages,
+          max_completion_tokens: 2048,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error("[AI-SETUP] OpenAI API error:", response.status);
+        return res.status(500).json({ message: "AI service temporarily unavailable" });
+      }
+
+      const data = await response.json();
+      const aiMessage = data.choices?.[0]?.message?.content || "I'm having trouble understanding. Could you try again?";
+
+      let roomsData = null;
+      const jsonMatch = aiMessage.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          if (parsed.ready && parsed.rooms) {
+            roomsData = parsed;
+          }
+        } catch (e) {
+          // Not valid JSON, continue as conversation
+        }
+      }
+
+      const cleanMessage = aiMessage.replace(/```json[\s\S]*?```/g, '').trim();
+
+      res.json({
+        message: roomsData ? roomsData.summary : cleanMessage,
+        roomsData: roomsData ? roomsData.rooms : null,
+        isComplete: !!roomsData,
+      });
+    } catch (error: any) {
+      console.error("[AI-SETUP] Parse error:", error);
+      res.status(500).json({ message: "Failed to process your request. Please try again." });
+    }
+  });
+
   // Data fix endpoint: Consolidate rooms into a single property
   app.post("/api/admin/fix-room-properties", isAuthenticated, async (req: any, res) => {
     try {
