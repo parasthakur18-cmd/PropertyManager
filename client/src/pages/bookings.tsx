@@ -1482,8 +1482,28 @@ export default function Bookings() {
                 {/* No Rooms Available Warning for New Booking */}
                 {(() => {
                   const availableRooms = getRoomsForBookingType(bookingType, { isEditMode: false });
+                  const propertyHasNoRooms = selectedPropertyId && rooms?.filter(r => r.propertyId === selectedPropertyId).length === 0;
                   const hasNoRooms = availableRooms.length === 0 && roomAvailability;
                   
+                  if (propertyHasNoRooms) {
+                    return (
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg space-y-2" data-testid="warning-no-rooms-in-property">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">No rooms have been set up for this property yet.</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-300">You need to add rooms before creating bookings.</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() => setLocation("/rooms")}
+                          data-testid="button-go-to-rooms-from-booking"
+                        >
+                          Go to Rooms
+                        </Button>
+                      </div>
+                    );
+                  }
+
                   if (hasNoRooms) {
                     return (
                       <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-2" data-testid="warning-new-booking-no-rooms">
