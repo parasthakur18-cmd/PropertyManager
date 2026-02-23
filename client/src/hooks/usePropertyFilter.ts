@@ -28,12 +28,14 @@ export function usePropertyFilter() {
   );
 
   useEffect(() => {
-    if (
-      !isSuperAdmin &&
-      availableProperties.length === 1 &&
-      selectedPropertyId !== availableProperties[0].id
-    ) {
-      setSelectedPropertyId(availableProperties[0].id);
+    if (!isSuperAdmin && availableProperties.length > 0) {
+      if (availableProperties.length === 1) {
+        if (selectedPropertyId !== availableProperties[0].id) {
+          setSelectedPropertyId(availableProperties[0].id);
+        }
+      } else if (selectedPropertyId && !availableProperties.some(p => p.id === selectedPropertyId)) {
+        setSelectedPropertyId(availableProperties[0].id);
+      }
     }
   }, [availableProperties, isSuperAdmin]);
 
