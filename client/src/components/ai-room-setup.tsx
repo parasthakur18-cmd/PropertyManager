@@ -175,8 +175,9 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
                       type="number"
                       min={1}
                       max={100}
-                      value={rt.count}
-                      onChange={(e) => updateRoomType(idx, { count: Math.max(1, parseInt(e.target.value) || 1) })}
+                      value={rt.count === 0 ? "" : rt.count}
+                      onChange={(e) => updateRoomType(idx, { count: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
+                      onBlur={() => { if (rt.count < 1) updateRoomType(idx, { count: 1 }); }}
                       className="h-9"
                       data-testid={`input-room-count-${idx}`}
                     />
@@ -186,8 +187,8 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
                     <Input
                       type="number"
                       min={0}
-                      value={rt.pricePerNight}
-                      onChange={(e) => updateRoomType(idx, { pricePerNight: Math.max(0, parseInt(e.target.value) || 0) })}
+                      value={rt.pricePerNight === 0 ? "" : rt.pricePerNight}
+                      onChange={(e) => updateRoomType(idx, { pricePerNight: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
                       className="h-9"
                       data-testid={`input-room-price-${idx}`}
                     />
@@ -198,8 +199,9 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
                       type="number"
                       min={1}
                       max={20}
-                      value={rt.maxOccupancy}
-                      onChange={(e) => updateRoomType(idx, { maxOccupancy: Math.max(1, parseInt(e.target.value) || 1) })}
+                      value={rt.maxOccupancy === 0 ? "" : rt.maxOccupancy}
+                      onChange={(e) => updateRoomType(idx, { maxOccupancy: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
+                      onBlur={() => { if (rt.maxOccupancy < 1) updateRoomType(idx, { maxOccupancy: 1 }); }}
                       className="h-9"
                       data-testid={`input-room-occupancy-${idx}`}
                     />
@@ -209,8 +211,9 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
                     <Input
                       type="number"
                       min={1}
-                      value={rt.startNumber}
-                      onChange={(e) => updateRoomType(idx, { startNumber: Math.max(1, parseInt(e.target.value) || 1) })}
+                      value={rt.startNumber === 0 ? "" : rt.startNumber}
+                      onChange={(e) => updateRoomType(idx, { startNumber: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 })}
+                      onBlur={() => { if (rt.startNumber < 1) updateRoomType(idx, { startNumber: 1 }); }}
                       className="h-9"
                       data-testid={`input-room-start-number-${idx}`}
                     />
