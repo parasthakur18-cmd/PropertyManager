@@ -50,7 +50,6 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
   };
 
   const removeRoomType = (idx: number) => {
-    if (roomTypes.length <= 1) return;
     setRoomTypes(roomTypes.filter((_, i) => i !== idx));
   };
 
@@ -132,18 +131,16 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
               <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30" data-testid={`card-room-type-${idx}`}>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">Room Type {idx + 1}</span>
-                  {roomTypes.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => removeRoomType(idx)}
-                      data-testid={`button-remove-room-type-${idx}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => removeRoomType(idx)}
+                    data-testid={`button-remove-room-type-${idx}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                  </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
