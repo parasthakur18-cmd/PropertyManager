@@ -7261,7 +7261,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.patch("/api/leases/:id", isAuthenticated, async (req: any, res) => {
     try {
       const leaseId = parseInt(req.params.id);
-      const { reason, ...updateData } = req.body;
+      const { reason, ...rawData } = req.body;
+
+      const updateData = { ...rawData };
+      if (updateData.startDate && typeof updateData.startDate === 'string') {
+        updateData.startDate = new Date(updateData.startDate);
+      }
+      if (updateData.endDate && typeof updateData.endDate === 'string') {
+        updateData.endDate = new Date(updateData.endDate);
+      }
 
       const existingLease = await storage.getLease(leaseId);
       if (!existingLease) {
