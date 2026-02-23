@@ -1,17 +1,22 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Send, BedDouble, Check, Loader2, Bot, User } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BedDouble, Check, Loader2, Plus, Trash2, Sparkles } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-interface Message {
-  role: "assistant" | "user";
-  content: string;
+interface RoomTypeConfig {
+  roomType: string;
+  count: number;
+  pricePerNight: number;
+  maxOccupancy: number;
+  startNumber: number;
+  roomCategory: string;
 }
 
 interface AIRoomSetupProps {
@@ -21,69 +26,63 @@ interface AIRoomSetupProps {
   propertyName: string;
 }
 
+const defaultRoomTypes = ["Deluxe", "Standard", "Suite", "Super Deluxe", "Premium", "Family", "Dormitory"];
+
 export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoomSetupProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: `Hi! I'm here to help you set up rooms for ${propertyName}. Let's make it quick and easy!\n\nHow many rooms does your property have?`,
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [pendingRooms, setPendingRooms] = useState<any[] | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [step, setStep] = useState<"configure" | "review">("configure");
+  const [roomTypes, setRoomTypes] = useState<RoomTypeConfig[]>([
+    { roomType: "Deluxe", count: 1, pricePerNight: 2000, maxOccupancy: 2, startNumber: 101, roomCategory: "room" },
+  ]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+  const addRoomType = () => {
+    const usedTypes = roomTypes.map(r => r.roomType);
+    const nextType = defaultRoomTypes.find(t => !usedTypes.includes(t)) || "Room Type";
+    const maxStart = Math.max(...roomTypes.map(r => r.startNumber + r.count));
+    setRoomTypes([...roomTypes, {
+      roomType: nextType,
+      count: 1,
+      pricePerNight: 2000,
+      maxOccupancy: 2,
+      startNumber: maxStart,
+      roomCategory: "room",
+    }]);
+  };
 
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
-  }, [isOpen]);
+  const removeRoomType = (idx: number) => {
+    if (roomTypes.length <= 1) return;
+    setRoomTypes(roomTypes.filter((_, i) => i !== idx));
+  };
 
-  const chatMutation = useMutation({
-    mutationFn: async (userMessage: string) => {
-      const conversationHistory = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-      const res = await apiRequest("/api/ai-setup/parse-rooms", "POST", {
-        message: userMessage,
-        conversationHistory,
-      });
-      return res;
-    },
-    onSuccess: (data: any) => {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.message },
-      ]);
-      if (data.isComplete && data.roomsData) {
-        setPendingRooms(data.roomsData);
+  const updateRoomType = (idx: number, updates: Partial<RoomTypeConfig>) => {
+    setRoomTypes(roomTypes.map((r, i) => i === idx ? { ...r, ...updates } : r));
+  };
+
+  const generateRooms = () => {
+    const rooms: any[] = [];
+    for (const rt of roomTypes) {
+      for (let i = 0; i < rt.count; i++) {
+        rooms.push({
+          roomNumber: String(rt.startNumber + i),
+          roomType: rt.roomType,
+          pricePerNight: rt.pricePerNight,
+          maxOccupancy: rt.maxOccupancy,
+          totalBeds: rt.roomCategory === "dormitory" ? rt.maxOccupancy : 1,
+          roomCategory: rt.roomCategory,
+        });
       }
-    },
-    onError: () => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, I had trouble processing that. Could you try again?",
-        },
-      ]);
-    },
-  });
+    }
+    return rooms;
+  };
+
+  const totalRooms = roomTypes.reduce((sum, r) => sum + r.count, 0);
+  const generatedRooms = step === "review" ? generateRooms() : [];
 
   const createRoomsMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("/api/ai-setup/create-rooms", "POST", {
         propertyId,
-        rooms: pendingRooms,
+        rooms: generatedRooms,
       });
     },
     onSuccess: (data: any) => {
@@ -104,177 +103,204 @@ export function AIRoomSetup({ isOpen, onClose, propertyId, propertyName }: AIRoo
     },
   });
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text || chatMutation.isPending) return;
-
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
-    setInput("");
-    setPendingRooms(null);
-    chatMutation.mutate(text);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const handleConfirmCreate = () => {
-    setIsCreating(true);
-    createRoomsMutation.mutate();
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={() => onClose()}>
       <DialogContent
-        className="max-w-lg max-h-[85vh] flex flex-col p-0 gap-0"
+        className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
         data-testid="dialog-ai-room-setup"
       >
-        <DialogHeader className="px-4 py-3 border-b bg-primary/5">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-primary" />
             </div>
             <div>
-              <span>Room Setup Assistant</span>
-              <p className="text-xs font-normal text-muted-foreground">
-                {propertyName}
-              </p>
+              <span>Quick Room Setup</span>
+              <p className="text-xs font-normal text-muted-foreground">{propertyName}</p>
             </div>
           </DialogTitle>
+          <DialogDescription className="text-xs">
+            {step === "configure"
+              ? "Add your room types below. You can always edit rooms later."
+              : `Review the ${totalRooms} rooms that will be created.`}
+          </DialogDescription>
         </DialogHeader>
 
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-[300px] max-h-[50vh]"
-        >
-          {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+        {step === "configure" && (
+          <div className="flex-1 overflow-y-auto space-y-4 py-2">
+            {roomTypes.map((rt, idx) => (
+              <div key={idx} className="border rounded-lg p-3 space-y-3 bg-muted/30" data-testid={`card-room-type-${idx}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Room Type {idx + 1}</span>
+                  {roomTypes.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => removeRoomType(idx)}
+                      data-testid={`button-remove-room-type-${idx}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type Name</Label>
+                    <Select value={rt.roomType} onValueChange={(v) => updateRoomType(idx, { roomType: v })}>
+                      <SelectTrigger className="h-9" data-testid={`select-room-type-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {defaultRoomTypes.map(t => (
+                          <SelectItem key={t} value={t}>{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Category</Label>
+                    <Select value={rt.roomCategory} onValueChange={(v) => updateRoomType(idx, { roomCategory: v })}>
+                      <SelectTrigger className="h-9" data-testid={`select-room-category-${idx}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="room">Room</SelectItem>
+                        <SelectItem value="dormitory">Dormitory</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Number of Rooms</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={rt.count}
+                      onChange={(e) => updateRoomType(idx, { count: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="h-9"
+                      data-testid={`input-room-count-${idx}`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Price / Night (₹)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={rt.pricePerNight}
+                      onChange={(e) => updateRoomType(idx, { pricePerNight: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="h-9"
+                      data-testid={`input-room-price-${idx}`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max Guests</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={rt.maxOccupancy}
+                      onChange={(e) => updateRoomType(idx, { maxOccupancy: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="h-9"
+                      data-testid={`input-room-occupancy-${idx}`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Start Room No.</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={rt.startNumber}
+                      onChange={(e) => updateRoomType(idx, { startNumber: Math.max(1, parseInt(e.target.value) || 1) })}
+                      className="h-9"
+                      data-testid={`input-room-start-number-${idx}`}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full gap-1"
+              onClick={addRoomType}
+              data-testid="button-add-room-type"
             >
-              {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                  <Bot className="w-3.5 h-3.5 text-primary" />
-                </div>
-              )}
-              <div
-                className={`rounded-lg px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
-                }`}
-                data-testid={`text-chat-message-${idx}`}
-              >
-                {msg.content}
-              </div>
-              {msg.role === "user" && (
-                <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
-                  <User className="w-3.5 h-3.5" />
-                </div>
-              )}
-            </div>
-          ))}
+              <Plus className="h-3.5 w-3.5" />
+              Add Another Room Type
+            </Button>
+          </div>
+        )}
 
-          {chatMutation.isPending && (
-            <div className="flex gap-2 items-center">
-              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <Bot className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <div className="bg-muted rounded-lg px-3 py-2">
-                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              </div>
-            </div>
-          )}
-
-          {pendingRooms && (
-            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-3 space-y-2">
+        {step === "review" && (
+          <div className="flex-1 overflow-y-auto py-2">
+            <div className="bg-green-50 dark:bg-green-950/50 border border-green-200 dark:border-green-800 rounded-lg p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-300">
                 <BedDouble className="w-4 h-4" />
-                Ready to create {pendingRooms.length} rooms
+                {totalRooms} rooms will be created
               </div>
               <div className="flex flex-wrap gap-1">
-                {pendingRooms.slice(0, 10).map((room, idx) => (
-                  <Badge
-                    key={idx}
-                    variant="secondary"
-                    className="text-xs"
-                    data-testid={`badge-pending-room-${idx}`}
-                  >
+                {generatedRooms.slice(0, 20).map((room, idx) => (
+                  <Badge key={idx} variant="secondary" className="text-xs" data-testid={`badge-pending-room-${idx}`}>
                     {room.roomNumber} - {room.roomType}
                   </Badge>
                 ))}
-                {pendingRooms.length > 10 && (
-                  <Badge variant="secondary" className="text-xs">
-                    +{pendingRooms.length - 10} more
-                  </Badge>
+                {generatedRooms.length > 20 && (
+                  <Badge variant="secondary" className="text-xs">+{generatedRooms.length - 20} more</Badge>
                 )}
               </div>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  size="sm"
-                  onClick={handleConfirmCreate}
-                  disabled={createRoomsMutation.isPending}
-                  className="gap-1"
-                  data-testid="button-confirm-create-rooms"
-                >
-                  {createRoomsMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-3 h-3" />
-                      Create Rooms
-                    </>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setPendingRooms(null);
-                    setMessages((prev) => [
-                      ...prev,
-                      {
-                        role: "user",
-                        content: "Let me make some changes.",
-                      },
-                    ]);
-                    chatMutation.mutate("Let me make some changes to the room setup.");
-                  }}
-                  disabled={chatMutation.isPending}
-                  data-testid="button-modify-rooms"
-                >
-                  Modify
-                </Button>
+              <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                {roomTypes.map((rt, idx) => (
+                  <p key={idx}>
+                    {rt.count}x {rt.roomType} ({rt.roomCategory}) — ₹{rt.pricePerNight.toLocaleString("en-IN")}/night, max {rt.maxOccupancy} guests
+                  </p>
+                ))}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="border-t px-4 py-3 flex gap-2">
-          <Input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your answer..."
-            disabled={chatMutation.isPending || createRoomsMutation.isPending}
-            className="flex-1"
-            data-testid="input-ai-chat"
-          />
-          <Button
-            size="icon"
-            onClick={handleSend}
-            disabled={!input.trim() || chatMutation.isPending}
-            data-testid="button-send-chat"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+        <div className="flex gap-2 pt-2 border-t">
+          {step === "configure" && (
+            <>
+              <Button type="button" variant="outline" className="flex-1" onClick={onClose} data-testid="button-cancel-setup">
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 gap-1"
+                onClick={() => setStep("review")}
+                disabled={totalRooms === 0}
+                data-testid="button-review-rooms"
+              >
+                Review ({totalRooms} rooms)
+              </Button>
+            </>
+          )}
+          {step === "review" && (
+            <>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep("configure")} data-testid="button-back-to-edit">
+                Back to Edit
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 gap-1"
+                onClick={() => createRoomsMutation.mutate()}
+                disabled={createRoomsMutation.isPending}
+                data-testid="button-confirm-create-rooms"
+              >
+                {createRoomsMutation.isPending ? (
+                  <><Loader2 className="w-3 h-3 animate-spin" /> Creating...</>
+                ) : (
+                  <><Check className="w-3 h-3" /> Create Rooms</>
+                )}
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
