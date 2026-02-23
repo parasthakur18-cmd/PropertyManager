@@ -1617,6 +1617,7 @@ export const errorReports = pgTable("error_reports", {
   errorDetails: text("error_details"),
   userDescription: text("user_description"),
   browserInfo: text("browser_info"),
+  imageUrl: text("image_url"),
   status: varchar("status", { length: 20 }).notNull().default("open"),
   resolvedAt: timestamp("resolved_at"),
   adminNotes: text("admin_notes"),
