@@ -15431,7 +15431,16 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     try {
       const user = req.user;
       const { page, errorMessage, errorDetails, userDescription, browserInfo } = req.body;
+      let { imageUrl } = req.body;
       
+      if (imageUrl) {
+        if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:image/')) {
+          imageUrl = null;
+        } else if (imageUrl.length > 3 * 1024 * 1024) {
+          imageUrl = null;
+        }
+      }
+
       let propertyId = req.body.propertyId || null;
       if (propertyId && user.role !== 'super-admin' && user.role !== 'super_admin') {
         const tenant = getTenantContext(user);
@@ -15449,6 +15458,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         errorDetails: errorDetails || null,
         userDescription: userDescription || null,
         browserInfo: browserInfo || null,
+        imageUrl: imageUrl || null,
         status: "open",
       }).returning();
 

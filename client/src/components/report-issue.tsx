@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Bug, Send, Loader2, CheckCircle } from "lucide-react";
+import { Bug, Send, Loader2, CheckCircle, ImagePlus, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -24,11 +24,16 @@ const issueCategories = [
   { value: "other", label: "Other" },
 ];
 
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+
 export function ReportIssueButton({ propertyId }: ReportIssueProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const reportMutation = useMutation({
@@ -42,6 +47,8 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
         setSubmitted(false);
         setDescription("");
         setCategory("");
+        setImagePreview(null);
+        setImageError("");
       }, 2000);
     },
     onError: () => {
@@ -53,6 +60,33 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
     },
   });
 
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setImageError("");
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setImageError("Please select an image file.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageError("Image must be under 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+    setImageError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleSubmit = () => {
     if (!description.trim()) return;
     
@@ -62,6 +96,7 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
       userDescription: description.trim(),
       propertyId: propertyId || null,
       browserInfo: `${navigator.userAgent} | Screen: ${window.innerWidth}x${window.innerHeight}`,
+      imageUrl: imagePreview || null,
     });
   };
 
@@ -74,7 +109,7 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
           size="icon"
           style={{
             position: 'fixed',
-            bottom: '68px',
+            bottom: '16px',
             right: '16px',
             zIndex: 9999
           }}
@@ -132,6 +167,53 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
                   rows={4}
                   data-testid="input-issue-description"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Attach a screenshot (optional)</Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                  data-testid="input-issue-image"
+                />
+                {!imagePreview ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-dashed"
+                    onClick={() => fileInputRef.current?.click()}
+                    data-testid="button-attach-image"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    Choose image
+                  </Button>
+                ) : (
+                  <div className="relative rounded-md border overflow-hidden">
+                    <img
+                      src={imagePreview}
+                      alt="Attached screenshot"
+                      className="w-full max-h-40 object-contain bg-muted"
+                      data-testid="img-issue-preview"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                      onClick={removeImage}
+                      data-testid="button-remove-image"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+                {imageError && (
+                  <p className="text-xs text-destructive">{imageError}</p>
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">
