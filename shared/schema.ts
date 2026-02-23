@@ -1611,6 +1611,7 @@ export const errorReports = pgTable("error_reports", {
   id: serial("id").primaryKey(),
   userId: varchar("user_id", { length: 255 }),
   userName: varchar("user_name", { length: 255 }),
+  userEmail: varchar("user_email", { length: 255 }),
   propertyId: integer("property_id"),
   page: varchar("page", { length: 255 }),
   errorMessage: text("error_message"),
@@ -1621,6 +1622,7 @@ export const errorReports = pgTable("error_reports", {
   status: varchar("status", { length: 20 }).notNull().default("open"),
   resolvedAt: timestamp("resolved_at"),
   adminNotes: text("admin_notes"),
+  adminReply: text("admin_reply"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

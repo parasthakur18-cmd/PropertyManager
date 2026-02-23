@@ -98,6 +98,139 @@ interface SessionsData {
   }>;
 }
 
+function ErrorReportCard({ report: er }: { report: ErrorReport }) {
+  const { toast } = useToast();
+  const [replyText, setReplyText] = useState(er.adminReply || "");
+  const [showReply, setShowReply] = useState(false);
+
+  const sendReply = async () => {
+    if (!replyText.trim()) return;
+    try {
+      await apiRequest(`/api/error-reports/${er.id}`, "PATCH", { adminReply: replyText.trim() });
+      queryClient.invalidateQueries({ queryKey: ["/api/error-reports"] });
+      toast({ title: "Reply sent to user" });
+      setShowReply(false);
+    } catch {
+      toast({ title: "Failed to send reply", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="hover-elevate">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <CardTitle className="text-base">{er.errorMessage || "User Report"}</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              By: {er.userName || "Unknown"} &bull; Page: {er.page || "N/A"}
+            </p>
+            {er.userEmail && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                <Mail className="h-3 w-3" /> {er.userEmail}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={er.status === "open" ? "default" : er.status === "resolved" ? "secondary" : "outline"}
+              data-testid={`badge-error-report-status-${er.id}`}
+            >
+              {er.status}
+            </Badge>
+            {er.status !== "resolved" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={async () => {
+                  try {
+                    await apiRequest(`/api/error-reports/${er.id}`, "PATCH", { status: "resolved" });
+                    queryClient.invalidateQueries({ queryKey: ["/api/error-reports"] });
+                    toast({ title: "Report marked as resolved" });
+                  } catch {
+                    toast({ title: "Failed to update", variant: "destructive" });
+                  }
+                }}
+                data-testid={`button-resolve-error-report-${er.id}`}
+              >
+                <CheckCircle className="h-3 w-3 mr-1" /> Resolve
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {er.userDescription && (
+          <p className="text-sm bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">
+            {er.userDescription}
+          </p>
+        )}
+        {er.imageUrl && (
+          <div className="mt-2">
+            <p className="text-xs font-medium text-muted-foreground mb-1">Attached Screenshot:</p>
+            <a href={er.imageUrl} target="_blank" rel="noopener noreferrer">
+              <img
+                src={er.imageUrl}
+                alt="Issue screenshot"
+                className="max-h-48 rounded border object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                data-testid={`img-error-report-${er.id}`}
+              />
+            </a>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+          {er.browserInfo && <span>Browser: {er.browserInfo.substring(0, 80)}...</span>}
+          <span>&bull;</span>
+          <span>{er.createdAt ? new Date(er.createdAt).toLocaleString() : "N/A"}</span>
+        </div>
+        {er.adminReply && !showReply && (
+          <div className="bg-primary/5 border border-primary/20 rounded p-2 mt-2">
+            <p className="text-xs font-medium text-primary mb-1">Your Reply:</p>
+            <p className="text-sm">{er.adminReply}</p>
+          </div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs gap-1"
+            onClick={() => setShowReply(!showReply)}
+            data-testid={`button-reply-report-${er.id}`}
+          >
+            <MessageSquare className="h-3 w-3" /> {er.adminReply ? "Edit Reply" : "Reply to User"}
+          </Button>
+        </div>
+        {showReply && (
+          <div className="space-y-2 pt-1">
+            <Textarea
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder="Write a reply that the user will see in their reports..."
+              rows={3}
+              className="text-sm"
+              data-testid={`input-reply-report-${er.id}`}
+            />
+            <div className="flex gap-2 justify-end">
+              <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowReply(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={sendReply}
+                disabled={!replyText.trim()}
+                data-testid={`button-send-reply-${er.id}`}
+              >
+                <Send className="h-3 w-3" /> Send Reply
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SuperAdmin() {
   const { toast } = useToast();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -2164,73 +2297,7 @@ export default function SuperAdmin() {
               </h3>
               <div className="grid gap-3">
                 {errorReports.map((er) => (
-                  <Card key={`er-${er.id}`} className="hover-elevate">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-base">{er.errorMessage || "User Report"}</CardTitle>
-                          <p className="text-sm text-muted-foreground">
-                            By: {er.userName || "Unknown"} &bull; Page: {er.page || "N/A"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={er.status === "open" ? "default" : er.status === "resolved" ? "secondary" : "outline"}
-                            data-testid={`badge-error-report-status-${er.id}`}
-                          >
-                            {er.status}
-                          </Badge>
-                          {er.status !== "resolved" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              onClick={async () => {
-                                try {
-                                  await apiRequest(`/api/error-reports/${er.id}`, "PATCH", { status: "resolved" });
-                                  queryClient.invalidateQueries({ queryKey: ["/api/error-reports"] });
-                                  toast({ title: "Report marked as resolved" });
-                                } catch {
-                                  toast({ title: "Failed to update", variant: "destructive" });
-                                }
-                              }}
-                              data-testid={`button-resolve-error-report-${er.id}`}
-                            >
-                              <CheckCircle className="h-3 w-3 mr-1" /> Resolve
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {er.userDescription && (
-                        <p className="text-sm bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">
-                          {er.userDescription}
-                        </p>
-                      )}
-                      {er.imageUrl && (
-                        <div className="mt-2">
-                          <p className="text-xs font-medium text-muted-foreground mb-1">Attached Screenshot:</p>
-                          <a href={er.imageUrl} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={er.imageUrl}
-                              alt="Issue screenshot"
-                              className="max-h-48 rounded border object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                              data-testid={`img-error-report-${er.id}`}
-                            />
-                          </a>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {er.browserInfo && <span>Browser: {er.browserInfo.substring(0, 80)}...</span>}
-                        <span>&bull;</span>
-                        <span>{er.createdAt ? new Date(er.createdAt).toLocaleString() : "N/A"}</span>
-                      </div>
-                      {er.adminNotes && (
-                        <p className="text-xs text-muted-foreground italic">Admin notes: {er.adminNotes}</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <ErrorReportCard key={`er-${er.id}`} report={er} />
                 ))}
               </div>
             </div>

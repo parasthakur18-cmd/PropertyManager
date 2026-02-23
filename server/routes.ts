@@ -15457,9 +15457,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
       }
 
+      const userName = user
+        ? (`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || user.username || 'Unknown')
+        : 'Unknown';
+
       const [report] = await db.insert(errorReports).values({
-        userId: user?.id || null,
-        userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : 'Unknown',
+        userId: (user?.claims?.sub || user?.id || (req.session as any)?.userId)?.toString() || null,
+        userName,
+        userEmail: user?.email || null,
         propertyId,
         page: page || null,
         errorMessage: errorMessage || null,
@@ -15499,10 +15504,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
 
       const reportId = parseInt(req.params.id);
-      const { status, adminNotes } = req.body;
+      const { status, adminNotes, adminReply } = req.body;
       const updates: any = {};
       if (status) updates.status = status;
       if (adminNotes !== undefined) updates.adminNotes = adminNotes;
+      if (adminReply !== undefined) updates.adminReply = adminReply;
       if (status === 'resolved') updates.resolvedAt = new Date();
 
       const [updated] = await db.update(errorReports)
@@ -15512,6 +15518,21 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
       if (!updated) return res.status(404).json({ message: "Report not found" });
       res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/my-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user;
+      const userId = user?.claims?.sub || user?.id?.toString() || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const reports = await db.select().from(errorReports)
+        .where(eq(errorReports.userId, userId.toString()))
+        .orderBy(desc(errorReports.createdAt));
+      res.json(reports);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
