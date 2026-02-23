@@ -1318,9 +1318,9 @@ export default function Dashboard() {
         {renderAnalyticsCards()}
         {renderMobileAnalyticsCards()}
         
-        {/* Wallet Balance Cards */}
-        {renderWalletBalances()}
-        {renderMobileWalletBalances()}
+        {/* Wallet Balance Cards - Admin/Super-Admin only */}
+        {(user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super_admin') && renderWalletBalances()}
+        {(user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super_admin') && renderMobileWalletBalances()}
         
         {/* Desktop: 4-Column Full Section Layout */}
         <div className="hidden lg:grid lg:grid-cols-4 gap-4">
