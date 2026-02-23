@@ -83,7 +83,7 @@ import AdvancedFeatures from "@/pages/advanced-features";
 import FeatureSettings from "@/pages/feature-settings";
 import AnalyticsChat from "@/pages/analytics-chat";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { Chatbot } from "@/components/chatbot";
+
 import { CompletionNotifications } from "@/components/completion-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 
@@ -464,7 +464,6 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       {children}
-      <Chatbot />
       <CompletionNotifications />
       <ReportIssueButton />
     </div>
