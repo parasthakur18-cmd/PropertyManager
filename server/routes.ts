@@ -58,7 +58,7 @@ import {
   sendSelfCheckinLink,
   sendTaskReminder
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports } from "@shared/schema";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -15425,6 +15425,79 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   }, 15 * 60 * 1000); // Every 15 minutes
   
   console.log("[AUTO-CLOSE] Auto-close day job started - checks every 15 minutes, runs at midnight");
+
+  // ==================== ERROR REPORTS ====================
+  app.post("/api/error-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user;
+      const { page, errorMessage, errorDetails, userDescription, browserInfo } = req.body;
+      
+      let propertyId = req.body.propertyId || null;
+      if (propertyId && user.role !== 'super-admin' && user.role !== 'super_admin') {
+        const tenant = getTenantContext(user);
+        if (!canAccessProperty(tenant, propertyId)) {
+          propertyId = null;
+        }
+      }
+
+      const [report] = await db.insert(errorReports).values({
+        userId: user?.id || null,
+        userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : 'Unknown',
+        propertyId,
+        page: page || null,
+        errorMessage: errorMessage || null,
+        errorDetails: errorDetails || null,
+        userDescription: userDescription || null,
+        browserInfo: browserInfo || null,
+        status: "open",
+      }).returning();
+
+      res.status(201).json(report);
+    } catch (error: any) {
+      console.error("[ERROR-REPORT] Failed to save:", error.message);
+      res.status(500).json({ message: "Failed to save report" });
+    }
+  });
+
+  app.get("/api/error-reports", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user;
+      if (user.role !== 'super-admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Only super-admin can view error reports" });
+      }
+
+      const reports = await db.select().from(errorReports).orderBy(desc(errorReports.createdAt));
+      res.json(reports);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/error-reports/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user;
+      if (user.role !== 'super-admin' && user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Only super-admin can update error reports" });
+      }
+
+      const reportId = parseInt(req.params.id);
+      const { status, adminNotes } = req.body;
+      const updates: any = {};
+      if (status) updates.status = status;
+      if (adminNotes !== undefined) updates.adminNotes = adminNotes;
+      if (status === 'resolved') updates.resolvedAt = new Date();
+
+      const [updated] = await db.update(errorReports)
+        .set(updates)
+        .where(eq(errorReports.id, reportId))
+        .returning();
+
+      if (!updated) return res.status(404).json({ message: "Report not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

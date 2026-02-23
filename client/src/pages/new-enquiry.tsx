@@ -58,8 +58,14 @@ const enquiryFormSchema = z.object({
   roomId: z.union([z.coerce.number().int().min(1), z.literal("")]).optional(),
   numberOfGuests: z.coerce.number().int().min(1, "At least 1 guest required"),
   mealPlan: z.enum(["EP", "CP", "MAP", "AP"]).default("EP"),
-  priceQuoted: z.coerce.number().min(0, "Price must be a positive number").optional(),
-  advanceAmount: z.coerce.number().min(0, "Advance must be a positive number").nullable().optional(),
+  priceQuoted: z.preprocess(
+    (val) => (val === "" || val === undefined || val === null) ? undefined : Number(val),
+    z.number().min(0, "Price must be a positive number").optional()
+  ),
+  advanceAmount: z.preprocess(
+    (val) => (val === "" || val === undefined || val === null) ? undefined : Number(val),
+    z.number().min(0, "Advance must be a positive number").optional()
+  ),
   specialRequests: z.string().optional(),
 }).refine((data) => data.checkOutDate > data.checkInDate, {
   message: "Check-out date must be after check-in date",

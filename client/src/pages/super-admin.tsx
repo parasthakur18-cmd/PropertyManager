@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import type { User, Property, IssueReport } from "@shared/schema";
+import type { User, Property, IssueReport, ErrorReport } from "@shared/schema";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 // ErrorCrash type - matching backend implementation
@@ -214,6 +214,11 @@ export default function SuperAdmin() {
   // Fetch all error crashes - MUST be before early returns
   const { data: errorCrashes = [] } = useQuery<ErrorCrash[]>({
     queryKey: ["/api/errors"],
+  });
+
+  // Fetch user-submitted error reports (from Report Issue button)
+  const { data: errorReports = [] } = useQuery<ErrorReport[]>({
+    queryKey: ["/api/error-reports"],
   });
 
   // Fetch combined dashboard data - ALL properties stats
@@ -789,7 +794,7 @@ export default function SuperAdmin() {
             { value: "pending", label: `Pending (${pendingUsers.length})`, icon: Clock, highlight: pendingUsers.length > 0 },
             { value: "users", label: `Users (${users.length})`, icon: Users },
             { value: "properties", label: `Properties (${properties.length})`, icon: Building2 },
-            { value: "reports", label: `Reports (${reports.length})`, icon: AlertCircle },
+            { value: "reports", label: `Reports (${reports.length + errorReports.length})`, icon: AlertCircle },
             { value: "enquiries", label: `Leads (${enquiries.length})`, icon: MessageSquare },
             { value: "errors", label: `Errors (${errorCrashes.length})`, icon: Bug },
           ].map(({ value, label, icon: Icon, highlight }) => (
@@ -2143,68 +2148,151 @@ export default function SuperAdmin() {
 
         {/* Reports Tab */}
         {activeTab === "reports" && (
-        <div className="space-y-4">
-          <div className="grid gap-4">
-            {reports.length === 0 ? (
-              <Card>
-                <CardContent className="pt-6 text-center text-muted-foreground">
-                  No issue reports found
-                </CardContent>
-              </Card>
-            ) : (
-              reports.map((report) => {
-                const reporter = users.find((u) => u.id === report.reportedByUserId);
-                return (
-                  <Card key={report.id} className="hover-elevate">
-                    <CardHeader className="pb-3">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-teal-600" />
+              All Reports ({reports.length + errorReports.length})
+            </h2>
+          </div>
+
+          {errorReports.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <Bug className="h-4 w-4" />
+                User-Submitted Reports ({errorReports.length})
+              </h3>
+              <div className="grid gap-3">
+                {errorReports.map((er) => (
+                  <Card key={`er-${er.id}`} className="hover-elevate">
+                    <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <CardTitle className="text-base">{report.title}</CardTitle>
+                          <CardTitle className="text-base">{er.errorMessage || "User Report"}</CardTitle>
                           <p className="text-sm text-muted-foreground">
-                            By: {reporter?.email || "Unknown"}
+                            By: {er.userName || "Unknown"} &bull; Page: {er.page || "N/A"}
                           </p>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           <Badge
-                            variant={
-                              report.severity === "critical"
-                                ? "destructive"
-                                : report.severity === "high"
-                                  ? "default"
-                                  : "secondary"
-                            }
-                            data-testid={`badge-severity-${report.id}`}
+                            variant={er.status === "open" ? "default" : er.status === "resolved" ? "secondary" : "outline"}
+                            data-testid={`badge-error-report-status-${er.id}`}
                           >
-                            {report.severity}
+                            {er.status}
                           </Badge>
-                          <Badge
-                            variant={
-                              report.status === "open"
-                                ? "default"
-                                : report.status === "resolved"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                            data-testid={`badge-report-status-${report.id}`}
-                          >
-                            {report.status}
-                          </Badge>
+                          {er.status !== "resolved" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={async () => {
+                                try {
+                                  await apiRequest(`/api/error-reports/${er.id}`, "PATCH", { status: "resolved" });
+                                  queryClient.invalidateQueries({ queryKey: ["/api/error-reports"] });
+                                  toast({ title: "Report marked as resolved" });
+                                } catch {
+                                  toast({ title: "Failed to update", variant: "destructive" });
+                                }
+                              }}
+                              data-testid={`button-resolve-error-report-${er.id}`}
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1" /> Resolve
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                      <p className="text-sm">{report.description}</p>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>Category: {report.category}</span>
-                        <span>•</span>
-                        <span>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</span>
+                      {er.userDescription && (
+                        <p className="text-sm bg-slate-50 dark:bg-slate-900/30 p-3 rounded border border-slate-200 dark:border-slate-700">
+                          {er.userDescription}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {er.browserInfo && <span>Browser: {er.browserInfo.substring(0, 80)}...</span>}
+                        <span>&bull;</span>
+                        <span>{er.createdAt ? new Date(er.createdAt).toLocaleString() : "N/A"}</span>
                       </div>
+                      {er.adminNotes && (
+                        <p className="text-xs text-muted-foreground italic">Admin notes: {er.adminNotes}</p>
+                      )}
                     </CardContent>
                   </Card>
-                );
-              })
-            )}
-          </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {reports.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                System Issue Reports ({reports.length})
+              </h3>
+              <div className="grid gap-3">
+                {reports.map((report) => {
+                  const reporter = users.find((u) => u.id === report.reportedByUserId);
+                  return (
+                    <Card key={`ir-${report.id}`} className="hover-elevate">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-base">{report.title}</CardTitle>
+                            <p className="text-sm text-muted-foreground">
+                              By: {reporter?.email || "Unknown"}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge
+                              variant={
+                                report.severity === "critical"
+                                  ? "destructive"
+                                  : report.severity === "high"
+                                    ? "default"
+                                    : "secondary"
+                              }
+                              data-testid={`badge-severity-${report.id}`}
+                            >
+                              {report.severity}
+                            </Badge>
+                            <Badge
+                              variant={
+                                report.status === "open"
+                                  ? "default"
+                                  : report.status === "resolved"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                              data-testid={`badge-report-status-${report.id}`}
+                            >
+                              {report.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <p className="text-sm">{report.description}</p>
+                        <div className="flex gap-2 text-xs text-muted-foreground">
+                          <span>Category: {report.category}</span>
+                          <span>&bull;</span>
+                          <span>{report.createdAt ? new Date(report.createdAt).toLocaleDateString() : "N/A"}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {reports.length === 0 && errorReports.length === 0 && (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground flex flex-col items-center gap-3">
+                <CheckCircle className="h-8 w-8 text-green-500" />
+                <p>No issue reports found</p>
+                <p className="text-xs">Reports submitted by users via the "Report Issue" button will appear here</p>
+              </CardContent>
+            </Card>
+          )}
         </div>
         )}
 
