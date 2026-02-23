@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Building2, Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ interface PropertyScopePickerProps {
   selectedPropertyId: number | null;
   onPropertyChange: (propertyId: number | null) => void;
   allowAll?: boolean;
+  isSuperAdmin?: boolean;
   className?: string;
 }
 
@@ -35,9 +36,16 @@ export function PropertyScopePicker({
   selectedPropertyId,
   onPropertyChange,
   allowAll = true,
+  isSuperAdmin = false,
   className,
 }: PropertyScopePickerProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (availableProperties.length === 1 && !isSuperAdmin && selectedPropertyId !== availableProperties[0].id) {
+      onPropertyChange(availableProperties[0].id);
+    }
+  }, [availableProperties, selectedPropertyId, onPropertyChange, isSuperAdmin]);
 
   const selectedProperty = availableProperties.find(
     (p) => p.id === selectedPropertyId
@@ -58,7 +66,7 @@ export function PropertyScopePicker({
     return null;
   }
 
-  if (availableProperties.length === 1 && !allowAll) {
+  if (availableProperties.length === 1 && !isSuperAdmin) {
     return null;
   }
 
