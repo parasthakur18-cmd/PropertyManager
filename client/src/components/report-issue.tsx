@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -66,16 +67,25 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
 
   return (
     <>
-      <Button
-        onClick={() => setIsOpen(true)}
-        variant="outline"
-        size="icon"
-        className="fixed bottom-28 right-5 z-50 h-8 w-8 rounded-full shadow-md border-primary/30 bg-background"
-        data-testid="button-report-issue"
-        title="Report an issue"
-      >
-        <Bug className="h-3.5 w-3.5 text-primary" />
-      </Button>
+      {createPortal(
+        <Button
+          onClick={() => setIsOpen(true)}
+          variant="outline"
+          size="icon"
+          style={{
+            position: 'fixed',
+            bottom: '68px',
+            right: '16px',
+            zIndex: 9999
+          }}
+          className="h-8 w-8 rounded-full shadow-md border-primary/30 bg-background"
+          data-testid="button-report-issue"
+          title="Report an issue"
+        >
+          <Bug className="h-3.5 w-3.5 text-primary" />
+        </Button>,
+        document.body
+      )}
 
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { setIsOpen(false); setSubmitted(false); } }}>
         <DialogContent className="max-w-md" data-testid="dialog-report-issue">

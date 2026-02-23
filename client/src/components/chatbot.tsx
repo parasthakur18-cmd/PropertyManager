@@ -195,15 +195,15 @@ export function Chatbot() {
           onClick={() => setIsOpen(true)}
           style={{
             position: 'fixed',
-            bottom: '90px',
+            bottom: '16px',
             right: '16px',
-            zIndex: 9999
+            zIndex: 9998
           }}
-          className="rounded-full w-14 h-14 shadow-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+          className="rounded-full w-10 h-10 shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
           size="icon"
           data-testid="button-open-chatbot"
         >
-          <MessageCircle className="h-6 w-6" />
+          <MessageCircle className="h-4 w-4" />
         </Button>
       )}
     </>
