@@ -78,6 +78,16 @@ import {
   TenantAccessError 
 } from "./tenantIsolation";
 
+async function getAuthenticatedTenant(req: any) {
+  const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+  const currentUser = await storage.getUser(userId);
+  if (!currentUser) {
+    return null;
+  }
+  const tenant = getTenantContext(currentUser);
+  return { currentUser, tenant, userId };
+}
+
 // IP Geolocation helper - uses free ip-api.com service (no API key required)
 async function getLocationFromIp(ip: string): Promise<{ city: string; state: string; country: string } | null> {
   try {
@@ -2356,8 +2366,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Guests
   app.get("/api/guests", isAuthenticated, async (req, res) => {
     try {
-      const guests = await storage.getAllGuests();
-      res.json(guests);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allGuests = await storage.getAllGuests();
+
+      if (tenant.hasUnlimitedAccess) {
+        return res.json(allGuests);
+      }
+
+      const allBookings = await storage.getAllBookings();
+      const guestIdsWithAccess = new Set<number>();
+      allBookings.forEach((b: any) => {
+        if (b.guestId && b.propertyId && tenant.assignedPropertyIds.includes(b.propertyId)) {
+          guestIdsWithAccess.add(b.guestId);
+        }
+      });
+
+      const filteredGuests = allGuests.filter((guest: any) => guestIdsWithAccess.has(guest.id));
+      res.json(filteredGuests);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -5170,31 +5198,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Menu Items
   app.get("/api/menu-items", isAuthenticated, async (req: any, res) => {
     try {
-      // Get current user to check role and property assignment
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      // Security: If user not found in storage (deleted/stale session), deny access
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found. Please log in again." });
-      }
-      
-      // Filter menu items by assigned properties for all users (except super admin)
-      if (currentUser.role === "super_admin") {
-        // Super admin sees all menu items
-        const items = await storage.getAllMenuItems();
-        res.json(items);
-      } else if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-        // All other users only see menu items from their assigned properties
-        const allItems = await storage.getAllMenuItems();
-        const filteredItems = allItems.filter(item => 
-          item.propertyId && currentUser.assignedPropertyIds!.includes(item.propertyId)
-        );
-        res.json(filteredItems);
-      } else {
-        // User without assigned properties sees no menu items
-        res.json([]);
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allItems = await storage.getAllMenuItems();
+      const items = allItems.filter(item => {
+        if (!item.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(item.propertyId);
+      });
+      res.json(items);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -5368,26 +5381,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Menu Categories
   app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found. Please log in again." });
-      }
-      
-      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
-        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-          const allCategories = await storage.getAllMenuCategories();
-          const filteredCategories = allCategories.filter(cat => 
-            cat.propertyId === null || currentUser.assignedPropertyIds!.includes(cat.propertyId)
-          );
-          res.json(filteredCategories);
-        } else {
-          res.json([]);
-        }
-      } else {
-        const categories = await storage.getAllMenuCategories();
-        res.json(categories);
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allCategories = await storage.getAllMenuCategories();
+      const categories = allCategories.filter(cat => {
+        if (!cat.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(cat.propertyId);
+      });
+      res.json(categories);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -5773,33 +5776,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Orders
   app.get("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
-      // Get current user to check role and property assignment
-      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
-      const currentUser = await storage.getUser(userId);
-      
-      // Security: If user not found in storage (deleted/stale session), deny access
-      if (!currentUser) {
-        return res.status(403).json({ message: "User not found. Please log in again." });
-      }
-      
-      // If user is a manager or kitchen, filter orders by assigned properties
-      if (currentUser.role === "manager" || currentUser.role === "kitchen") {
-        if (currentUser.assignedPropertyIds && currentUser.assignedPropertyIds.length > 0) {
-          // Get orders from all assigned properties
-          const allOrders = await storage.getAllOrders();
-          const filteredOrders = allOrders.filter(order => 
-            order.propertyId && currentUser.assignedPropertyIds!.includes(order.propertyId)
-          );
-          res.json(filteredOrders);
-        } else {
-          // Manager/Kitchen without assigned property sees no orders
-          res.json([]);
-        }
-      } else {
-        // Admin and staff see all orders
-        const orders = await storage.getAllOrders();
-        res.json(orders);
-      }
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allOrders = await storage.getAllOrders();
+      const orders = allOrders.filter(order => {
+        if (!order.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(order.propertyId);
+      });
+      res.json(orders);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -5817,8 +5803,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.post("/api/orders", isAuthenticated, async (req, res) => {
+  app.post("/api/orders", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       let orderData = insertOrderSchema.parse(req.body) as any;
       
       // If order has bookingId but no guestId, automatically set guestId from booking
@@ -5835,6 +5825,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         if (room) {
           orderData = { ...orderData, propertyId: room.propertyId };
         }
+      }
+
+      // Verify user has access to the target property
+      if (orderData.propertyId && !canAccessProperty(tenant, orderData.propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property." });
       }
       
       const order = await storage.createOrder(orderData);
@@ -6113,9 +6108,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   });
 
   // Extra Services
-  app.get("/api/extra-services", isAuthenticated, async (req, res) => {
+  app.get("/api/extra-services", isAuthenticated, async (req: any, res) => {
     try {
-      const services = await storage.getAllExtraServices();
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allServices = await storage.getAllExtraServices();
+      const services = allServices.filter(service => {
+        if (!service.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(service.propertyId);
+      });
       res.json(services);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -6181,11 +6184,28 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   // Bills
   app.get("/api/bills", isAuthenticated, async (req, res) => {
     try {
-      const bills = await storage.getAllBills();
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allBills = await storage.getAllBills();
+
+      let filteredBills = allBills;
+      if (!tenant.hasUnlimitedAccess) {
+        const allBookings = await storage.getAllBookings();
+        const bookingPropertyMap = new Map<number, number>();
+        allBookings.forEach((b: any) => {
+          if (b.id && b.propertyId) bookingPropertyMap.set(b.id, b.propertyId);
+        });
+        filteredBills = allBills.filter((bill: any) => {
+          const billPropertyId = bill.bookingId ? bookingPropertyMap.get(bill.bookingId) : null;
+          if (!billPropertyId) return false;
+          return tenant.assignedPropertyIds.includes(billPropertyId);
+        });
+      }
       
-      // Enrich bills with guest names
       const enrichedBills = await Promise.all(
-        bills.map(async (bill) => {
+        filteredBills.map(async (bill) => {
           const guest = await storage.getGuest(bill.guestId);
           return {
             ...bill,
@@ -6385,6 +6405,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/bills/pending", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
       let propertyId: number | null = null;
       if (req.query.propertyId) {
         const parsed = parseInt(req.query.propertyId as string, 10);
@@ -6415,12 +6439,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         balanceAmount: getBillBalance(bill),
       }));
 
-      if (propertyId !== null) {
-        const allBookings = await storage.getAllBookings();
-        const bookingPropertyMap = new Map<number, number>();
-        allBookings.forEach((b: any) => {
-          if (b.id && b.propertyId) bookingPropertyMap.set(b.id, b.propertyId);
+      const allBookings = await storage.getAllBookings();
+      const bookingPropertyMap = new Map<number, number>();
+      allBookings.forEach((b: any) => {
+        if (b.id && b.propertyId) bookingPropertyMap.set(b.id, b.propertyId);
+      });
+
+      if (!tenant.hasUnlimitedAccess) {
+        pendingBills = pendingBills.filter((bill: any) => {
+          const billPropertyId = bill.bookingId ? bookingPropertyMap.get(bill.bookingId) : null;
+          if (!billPropertyId) return false;
+          return tenant.assignedPropertyIds.includes(billPropertyId);
         });
+      }
+
+      if (propertyId !== null) {
         pendingBills = pendingBills.filter((bill: any) => {
           const billPropertyId = bill.bookingId ? bookingPropertyMap.get(bill.bookingId) : null;
           return billPropertyId === propertyId;
@@ -13747,49 +13780,41 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
           n.type?.startsWith('error_') ||
           n.type?.startsWith('approval_')
         );
-      } else if (user?.role === 'admin') {
-        // For Admin users: Filter notifications by property access
-        // Get user's accessible property IDs
-        const userPropertyIds = new Set<number>();
-        if (user.primaryPropertyId) userPropertyIds.add(user.primaryPropertyId);
-        if (user.assignedPropertyIds) {
-          user.assignedPropertyIds.forEach((id: number) => userPropertyIds.add(id));
-        }
-        
-        // If user has specific property assignments, filter notifications
-        if (userPropertyIds.size > 0) {
-          const filteredNotifications: typeof userNotifications = [];
-          
-          for (const notification of userNotifications) {
-            // System notifications always show
-            if (!notification.relatedType || !notification.relatedId) {
+      } else if (user?.role && user.role !== 'super-admin') {
+        const auth = await getAuthenticatedTenant(req);
+        if (auth) {
+          const { tenant } = auth;
+          if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+            const userPropertyIds = new Set<number>(tenant.assignedPropertyIds);
+            const filteredNotifications: typeof userNotifications = [];
+            
+            for (const notification of userNotifications) {
+              if (!notification.relatedType || !notification.relatedId) {
+                filteredNotifications.push(notification);
+                continue;
+              }
+              
+              if (notification.relatedType === 'booking') {
+                const booking = await storage.getBooking(notification.relatedId);
+                if (booking && userPropertyIds.has(booking.propertyId)) {
+                  filteredNotifications.push(notification);
+                }
+                continue;
+              }
+              
+              if (notification.relatedType === 'order') {
+                const order = await storage.getOrder(notification.relatedId);
+                if (order && userPropertyIds.has(order.propertyId)) {
+                  filteredNotifications.push(notification);
+                }
+                continue;
+              }
+              
               filteredNotifications.push(notification);
-              continue;
             }
             
-            // For booking-related notifications, check property access
-            if (notification.relatedType === 'booking') {
-              const booking = await storage.getBooking(notification.relatedId);
-              if (booking && userPropertyIds.has(booking.propertyId)) {
-                filteredNotifications.push(notification);
-              }
-              continue;
-            }
-            
-            // For order-related notifications, check property access
-            if (notification.relatedType === 'order') {
-              const order = await storage.getOrder(notification.relatedId);
-              if (order && userPropertyIds.has(order.propertyId)) {
-                filteredNotifications.push(notification);
-              }
-              continue;
-            }
-            
-            // Other notifications (task, user, etc.) - show by default
-            filteredNotifications.push(notification);
+            userNotifications = filteredNotifications;
           }
-          
-          userNotifications = filteredNotifications;
         }
       }
       
