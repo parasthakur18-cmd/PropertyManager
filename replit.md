@@ -165,3 +165,15 @@ Schema changes are managed via `drizzle-kit push` (direct push to DB) or migrati
 - **Database indexes**: Added indexes on frequently queried columns: bookings (property_id, status, room_id, guest_id), rooms (property_id), orders (status, property_id), menu_items (property_id, category_id), bills (booking_id, guest_id, payment_status), notifications (user_id, is_read), audit_logs (user_id)
 - **Request timeouts**: Increased frontend API timeout from 3s to 15s for data queries; added 1 retry for failed queries
 - **Verbose logging**: Removed per-request console.log from rooms endpoint tenant filtering
+
+### Smart Property Switcher (Feb 2026)
+- **usePropertyFilter hook** (`client/src/hooks/usePropertyFilter.ts`): Centralized property filtering/auto-selection logic reusable across all pages
+- **PropertyScopePicker**: Hides for single-property non-super-admin users; auto-selects their only property; always visible for super-admins and multi-property users
+- Accepts `isSuperAdmin` prop to control visibility for super-admin with single property
+
+### AI Room Setup Flow (Feb 2026)
+- **Component**: `client/src/components/ai-room-setup.tsx` — Conversational AI chat that guides users through room creation
+- **Backend**: `/api/ai-setup/parse-rooms` (OpenAI-powered room info extraction) and `/api/ai-setup/create-rooms` (bulk room creation)
+- **Integration**: Automatically triggers after onboarding wizard completes/skips if the user's property has no rooms
+- Uses OpenAI (gpt-5-mini) to parse natural language room descriptions into structured room data
+- Rooms query loading state is checked before triggering to avoid false positives
