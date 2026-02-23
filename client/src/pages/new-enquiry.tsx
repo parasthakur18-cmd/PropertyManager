@@ -4,7 +4,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon, Check, Phone, User, IndianRupee, MessageSquare } from "lucide-react";
+import { Calendar as CalendarIcon, Check, Phone, User, IndianRupee, MessageSquare, PlusCircle, Sparkles } from "lucide-react";
+import { AIRoomSetup } from "@/components/ai-room-setup";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -72,6 +73,7 @@ export default function NewEnquiry() {
   const [, navigate] = useLocation();
   const [checkInPopoverOpen, setCheckInPopoverOpen] = useState(false);
   const [checkOutPopoverOpen, setCheckOutPopoverOpen] = useState(false);
+  const [showAISetup, setShowAISetup] = useState(false);
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -143,6 +145,9 @@ export default function NewEnquiry() {
 
   const availableRooms = getAvailableRooms();
   const selectedRoom = rooms?.find(r => r.id === form.watch("roomId"));
+  const propertyRooms = rooms?.filter(r => r.propertyId === selectedPropertyId) || [];
+  const hasNoRoomsInProperty = selectedPropertyId && propertyRooms.length === 0;
+  const selectedProperty = properties?.find(p => p.id === selectedPropertyId);
 
   const createEnquiryMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -359,6 +364,39 @@ export default function NewEnquiry() {
                       <FormLabel>Available Rooms</FormLabel>
                       {loadingRooms ? (
                         <Skeleton className="h-10 w-full" />
+                      ) : hasNoRoomsInProperty ? (
+                        <div className="p-4 border rounded-md bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 space-y-3">
+                          <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                            No rooms have been set up for this property yet.
+                          </p>
+                          <p className="text-xs text-amber-700 dark:text-amber-300">
+                            You need to add rooms before creating enquiries or bookings.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => setShowAISetup(true)}
+                              data-testid="button-ai-room-setup"
+                            >
+                              <Sparkles className="h-3 w-3 mr-1" />
+                              Quick Setup with AI
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => navigate("/rooms")}
+                              data-testid="button-go-to-rooms"
+                            >
+                              <PlusCircle className="h-3 w-3 mr-1" />
+                              Go to Rooms
+                            </Button>
+                          </div>
+                        </div>
                       ) : availableRooms.length === 0 ? (
                         <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
                           No rooms available for the selected dates. Please try different dates.
@@ -637,6 +675,14 @@ export default function NewEnquiry() {
           </div>
         </CardContent>
       </Card>
+      {showAISetup && selectedPropertyId && selectedProperty && (
+        <AIRoomSetup
+          isOpen={showAISetup}
+          onClose={() => setShowAISetup(false)}
+          propertyId={selectedPropertyId}
+          propertyName={selectedProperty.name}
+        />
+      )}
     </div>
   );
 }
