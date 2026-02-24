@@ -58,7 +58,7 @@ import {
   sendSelfCheckinLink,
   sendTaskReminder
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
@@ -3569,6 +3569,52 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       await storage.deleteBooking(bookingId);
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/bookings/:id/guests", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const result = await db
+        .select()
+        .from(bookingGuests)
+        .where(eq(bookingGuests.bookingId, bookingId))
+        .orderBy(bookingGuests.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bookings/:id/guests", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const guestsData = req.body.guests;
+      if (!Array.isArray(guestsData) || guestsData.length === 0) {
+        return res.status(400).json({ message: "At least one guest is required" });
+      }
+
+      await db.delete(bookingGuests).where(eq(bookingGuests.bookingId, bookingId));
+
+      const inserted = [];
+      for (const guest of guestsData) {
+        const [result] = await db.insert(bookingGuests).values({
+          bookingId,
+          guestName: guest.guestName,
+          phone: guest.phone || null,
+          email: guest.email || null,
+          idProofType: guest.idProofType || null,
+          idProofNumber: guest.idProofNumber || null,
+          idProofFront: guest.idProofFront || null,
+          idProofBack: guest.idProofBack || null,
+          isPrimary: guest.isPrimary || false,
+        }).returning();
+        inserted.push(result);
+      }
+
+      res.json(inserted);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

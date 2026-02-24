@@ -282,6 +282,28 @@ export const insertBookingSchema = createInsertSchema(bookings).omit({
 export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookings.$inferSelect;
 
+export const bookingGuests = pgTable("booking_guests", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: 'cascade' }),
+  guestName: varchar("guest_name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
+  idProofType: varchar("id_proof_type", { length: 50 }),
+  idProofNumber: varchar("id_proof_number", { length: 100 }),
+  idProofFront: text("id_proof_front"),
+  idProofBack: text("id_proof_back"),
+  isPrimary: boolean("is_primary").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBookingGuestSchema = createInsertSchema(bookingGuests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertBookingGuest = z.infer<typeof insertBookingGuestSchema>;
+export type BookingGuest = typeof bookingGuests.$inferSelect;
+
 // Menu Categories table
 export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),

@@ -41,7 +41,9 @@ The project uses a monorepo structure:
 - **Schema Validation**: Startup validation and auto-creation of optional tables.
 
 ### Database Schema
-The schema covers comprehensive PMS functionalities including `users`, `properties`, `rooms`, `bookings`, `guests`, `bills`, `orders`, `expenses`, `wallets`, `staffMembers`, `salary`, `leases`, `vendors`, `attendanceRecords`, `messageTemplates`, `communications`, `enquiries`, `travelAgents`, `notifications`, `featureSettings`, `auditLogs`, and `otaIntegrations`.
+The schema covers comprehensive PMS functionalities including `users`, `properties`, `rooms`, `bookings`, `guests`, `bookingGuests`, `bills`, `orders`, `expenses`, `wallets`, `staffMembers`, `salary`, `leases`, `vendors`, `attendanceRecords`, `messageTemplates`, `communications`, `enquiries`, `travelAgents`, `notifications`, `featureSettings`, `auditLogs`, and `otaIntegrations`.
+
+The `bookingGuests` table stores multiple guest ID proofs per booking with front/back images. It has: `bookingId`, `guestName`, `phone`, `email`, `idProofType`, `idProofNumber`, `idProofFront`, `idProofBack`, `isPrimary`.
 
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.
