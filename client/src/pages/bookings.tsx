@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
+import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,6 +118,10 @@ export default function Bookings() {
   const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
+  const [checkinGuestEntries, setCheckinGuestEntries] = useState<Array<{
+    guestName: string; phone: string; email: string; idProofType: string; idProofNumber: string;
+    idProofFront: string | null; idProofBack: string | null; isPrimary: boolean;
+  }>>([]);
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
@@ -465,20 +470,19 @@ export default function Bookings() {
         return;
       }
 
-      // Check if guest has ID proof
-      if (!guest.idProofImage) {
-        // Show alert toast
-        toast({
-          title: "ID Proof Required",
-          description: "Guest ID proof must be captured before check-in. Please upload the ID to proceed.",
-          variant: "destructive",
-        });
-        
-        // Open check-in dialog to capture ID
-        setCheckinBookingId(booking.id);
-        setCheckinDialogOpen(true);
-        return;
-      }
+      setCheckinBookingId(booking.id);
+      setCheckinGuestEntries([{
+        guestName: guest.fullName || "",
+        phone: guest.phone || "",
+        email: guest.email || "",
+        idProofType: guest.idProofType || "",
+        idProofNumber: guest.idProofNumber || "",
+        idProofFront: guest.idProofImage || null,
+        idProofBack: null,
+        isPrimary: true,
+      }]);
+      setCheckinDialogOpen(true);
+      return;
     }
 
     // Proceed with status change
@@ -2997,29 +3001,37 @@ export default function Bookings() {
         if (!open) {
           setCheckinBookingId(null);
           setCheckinIdProof(null);
+          setCheckinGuestEntries([]);
         }
       }}>
-        <DialogContent data-testid="dialog-checkin-verification">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-checkin-verification">
           <DialogHeader>
             <DialogTitle>Check-In Guest</DialogTitle>
             <DialogDescription>
-              Please upload or capture the guest's ID proof to complete check-in
+              Upload front & back of each guest's ID proof. Add more guests if needed.
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-4">
-            <IdVerificationUpload
-              onUploadComplete={(objectKey) => {
-                setCheckinIdProof(objectKey);
-              }}
+          <div className="py-2">
+            <GuestIdUpload
+              guests={checkinGuestEntries}
+              onChange={setCheckinGuestEntries}
+              primaryGuestName={(() => {
+                const booking = bookings?.find(b => b.id === checkinBookingId);
+                const guest = booking ? guests?.find(g => g.id === booking.guestId) : null;
+                return guest?.fullName || "";
+              })()}
+              primaryPhone={(() => {
+                const booking = bookings?.find(b => b.id === checkinBookingId);
+                const guest = booking ? guests?.find(g => g.id === booking.guestId) : null;
+                return guest?.phone || "";
+              })()}
+              primaryEmail={(() => {
+                const booking = bookings?.find(b => b.id === checkinBookingId);
+                const guest = booking ? guests?.find(g => g.id === booking.guestId) : null;
+                return guest?.email || "";
+              })()}
             />
-            
-            {checkinIdProof && (
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <Upload className="h-4 w-4" />
-                ID proof uploaded successfully
-              </div>
-            )}
           </div>
 
           <DialogFooter>
@@ -3029,6 +3041,7 @@ export default function Bookings() {
                 setCheckinDialogOpen(false);
                 setCheckinBookingId(null);
                 setCheckinIdProof(null);
+                setCheckinGuestEntries([]);
               }}
               data-testid="button-cancel-checkin"
             >
@@ -3036,10 +3049,11 @@ export default function Bookings() {
             </Button>
             <Button
               onClick={async () => {
-                if (!checkinIdProof) {
+                const hasValidGuest = checkinGuestEntries.some(g => g.guestName && g.idProofFront);
+                if (!hasValidGuest) {
                   toast({
                     title: "ID Required",
-                    description: "Please upload guest ID proof before checking in",
+                    description: "Please upload at least the front ID photo for the primary guest",
                     variant: "destructive",
                   });
                   return;
@@ -3047,26 +3061,28 @@ export default function Bookings() {
                 
                 if (checkinBookingId) {
                   try {
-                    // Find the booking to get guest ID
                     const booking = bookings?.find(b => b.id === checkinBookingId);
                     if (!booking) {
-                      toast({
-                        title: "Error",
-                        description: "Booking not found",
-                        variant: "destructive",
-                      });
+                      toast({ title: "Error", description: "Booking not found", variant: "destructive" });
                       return;
                     }
 
-                    // Update guest's ID proof
-                    await apiRequest(`/api/guests/${booking.guestId}`, "PATCH", {
-                      idProofImage: checkinIdProof
+                    const primaryGuest = checkinGuestEntries.find(g => g.isPrimary) || checkinGuestEntries[0];
+                    if (primaryGuest) {
+                      await apiRequest(`/api/guests/${booking.guestId}`, "PATCH", {
+                        idProofImage: primaryGuest.idProofFront,
+                        idProofType: primaryGuest.idProofType || null,
+                        idProofNumber: primaryGuest.idProofNumber || null,
+                      });
+                    }
+
+                    await apiRequest(`/api/bookings/${checkinBookingId}/guests`, "POST", {
+                      guests: checkinGuestEntries,
                     });
 
-                    // Invalidate guests query to refresh data
                     queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
+                    queryClient.invalidateQueries({ queryKey: ["/api/bookings", checkinBookingId, "guests"] });
 
-                    // Now proceed with check-in
                     updateStatusMutation.mutate({ 
                       id: checkinBookingId, 
                       status: "checked-in" 
@@ -3075,6 +3091,7 @@ export default function Bookings() {
                     setCheckinDialogOpen(false);
                     setCheckinBookingId(null);
                     setCheckinIdProof(null);
+                    setCheckinGuestEntries([]);
                   } catch (error: any) {
                     toast({
                       title: "Error",
@@ -3084,7 +3101,7 @@ export default function Bookings() {
                   }
                 }
               }}
-              disabled={!checkinIdProof}
+              disabled={!checkinGuestEntries.some(g => g.guestName && g.idProofFront)}
               data-testid="button-confirm-checkin"
             >
               Complete Check-In

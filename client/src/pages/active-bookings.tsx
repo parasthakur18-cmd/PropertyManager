@@ -16,6 +16,76 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import html2pdf from "html2pdf.js";
+import { Users } from "lucide-react";
+
+function GuestIdsButton({ bookingId }: { bookingId: number }) {
+  const [open, setOpen] = useState(false);
+  const { data: bookingGuestsData } = useQuery<any[]>({
+    queryKey: ["/api/bookings", bookingId, "guests"],
+    queryFn: async () => {
+      const res = await fetch(`/api/bookings/${bookingId}/guests`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-primary hover:underline text-xs flex items-center justify-end gap-1 ml-auto"
+        data-testid={`button-view-guest-ids-${bookingId}`}
+      >
+        <Users className="h-3 w-3" />
+        Guest IDs
+      </button>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Guest ID Proofs</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          {(!bookingGuestsData || bookingGuestsData.length === 0) ? (
+            <p className="text-sm text-muted-foreground">No guest IDs uploaded for this booking yet.</p>
+          ) : bookingGuestsData.map((g: any) => (
+            <Card key={g.id} className="p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <User className="h-4 w-4" />
+                <span className="font-medium text-sm">{g.guestName}</span>
+                {g.isPrimary && <Badge variant="secondary" className="text-xs">Primary</Badge>}
+              </div>
+              {g.phone && <p className="text-xs text-muted-foreground mb-1">Phone: {g.phone}</p>}
+              {g.idProofType && <p className="text-xs text-muted-foreground mb-1">ID Type: {g.idProofType} {g.idProofNumber && `- ${g.idProofNumber}`}</p>}
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {g.idProofFront && (
+                  <div>
+                    <p className="text-xs font-medium mb-1">Front</p>
+                    <a href={g.idProofFront} target="_blank" rel="noopener noreferrer">
+                      <img src={g.idProofFront} alt="ID Front" className="w-full h-24 object-contain border rounded bg-muted" />
+                    </a>
+                  </div>
+                )}
+                {g.idProofBack && (
+                  <div>
+                    <p className="text-xs font-medium mb-1">Back</p>
+                    <a href={g.idProofBack} target="_blank" rel="noopener noreferrer">
+                      <img src={g.idProofBack} alt="ID Back" className="w-full h-24 object-contain border rounded bg-muted" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface ActiveBooking {
   id: number;
@@ -943,9 +1013,10 @@ export default function ActiveBookings() {
                         data-testid="link-view-id-proof"
                       >
                         <FileText className="h-3 w-3" />
-                        View ID Proof
+                        View ID
                       </a>
                     )}
+                    <GuestIdsButton bookingId={booking.id} />
                     <Badge variant="outline" className={`block text-right ${getStatusBadge(booking.status).className}`}>
                       {getStatusBadge(booking.status).label}
                     </Badge>
