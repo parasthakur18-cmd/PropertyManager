@@ -1959,7 +1959,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(403).json({ message: "Access denied" });
       }
       const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
-      const types = [...new Set(allRooms.map(r => r.type || r.name).filter(Boolean))];
+      const types = [...new Set(allRooms.map(r => r.roomType).filter(Boolean))];
       res.json(types);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
