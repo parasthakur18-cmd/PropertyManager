@@ -227,23 +227,44 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [newMappings, setNewMappings] = useState<{ hostezeeRoomType: string; aiosellRoomCode: string }[]>([]);
 
-  const { data: roomTypes = [] } = useQuery<string[]>({
-    queryKey: ["/api/rooms/types", propertyId],
+  const { data: config } = useQuery<AiosellConfig | null>({
+    queryKey: ["/api/aiosell/config", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/rooms/types?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!propertyId,
   });
 
+  const { data: roomTypes = [] } = useQuery<string[]>({
+    queryKey: ["/api/rooms/types", propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms/types?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
   const { data: mappings = [], isLoading } = useQuery<RoomMapping[]>({
     queryKey: ["/api/aiosell/room-mappings", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`, { credentials: "include" });
       return res.json();
     },
-    enabled: !!propertyId,
+    enabled: !!propertyId && !!config,
   });
+
+  if (!config) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   const saveMappings = useMutation({
     mutationFn: async (allMappings: { hostezeeRoomType: string; aiosellRoomCode: string }[]) => {
@@ -352,23 +373,44 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [newPlans, setNewPlans] = useState<{ roomMappingId: number; ratePlanName: string; ratePlanCode: string; baseRate: string; occupancy: string }[]>([]);
 
-  const { data: mappings = [] } = useQuery<RoomMapping[]>({
-    queryKey: ["/api/aiosell/room-mappings", { propertyId }],
+  const { data: config } = useQuery<AiosellConfig | null>({
+    queryKey: ["/api/aiosell/config", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!propertyId,
   });
 
+  const { data: mappings = [] } = useQuery<RoomMapping[]>({
+    queryKey: ["/api/aiosell/room-mappings", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
   const { data: ratePlans = [], isLoading } = useQuery<RatePlan[]>({
     queryKey: ["/api/aiosell/rate-plans", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/rate-plans?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/rate-plans?propertyId=${propertyId}`, { credentials: "include" });
       return res.json();
     },
-    enabled: !!propertyId,
+    enabled: !!propertyId && !!config,
   });
+
+  if (!config) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   const savePlans = useMutation({
     mutationFn: async (plans: any[]) => {
@@ -517,23 +559,44 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
   endDefault.setDate(endDefault.getDate() + 30);
   const [endDate, setEndDate] = useState(endDefault.toISOString().split("T")[0]);
 
-  const { data: mappings = [] } = useQuery<RoomMapping[]>({
-    queryKey: ["/api/aiosell/room-mappings", { propertyId }],
+  const { data: config } = useQuery<AiosellConfig | null>({
+    queryKey: ["/api/aiosell/config", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!propertyId,
   });
 
+  const { data: mappings = [] } = useQuery<RoomMapping[]>({
+    queryKey: ["/api/aiosell/room-mappings", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
   const { data: ratePlans = [] } = useQuery<RatePlan[]>({
     queryKey: ["/api/aiosell/rate-plans", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/rate-plans?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/rate-plans?propertyId=${propertyId}`, { credentials: "include" });
       return res.json();
     },
-    enabled: !!propertyId,
+    enabled: !!propertyId && !!config,
   });
+
+  if (!config) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
 
@@ -748,7 +811,7 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
   const { data: logs = [], isLoading, refetch } = useQuery<SyncLog[]>({
     queryKey: ["/api/aiosell/sync-logs", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/sync-logs?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/sync-logs?propertyId=${propertyId}`, { credentials: "include" });
       return res.json();
     },
     enabled: !!propertyId,
