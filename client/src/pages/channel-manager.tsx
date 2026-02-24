@@ -205,7 +205,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
             <div className="border-t pt-4">
               <h4 className="text-sm font-medium mb-2">Test Incoming Booking</h4>
-              <p className="text-xs text-muted-foreground mb-3">Simulate an OTA booking arriving via the webhook. This creates a real test booking (check-in 7 days from now, 3-night stay) in your Bookings and Calendar.</p>
+              <p className="text-xs text-muted-foreground mb-3">Simulate an OTA booking arriving via the webhook. This creates a real test booking (check-in today, 2-night stay) for this property. After clicking, go to Bookings and select this property to see it.</p>
               <Button
                 data-testid="button-test-webhook"
                 variant="outline"
