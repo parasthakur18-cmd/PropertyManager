@@ -40,6 +40,7 @@ import {
   Store,
   ListTodo,
   Wallet,
+  ArrowUpDown,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -99,6 +100,7 @@ const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "OTA Integrations", url: "/ota-integrations", icon: Globe },
+  { title: "Channel Manager", url: "/channel-manager", icon: ArrowUpDown },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Audit Trail", url: "/audit-logs", icon: Shield },
   { title: "Settings", url: "/settings", icon: Settings },

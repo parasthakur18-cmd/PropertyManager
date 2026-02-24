@@ -58,7 +58,8 @@ import {
   sendSelfCheckinLink,
   sendTaskReminder
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions } from "@shared/schema";
+import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -1948,6 +1949,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.get("/api/rooms/types", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+      const types = [...new Set(allRooms.map(r => r.type || r.name).filter(Boolean))];
+      res.json(types);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Room availability checking - MUST be FIRST specific /api/rooms/* route to avoid collision with :id routes
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
     console.log('[AVAILABILITY HANDLER] ✅ Handler called - ENTRY POINT');
@@ -3365,6 +3381,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      if (booking.propertyId && (status === "checked-in" || status === "checked-out" || status === "cancelled")) {
+        autoSyncInventoryForProperty(booking.propertyId).catch(err =>
+          console.error(`[AIOSELL] Auto-sync after booking status change failed:`, err.message)
+        );
+      }
+
       res.json(booking);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -3492,6 +3514,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           propertyId: booking.propertyId,
         },
       });
+
+      if (booking.propertyId) {
+        autoSyncInventoryForProperty(booking.propertyId).catch(err =>
+          console.error(`[AIOSELL] Auto-sync after cancellation failed:`, err.message)
+        );
+      }
 
       res.json({
         success: true,
@@ -15533,6 +15561,500 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         .where(eq(errorReports.userId, userId.toString()))
         .orderBy(desc(errorReports.createdAt));
       res.json(reports);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========================
+  // AIOSELL CHANNEL MANAGER ROUTES
+  // ========================
+
+  app.get("/api/aiosell/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const [config] = await db.select().from(aiosellConfigurations)
+        .where(and(eq(aiosellConfigurations.propertyId, propertyId), eq(aiosellConfigurations.isActive, true)));
+      res.json(config || null);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/config", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, hotelCode, pmsName, apiBaseUrl, isSandbox } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const existing = await db.select().from(aiosellConfigurations)
+        .where(eq(aiosellConfigurations.propertyId, propertyId));
+      if (existing.length > 0) {
+        const [updated] = await db.update(aiosellConfigurations)
+          .set({ hotelCode, pmsName: pmsName || "hostezee", apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? true, isActive: true, updatedAt: new Date() })
+          .where(eq(aiosellConfigurations.propertyId, propertyId))
+          .returning();
+        return res.json(updated);
+      }
+      const [config] = await db.insert(aiosellConfigurations).values({
+        propertyId, hotelCode, pmsName: pmsName || "hostezee", apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? true,
+      }).returning();
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/test-connection", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+      const result = await testConnection(config);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/aiosell/room-mappings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.json([]);
+      const mappings = await getRoomMappingsForConfig(config.id);
+      res.json(mappings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/room-mappings", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, mappings } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      if (!Array.isArray(mappings)) return res.status(400).json({ message: "mappings must be an array" });
+      for (const m of mappings) {
+        if (!m.hostezeeRoomType || !m.aiosellRoomCode) {
+          return res.status(400).json({ message: "Each mapping requires hostezeeRoomType and aiosellRoomCode" });
+        }
+      }
+
+      await db.delete(aiosellRoomMappings).where(eq(aiosellRoomMappings.configId, config.id));
+      const created = [];
+      for (const m of mappings) {
+        const [mapping] = await db.insert(aiosellRoomMappings).values({
+          configId: config.id,
+          propertyId,
+          hostezeeRoomType: m.hostezeeRoomType,
+          aiosellRoomCode: m.aiosellRoomCode,
+        }).returning();
+        created.push(mapping);
+      }
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/aiosell/rate-plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.json([]);
+      const plans = await getRatePlansForConfig(config.id);
+      res.json(plans);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/rate-plans", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, ratePlans } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const validMappings = await getRoomMappingsForConfig(config.id);
+      const validMappingIds = new Set(validMappings.map(m => m.id));
+
+      await db.delete(aiosellRatePlans).where(eq(aiosellRatePlans.configId, config.id));
+      const created = [];
+      for (const rp of ratePlans) {
+        if (rp.roomMappingId && !validMappingIds.has(rp.roomMappingId)) {
+          return res.status(400).json({ message: `Invalid room mapping ID: ${rp.roomMappingId}` });
+        }
+        if (!rp.ratePlanName || !rp.ratePlanCode) {
+          return res.status(400).json({ message: "Rate plan name and code are required" });
+        }
+        const [plan] = await db.insert(aiosellRatePlans).values({
+          configId: config.id,
+          propertyId,
+          roomMappingId: rp.roomMappingId,
+          ratePlanName: rp.ratePlanName,
+          ratePlanCode: rp.ratePlanCode,
+          baseRate: rp.baseRate || null,
+          occupancy: rp.occupancy || "single",
+        }).returning();
+        created.push(plan);
+      }
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/push-rates", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, updates } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+      const result = await pushRates(config, updates);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/push-inventory", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, updates } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+      const result = await pushInventory(config, updates);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/push-restrictions", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, updates, toChannels } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+      const result = await pushInventoryRestrictions(config, updates, toChannels);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/aiosell/sync-logs", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const logs = await db.select().from(aiosellSyncLogs)
+        .where(eq(aiosellSyncLogs.propertyId, propertyId))
+        .orderBy(desc(aiosellSyncLogs.createdAt))
+        .limit(100);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/aiosell/rate-updates", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updates = await db.select().from(aiosellRateUpdates)
+        .where(eq(aiosellRateUpdates.propertyId, propertyId))
+        .orderBy(desc(aiosellRateUpdates.createdAt));
+      res.json(updates);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/rate-updates", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, rateUpdates } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const created = [];
+      for (const ru of rateUpdates) {
+        const [update] = await db.insert(aiosellRateUpdates).values({
+          configId: config.id,
+          propertyId,
+          roomMappingId: ru.roomMappingId,
+          ratePlanId: ru.ratePlanId,
+          startDate: ru.startDate,
+          endDate: ru.endDate,
+          rate: ru.rate,
+        }).returning();
+        created.push(update);
+      }
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/aiosell/inventory-restrictions", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const restrictions = await db.select().from(aiosellInventoryRestrictions)
+        .where(eq(aiosellInventoryRestrictions.propertyId, propertyId))
+        .orderBy(desc(aiosellInventoryRestrictions.createdAt));
+      res.json(restrictions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/inventory-restrictions", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, restrictions } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const created = [];
+      for (const r of restrictions) {
+        const [restriction] = await db.insert(aiosellInventoryRestrictions).values({
+          configId: config.id,
+          propertyId,
+          roomMappingId: r.roomMappingId,
+          startDate: r.startDate,
+          endDate: r.endDate,
+          stopSell: r.stopSell || false,
+          minimumStay: r.minimumStay || 1,
+          closeOnArrival: r.closeOnArrival || false,
+          closeOnDeparture: r.closeOnDeparture || false,
+        }).returning();
+        created.push(restriction);
+      }
+      res.json(created);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // AIOSELL WEBHOOK - Receive reservations from AioSell (no auth required - external webhook)
+  app.post("/api/aiosell/reservation", async (req: any, res) => {
+    try {
+      const { action, hotelCode, channel, bookingId, cmBookingId, bookedOn, checkin, checkout, segment, specialRequests, pah, amount, guest: guestData, rooms: roomsData } = req.body;
+
+      console.log(`[AIOSELL-WEBHOOK] Received ${action} reservation from ${channel} - bookingId: ${bookingId}`);
+
+      const [config] = await db.select().from(aiosellConfigurations)
+        .where(eq(aiosellConfigurations.hotelCode, hotelCode));
+
+      if (!config) {
+        console.error(`[AIOSELL-WEBHOOK] No config found for hotelCode: ${hotelCode}`);
+        return res.json({ success: false, message: `Unknown hotelCode: ${hotelCode}` });
+      }
+
+      await db.insert(aiosellSyncLogs).values({
+        configId: config.id,
+        propertyId: config.propertyId,
+        syncType: `reservation_${action}`,
+        direction: "inbound",
+        status: "received",
+        requestPayload: req.body,
+      });
+
+      if (action === "cancel") {
+        const existingBookings = await db.select().from(bookings)
+          .where(and(
+            eq(bookings.propertyId, config.propertyId),
+            eq(bookings.source, `aiosell-${channel}`),
+          ));
+        const booking = existingBookings.find(b => {
+          const meta = b.metadata as any;
+          return meta?.aiosellBookingId === bookingId || meta?.cmBookingId === cmBookingId;
+        });
+        if (booking) {
+          await db.update(bookings)
+            .set({ status: "cancelled", updatedAt: new Date() })
+            .where(eq(bookings.id, booking.id));
+          console.log(`[AIOSELL-WEBHOOK] Cancelled booking ${booking.id}`);
+        }
+        await autoSyncInventoryForProperty(config.propertyId);
+        return res.json({ success: true, message: "Reservation Cancelled Successfully" });
+      }
+
+      if (action === "book" || action === "modify") {
+        let guestId: number | undefined;
+        if (guestData) {
+          const existingGuests = await db.select().from(guests)
+            .where(and(
+              eq(guests.propertyId, config.propertyId),
+              eq(guests.email, guestData.email || ""),
+            ));
+          if (existingGuests.length > 0) {
+            guestId = existingGuests[0].id;
+          } else {
+            const [newGuest] = await db.insert(guests).values({
+              propertyId: config.propertyId,
+              firstName: guestData.firstName || "Guest",
+              lastName: guestData.lastName || "",
+              email: guestData.email || null,
+              phone: guestData.phone || null,
+              address: guestData.address ? `${guestData.address.line1 || ""}, ${guestData.address.city || ""}, ${guestData.address.state || ""}, ${guestData.address.country || ""}`.replace(/^,\s*|,\s*$/g, "") : null,
+            }).returning();
+            guestId = newGuest.id;
+          }
+        }
+
+        const mappings = await getRoomMappingsForConfig(config.id);
+        let assignedRoomId: number | undefined;
+        if (roomsData && roomsData.length > 0) {
+          const roomCode = roomsData[0].roomCode;
+          const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
+          if (mapping) {
+            const availableRooms = await db.select().from(rooms)
+              .where(and(
+                eq(rooms.propertyId, config.propertyId),
+                eq(rooms.type, mapping.hostezeeRoomType),
+                eq(rooms.status, "available"),
+              ));
+            if (availableRooms.length > 0) {
+              assignedRoomId = availableRooms[0].id;
+            }
+          }
+        }
+
+        if (action === "modify") {
+          const existingBookings = await db.select().from(bookings)
+            .where(eq(bookings.propertyId, config.propertyId));
+          const existingBooking = existingBookings.find(b => {
+            const meta = b.metadata as any;
+            return meta?.aiosellBookingId === bookingId || meta?.cmBookingId === cmBookingId;
+          });
+          if (existingBooking) {
+            await db.update(bookings).set({
+              checkInDate: new Date(checkin),
+              checkOutDate: new Date(checkout),
+              totalAmount: amount?.amountAfterTax?.toString() || "0",
+              specialRequests: specialRequests || null,
+              updatedAt: new Date(),
+            }).where(eq(bookings.id, existingBooking.id));
+            console.log(`[AIOSELL-WEBHOOK] Modified booking ${existingBooking.id}`);
+            await autoSyncInventoryForProperty(config.propertyId);
+            return res.json({ success: true, message: "Reservation Modified Successfully" });
+          }
+        }
+
+        const totalAmount = amount?.amountAfterTax?.toString() || "0";
+        const adults = roomsData?.[0]?.occupancy?.adults || 1;
+        const children = roomsData?.[0]?.occupancy?.children || 0;
+
+        const [newBooking] = await db.insert(bookings).values({
+          propertyId: config.propertyId,
+          roomId: assignedRoomId || null,
+          guestId: guestId || null,
+          guestName: guestData ? `${guestData.firstName || ""} ${guestData.lastName || ""}`.trim() : "OTA Guest",
+          guestEmail: guestData?.email || null,
+          guestPhone: guestData?.phone || null,
+          checkInDate: new Date(checkin),
+          checkOutDate: new Date(checkout),
+          numberOfGuests: adults + children,
+          numberOfAdults: adults,
+          numberOfChildren: children,
+          totalAmount,
+          status: "confirmed",
+          paymentStatus: pah ? "pending" : "paid",
+          source: `aiosell-${channel}`,
+          specialRequests: specialRequests || null,
+          metadata: {
+            aiosellBookingId: bookingId,
+            cmBookingId: cmBookingId || null,
+            channel,
+            segment,
+            bookedOn,
+            pah,
+            amountBeforeTax: amount?.amountBeforeTax,
+            tax: amount?.tax,
+            currency: amount?.currency,
+          },
+        }).returning();
+
+        if (assignedRoomId) {
+          await db.update(rooms).set({ status: "occupied" }).where(eq(rooms.id, assignedRoomId));
+        }
+
+        console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel}`);
+        await autoSyncInventoryForProperty(config.propertyId);
+        return res.json({ success: true, message: "Reservation Updated Successfully" });
+      }
+
+      res.json({ success: false, message: `Unknown action: ${action}` });
+    } catch (error: any) {
+      console.error("[AIOSELL-WEBHOOK] Error:", error.message);
+      res.json({ success: false, message: error.message });
+    }
+  });
+
+  app.post("/api/aiosell/push-noshow", isAuthenticated, async (req: any, res) => {
+    try {
+      const { tenant } = getAuthenticatedTenant(req);
+      const { propertyId, bookingId, partner } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+      const result = await pushNoShow(config, bookingId, partner);
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
