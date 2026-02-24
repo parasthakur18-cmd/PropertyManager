@@ -1634,3 +1634,119 @@ export const insertErrorReportSchema = createInsertSchema(errorReports).omit({
 
 export type ErrorReport = typeof errorReports.$inferSelect;
 export type InsertErrorReport = z.infer<typeof insertErrorReportSchema>;
+
+export const aiosellConfigurations = pgTable("aiosell_configurations", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  hotelCode: varchar("hotel_code", { length: 100 }).notNull(),
+  pmsName: varchar("pms_name", { length: 100 }).notNull().default("hostezee"),
+  apiBaseUrl: varchar("api_base_url", { length: 500 }).notNull().default("https://live.aiosell.com"),
+  isActive: boolean("is_active").notNull().default(true),
+  isSandbox: boolean("is_sandbox").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  webhookSecret: varchar("webhook_secret", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAiosellConfigSchema = createInsertSchema(aiosellConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastSyncAt: true,
+});
+
+export type AiosellConfig = typeof aiosellConfigurations.$inferSelect;
+export type InsertAiosellConfig = z.infer<typeof insertAiosellConfigSchema>;
+
+export const aiosellRoomMappings = pgTable("aiosell_room_mappings", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  hostezeeRoomType: varchar("hostezee_room_type", { length: 100 }).notNull(),
+  aiosellRoomCode: varchar("aiosell_room_code", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiosellRoomMappingSchema = createInsertSchema(aiosellRoomMappings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AiosellRoomMapping = typeof aiosellRoomMappings.$inferSelect;
+export type InsertAiosellRoomMapping = z.infer<typeof insertAiosellRoomMappingSchema>;
+
+export const aiosellRatePlans = pgTable("aiosell_rate_plans", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  roomMappingId: integer("room_mapping_id").notNull(),
+  ratePlanName: varchar("rate_plan_name", { length: 100 }).notNull(),
+  ratePlanCode: varchar("rate_plan_code", { length: 100 }).notNull(),
+  baseRate: decimal("base_rate", { precision: 10, scale: 2 }),
+  occupancy: varchar("occupancy", { length: 20 }).default("single"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiosellRatePlanSchema = createInsertSchema(aiosellRatePlans).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AiosellRatePlan = typeof aiosellRatePlans.$inferSelect;
+export type InsertAiosellRatePlan = z.infer<typeof insertAiosellRatePlanSchema>;
+
+export const aiosellSyncLogs = pgTable("aiosell_sync_logs", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  syncType: varchar("sync_type", { length: 50 }).notNull(),
+  direction: varchar("direction", { length: 20 }).notNull().default("outbound"),
+  status: varchar("status", { length: 20 }).notNull(),
+  requestPayload: jsonb("request_payload"),
+  responsePayload: jsonb("response_payload"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiosellSyncLogSchema = createInsertSchema(aiosellSyncLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AiosellSyncLog = typeof aiosellSyncLogs.$inferSelect;
+export type InsertAiosellSyncLog = z.infer<typeof insertAiosellSyncLogSchema>;
+
+export const aiosellRateUpdates = pgTable("aiosell_rate_updates", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  roomMappingId: integer("room_mapping_id").notNull(),
+  ratePlanId: integer("rate_plan_id").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
+  isPushed: boolean("is_pushed").notNull().default(false),
+  pushedAt: timestamp("pushed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AiosellRateUpdate = typeof aiosellRateUpdates.$inferSelect;
+
+export const aiosellInventoryRestrictions = pgTable("aiosell_inventory_restrictions", {
+  id: serial("id").primaryKey(),
+  configId: integer("config_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  roomMappingId: integer("room_mapping_id").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  stopSell: boolean("stop_sell").notNull().default(false),
+  minimumStay: integer("minimum_stay").default(1),
+  closeOnArrival: boolean("close_on_arrival").notNull().default(false),
+  closeOnDeparture: boolean("close_on_departure").notNull().default(false),
+  isPushed: boolean("is_pushed").notNull().default(false),
+  pushedAt: timestamp("pushed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AiosellInventoryRestriction = typeof aiosellInventoryRestrictions.$inferSelect;

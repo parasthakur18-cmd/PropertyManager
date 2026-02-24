@@ -74,6 +74,7 @@ import Register from "@/pages/register";
 import Login from "@/pages/login";
 import ReportIssue from "@/pages/report-issue";
 import OtaIntegrations from "@/pages/ota-integrations";
+import ChannelManager from "@/pages/channel-manager";
 import AcceptInvite from "@/pages/accept-invite";
 import Notifications from "@/pages/notifications";
 import AuditLogs from "@/pages/audit-logs";
@@ -161,6 +162,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/performance" component={Performance} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/ota-integrations" component={OtaIntegrations} />
+          <Route path="/channel-manager" component={ChannelManager} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/audit-logs" component={AuditLogs} />
           <Route path="/tasks" component={Tasks} />
