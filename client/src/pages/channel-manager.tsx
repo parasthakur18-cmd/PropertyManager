@@ -69,19 +69,30 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const [pmsName, setPmsName] = useState("hostezee");
   const [apiBaseUrl, setApiBaseUrl] = useState("https://live.aiosell.com");
   const [isSandbox, setIsSandbox] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   const { data: config, isLoading } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
     queryFn: async () => {
-      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`);
+      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch config");
       return res.json();
     },
     enabled: !!propertyId,
   });
 
+  if (config && !initialized) {
+    setHotelCode(config.hotelCode || "");
+    setPmsName(config.pmsName || "hostezee");
+    setApiBaseUrl(config.apiBaseUrl || "https://live.aiosell.com");
+    setIsSandbox(config.isSandbox ?? true);
+    setInitialized(true);
+  }
+
   const saveConfig = useMutation({
     mutationFn: async () => {
-      return apiRequest("/api/aiosell/config", "POST", { propertyId, hotelCode: hotelCode || config?.hotelCode, pmsName, apiBaseUrl, isSandbox });
+      if (!hotelCode.trim()) throw new Error("Hotel Code is required");
+      return apiRequest("/api/aiosell/config", "POST", { propertyId, hotelCode: hotelCode.trim(), pmsName, apiBaseUrl, isSandbox });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/config"] });
@@ -92,7 +103,8 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
   const testConn = useMutation({
     mutationFn: async () => {
-      return apiRequest("/api/aiosell/test-connection", "POST", { propertyId });
+      const response = await apiRequest("/api/aiosell/test-connection", "POST", { propertyId });
+      return response.json();
     },
     onSuccess: (data: any) => {
       toast({ title: data.success ? "Connection successful" : "Connection failed", description: data.message, variant: data.success ? "default" : "destructive" });
@@ -102,7 +114,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
-  const currentHotelCode = hotelCode || config?.hotelCode || "";
   const isConfigured = !!config;
 
   return (
@@ -129,7 +140,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Hotel Code</Label>
-              <Input data-testid="input-hotel-code" placeholder="e.g. SANDBOX-PMS" value={currentHotelCode} onChange={e => setHotelCode(e.target.value)} />
+              <Input data-testid="input-hotel-code" placeholder="e.g. SANDBOX-PMS" value={hotelCode} onChange={e => setHotelCode(e.target.value)} />
               <p className="text-xs text-muted-foreground">Your hotel code provided by AioSell</p>
             </div>
             <div className="space-y-2">
@@ -151,7 +162,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
           </div>
 
           <div className="flex gap-2 pt-4">
-            <Button data-testid="button-save-config" onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending || !currentHotelCode}>
+            <Button data-testid="button-save-config" onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending || !hotelCode.trim()}>
               {saveConfig.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               Save Configuration
             </Button>
