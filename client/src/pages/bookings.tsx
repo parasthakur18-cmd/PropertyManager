@@ -108,6 +108,7 @@ export default function Bookings() {
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -137,6 +138,14 @@ export default function Bookings() {
   const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
   const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
   const { toast} = useToast();
+
+  // Debounce search input for performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Auto-open dialog when coming from dashboard with ?new=true
   useEffect(() => {
@@ -977,6 +986,24 @@ export default function Bookings() {
     }
   };
 
+  const guestMap = useMemo(() => {
+    const map = new Map<number, Guest>();
+    guests?.forEach(g => map.set(g.id, g));
+    return map;
+  }, [guests]);
+
+  const propertyMap = useMemo(() => {
+    const map = new Map<number, Property>();
+    properties?.forEach(p => map.set(p.id, p));
+    return map;
+  }, [properties]);
+
+  const roomMap = useMemo(() => {
+    const map = new Map<number, Room>();
+    rooms?.forEach(r => map.set(r.id, r));
+    return map;
+  }, [rooms]);
+
   const filteredBookings = useMemo(() => {
     return bookings?.filter((booking) => {
       let tabMatch = true;
@@ -995,12 +1022,12 @@ export default function Bookings() {
         if (bookingCheckInDate !== checkinDateFilter) return false;
       }
 
-      if (!searchQuery) return true;
+      if (!debouncedSearch) return true;
 
-      const query = searchQuery.toLowerCase();
-      const property = properties?.find(p => p.id === booking.propertyId);
-      const guest = guests?.find(g => g.id === booking.guestId);
-      const room = rooms?.find(r => r.id === booking.roomId);
+      const query = debouncedSearch.toLowerCase();
+      const property = propertyMap.get(booking.propertyId);
+      const guest = booking.guestId ? guestMap.get(booking.guestId) : undefined;
+      const room = booking.roomId ? roomMap.get(booking.roomId) : undefined;
 
       return (
         guest?.fullName?.toLowerCase().includes(query) ||
@@ -1010,7 +1037,7 @@ export default function Bookings() {
         booking.status?.toLowerCase().includes(query)
       );
     });
-  }, [bookings, activeTab, checkinDateFilter, searchQuery, properties, guests, rooms]);
+  }, [bookings, activeTab, checkinDateFilter, debouncedSearch, guestMap, propertyMap, roomMap]);
 
   const bookingCounts = useMemo(() => ({
     all: (bookings ?? []).length,
@@ -1823,9 +1850,9 @@ export default function Bookings() {
                 </TableHeader>
                 <TableBody>
                   {filteredBookings.map((booking) => {
-                    const property = properties?.find((p) => p.id === booking.propertyId);
-                    const guest = guests?.find((g) => g.id === booking.guestId);
-                    const room = rooms?.find((r) => r.id === booking.roomId);
+                    const property = propertyMap.get(booking.propertyId);
+                    const guest = booking.guestId ? guestMap.get(booking.guestId) : undefined;
+                    const room = booking.roomId ? roomMap.get(booking.roomId) : undefined;
                     
                     const isGroupBooking = booking.roomIds && booking.roomIds.length > 0;
                     const groupRooms = isGroupBooking && booking.roomIds
