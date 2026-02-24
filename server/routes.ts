@@ -1951,7 +1951,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/rooms/types", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15572,7 +15574,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/config", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15587,7 +15591,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/config", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, hotelCode, pmsName, apiBaseUrl, isSandbox } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15612,7 +15618,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/test-connection", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15628,7 +15636,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/room-mappings", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15644,7 +15654,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/room-mappings", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, mappings } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15678,7 +15690,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/rate-plans", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15694,7 +15708,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/rate-plans", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, ratePlans } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15733,7 +15749,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/push-rates", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, updates } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15749,7 +15767,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/push-inventory", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, updates } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15765,7 +15785,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/push-restrictions", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, updates, toChannels } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15781,7 +15803,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/sync-logs", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15798,7 +15822,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/rate-updates", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15814,7 +15840,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/rate-updates", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, rateUpdates } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15843,7 +15871,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/aiosell/inventory-restrictions", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const propertyId = parseInt(req.query.propertyId as string);
       if (!propertyId || !canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -15859,7 +15889,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/inventory-restrictions", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, restrictions } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
@@ -16046,7 +16078,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.post("/api/aiosell/push-noshow", isAuthenticated, async (req: any, res) => {
     try {
-      const { tenant } = getAuthenticatedTenant(req);
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
       const { propertyId, bookingId, partner } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
