@@ -16074,9 +16074,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
       const testBookingId = `TEST-${Date.now()}`;
       const checkin = new Date();
-      checkin.setDate(checkin.getDate() + 7);
       const checkout = new Date();
-      checkout.setDate(checkout.getDate() + 10);
+      checkout.setDate(checkout.getDate() + 2);
 
       const testPayload = {
         action: "book",
@@ -16124,10 +16123,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       });
       const result = await webhookResponse.json();
 
+      const propertyName = (await db.select().from(properties).where(eq(properties.id, config.propertyId)))[0]?.name || "your property";
       res.json({
         success: result.success,
         message: result.success
-          ? `Test booking created! Booking ID: ${testBookingId}. Check your Bookings page or Calendar to see it.`
+          ? `Test booking created for "${propertyName}"! Check-in: today, Check-out: ${checkout.toISOString().split("T")[0]}. Guest: Test OTA Guest. Go to Bookings page and select "${propertyName}" to see it.`
           : `Webhook returned: ${result.message}`,
         bookingId: testBookingId,
       });
