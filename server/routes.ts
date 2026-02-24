@@ -15967,20 +15967,20 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (action === "book" || action === "modify") {
         let guestId: number | undefined;
         if (guestData) {
-          const existingGuests = await db.select().from(guests)
-            .where(and(
-              eq(guests.propertyId, config.propertyId),
-              eq(guests.email, guestData.email || ""),
-            ));
-          if (existingGuests.length > 0) {
-            guestId = existingGuests[0].id;
-          } else {
+          const guestFullName = `${guestData.firstName || ""} ${guestData.lastName || ""}`.trim() || "OTA Guest";
+          const guestEmail = guestData.email || "";
+          if (guestEmail) {
+            const existingGuests = await db.select().from(guests)
+              .where(eq(guests.email, guestEmail));
+            if (existingGuests.length > 0) {
+              guestId = existingGuests[0].id;
+            }
+          }
+          if (!guestId) {
             const [newGuest] = await db.insert(guests).values({
-              propertyId: config.propertyId,
-              firstName: guestData.firstName || "Guest",
-              lastName: guestData.lastName || "",
-              email: guestData.email || null,
-              phone: guestData.phone || null,
+              fullName: guestFullName,
+              email: guestEmail || null,
+              phone: guestData.phone || "N/A",
               address: guestData.address ? `${guestData.address.line1 || ""}, ${guestData.address.city || ""}, ${guestData.address.state || ""}, ${guestData.address.country || ""}`.replace(/^,\s*|,\s*$/g, "") : null,
             }).returning();
             guestId = newGuest.id;
