@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -112,6 +112,20 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const testWebhook = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("/api/aiosell/test-webhook", "POST", { propertyId });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: data.success ? "Test Booking Created!" : "Test Failed", description: data.message, variant: data.success ? "default" : "destructive" });
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      }
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
   const isConfigured = !!config;
@@ -182,12 +196,26 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
             <CardTitle className="text-base">Webhook Endpoint</CardTitle>
             <CardDescription>AioSell will send reservation updates to this URL</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex items-center gap-2 p-3 bg-muted rounded-lg font-mono text-sm break-all">
               <Link2 className="h-4 w-4 flex-shrink-0" />
               {`${window.location.origin}/api/aiosell/reservation`}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Provide this URL to AioSell during integration setup. This endpoint receives new bookings, modifications, and cancellations from OTA platforms.</p>
+            <p className="text-xs text-muted-foreground">Provide this URL to AioSell during integration setup. This endpoint receives new bookings, modifications, and cancellations from OTA platforms.</p>
+
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium mb-2">Test Incoming Booking</h4>
+              <p className="text-xs text-muted-foreground mb-3">Simulate an OTA booking arriving via the webhook. This creates a real test booking (check-in 7 days from now, 3-night stay) in your Bookings and Calendar.</p>
+              <Button
+                data-testid="button-test-webhook"
+                variant="outline"
+                onClick={() => testWebhook.mutate()}
+                disabled={testWebhook.isPending}
+              >
+                {testWebhook.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <TestTube2 className="h-4 w-4 mr-2" />}
+                Send Test Booking
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

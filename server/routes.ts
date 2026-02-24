@@ -16076,6 +16076,82 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  app.post("/api/aiosell/test-webhook", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId } = req.body;
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured" });
+
+      const testBookingId = `TEST-${Date.now()}`;
+      const checkin = new Date();
+      checkin.setDate(checkin.getDate() + 7);
+      const checkout = new Date();
+      checkout.setDate(checkout.getDate() + 10);
+
+      const testPayload = {
+        action: "book",
+        hotelCode: config.hotelCode,
+        channel: "booking.com",
+        bookingId: testBookingId,
+        cmBookingId: `CM-${testBookingId}`,
+        bookedOn: new Date().toISOString(),
+        checkin: checkin.toISOString().split("T")[0],
+        checkout: checkout.toISOString().split("T")[0],
+        segment: "OTA",
+        specialRequests: "Test booking from Channel Manager - please ignore",
+        pah: false,
+        amount: {
+          amountBeforeTax: 12000,
+          amountAfterTax: 14160,
+          tax: 2160,
+          currency: "INR",
+        },
+        guest: {
+          firstName: "Test",
+          lastName: "OTA Guest",
+          email: "test.ota@example.com",
+          phone: "9876543210",
+          address: {
+            line1: "123 Test Street",
+            city: "Mumbai",
+            state: "Maharashtra",
+            country: "India",
+          },
+        },
+        rooms: [
+          {
+            roomCode: "TEST",
+            occupancy: { adults: 2, children: 0 },
+          },
+        ],
+      };
+
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const webhookResponse = await fetch(`${baseUrl}/api/aiosell/reservation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testPayload),
+      });
+      const result = await webhookResponse.json();
+
+      res.json({
+        success: result.success,
+        message: result.success
+          ? `Test booking created! Booking ID: ${testBookingId}. Check your Bookings page or Calendar to see it.`
+          : `Webhook returned: ${result.message}`,
+        bookingId: testBookingId,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/aiosell/push-noshow", isAuthenticated, async (req: any, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
