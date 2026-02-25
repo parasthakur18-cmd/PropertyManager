@@ -6,7 +6,12 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!keyId || !keySecret) {
-    throw new Error("RazorPay credentials not configured");
+    throw new Error("RazorPay credentials not configured. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment.");
+  }
+
+  const cleanedPhone = (guestPhone || "").replace(/[^\d]/g, "");
+  if (cleanedPhone.length < 10) {
+    throw new Error("Guest phone number is required (valid 10-digit number) to create payment link.");
   }
 
   // Create basic auth header
@@ -31,8 +36,8 @@ export async function createPaymentLink(bookingId: number, amount: number, guest
       reference_id: uniqueReferenceId, // Unique ID combining booking ID and timestamp
       customer: {
         name: guestName,
-        email: guestEmail,
-        contact: guestPhone.replace(/[^\d]/g, ""), // Remove special characters
+        email: guestEmail || "guest@example.com",
+        contact: cleanedPhone,
       },
       notify: {
         sms: true,
