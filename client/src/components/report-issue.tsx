@@ -28,6 +28,40 @@ const issueCategories = [
 ];
 
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+// Max base64 to send (avoid payload/DB issues) - ~400KB base64 ≈ ~300KB image
+const MAX_IMAGE_DATA_URL_LENGTH = 400 * 1024;
+
+/** Resize/compress image to reduce payload and avoid "Could not send report" errors */
+async function compressImageIfNeeded(dataUrl: string): Promise<string> {
+  if (dataUrl.length <= MAX_IMAGE_DATA_URL_LENGTH) return dataUrl;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const maxW = 800;
+      const scale = img.width > maxW ? maxW / img.width : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        const resized = canvas.toDataURL("image/jpeg", 0.75);
+        resolve(resized.length <= MAX_IMAGE_DATA_URL_LENGTH ? resized : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 export function ReportIssueButton({ propertyId }: ReportIssueProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -99,16 +133,25 @@ export function ReportIssueButton({ propertyId }: ReportIssueProps) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!description.trim()) return;
-    
+
+    let imageUrl: string | null = imagePreview;
+    if (imageUrl) {
+      try {
+        imageUrl = await compressImageIfNeeded(imageUrl);
+      } catch {
+        imageUrl = null;
+      }
+    }
+
     reportMutation.mutate({
       page: window.location.pathname,
       errorMessage: category ? issueCategories.find(c => c.value === category)?.label : "User reported issue",
       userDescription: description.trim(),
       propertyId: propertyId || null,
       browserInfo: `${navigator.userAgent} | Screen: ${window.innerWidth}x${window.innerHeight}`,
-      imageUrl: imagePreview || null,
+      imageUrl,
     });
   };
 

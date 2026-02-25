@@ -1,3 +1,8 @@
+// Load .env so RAZORPAY_* etc. are available when PM2 reads this config
+try {
+  require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+} catch (_) {}
+
 module.exports = {
   apps: [{
     name: 'propertymanager',
@@ -32,10 +37,10 @@ module.exports = {
       AUTHKEY_WHATSAPP_NUMBER: 'your-whatsapp-number',
       AUTHKEY_WA_TEMPLATE_ID: '18491',
       AUTHKEY_WA_TASK_REMINDER: '23109',
-      // Optional: Payment Gateway
-      RAZORPAY_KEY_ID: 'rzp_live_RkGgLu6G2vIeKr',
-      RAZORPAY_KEY_SECRET: 'j4dZ0f7280WUNOvIjODSHCWB',
-      RAZORPAY_WEBHOOK_SECRET: 'Forest@123321',
+      // Optional: Payment Gateway (set RAZORPAY_KEY_ID + RAZORPAY_KEY_SECRET in env to override)
+      RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || 'rzp_live_RkGgLu6G2vIeKr',
+      RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || 'j4dZ0f7280WUNOvIjODSHCWB',
+      RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || 'Forest@123321',
       // Optional: AI Integration
       AI_INTEGRATIONS_OPENAI_BASE_URL: 'http://localhost:1106/modelfarm/openai',
       AI_INTEGRATIONS_OPENAI_API_KEY: '_DUMMY_API_KEY_',

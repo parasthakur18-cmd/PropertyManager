@@ -168,7 +168,7 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-### Security notes
+c### Security notes
 
 - Do **not** commit secrets. Prefer `.env.local` (local) / GitHub Actions secrets (deployment).
 - If you use `ecosystem.config.cjs` as a template, replace all example values with real secrets in your server environment.

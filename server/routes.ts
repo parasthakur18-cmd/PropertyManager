@@ -600,7 +600,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== PUBLIC ROUTES (No Authentication Required) =====
-  
+
+  // Health check - no auth; use for uptime/monitoring (returns 200 when API is up)
+  app.get("/api/health", async (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  // Verify Razorpay keys (authenticated) - call this to confirm keys are accepted by Razorpay
+  app.get("/api/razorpay/verify-keys", isAuthenticated, async (_req, res) => {
+    try {
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keyId || !keySecret) {
+        return res.json({ ok: false, error: "RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET not set in server environment." });
+      }
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+      const r = await fetch("https://api.razorpay.com/v1/payment_links?count=1", {
+        headers: { Authorization: `Basic ${auth}` },
+      });
+      if (r.ok || r.status === 404) {
+        return res.json({ ok: true, message: "Razorpay keys are valid." });
+      }
+      const err = await r.json().catch(() => ({}));
+      const msg = err.error?.description || err.description || `HTTP ${r.status}`;
+      return res.json({ ok: false, error: `Razorpay rejected keys: ${msg}` });
+    } catch (e: any) {
+      return res.json({ ok: false, error: e?.message || "Request failed." });
+    }
+  });
+
   // Public Menu - for guest ordering
   // Public menu categories (no auth required)
   // Public properties list (for café orders to select property)
@@ -4351,8 +4379,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         bookingStatus: "pending_advance"
       });
     } catch (error: any) {
-      console.error("Send advance payment error:", error);
-      res.status(500).json({ message: error.message || "Failed to send advance payment request" });
+      console.error("[Advance Payment] Error:", error?.message || error);
+      let message = error?.message || "Failed to send advance payment request";
+      if (message.includes("Authentication failed") || message.includes("RazorPay error")) {
+        message = "Razorpay authentication failed. Please check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in server environment.";
+      } else if (message.includes("phone") || message.includes("Guest phone")) {
+        message = "Guest phone number is required. Please add a valid 10-digit phone number to the guest.";
+      }
+      res.status(500).json({ message });
     }
   });
 
@@ -5011,8 +5045,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         billId: billId
       });
     } catch (error: any) {
-      console.error("Payment link generation error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate payment link" });
+      console.error("[Payment-Link] Error:", error?.message || error);
+      let message = error?.message || "Failed to generate payment link";
+      if (message.includes("Authentication failed") || message.includes("RazorPay error")) {
+        message = "Razorpay authentication failed. Please check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in server environment (Settings/Secrets).";
+      } else if (message.includes("phone") || message.includes("Guest phone")) {
+        message = "Guest phone number is required. Please add a valid 10-digit phone number to the guest.";
+      }
+      res.status(500).json({ message });
     }
   });
 
@@ -5142,6 +5182,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             } catch (notifError: any) {
               console.error(`[RazorPay Webhook] Failed to create notification:`, notifError.message);
             }
+
+            // Send SMS to property/admin when payment link payment is received
+            try {
+              const propertyForSms = await storage.getProperty(booking.propertyId);
+              let toPhone = propertyForSms?.contactPhone?.trim() || null;
+              if (!toPhone) {
+                const allUsers = await storage.getAllUsers();
+                const superAdmin = allUsers.find(u => u.role === 'super-admin');
+                toPhone = superAdmin?.phone?.trim() || null;
+              }
+              if (!toPhone) {
+                console.warn(`[RazorPay Webhook] SMS skipped: no property contact phone or super-admin phone set`);
+              } else {
+                const authkeyService = createAuthkeyService();
+                if (!authkeyService) {
+                  console.warn(`[RazorPay Webhook] SMS skipped: AUTHKEY_API_KEY not configured`);
+                } else {
+                  const smsMessage = `Payment of Rs.${amountInRupees} received for Booking #${bookingId}. ${guest?.fullName || 'Guest'}.`;
+                  const result = await authkeyService.sendSMS({ to: toPhone.startsWith('+') ? toPhone : `+91${toPhone.replace(/^91/, '')}`, message: smsMessage });
+                  if (result.success) {
+                    console.log(`[RazorPay Webhook] SMS sent to ${toPhone} for payment received`);
+                  } else {
+                    console.warn(`[RazorPay Webhook] SMS failed:`, result.error);
+                  }
+                }
+              }
+            } catch (smsErr: any) {
+              console.warn(`[RazorPay Webhook] SMS on payment received failed:`, smsErr?.message);
+            }
             
             // Activity log for advance payment received
             try {
@@ -5214,6 +5283,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                 console.log(`[RazorPay Webhook] Confirmation sent successfully`);
               } else {
                 console.warn(`[RazorPay Webhook] Guest not found or no phone number`);
+              }
+
+              // Send SMS to property/admin when payment link payment is received (bill payment)
+              try {
+                const propertyForSms = await storage.getProperty(booking.propertyId);
+                let toPhone = propertyForSms?.contactPhone?.trim() || null;
+                if (!toPhone) {
+                  const allUsers = await storage.getAllUsers();
+                  const superAdmin = allUsers.find(u => u.role === 'super-admin');
+                  toPhone = superAdmin?.phone?.trim() || null;
+                }
+                if (!toPhone) {
+                  console.warn(`[RazorPay Webhook] SMS skipped: no property contact phone or super-admin phone set`);
+                } else {
+                  const authkeyService = createAuthkeyService();
+                  if (!authkeyService) {
+                    console.warn(`[RazorPay Webhook] SMS skipped: AUTHKEY_API_KEY not configured`);
+                  } else {
+                    const smsMessage = `Payment of Rs.${amountInRupees} received for Booking #${bookingId}, Bill #${bill.id}. ${guest?.fullName || 'Guest'}.`;
+                    const result = await authkeyService.sendSMS({ to: toPhone.startsWith('+') ? toPhone : `+91${toPhone.replace(/^91/, '')}`, message: smsMessage });
+                    if (result.success) {
+                      console.log(`[RazorPay Webhook] SMS sent to ${toPhone} for bill payment received`);
+                    } else {
+                      console.warn(`[RazorPay Webhook] SMS failed:`, result.error);
+                    }
+                  }
+                }
+              } catch (smsErr: any) {
+                console.warn(`[RazorPay Webhook] SMS on payment received failed:`, smsErr?.message);
               }
             } else {
               console.warn(`[RazorPay Webhook] No bill found for booking #${bookingId}`);
@@ -15513,19 +15611,24 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   // ==================== ERROR REPORTS ====================
   app.post("/api/error-reports", isAuthenticated, async (req: any, res) => {
     try {
-      const user = req.user;
-      const { page, errorMessage, errorDetails, userDescription, browserInfo } = req.body;
-      let { imageUrl } = req.body;
-      
+      const user = req.user || {};
+      const { page, errorMessage, errorDetails, userDescription, browserInfo } = req.body || {};
+      let { imageUrl } = req.body || {};
+
+      // Validate and cap image size to avoid DB/request issues (e.g. "Could not send report")
       if (imageUrl) {
         if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:image/')) {
           imageUrl = null;
-        } else if (imageUrl.length > 3 * 1024 * 1024) {
-          imageUrl = null;
+        } else {
+          const maxImageLen = 500 * 1024; // 500KB for text column safety
+          if (imageUrl.length > maxImageLen) {
+            console.warn("[ERROR-REPORT] imageUrl too large, storing without screenshot");
+            imageUrl = null;
+          }
         }
       }
 
-      let propertyId = req.body.propertyId || null;
+      let propertyId = req.body?.propertyId ?? null;
       if (propertyId && user.role !== 'super-admin' && user.role !== 'super_admin') {
         const tenant = getTenantContext(user);
         if (!canAccessProperty(tenant, propertyId)) {
@@ -15533,12 +15636,12 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
       }
 
-      const userName = user
+      const userName = (user?.firstName != null || user?.lastName != null || user?.email || user?.username)
         ? (`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || user.username || 'Unknown')
         : 'Unknown';
 
       const [report] = await db.insert(errorReports).values({
-        userId: (user?.claims?.sub || user?.id || (req.session as any)?.userId)?.toString() || null,
+        userId: (user?.claims?.sub ?? user?.id ?? (req.session as any)?.userId)?.toString() ?? null,
         userName,
         userEmail: user?.email || null,
         propertyId,
