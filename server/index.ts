@@ -1,11 +1,13 @@
-// Load .env.local only in development (for local testing)
-if (process.env.NODE_ENV === 'development') {
-  try {
-    const { config } = await import('dotenv');
+// Load env file: production → .env.production, development → .env.local
+try {
+  const { config } = await import('dotenv');
+  if (process.env.NODE_ENV === 'production') {
+    config({ path: '.env.production' });
+  } else {
     config({ path: '.env.local' });
-  } catch (e) {
-    // .env.local might not exist in some environments, that's okay
   }
+} catch (e) {
+  // .env.local / .env.production might not exist, that's okay
 }
 
 import express, { type Request, Response, NextFunction } from "express";
