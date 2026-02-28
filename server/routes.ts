@@ -275,48 +275,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get presigned upload URL for guest ID proofs
   app.post("/api/objects/upload", isAuthenticated, async (req, res) => {
     try {
-      // Use MinIO presigned URL only when MinIO is on a public endpoint (browser must reach it).
-      // If MinIO is on 127.0.0.1, presigned URL would point to localhost and upload would fail.
       const { isMinIOConfigured, isMinIOPublicEndpoint, MinIOStorageService } = await import('./minioStorage');
-      if (isMinIOConfigured() && isMinIOPublicEndpoint()) {
-        try {
-          console.log("[Object Upload] Using MinIO storage (public endpoint)");
-          const minioService = new MinIOStorageService();
-          const objectName = minioService.generateObjectName('id-proofs');
-          const uploadURL = await minioService.getPresignedUploadURL(objectName);
-          console.log("[Object Upload] MinIO presigned URL generated successfully");
-          res.json({ uploadURL, objectName, isMinIO: true });
-          return;
-        } catch (minioError: any) {
-          console.error("[Object Upload] MinIO error:", minioError.message);
-          // Fall through to VPS fallback
+      if (isMinIOConfigured()) {
+        if (isMinIOPublicEndpoint()) {
+          // Public MinIO endpoint: browser can upload directly via presigned URL
+          try {
+            const minioService = new MinIOStorageService();
+            const objectName = minioService.generateObjectName('id-proofs');
+            const uploadURL = await minioService.getPresignedUploadURL(objectName);
+            console.log("[Object Upload] MinIO presigned URL generated (public endpoint)");
+            res.json({ uploadURL, objectName, isMinIO: true });
+            return;
+          } catch (minioError: any) {
+            console.error("[Object Upload] MinIO presigned URL error:", minioError.message);
+          }
         }
-      } else if (isMinIOConfigured() && !isMinIOPublicEndpoint()) {
-        console.log("[Object Upload] MinIO on localhost - using VPS direct upload so browser can upload");
-      } else {
-        console.log("[Object Upload] MinIO not configured, checking Replit storage");
+        // MinIO on localhost: browser uploads to our server, server forwards to MinIO
+        console.log("[Object Upload] MinIO configured (localhost) - using server-side proxy upload");
+        const objectId = randomUUID();
+        res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
+        return;
       }
 
-      // Try Replit object storage
+      // No MinIO - try Replit object storage
       try {
-    const objectStorageService = new ObjectStorageService();
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        const objectStorageService = new ObjectStorageService();
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
         console.log("[Object Upload] Replit storage URL generated");
-    res.json({ uploadURL });
+        res.json({ uploadURL });
         return;
       } catch (replitError: any) {
         console.error("[Object Upload] Replit storage error:", replitError.message);
-        // Fall through to VPS fallback
       }
 
-      // Fallback to VPS direct upload
-      console.log("[Object Upload] Using VPS direct upload fallback");
+      // Final fallback to local filesystem
       const objectId = randomUUID();
       res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     } catch (error: any) {
       console.error("[Object Upload] Unexpected error:", error.message);
-      console.error("[Object Upload] Error stack:", error.stack);
-      // Final fallback
       const objectId = randomUUID();
       res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     }
@@ -325,36 +321,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public upload endpoint for guest self-checkin (no auth required)
   app.post("/api/guest/upload", async (req, res) => {
     try {
-      // Use MinIO presigned URL only when endpoint is public (browser-reachable)
       const { isMinIOConfigured, isMinIOPublicEndpoint, MinIOStorageService } = await import('./minioStorage');
-      if (isMinIOConfigured() && isMinIOPublicEndpoint()) {
-        const minioService = new MinIOStorageService();
-        const objectName = minioService.generateObjectName('id-proofs');
-        const uploadURL = await minioService.getPresignedUploadURL(objectName);
-        res.json({ uploadURL, objectName, isMinIO: true });
-        return;
-      }
-      if (isMinIOConfigured() && !isMinIOPublicEndpoint()) {
-        // MinIO on localhost: use VPS direct upload
+      if (isMinIOConfigured()) {
+        if (isMinIOPublicEndpoint()) {
+          try {
+            const minioService = new MinIOStorageService();
+            const objectName = minioService.generateObjectName('id-proofs');
+            const uploadURL = await minioService.getPresignedUploadURL(objectName);
+            res.json({ uploadURL, objectName, isMinIO: true });
+            return;
+          } catch (minioError: any) {
+            console.error("[Guest Upload] MinIO presigned URL error:", minioError.message);
+          }
+        }
+        // MinIO on localhost: server-side proxy upload
         const objectId = randomUUID();
         res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
         return;
       }
 
-      // Try Replit object storage
-      const objectStorageService = new ObjectStorageService();
-      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
-      res.json({ uploadURL });
+      // No MinIO - try Replit object storage
+      try {
+        const objectStorageService = new ObjectStorageService();
+        const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+        res.json({ uploadURL });
+        return;
+      } catch (replitError: any) {
+        console.error("[Guest Upload] Replit storage error:", replitError.message);
+      }
+
+      // Final fallback
+      const objectId = randomUUID();
+      res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     } catch (error: any) {
-      // Fallback to VPS direct upload if both fail
-      console.error("[Guest Upload] Storage failed, using VPS fallback:", error.message);
+      console.error("[Guest Upload] Storage failed, using fallback:", error.message);
       const objectId = randomUUID();
       res.json({ uploadURL: `/api/vps-upload/${objectId}`, isVPS: true });
     }
   });
 
-  // VPS Direct file upload endpoint (fallback when Replit storage is not available)
-  // This handles both authenticated and public uploads
+  // Server-side proxy upload endpoint — receives file from browser and stores in MinIO (or local filesystem as fallback)
   app.post("/api/vps-upload/:objectId", async (req, res) => {
     try {
       const { objectId } = req.params;
@@ -374,34 +380,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const fileBuffer = Buffer.concat(chunks);
           const contentType = req.headers['content-type'] || 'image/jpeg';
+          const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
+          const filename = `${objectId}.${ext}`;
           console.log(`[VPS Upload] Received ${fileBuffer.length} bytes, content-type: ${contentType}`);
-          
-          // Save to local filesystem
+
+          // Store in MinIO when configured (works for both localhost and public endpoints)
+          const { isMinIOConfigured, MinIOStorageService } = await import('./minioStorage');
+          if (isMinIOConfigured()) {
+            try {
+              const minioService = new MinIOStorageService();
+              const objectName = `id-proofs/${filename}`;
+              await minioService.uploadFile(objectName, fileBuffer, contentType);
+              const objectPath = `/objects/${objectName}`;
+              console.log(`[VPS Upload] Saved to MinIO: ${objectName}`);
+              res.json({ objectPath, uploadURL: objectPath });
+              return;
+            } catch (minioError: any) {
+              console.error("[VPS Upload] MinIO upload failed, falling back to filesystem:", minioError.message);
+            }
+          }
+
+          // Fallback: save to local filesystem
           const fs = await import('fs/promises');
           const path = await import('path');
           const uploadsDir = path.join(process.cwd(), 'uploads', 'id-proofs');
-          
-          // Ensure directory exists
           await fs.mkdir(uploadsDir, { recursive: true });
-          console.log(`[VPS Upload] Upload directory: ${uploadsDir}`);
-          
-          // Determine file extension from content type
-          const ext = contentType.includes('png') ? 'png' : 
-                     contentType.includes('gif') ? 'gif' : 'jpg';
-          const filename = `${objectId}.${ext}`;
           const filepath = path.join(uploadsDir, filename);
-          
-          // Save file
           await fs.writeFile(filepath, fileBuffer);
-          console.log(`[VPS Upload] File saved successfully: ${filepath}`);
-          
-          // Return the object path
           const objectPath = `/objects/vps-uploads/id-proofs/${filename}`;
-          console.log(`[VPS Upload] Returning objectPath: ${objectPath}`);
+          console.log(`[VPS Upload] Saved to local filesystem: ${filepath}`);
           res.json({ objectPath, uploadURL: objectPath });
         } catch (error: any) {
           console.error("[VPS Upload] Error saving file:", error);
-          console.error("[VPS Upload] Error stack:", error.stack);
           res.status(500).json({ error: "Failed to save file", message: error.message });
         }
       });
