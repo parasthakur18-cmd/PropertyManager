@@ -939,12 +939,12 @@ export default function ChannelManager() {
         </Card>
       ) : (
         <Tabs defaultValue="settings" className="w-full">
-          <TabsList className="grid grid-cols-5 w-full" data-testid="tabs-channel-manager">
-            <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-            <TabsTrigger value="room-mapping" data-testid="tab-room-mapping">Room Mapping</TabsTrigger>
-            <TabsTrigger value="rate-plans" data-testid="tab-rate-plans">Rate Plans</TabsTrigger>
-            <TabsTrigger value="push" data-testid="tab-push">Push Rates & Inventory</TabsTrigger>
-            <TabsTrigger value="logs" data-testid="tab-logs">Sync Logs</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto h-auto flex-wrap gap-1 justify-start bg-muted p-1 rounded-lg" data-testid="tabs-channel-manager">
+            <TabsTrigger value="settings" data-testid="tab-settings" className="flex-shrink-0">Settings</TabsTrigger>
+            <TabsTrigger value="room-mapping" data-testid="tab-room-mapping" className="flex-shrink-0">Room Mapping</TabsTrigger>
+            <TabsTrigger value="rate-plans" data-testid="tab-rate-plans" className="flex-shrink-0">Rate Plans</TabsTrigger>
+            <TabsTrigger value="push" data-testid="tab-push" className="flex-shrink-0">Push Rates & Inventory</TabsTrigger>
+            <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
