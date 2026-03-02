@@ -90,10 +90,15 @@ async function makeAiosellRequest(
   };
 
   try {
+    const authHeader = config.pmsPassword
+      ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
+      : undefined;
+
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(authHeader ? { Authorization: authHeader } : {}),
       },
       body: JSON.stringify(payload),
     });
