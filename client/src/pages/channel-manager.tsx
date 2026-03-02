@@ -67,8 +67,9 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [hotelCode, setHotelCode] = useState("");
   const [pmsName, setPmsName] = useState("hostezee");
+  const [pmsPassword, setPmsPassword] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("https://live.aiosell.com");
-  const [isSandbox, setIsSandbox] = useState(true);
+  const [isSandbox, setIsSandbox] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
   const { data: config, isLoading } = useQuery<AiosellConfig | null>({
@@ -85,14 +86,14 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     setHotelCode(config.hotelCode || "");
     setPmsName(config.pmsName || "hostezee");
     setApiBaseUrl(config.apiBaseUrl || "https://live.aiosell.com");
-    setIsSandbox(config.isSandbox ?? true);
+    setIsSandbox(config.isSandbox ?? false);
     setInitialized(true);
   }
 
   const saveConfig = useMutation({
     mutationFn: async () => {
       if (!hotelCode.trim()) throw new Error("Hotel Code is required");
-      return apiRequest("/api/aiosell/config", "POST", { propertyId, hotelCode: hotelCode.trim(), pmsName, apiBaseUrl, isSandbox });
+      return apiRequest("/api/aiosell/config", "POST", { propertyId, hotelCode: hotelCode.trim(), pmsName, pmsPassword: pmsPassword || undefined, apiBaseUrl, isSandbox });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/config"] });
@@ -161,6 +162,11 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               <Label>PMS Name</Label>
               <Input data-testid="input-pms-name" placeholder="hostezee" value={pmsName} onChange={e => setPmsName(e.target.value)} />
               <p className="text-xs text-muted-foreground">Your PMS identifier registered with AioSell</p>
+            </div>
+            <div className="space-y-2">
+              <Label>PMS Password</Label>
+              <Input data-testid="input-pms-password" type="password" placeholder="Leave blank to keep existing" value={pmsPassword} onChange={e => setPmsPassword(e.target.value)} />
+              <p className="text-xs text-muted-foreground">API password provided by AioSell</p>
             </div>
             <div className="space-y-2">
               <Label>API Base URL</Label>

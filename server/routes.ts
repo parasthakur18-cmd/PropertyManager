@@ -15772,21 +15772,23 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(401).json({ message: "Not authenticated" });
       const { tenant } = auth;
-      const { propertyId, hotelCode, pmsName, apiBaseUrl, isSandbox } = req.body;
+      const { propertyId, hotelCode, pmsName, pmsPassword, apiBaseUrl, isSandbox } = req.body;
       if (!canAccessProperty(tenant, propertyId)) {
         return res.status(403).json({ message: "Access denied" });
       }
       const existing = await db.select().from(aiosellConfigurations)
         .where(eq(aiosellConfigurations.propertyId, propertyId));
       if (existing.length > 0) {
+        const updateData: any = { hotelCode, pmsName: pmsName || "hostezee", apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? false, isActive: true, updatedAt: new Date() };
+        if (pmsPassword) updateData.pmsPassword = pmsPassword;
         const [updated] = await db.update(aiosellConfigurations)
-          .set({ hotelCode, pmsName: pmsName || "hostezee", apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? true, isActive: true, updatedAt: new Date() })
+          .set(updateData)
           .where(eq(aiosellConfigurations.propertyId, propertyId))
           .returning();
         return res.json(updated);
       }
       const [config] = await db.insert(aiosellConfigurations).values({
-        propertyId, hotelCode, pmsName: pmsName || "hostezee", apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? true,
+        propertyId, hotelCode, pmsName: pmsName || "hostezee", pmsPassword: pmsPassword || null, apiBaseUrl: apiBaseUrl || "https://live.aiosell.com", isSandbox: isSandbox ?? false,
       }).returning();
       res.json(config);
     } catch (error: any) {
