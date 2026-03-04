@@ -1,19 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useLocation } from "wouter";
 import { 
-  Building2, Calendar, Users, DollarSign, Shield, Zap, CheckCircle, 
-  ArrowRight, Instagram, TrendingUp, BarChart3, MessageCircle, Lock,
-  Smartphone, Globe, Briefcase, Award, Flame, Sparkles, Facebook, Twitter, Linkedin
+  Building2, Calendar, Users, DollarSign, Shield,
+  ArrowRight, Instagram, BarChart3, MessageCircle,
+  Smartphone, Globe, Briefcase, Sparkles, Facebook, Twitter, Linkedin,
+  Menu, X, ChevronRight, Star, Utensils, CreditCard, ClipboardList, Hotel
 } from "lucide-react";
 import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", property: "", message: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formStatus, setFormStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  useEffect(() => {
+    document.title = "Hostezee – Cloud Hotel PMS | Property Management System";
+  }, []);
+
+  const scrollTo = (id: string) => {
+    setMobileMenuOpen(false);
+    if (id === "top") { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -51,31 +63,63 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 overflow-hidden">
       {/* Navigation Header */}
-      <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
+      <header className="fixed top-0 left-0 right-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollTo("top")}>
             <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
           </div>
-          <div className="flex gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => setLocation("/login")}
-              data-testid="button-login"
-              className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+
+          {/* Desktop Nav Links */}
+          <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
+            <button onClick={() => scrollTo("top")} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors">Home</button>
+            <button onClick={() => scrollTo("features")} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors">Features</button>
+            <button onClick={() => setLocation("/pricing")} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors">Pricing</button>
+            <button onClick={() => scrollTo("contact")} className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 transition-colors">Contact</button>
+          </nav>
+
+          {/* Desktop Auth Buttons + Mobile Hamburger */}
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex gap-3">
+              <Button
+                variant="ghost"
+                onClick={() => setLocation("/login")}
+                data-testid="button-login"
+                className="text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Login
+              </Button>
+              <Button
+                onClick={() => setLocation("/onboarding")}
+                data-testid="button-signup"
+                className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-lg"
+              >
+                Book a Demo
+              </Button>
+            </div>
+            <button
+              className="md:hidden p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+              data-testid="button-mobile-menu"
             >
-              Login
-            </Button>
-            <Button
-              onClick={() => {
-                setLocation("/onboarding");
-              }}
-              data-testid="button-signup"
-              className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-lg"
-            >
-              Get Started Free
-            </Button>
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Menu Dropdown */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 px-4 py-4 space-y-2">
+            <button onClick={() => scrollTo("top")} className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Home</button>
+            <button onClick={() => scrollTo("features")} className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Features</button>
+            <button onClick={() => { setMobileMenuOpen(false); setLocation("/pricing"); }} className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Pricing</button>
+            <button onClick={() => scrollTo("contact")} className="block w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Contact</button>
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-2">
+              <Button variant="outline" onClick={() => { setMobileMenuOpen(false); setLocation("/login"); }} className="w-full">Login</Button>
+              <Button onClick={() => { setMobileMenuOpen(false); setLocation("/onboarding"); }} className="w-full bg-gradient-to-r from-teal-500 to-cyan-500 text-white">Book a Demo</Button>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Hero Section */}
@@ -199,7 +243,7 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 md:py-32 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border-t border-slate-200 dark:border-slate-800">
+      <section id="features" className="py-20 md:py-32 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border-t border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
           <div className="text-center mb-20">
             <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white mb-6">
@@ -281,8 +325,143 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Contact Section */}
+      {/* Screenshots / Demo Section */}
       <section className="py-20 md:py-32 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 md:px-8">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 w-fit mx-auto mb-6">
+              <Star className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+              <span className="text-sm font-semibold text-teal-700 dark:text-teal-400">Product Tour</span>
+            </div>
+            <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white mb-6">See It In Action</h2>
+            <p className="text-xl text-slate-600 dark:text-slate-400 max-w-3xl mx-auto">Explore the powerful modules that help hotels run smoother, faster, and smarter every day</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Dashboard Module */}
+            <div className="group bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
+              <div className="bg-gradient-to-br from-teal-500 to-cyan-600 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div></div>
+                  <span className="text-white/80 text-sm font-medium">Dashboard Overview</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {[{label:"Occupancy",val:"94%",up:true},{label:"Revenue",val:"₹4.8L",up:true},{label:"Check-ins",val:"12",up:false},{label:"Bookings",val:"245",up:true}].map((s,i) => (
+                    <div key={i} className="bg-white/20 backdrop-blur rounded-xl p-3">
+                      <p className="text-white/70 text-xs mb-1">{s.label}</p>
+                      <p className="text-white font-bold text-xl">{s.val}</p>
+                      <p className="text-white/60 text-xs mt-1">{s.up ? "↑ 12% this month" : "Today"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-900/30"><BarChart3 className="h-5 w-5 text-teal-600 dark:text-teal-400" /></div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Real-Time Dashboard</h3>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Live occupancy, revenue, and booking stats across all your properties at a glance.</p>
+              </div>
+            </div>
+
+            {/* Bookings Module */}
+            <div className="group bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div></div>
+                  <span className="text-white/80 text-sm font-medium">Booking Management</span>
+                </div>
+                <div className="space-y-2">
+                  {[{name:"Rahul Sharma",room:"Deluxe 101",status:"Checked In",color:"bg-green-400"},{name:"Priya Verma",room:"Suite 201",status:"Reserved",color:"bg-blue-300"},{name:"Amit Patel",room:"Standard 103",status:"Checkout",color:"bg-yellow-400"}].map((b,i) => (
+                    <div key={i} className="bg-white/20 backdrop-blur rounded-xl px-4 py-3 flex items-center justify-between">
+                      <div><p className="text-white font-semibold text-sm">{b.name}</p><p className="text-white/70 text-xs">{b.room}</p></div>
+                      <span className={`${b.color} text-slate-900 text-xs font-bold px-2 py-1 rounded-full`}>{b.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/30"><Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" /></div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Smart Booking System</h3>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Manage check-ins, check-outs, and reservations with drag-and-drop calendar and OTA sync.</p>
+              </div>
+            </div>
+
+            {/* Restaurant Module */}
+            <div className="group bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
+              <div className="bg-gradient-to-br from-orange-500 to-red-500 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div></div>
+                  <span className="text-white/80 text-sm font-medium">Restaurant & Food Orders</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {["Butter Chicken","Dal Makhani","Veg Biryani","Paneer Tikka","Lassi","Masala Tea"].map((item,i) => (
+                    <div key={i} className="bg-white/20 backdrop-blur rounded-lg p-2 text-center">
+                      <p className="text-white text-xs font-medium leading-tight">{item}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white/20 backdrop-blur rounded-xl px-4 py-2 flex justify-between items-center">
+                  <span className="text-white text-sm font-medium">Table 5 — Active Order</span>
+                  <span className="text-white font-bold">₹850</span>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-orange-50 dark:bg-orange-900/30"><Utensils className="h-5 w-5 text-orange-600 dark:text-orange-400" /></div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Restaurant Management</h3>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">In-house dining, room service orders, menu management, and QR-based ordering built in.</p>
+              </div>
+            </div>
+
+            {/* Billing Module */}
+            <div className="group bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300">
+              <div className="bg-gradient-to-br from-emerald-500 to-green-600 p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div><div className="w-3 h-3 rounded-full bg-white/40"></div></div>
+                  <span className="text-white/80 text-sm font-medium">Billing & Payments</span>
+                </div>
+                <div className="bg-white/20 backdrop-blur rounded-2xl p-4 space-y-3">
+                  <div className="flex justify-between text-white text-sm"><span>Room Charges (2N)</span><span>₹6,000</span></div>
+                  <div className="flex justify-between text-white text-sm"><span>Restaurant</span><span>₹1,850</span></div>
+                  <div className="flex justify-between text-white text-sm"><span>GST @ 12%</span><span>₹934</span></div>
+                  <div className="border-t border-white/30 pt-2 flex justify-between text-white font-bold"><span>Total</span><span>₹8,784</span></div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-white/30 rounded-lg py-1.5 text-center text-white text-xs font-bold">UPI</div>
+                    <div className="flex-1 bg-white text-emerald-700 rounded-lg py-1.5 text-center text-xs font-bold">Cash</div>
+                    <div className="flex-1 bg-white/30 rounded-lg py-1.5 text-center text-white text-xs font-bold">Card</div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30"><CreditCard className="h-5 w-5 text-emerald-600 dark:text-emerald-400" /></div>
+                  <h3 className="font-bold text-slate-900 dark:text-white">Billing & Payments</h3>
+                </div>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Automated folio generation, GST billing, and Razorpay payment links for seamless checkout.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-12 text-center">
+            <Button
+              size="lg"
+              onClick={() => setLocation("/onboarding")}
+              data-testid="button-demo-cta"
+              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white px-10 gap-2 shadow-lg hover:shadow-xl transition-all"
+            >
+              Start Free Trial — No Credit Card Required
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Contact Section */}
+      <section id="contact" className="py-20 md:py-32 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 border-t border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
             {/* Contact Info */}
@@ -490,7 +669,7 @@ export default function Home() {
           </div>
           <div className="border-t border-slate-800 pt-8">
             <div className="flex flex-col md:flex-row items-center justify-between">
-              <p className="text-sm">&copy; 2025 Hostezee PMS. All rights reserved.</p>
+              <p className="text-sm">&copy; 2026 Hostezee PMS. All rights reserved.</p>
               <div className="flex gap-6 mt-6 md:mt-0">
                 <a href="https://www.facebook.com/hostezee" target="_blank" rel="noopener noreferrer" className="hover:text-white transition" data-testid="social-facebook">
                   <Facebook className="h-5 w-5" />

@@ -1,0 +1,51 @@
+# Replit Update Instructions for Hostezee Website
+
+1. **Header & Navigation:** 
+   - In your main HTML (e.g. `index.html`), add a `<nav>` element at the top. Include the Hostezee logo (or text) and links: Home, Features, Pricing, Contact. 
+   - Style the navbar with CSS (e.g. a dark teal background `#004D40` and white text). Make it responsive (collapsible on mobile).
+   
+2. **Hero Section:** 
+   - Add a banner section below the navbar with an `<h1>` title (e.g. "Hostezee – Cloud Hotel PMS") and a short tagline paragraph.
+   - Add a CTA button: “Book a Demo” or “Start Free Trial” (use the accent color `#009688`). Link it to the Contact/Demo form.
+
+3. **Features Section:** 
+   - Create a `<section id="features">` listing core features. Use icons or small images + text for each feature (e.g., "Online Booking & Reservations", "Channel Manager Integrations", "Restaurant & Order Management", "Billing & Payment Tracking", "Housekeeping Module").
+   - Use CSS grid or flexbox to layout features in two or three columns on desktop, stacking on mobile.
+
+4. **Screenshots/Demo Section:** 
+   - Add a carousel or grid of 3-4 screenshots (`<img>` tags with `alt` text, e.g. `assets/dashboard.png`). Placeholders are fine initially.
+   - Ensure images are width-responsive (e.g. `max-width: 100%; height: auto;`).
+
+5. **Pricing Section:** 
+   - Add a pricing table (Free/Starter, Pro, Enterprise). Use cards or columns with pricing amounts (e.g. ₹0/₹999/₹2499 per month) and key differences.
+   - Include an asterisk note if needed (e.g. “*Custom plans available”).
+
+6. **Contact/Demo Form:** 
+   - Create a simple form on `contact.html` or in the footer: Name, Email, Hotel Name, Message. 
+   - The form can use a mailto: action or a Replit backend endpoint if set up. (Since login is the only back-end, for now use `mailto:support@hostezee.in` for form action).
+   - Style form fields and submit button (`type="submit"` in accent color).
+
+7. **Footer:** 
+   - Add a `<footer>` with contact info: email (support@hostezee.in), phone, and small note (e.g. “© 2026 Hostezee. All rights reserved.”).
+   - Include social icons (if any) or links to LinkedIn, etc.
+
+8. **Update CSS:** 
+   - Create or update `styles.css`. Define the color palette (accent and text colors).
+   - Use a Google Font import for Roboto or Lato.
+   - Ensure `body { background: #fff; color: #212121; }` and links/buttons use accent color.
+   - Add any needed classes (e.g. `.btn-primary { background: #009688; color: #fff; }`).
+
+9. **SEO Meta Tags:** 
+   - In the HTML `<head>`, set `<title>Hostezee – Hotel PMS Software</title>`.
+   - Add `<meta name="description" content="Hostezee is a cloud-based hotel property management system (PMS) for hotels, resorts and homestays. Manage bookings, channels, billing and restaurant orders from one platform.">`.
+   - Add viewport meta: `<meta name="viewport" content="width=device-width, initial-scale=1.0">` for responsiveness.
+
+10. **Google Verification & Analytics:** 
+    - Insert the Google site verification meta tag (from Search Console) into `<head>`.
+    - Add Google Analytics or GTM script just before `</head>` (using your tracking ID).
+    
+11. **Preserve Login:** 
+    - Do NOT modify any existing scripts that handle authentication or login. Keep the login form/page as-is (if separate). The above changes affect only the static pages around it.
+
+12. **Test:** 
+    - After implementing, preview the site on different devices. Ensure links and buttons work, and the site loads fast.
