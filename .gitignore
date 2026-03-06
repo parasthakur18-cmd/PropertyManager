@@ -22,4 +22,5 @@ pm2-out.log
 
 # Deployment artifacts
 deploy/
-deploy.tar.gz
+deploy.tar.gz.env.production
+.env
