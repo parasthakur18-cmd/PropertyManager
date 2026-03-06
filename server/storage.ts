@@ -779,7 +779,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBookingsByRoom(roomId: number): Promise<Booking[]> {
-    return await db.select().from(bookings).where(eq(bookings.roomId, roomId));
+    // Include both single-room bookings (roomId = X) and group bookings that use this room (roomIds @> X)
+    return await db
+      .select()
+      .from(bookings)
+      .where(or(
+        eq(bookings.roomId, roomId),
+        sql`${roomId} = ANY(COALESCE(${bookings.roomIds}, ARRAY[]::integer[]))`
+      ));
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
@@ -801,11 +808,13 @@ export class DatabaseStorage implements IStorage {
     // NOTE: Room status is NOT changed here - availability is determined by checking booking dates
     // Room status is only changed for operational purposes (check-in, check-out, cleaning, maintenance)
 
-    // Update guest's total stays
-    await db
-      .update(guests)
-      .set({ totalStays: sql`${guests.totalStays} + 1` })
-      .where(eq(guests.id, booking.guestId));
+    // Update guest's total stays only when a guest is linked (avoids no-op/error when guestId is null)
+    if (booking.guestId != null) {
+      await db
+        .update(guests)
+        .set({ totalStays: sql`${guests.totalStays} + 1` })
+        .where(eq(guests.id, booking.guestId));
+    }
 
     console.log('🔍 [STORAGE DEBUG] About to insert booking with bedsBooked:', booking.bedsBooked);
     const [newBooking] = await db.insert(bookings).values(booking).returning();

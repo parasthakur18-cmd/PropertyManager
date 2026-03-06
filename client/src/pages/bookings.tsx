@@ -803,6 +803,8 @@ export default function Bookings() {
       };
       
       // Build booking data - only include fields that exist in schema
+      const numGuests = Number(data.numberOfGuests);
+      const numberOfGuests = Number.isInteger(numGuests) && numGuests >= 1 ? numGuests : 1;
       let bookingData: any = {
         propertyId: bookingType === "group" ? rooms?.find(r => r.id === selectedRoomIds[0])?.propertyId : data.propertyId,
         guestId: newGuest.id,
@@ -810,7 +812,7 @@ export default function Bookings() {
         roomIds: bookingType === "group" ? selectedRoomIds : null,
         checkInDate: formatDateForDB(data.checkInDate),
         checkOutDate: formatDateForDB(data.checkOutDate),
-        numberOfGuests: parseInt(data.numberOfGuests),
+        numberOfGuests,
         customPrice: data.customPrice ? data.customPrice.toString() : null,
         advanceAmount: data.advanceAmount ? data.advanceAmount.toString() : "0",
         totalAmount: totalAmount,

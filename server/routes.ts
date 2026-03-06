@@ -2906,9 +2906,28 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const bookingInputSchema = insertBookingSchema.extend({
         checkInDate: z.coerce.date(),
         checkOutDate: z.coerce.date(),
+        numberOfGuests: z.coerce.number().int().min(1).optional().nullable(),
       });
-      const data = bookingInputSchema.parse(req.body);
-      
+      const parsed = bookingInputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const msg = parsed.error.flatten().fieldErrors?.numberOfGuests?.[0]
+          || parsed.error.message
+          || "Invalid booking data";
+        return res.status(400).json({ message: msg });
+      }
+      const data = parsed.data;
+
+      // Ensure propertyId is set (required by DB); for group bookings client may send it from first room
+      let bookingData = { ...data };
+      if (bookingData.propertyId == null && (bookingData.roomId != null || (bookingData.roomIds?.length ?? 0) > 0)) {
+        const firstRoomId = bookingData.roomId ?? bookingData.roomIds?.[0];
+        const room = firstRoomId != null ? await storage.getRoom(firstRoomId) : null;
+        if (room) bookingData = { ...bookingData, propertyId: room.propertyId };
+      }
+      if (bookingData.propertyId == null) {
+        return res.status(400).json({ message: "Property or room is required for booking" });
+      }
+
       // Check room availability before creating booking
       const checkIn = new Date(data.checkInDate);
       const checkOut = new Date(data.checkOutDate);
@@ -2989,7 +3008,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
-      const booking = await storage.createBooking(data);
+      const booking = await storage.createBooking(bookingData);
       
       // Send response immediately - don't make user wait for notifications/emails/logs
       res.status(201).json(booking);
