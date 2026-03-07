@@ -145,26 +145,42 @@ export default function Dashboard() {
 
   const { data: bookings, isLoading: bookingsLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: guests, isLoading: guestsLoading } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: rooms, isLoading: roomsLoading } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: enquiries, isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: bills } = useQuery<any[]>({
     queryKey: ["/api/bills"],
+    staleTime: 2 * 60 * 1000,
+  });
+
+  useQuery({
+    queryKey: ["/api/properties"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useQuery({
+    queryKey: ["/api/travel-agents"],
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: extraServices } = useQuery<any[]>({

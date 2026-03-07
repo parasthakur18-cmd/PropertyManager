@@ -167,27 +167,33 @@ export default function Bookings() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    staleTime: 30 * 1000,
+    refetchInterval: 30000,
   });
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: guests } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: bills } = useQuery<Bill[]>({
     queryKey: ["/api/bills"],
+    staleTime: 2 * 60 * 1000,
   });
 
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
+    staleTime: 2 * 60 * 1000,
   });
 
   // Helper to get default check-in time (11:00 AM today)
@@ -251,6 +257,7 @@ export default function Bookings() {
   
   const { data: travelAgents } = useQuery<TravelAgent[]>({
     queryKey: ["/api/travel-agents"],
+    staleTime: 5 * 60 * 1000,
     select: (agents) => selectedPropertyId 
       ? agents.filter(agent => agent.propertyId === selectedPropertyId)
       : agents,
