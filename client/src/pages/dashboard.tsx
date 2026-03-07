@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { NewBookingDialog } from "@/components/NewBookingDialog";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,6 +116,7 @@ export default function Dashboard() {
   
   // Quick expense dialog
   const [quickExpenseOpen, setQuickExpenseOpen] = useState(false);
+  const [quickBookingOpen, setQuickBookingOpen] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
@@ -1264,7 +1266,7 @@ export default function Dashboard() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setLocation("/bookings?new=true")}
+              onClick={() => setQuickBookingOpen(true)}
               className="h-8"
               data-testid="btn-quick-booking"
             >
@@ -2238,6 +2240,8 @@ export default function Dashboard() {
           propertyName={availableProperties[0].name}
         />
       )}
+
+      <NewBookingDialog open={quickBookingOpen} onOpenChange={setQuickBookingOpen} />
     </div>
   );
 }
