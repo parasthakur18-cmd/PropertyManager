@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
+import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
 import {
   Building2,
   Home,

@@ -8,7 +8,7 @@ import {
   Smartphone, Globe, Briefcase, Sparkles, Facebook, Twitter, Linkedin,
   Menu, X, ChevronRight, Star, Utensils, CreditCard, ClipboardList, Hotel
 } from "lucide-react";
-import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
+import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -18,7 +18,7 @@ export default function Home() {
   const [formStatus, setFormStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
-    document.title = "Hostezee – Cloud Hotel PMS | Property Management System";
+    document.title = "Hostezee – Smart Hotel PMS";
   }, []);
 
   const scrollTo = (id: string) => {

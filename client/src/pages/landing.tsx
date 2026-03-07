@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
+import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
 
 const features = [
   { icon: Building2, title: "Multi-Property Management", desc: "Manage unlimited hotels, hostels, homestays, dorms, villas from one dashboard" },
@@ -20,7 +20,7 @@ const features = [
   { icon: Shield, title: "Role-based Access Control", desc: "Owner, manager, staff, kitchen, accountant, housekeeping roles with permissions" },
   { icon: Users, title: "Super Admin SaaS Control", desc: "View all users, properties, bookings; impersonate user; fix issues; manage accounts" },
   { icon: Globe, title: "Public SaaS Onboarding", desc: "Email signup, create property, set rooms — ready to use in minutes with zero setup" },
-  { icon: CheckCircle, title: "Zero Infrastructure Costs", desc: "Deploy on Replit with instant scaling, automatic updates, and zero DevOps burden" },
+  { icon: CheckCircle, title: "Zero Infrastructure Costs", desc: "Cloud-native infrastructure with instant scaling, automatic updates, and zero DevOps burden" },
   { icon: Sparkles, title: "AI Chatbot Assistant", desc: "24/7 intelligent support powered by OpenAI GPT-4o-mini for guests and staff" },
   { icon: Lock, title: "Enterprise Security", desc: "Role-based access, data encryption, secure authentication, and compliance-ready" },
 ];
@@ -32,14 +32,14 @@ export default function Landing() {
     <div className="min-h-screen bg-white dark:bg-slate-950 overflow-hidden flex flex-col">
       {/* SEO Meta Tags */}
       <head>
-        <meta name="description" content="Hostezee - The world's first property management system running on Replit. Multi-property management, smart bookings, restaurant billing, staff payroll, and real-time analytics. Zero setup, instant deployment. Manage hotels, hostels, homestays, dorms with one dashboard." />
-        <meta name="keywords" content="property management system, PMS, hotel management software, booking system, restaurant management, Replit PMS" />
-        <meta property="og:title" content="Hostezee - Replit-Powered Property Management System" />
-        <meta property="og:description" content="Deploy a complete PMS in seconds. Multi-property, smart bookings, restaurant billing, payroll, analytics. Zero DevOps. Trusted by 500+ properties." />
+        <meta name="description" content="Hostezee – Smart Hotel PMS. Multi-property management, smart bookings, restaurant billing, staff payroll, and real-time analytics. Cloud-based, zero setup. Manage hotels, hostels, homestays, dorms with one dashboard." />
+        <meta name="keywords" content="property management system, PMS, hotel management software, booking system, restaurant management, cloud PMS, hotel software India" />
+        <meta property="og:title" content="Hostezee – Smart Hotel Property Management System" />
+        <meta property="og:description" content="Cloud-based hotel PMS. Multi-property, smart bookings, restaurant billing, payroll, analytics. Trusted by 500+ properties." />
         <meta property="og:type" content="website" />
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Hostezee - The Easiest PMS to Deploy" />
-        <meta name="twitter:description" content="Manage unlimited hotels, hostels, homestays from one dashboard. Zero infrastructure costs. Instant Replit deployment." />
+        <meta name="twitter:title" content="Hostezee – Smart Hotel PMS" />
+        <meta name="twitter:description" content="Manage unlimited hotels, hostels, homestays from one dashboard. Cloud-based, instant setup, zero infrastructure costs." />
       </head>
 
       {/* Navigation Header */}
@@ -78,7 +78,7 @@ export default function Landing() {
               <div className="space-y-4">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 w-fit hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors">
                   <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                  <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">World's First Replit-Powered PMS</span>
+                  <span className="text-sm font-semibold text-purple-700 dark:text-purple-400">Trusted by 500+ Properties Across India</span>
                 </div>
 
                 <h1 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white leading-tight">
@@ -167,10 +167,10 @@ export default function Landing() {
                   </div>
                 ))}
 
-                {/* Replit Badge */}
+                {/* Cloud Badge */}
                 <div className="relative bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl border border-purple-200 dark:border-purple-800 p-6">
                   <p className="text-sm text-slate-700 dark:text-slate-300">
-                    <span className="font-semibold text-purple-600 dark:text-purple-400">Powered by Replit</span> - Zero infrastructure, auto-scaling, instant deployment
+                    <span className="font-semibold text-purple-600 dark:text-purple-400">Cloud-Powered by Hostezee</span> - Zero infrastructure, auto-scaling, instant deployment
                   </p>
                 </div>
               </div>
@@ -351,7 +351,7 @@ export default function Landing() {
               </div>
               <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Scale Unlimited</h3>
               <p className="text-slate-600 dark:text-slate-300">
-                Manage one hotel or thousands of properties. Replit's infrastructure scales automatically. No limits on properties, guests, or bookings.
+                Manage one hotel or thousands of properties. Hostezee's cloud infrastructure scales automatically. No limits on properties, guests, or bookings.
               </p>
             </div>
 
@@ -361,7 +361,7 @@ export default function Landing() {
               </div>
               <h3 className="text-2xl font-bold text-slate-900 dark:text-white">Zero Infrastructure Cost</h3>
               <p className="text-slate-600 dark:text-slate-300">
-                No monthly server fees. No database charges. No DevOps team needed. Run everything on Replit's free tier, or scale with minimal costs.
+                No monthly server fees. No database charges. No DevOps team needed. Cloud-native architecture designed for hospitality businesses of all sizes.
               </p>
             </div>
           </div>

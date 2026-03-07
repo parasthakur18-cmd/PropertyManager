@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
 import {
   Building2,
   Home,
@@ -62,10 +63,7 @@ export function SuperAdminSidebar() {
       {/* Header */}
       <div className="p-4 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 text-white">
-            <Building2 className="h-6 w-6" />
-          </div>
-          <h2 className="text-lg font-semibold font-serif text-slate-900 dark:text-white">Hostezee</h2>
+          <img src={hostezeeLogo} alt="Hostezee" className="h-8 w-auto object-contain" />
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">Super Admin</p>
       </div>

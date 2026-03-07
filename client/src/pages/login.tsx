@@ -10,7 +10,7 @@ import { Building2, Mail, Phone, LogIn, ArrowRight, Clock, XCircle, Loader2 } fr
 import { SiGoogle } from "react-icons/si";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { queryClient } from "@/lib/queryClient";
-import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
+import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
 
 export default function Login() {
   const [, setLocation] = useLocation();
