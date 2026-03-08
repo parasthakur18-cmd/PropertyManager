@@ -26,6 +26,40 @@ interface GuestIdUploadProps {
   primaryEmail?: string;
 }
 
+async function compressImage(file: File): Promise<File> {
+  return new Promise((resolve) => {
+    const MAX_SIDE = 1200;
+    const QUALITY = 0.75;
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width <= MAX_SIDE && height <= MAX_SIDE && file.size < 300 * 1024) {
+        resolve(file);
+        return;
+      }
+      if (width > height) {
+        if (width > MAX_SIDE) { height = Math.round((height * MAX_SIDE) / width); width = MAX_SIDE; }
+      } else {
+        if (height > MAX_SIDE) { width = Math.round((width * MAX_SIDE) / height); height = MAX_SIDE; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return; }
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+      }, 'image/jpeg', QUALITY);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 function ImageUploader({
   label,
   imageUrl,
@@ -53,6 +87,8 @@ function ImageUploader({
 
     setUploading(true);
     try {
+      const compressed = await compressImage(file);
+
       const uploadResponse = await fetch('/api/objects/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -65,16 +101,16 @@ function ImageUploader({
       let finalObjectPath: string;
 
       if (isMinIO && objectName) {
-        const putResponse = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+        const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
         if (!putResponse.ok) throw new Error('Failed to upload file to MinIO');
         finalObjectPath = `/objects/${objectName}`;
       } else if (isVPS || uploadURL.startsWith('/api/vps-upload')) {
-        const uploadRes = await fetch(uploadURL, { method: 'POST', body: file, headers: { 'Content-Type': file.type } });
+        const uploadRes = await fetch(uploadURL, { method: 'POST', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
         if (!uploadRes.ok) throw new Error('Failed to upload file');
         const { objectPath } = await uploadRes.json();
         finalObjectPath = objectPath;
       } else {
-        const putResponse = await fetch(uploadURL, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+        const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
         if (!putResponse.ok) throw new Error('Failed to upload file');
         const aclResponse = await fetch('/api/guest-id-proofs', {
           method: 'PUT',

@@ -1310,7 +1310,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bill operations
+  private _billsCache: { data: any[]; ts: number } | null = null;
+  private readonly _billsCacheTTL = 45 * 1000; // 45 seconds
+
+  invalidateBillsCache() {
+    this._billsCache = null;
+  }
+
   async getAllBills(): Promise<any[]> {
+    if (this._billsCache && Date.now() - this._billsCache.ts < this._billsCacheTTL) {
+      return this._billsCache.data;
+    }
     try {
       console.log("[Storage] getAllBills - starting query");
       // Get bills without join first to avoid type casting issues
@@ -1464,7 +1474,9 @@ export class DatabaseStorage implements IStorage {
           // Use raw SQL to avoid type casting errors
           if (!pool || typeof pool.query !== 'function') {
             console.error("[Storage] getAllBills - pool.query is not available for bookings");
-            return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+            const fallback = billsOnly.map((bill: any) => ({ ...bill, propertyId: null }));
+            this._billsCache = { data: fallback, ts: Date.now() };
+            return fallback;
           }
           const bookingsResult = await pool.query('SELECT id, property_id FROM bookings LIMIT 10000');
           allBookings = (bookingsResult.rows || []).map((row: any) => ({
@@ -1474,41 +1486,34 @@ export class DatabaseStorage implements IStorage {
       } catch (bookingsError: any) {
         console.error("[Storage] getAllBills - Could not fetch bookings, continuing without propertyId");
         console.error("[Storage] getAllBills - Bookings error:", bookingsError.message);
-        console.error("[Storage] getAllBills - Bookings error code:", bookingsError.code);
-        console.error("[Storage] getAllBills - Bookings error detail:", bookingsError.detail);
-        // Return bills without propertyId if bookings query fails
-        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+        const fallback = billsOnly.map((bill: any) => ({ ...bill, propertyId: null }));
+        this._billsCache = { data: fallback, ts: Date.now() };
+        return fallback;
       }
       
       // Safely create booking map - handle any errors in mapping
+      let result: any[];
       try {
         const bookingMap = new Map(allBookings.map(b => [b.id, b.propertyId]));
-        
-        return billsOnly.map(bill => {
+        result = billsOnly.map(bill => {
           try {
-            // Handle bookingId as either number or string
             const bookingIdNum = bill.bookingId ? Number(bill.bookingId) : null;
-            const propertyId = bookingIdNum && bookingMap.has(bookingIdNum) 
-              ? bookingMap.get(bookingIdNum) 
+            const propertyId = bookingIdNum && bookingMap.has(bookingIdNum)
+              ? bookingMap.get(bookingIdNum)
               : null;
-            
-            return {
-              ...bill,
-              propertyId,
-            };
-          } catch (mapError: any) {
-            // If mapping fails for a single bill, return it without propertyId
+            return { ...bill, propertyId };
+          } catch {
             return { ...bill, propertyId: null };
           }
         });
       } catch (mapError: any) {
-        console.warn("[Storage] getAllBills - Error creating booking map, returning bills without propertyId:", mapError.message);
-        return billsOnly.map(bill => ({ ...bill, propertyId: null }));
+        console.warn("[Storage] getAllBills - Error creating booking map:", mapError.message);
+        result = billsOnly.map(bill => ({ ...bill, propertyId: null }));
       }
+      this._billsCache = { data: result, ts: Date.now() };
+      return result;
     } catch (error: any) {
       console.error("[Storage] getAllBills - ERROR:", error.message);
-      console.error("[Storage] getAllBills - Stack:", error.stack);
-      // Return empty array on error instead of throwing
       return [];
     }
   }
@@ -1526,6 +1531,7 @@ export class DatabaseStorage implements IStorage {
 
   async createBill(bill: InsertBill): Promise<Bill> {
     const [newBill] = await db.insert(bills).values(bill).returning();
+    this.invalidateBillsCache();
     return newBill;
   }
 
@@ -1535,6 +1541,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...bill, updatedAt: new Date() })
       .where(eq(bills.id, id))
       .returning();
+    this.invalidateBillsCache();
     return updated;
   }
 

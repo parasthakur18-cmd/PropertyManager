@@ -2889,6 +2889,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
+    try {
+      const { pool } = await import("./db");
+      const result = await pool.query(`
+        SELECT id, property_id,
+               CASE WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer ELSE NULL END as room_id,
+               CASE WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer ELSE NULL END as guest_id,
+               status, check_in_date, check_out_date,
+               number_of_guests as guests_count,
+               CASE WHEN total_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN total_amount::numeric ELSE 0 END as total_amount,
+               CASE WHEN advance_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN advance_amount::numeric ELSE 0 END as advance_paid,
+               CASE
+                 WHEN total_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' AND advance_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                 THEN total_amount::numeric - advance_amount::numeric
+                 ELSE 0
+               END as balance_amount,
+               source as booking_source, special_requests, created_at, updated_at
+        FROM bookings
+        WHERE status = 'checked-in'
+          AND check_out_date IS NOT NULL
+          AND (check_out_date::date) = CURRENT_DATE
+      `);
+      return res.json(result.rows || []);
+    } catch (error: any) {
+      console.warn("[/api/bookings/checkout-reminders] Error:", error.message);
+      return res.status(200).json([]);
+    }
+  });
+
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const booking = await storage.getBooking(parseInt(req.params.id));
@@ -4604,28 +4633,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     } catch (error: any) {
       console.error("Confirm advance payment error:", error);
       res.status(500).json({ message: error.message || "Failed to confirm advance payment" });
-    }
-  });
-
-  // Get checkout reminders (12 PM onwards, not yet auto-checked out)
-  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
-    try {
-      const { pool } = await import("./db");
-      // Safe comparison: works for both date and timestamp columns (::date normalizes)
-      const result = await pool.query(`
-        SELECT id, property_id, room_id, guest_id, status, check_in_date, check_out_date,
-               number_of_guests as guests_count, total_amount, advance_amount as advance_paid,
-               (COALESCE(total_amount, 0) - COALESCE(advance_amount, 0)) as balance_amount,
-               source as booking_source, special_requests, created_at, updated_at
-        FROM bookings
-        WHERE status = 'checked-in'
-          AND check_out_date IS NOT NULL
-          AND (check_out_date::date) = CURRENT_DATE
-      `);
-      return res.json(result.rows || []);
-    } catch (error: any) {
-      console.warn("[/api/bookings/checkout-reminders] Error:", error.message);
-      return res.status(200).json([]);
     }
   });
 

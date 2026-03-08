@@ -186,14 +186,9 @@ export default function Bookings() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const { data: bills } = useQuery<Bill[]>({
-    queryKey: ["/api/bills"],
-    staleTime: 2 * 60 * 1000,
-  });
-
   const { data: orders } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Helper to get default check-in time (11:00 AM today)
@@ -403,7 +398,6 @@ export default function Bookings() {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/guests"] });
       toast({
         title: "Success",
         description: "Booking created successfully",
