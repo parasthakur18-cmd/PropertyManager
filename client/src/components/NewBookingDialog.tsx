@@ -136,7 +136,15 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
     const typed = type === "dormitory"
       ? all.filter(r => r.roomCategory === "dormitory")
       : all.filter(r => r.roomCategory !== "dormitory");
-    return selectedPropertyId ? typed.filter(r => r.propertyId === selectedPropertyId) : typed;
+    const byProperty = selectedPropertyId ? typed.filter(r => r.propertyId === selectedPropertyId) : typed;
+    if (!roomAvailability) return byProperty;
+    const availSet = new Set(
+      (roomAvailability as { roomId: number; available: number }[])
+        .filter(a => a.available === 1)
+        .map(a => a.roomId)
+    );
+    if (availSet.size === 0) return byProperty;
+    return byProperty.filter(r => availSet.has(r.id));
   };
 
   const createMutation = useMutation({
@@ -392,12 +400,15 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
               </TabsContent>
             </Tabs>
 
-            {availableRooms.length === 0 && roomAvailability && (
+            {availableRooms.length === 0 && (rooms?.length ?? 0) > 0 && (
               <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-start gap-2">
                 <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-medium text-destructive">No Rooms Available</p>
-                  <p className="text-xs text-muted-foreground mt-1">All rooms are booked for {checkInDate ? format(checkInDate, "MMM dd") : ""} – {checkOutDate ? format(checkOutDate, "MMM dd") : ""}. Try different dates.</p>
+                  {selectedPropertyId && (rooms || []).filter(r => r.propertyId === selectedPropertyId).length === 0
+                    ? <p className="text-xs text-muted-foreground mt-1">No rooms are set up for this property. Try selecting a different property.</p>
+                    : <p className="text-xs text-muted-foreground mt-1">All rooms are booked for {checkInDate ? format(checkInDate, "MMM dd") : ""} – {checkOutDate ? format(checkOutDate, "MMM dd") : ""}. Try different dates or another property.</p>
+                  }
                 </div>
               </div>
             )}
