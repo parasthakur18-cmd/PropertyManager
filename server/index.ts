@@ -19,6 +19,9 @@ import path from "path";
 
 const app = express();
 
+// Trust reverse proxy (nginx) so secure cookies work on HTTPS live servers
+app.set('trust proxy', 1);
+
 app.use(compression());
 
 declare module 'http' {

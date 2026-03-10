@@ -15781,15 +15781,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
-  app.post("/api/aiosell/test-connection", isAuthenticated, async (req: any, res) => {
+  app.post("/api/aiosell/test-connection", async (req: any, res) => {
     try {
-      const auth = await getAuthenticatedTenant(req);
-      if (!auth) return res.status(401).json({ message: "Not authenticated" });
-      const { tenant } = auth;
       const { propertyId } = req.body;
-      if (!canAccessProperty(tenant, propertyId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+      if (!propertyId) return res.status(400).json({ message: "propertyId is required" });
       const config = await getConfigForProperty(propertyId);
       if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
       const result = await testConnection(config);
