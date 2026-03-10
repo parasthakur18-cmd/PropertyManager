@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
+import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 
 const features = [
   { icon: Building2, title: "Multi-Property Management", desc: "Manage unlimited hotels, hostels, homestays, dorms, villas from one dashboard" },
@@ -46,7 +46,7 @@ export default function Landing() {
       <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
+            <img src={hostezeeLogo} alt="Hostezee – Simplify Stays" className="h-8 md:h-[44px] w-auto object-contain" data-testid="img-logo-header" />
           </div>
           <div className="flex gap-3">
             <Button

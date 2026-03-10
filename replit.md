@@ -53,6 +53,19 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Environment-based auth**: Dynamic authentication strategy.
 - **Tenant Data Isolation**: Implemented `getAuthenticatedTenant` and property access checks across all endpoints to prevent cross-tenant data leakage.
 
+### Branding & Logo
+- **Logo file**: `attached_assets/hostezee_logo_transparent_1773119386285.png` — transparent PNG used everywhere via `@assets/` import
+- **Brand Colors**: Primary Blue `#1E3A5F`, Teal `#2BB6A8`, Accent Yellow `#F2B705`
+- **Tagline**: "Simplify Stays"
+- **Logo placement**:
+  - Website header: 32px mobile / 44px desktop (`h-8 md:h-[44px]`)
+  - PMS sidebar: 36px (`h-9`)
+  - Login page: Centered branding with large logo (80px/96px) + "Hostezee" + "Simplify Stays"
+- **Favicon files**: `client/public/` — favicon.ico, favicon-16x16.png, favicon-32x32.png, favicon-48x48.png, apple-touch-icon.png (180x180), icon-512x512.png
+- **Logo assets directory**: `client/public/assets/logo/` — hostezee-logo.png, hostezee-logo.svg, hostezee-icon.png, favicon.ico, icon-512x512.png
+- **SEO**: Organization schema in `index.html` for Google brand recognition
+- **PWA**: `client/public/site.webmanifest` with all icon sizes
+
 ### Performance Optimizations
 - **Server-side caching**: In-memory caches with TTLs for frequently-read data:
   - `getAllBookings()`: 30s TTL, invalidated on create/update/delete/status-change

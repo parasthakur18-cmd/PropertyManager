@@ -8,7 +8,7 @@ import {
   Smartphone, Globe, Briefcase, Sparkles, Facebook, Twitter, Linkedin,
   Menu, X, ChevronRight, Star, Utensils, CreditCard, ClipboardList, Hotel
 } from "lucide-react";
-import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
+import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 
 export default function Home() {
   const [, setLocation] = useLocation();
@@ -66,7 +66,7 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollTo("top")}>
-            <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
+            <img src={hostezeeLogo} alt="Hostezee – Simplify Stays" className="h-8 md:h-[44px] w-auto object-contain" data-testid="img-logo-header" />
           </div>
 
           {/* Desktop Nav Links */}

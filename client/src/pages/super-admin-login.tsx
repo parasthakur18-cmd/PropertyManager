@@ -5,6 +5,7 @@ import { Building2, LogIn, ArrowRight, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 
 export default function SuperAdminLogin() {
   const [, setLocation] = useLocation();
@@ -66,11 +67,9 @@ export default function SuperAdminLogin() {
       <div className="w-full max-w-md space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-cyan-600 text-white mx-auto">
-            <Building2 className="h-8 w-8" />
-          </div>
-          <h1 className="text-3xl font-bold font-serif text-slate-900 dark:text-white">Hostezee</h1>
-          <p className="text-slate-600 dark:text-slate-400">Super Admin Portal</p>
+          <img src={hostezeeLogo} alt="Hostezee" className="h-20 w-auto object-contain mx-auto" data-testid="img-logo-super-admin" />
+          <h1 className="text-3xl font-bold text-[#1E3A5F] dark:text-white">Hostezee</h1>
+          <p className="text-sm font-medium text-[#2BB6A8]">Super Admin Portal</p>
         </div>
 
         {/* Main Card */}

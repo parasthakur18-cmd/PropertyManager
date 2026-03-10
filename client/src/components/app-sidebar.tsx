@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import hostezeeLogo from "@assets/hostezee_logo_highres_1772861084076.png";
+import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 import {
   Building2,
   Home,
@@ -301,7 +301,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
-          <img src={hostezeeLogo} alt="Hostezee" className="h-10 w-auto object-contain" />
+          <img src={hostezeeLogo} alt="Hostezee" className="h-9 w-auto object-contain" data-testid="img-logo-sidebar" />
         </div>
       </SidebarHeader>
       <SidebarContent>

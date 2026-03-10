@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import { ArrowLeft, Calendar, Users, BarChart3, Shield, Zap, CheckCircle, MessageCircle, Lock, Facebook, Twitter, Instagram, Linkedin, Brain, BarChart4, Smartphone, Clock, TrendingUp, CreditCard, Briefcase, AlertCircle } from "lucide-react";
-import hostezeeLogo from "@assets/Hostezee_Logo_1768292341444.jpeg";
+import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 
 export default function Features() {
   const [, setLocation] = useLocation();
@@ -111,7 +111,7 @@ export default function Features() {
       <header className="fixed top-0 left-0 right-0 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 z-50">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src={hostezeeLogo} alt="Hostezee" className="h-12 w-auto object-contain" />
+            <img src={hostezeeLogo} alt="Hostezee" className="h-8 md:h-[44px] w-auto object-contain" data-testid="img-logo-header" />
           </div>
           <Button variant="ghost" onClick={() => setLocation("/")} data-testid="button-back" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
