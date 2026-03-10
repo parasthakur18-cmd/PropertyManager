@@ -16215,6 +16215,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         if (assignedRoomId) {
           await db.update(rooms).set({ status: "occupied" }).where(eq(rooms.id, assignedRoomId));
+          storage.invalidateRoomsCache();
         }
 
         console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel}`);

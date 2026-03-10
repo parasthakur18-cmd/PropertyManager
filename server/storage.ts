@@ -593,7 +593,12 @@ export class DatabaseStorage implements IStorage {
 
   // Room operations
   async getAllRooms(): Promise<Room[]> {
-    return await db.select().from(rooms).orderBy(rooms.propertyId, rooms.roomNumber);
+    if (this._roomsCache && Date.now() - this._roomsCache.ts < this._roomsCacheTTL) {
+      return this._roomsCache.data;
+    }
+    const result = await db.select().from(rooms).orderBy(rooms.propertyId, rooms.roomNumber);
+    this._roomsCache = { data: result, ts: Date.now() };
+    return result;
   }
 
   async getRoomsByProperty(propertyId: number): Promise<Room[]> {
@@ -607,6 +612,7 @@ export class DatabaseStorage implements IStorage {
 
   async createRoom(room: InsertRoom): Promise<Room> {
     const [newRoom] = await db.insert(rooms).values(room).returning();
+    this.invalidateRoomsCache();
     return newRoom;
   }
 
@@ -616,6 +622,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...room, updatedAt: new Date() })
       .where(eq(rooms.id, id))
       .returning();
+    this.invalidateRoomsCache();
     return updated;
   }
 
@@ -625,6 +632,7 @@ export class DatabaseStorage implements IStorage {
       .set({ status, updatedAt: new Date() })
       .where(eq(rooms.id, id))
       .returning();
+    this.invalidateRoomsCache();
     return updated;
   }
 
@@ -1321,6 +1329,13 @@ export class DatabaseStorage implements IStorage {
 
   invalidateGuestsCache() {
     this._guestsCache = null;
+  }
+
+  private _roomsCache: { data: Room[]; ts: number } | null = null;
+  private readonly _roomsCacheTTL = 120 * 1000;
+
+  invalidateRoomsCache() {
+    this._roomsCache = null;
   }
 
   // Bill operations

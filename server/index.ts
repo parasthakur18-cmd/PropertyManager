@@ -14,6 +14,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { storage } from "./storage";
 import path from "path";
 
 const app = express();
@@ -140,6 +141,20 @@ app.use((req, res, next) => {
   // "0.0.0.0" is REQUIRED on VPS - binds to all network interfaces
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port} (bound to 0.0.0.0)`);
+    
+    setTimeout(async () => {
+      try {
+        await Promise.all([
+          storage.getAllBookings(),
+          storage.getAllGuests(),
+          storage.getAllBills(),
+          storage.getAllRooms(),
+        ]);
+        log("Cache pre-warmed: bookings, guests, bills, rooms");
+      } catch (e: any) {
+        console.error("[CACHE-WARMUP]", e.message);
+      }
+    }, 500);
   });
 })();
 
