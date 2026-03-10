@@ -22,6 +22,86 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
       );
     `);
 
+    // AioSell integration tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_configurations (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        hotel_code VARCHAR(255) NOT NULL,
+        pms_name VARCHAR(255) NOT NULL,
+        pms_password VARCHAR(500),
+        api_base_url VARCHAR(500) NOT NULL DEFAULT 'https://live.aiosell.com',
+        is_active BOOLEAN DEFAULT false,
+        sandbox_mode BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_room_mappings (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        hostezee_room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        aiosell_room_code VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_rate_plans (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        aiosell_rate_plan_id VARCHAR(100) NOT NULL,
+        aiosell_rate_plan_name VARCHAR(255),
+        hostezee_room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        sync_enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_sync_logs (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        sync_type VARCHAR(50) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        records_synced INTEGER,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_rate_updates (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        aiosell_room_code VARCHAR(100) NOT NULL,
+        check_in_date DATE NOT NULL,
+        check_out_date DATE NOT NULL,
+        rate DECIMAL(10, 2),
+        availability INTEGER,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS aiosell_inventory_restrictions (
+        id SERIAL PRIMARY KEY,
+        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+        room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        aiosell_room_code VARCHAR(100) NOT NULL,
+        check_in_date DATE,
+        check_out_date DATE,
+        min_stay INTEGER,
+        max_stay INTEGER,
+        closed_to_arrival BOOLEAN,
+        closed_to_departure BOOLEAN,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     // Check critical columns exist
     const criticalChecks = [
       {
