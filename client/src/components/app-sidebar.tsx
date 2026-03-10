@@ -190,7 +190,7 @@ const superAdminMenuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
-  const { setOpen, isMobile } = useSidebar();
+  const { isMobile, setOpenMobile } = useSidebar();
   const { hasAccess, isLoading: permissionsLoading } = usePermissions();
 
 
@@ -294,7 +294,7 @@ export function AppSidebar() {
     : "U";
 
   const handleNavClick = () => {
-    setOpen(false);
+    if (isMobile) setOpenMobile(false);
   };
 
   return (
