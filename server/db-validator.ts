@@ -32,7 +32,7 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
         pms_password VARCHAR(500),
         api_base_url VARCHAR(500) NOT NULL DEFAULT 'https://live.aiosell.com',
         is_active BOOLEAN DEFAULT false,
-        sandbox_mode BOOLEAN DEFAULT false,
+        is_sandbox BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
