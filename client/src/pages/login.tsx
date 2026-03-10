@@ -303,9 +303,7 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center pt-24 pb-12 px-4 w-full">
         <div className="w-full max-w-md mx-auto">
           <div className="flex flex-col items-center mb-8" data-testid="login-branding">
-            <img src={hostezeeLogo} alt="Hostezee" className="h-20 md:h-24 w-auto object-contain mb-3" data-testid="img-logo-login" />
-            <h1 className="text-2xl font-bold text-[#1E3A5F] dark:text-white">Hostezee</h1>
-            <p className="text-sm font-medium text-[#2BB6A8]">Simplify Stays</p>
+            <img src={hostezeeLogo} alt="Hostezee" className="h-20 md:h-24 w-auto object-contain" data-testid="img-logo-login" />
           </div>
           <Card className="border-slate-200/80 dark:border-slate-800/80 shadow-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm">
             <CardHeader className="space-y-2">
