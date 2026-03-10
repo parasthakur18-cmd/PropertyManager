@@ -153,15 +153,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
             </Alert>
           )}
 
-          {isConfigured && !config?.pmsPassword && (
-            <Alert className="border-red-500 bg-red-50 dark:bg-red-950">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-700 dark:text-red-300">
-                <strong>PMS Password not saved.</strong> Enter your AioSell PMS Password below and click Save Configuration — otherwise Test Connection will fail with "Authentication Required!".
-              </AlertDescription>
-            </Alert>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Hotel Code</Label>
@@ -174,15 +165,8 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               <p className="text-xs text-muted-foreground">Your PMS identifier registered with AioSell</p>
             </div>
             <div className="space-y-2">
-              <Label>PMS Password {isConfigured && !config?.pmsPassword && <span className="text-red-500 text-xs ml-1">(required — not saved yet)</span>}</Label>
-              <Input
-                data-testid="input-pms-password"
-                type="password"
-                placeholder={isConfigured && config?.pmsPassword ? "Leave blank to keep existing" : "Enter PMS password"}
-                value={pmsPassword}
-                onChange={e => setPmsPassword(e.target.value)}
-                className={isConfigured && !config?.pmsPassword ? "border-red-400 focus:border-red-500" : ""}
-              />
+              <Label>PMS Password</Label>
+              <Input data-testid="input-pms-password" type="password" placeholder="Leave blank to keep existing" value={pmsPassword} onChange={e => setPmsPassword(e.target.value)} />
               <p className="text-xs text-muted-foreground">API password provided by AioSell</p>
             </div>
             <div className="space-y-2">
