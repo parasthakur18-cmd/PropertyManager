@@ -53,6 +53,17 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Environment-based auth**: Dynamic authentication strategy.
 - **Tenant Data Isolation**: Implemented `getAuthenticatedTenant` and property access checks across all endpoints to prevent cross-tenant data leakage.
 
+### Performance Optimizations
+- **Server-side caching**: In-memory caches with TTLs for frequently-read data:
+  - `getAllBookings()`: 30s TTL, invalidated on create/update/delete/status-change
+  - `getAllGuests()`: 60s TTL, invalidated on create/update/delete
+  - `getAllBills()`: 45s TTL, invalidated on create/update
+  - All direct `db.update/insert(bookings|guests)` calls in routes.ts also invalidate the respective caches.
+- **Client-side caching**: TanStack Query staleTime set to 2-5 minutes for bookings/guests/rooms/orders; refetchInterval reduced to 5 min (from 30s) to prevent aggressive polling.
+- **Route optimization**: `/api/bookings` tenant filtering uses `booking.propertyId` directly instead of fetching all rooms for O(N*M) lookup.
+- **Image compression**: `compressImage()` in GuestIdUpload and guest-self-checkin reduces 5-8MB photos to 250-400KB before upload.
+- **Response compression**: Express `compression` middleware enabled for gzip.
+
 ## External Dependencies
 
 ### Database

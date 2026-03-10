@@ -2006,23 +2006,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   // Room availability checking - MUST be FIRST specific /api/rooms/* route to avoid collision with :id routes
   app.get("/api/rooms/availability", isAuthenticated, async (req, res) => {
-    console.log('[AVAILABILITY HANDLER] ✅ Handler called - ENTRY POINT');
     try {
       const { propertyId, checkIn, checkOut, excludeBookingId } = req.query;
-      console.log('[AVAILABILITY] Query params:', { propertyId, checkIn, checkOut, excludeBookingId });
       
-      // Get all rooms (optionally filtered by property)
       const { rooms } = await import("@shared/schema");
       
-      // Build query with optional property filter
       const propertyIdNum = propertyId ? Number(propertyId) : null;
-      console.log('[AVAILABILITY] Parsed propertyId:', propertyIdNum, 'isFinite:', Number.isFinite(propertyIdNum));
       
       const allRooms = Number.isFinite(propertyIdNum) 
         ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
         : await db.select().from(rooms);
-      
-      console.log('[AVAILABILITY] Found rooms:', allRooms.length);
       
       // If no dates provided, return all rooms with full availability
       if (!checkIn || !checkOut) {
@@ -2110,12 +2103,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       res.json(availability);
     } catch (error: any) {
-      console.error('[AVAILABILITY ERROR] ❌ CAUGHT ERROR IN HANDLER');
-      console.error('[AVAILABILITY ERROR] Full error:', error);
-      console.error('[AVAILABILITY ERROR] Message:', error.message);
-      console.error('[AVAILABILITY ERROR] Stack:', error.stack);
-      console.error('[AVAILABILITY ERROR] Error name:', error.name);
-      console.error('[AVAILABILITY ERROR] Error code:', error.code);
+      console.error('[AVAILABILITY ERROR]', error.message);
       res.status(500).json({ message: error.message });
     }
   });
@@ -2618,27 +2606,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const tenant = getTenantContext(currentUser);
       let bookings = await storage.getAllBookings();
       
-      // Apply tenant-based property filtering (bookings reference rooms which have propertyId)
       if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
-        const allRooms = await storage.getAllRooms();
-        bookings = bookings.filter(booking => {
-          // Handle single room bookings
-          if (booking.roomId) {
-            const room = allRooms.find(r => r.id === booking.roomId);
-            if (!room) return false;
-            return tenant.assignedPropertyIds.includes(room.propertyId);
-          }
-          // Handle group bookings (multiple rooms)
-          if (booking.roomIds && booking.roomIds.length > 0) {
-            const bookingRooms = booking.roomIds
-              .map(roomId => allRooms.find(r => r.id === roomId))
-              .filter((room): room is NonNullable<typeof room> => !!room);
-            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
-          }
-          return false;
-        });
+        const allowedSet = new Set(tenant.assignedPropertyIds);
+        bookings = bookings.filter(b => b.propertyId && allowedSet.has(b.propertyId));
       } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
-        // User has no assigned properties - return empty
         bookings = [];
       }
       
@@ -4395,6 +4366,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         advanceAmount: advanceAmount.toString(),
         updatedAt: new Date(),
       }).where(eq(bookings.id, bookingId));
+      storage.invalidateBookingsCache();
       
       // Send WhatsApp message with payment link using pending_payment template (22226)
       const property = await storage.getProperty(booking.propertyId);
@@ -4535,6 +4507,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         advancePaymentStatus: "not_required",
         updatedAt: new Date(),
       }).where(eq(bookings.id, bookingId));
+      storage.invalidateBookingsCache();
       
       console.log(`[BOOKING] Booking #${bookingId} manually confirmed`);
       
@@ -4572,6 +4545,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         advancePaymentStatus: "paid",
         updatedAt: new Date(),
       }).where(eq(bookings.id, bookingId));
+      storage.invalidateBookingsCache();
       
       console.log(`[ADVANCE PAYMENT] Booking #${bookingId} manually confirmed - advance payment marked as received`);
       
@@ -5157,6 +5131,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               advanceAmount: amountInRupees.toString(),
               updatedAt: new Date(),
             }).where(eq(bookings.id, bookingId));
+            storage.invalidateBookingsCache();
             
             console.log(`[RazorPay] ✅ Advance payment confirmed for booking #${bookingId}, status changed to CONFIRMED`);
             
@@ -14669,6 +14644,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
                 address: converted.guestData.address || null,
                 nationality: converted.guestData.country || null,
               }).returning();
+              storage.invalidateGuestsCache();
               guestId = newGuest[0].id;
             }
           }
@@ -14744,6 +14720,7 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
             externalBookingId: converted.bookingData.externalBookingId,
             externalSource: "beds24",
           });
+          storage.invalidateBookingsCache();
 
           synced++;
           console.log(`[BEDS24] Synced booking ${b24Booking.bookId}`);
@@ -15376,6 +15353,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               lastReminderAt: now,
               updatedAt: now,
             }).where(eq(bookings.id, booking.id));
+            storage.invalidateBookingsCache();
             
             remindersCount++;
             console.log(`[PAYMENT-JOB] Sent reminder #${reminderCount + 1} for booking #${booking.id} (interval: ${reminderHours}h, max: ${maxReminders})`);
@@ -16145,6 +16123,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           await db.update(bookings)
             .set({ status: "cancelled", updatedAt: new Date() })
             .where(eq(bookings.id, booking.id));
+          storage.invalidateBookingsCache();
           console.log(`[AIOSELL-WEBHOOK] Cancelled booking ${booking.id}`);
         }
         await autoSyncInventoryForProperty(config.propertyId);
@@ -16170,6 +16149,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               phone: guestData.phone || "N/A",
               address: guestData.address ? `${guestData.address.line1 || ""}, ${guestData.address.city || ""}, ${guestData.address.state || ""}, ${guestData.address.country || ""}`.replace(/^,\s*|,\s*$/g, "") : null,
             }).returning();
+            storage.invalidateGuestsCache();
             guestId = newGuest.id;
           }
         }
@@ -16207,6 +16187,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               specialRequests: specialRequests || null,
               updatedAt: new Date(),
             }).where(eq(bookings.id, existingBooking.id));
+            storage.invalidateBookingsCache();
             console.log(`[AIOSELL-WEBHOOK] Modified booking ${existingBooking.id}`);
             await autoSyncInventoryForProperty(config.propertyId);
             return res.json({ success: true, message: "Reservation Modified Successfully" });
@@ -16230,6 +16211,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           externalBookingId: bookingId,
           externalSource: `aiosell-${channel}`,
         }).returning();
+        storage.invalidateBookingsCache();
 
         if (assignedRoomId) {
           await db.update(rooms).set({ status: "occupied" }).where(eq(rooms.id, assignedRoomId));

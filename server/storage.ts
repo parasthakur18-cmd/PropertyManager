@@ -706,7 +706,12 @@ export class DatabaseStorage implements IStorage {
 
   // Guest operations
   async getAllGuests(): Promise<Guest[]> {
-    return await db.select().from(guests).orderBy(desc(guests.createdAt));
+    if (this._guestsCache && Date.now() - this._guestsCache.ts < this._guestsCacheTTL) {
+      return this._guestsCache.data;
+    }
+    const result = await db.select().from(guests).orderBy(desc(guests.createdAt));
+    this._guestsCache = { data: result, ts: Date.now() };
+    return result;
   }
 
   async getGuest(id: number): Promise<Guest | undefined> {
@@ -716,6 +721,7 @@ export class DatabaseStorage implements IStorage {
 
   async createGuest(guest: InsertGuest): Promise<Guest> {
     const [newGuest] = await db.insert(guests).values(guest).returning();
+    this.invalidateGuestsCache();
     return newGuest;
   }
 
@@ -725,11 +731,13 @@ export class DatabaseStorage implements IStorage {
       .set({ ...guest, updatedAt: new Date() })
       .where(eq(guests.id, id))
       .returning();
+    this.invalidateGuestsCache();
     return updated;
   }
 
   async deleteGuest(id: number): Promise<void> {
     await db.delete(guests).where(eq(guests.id, id));
+    this.invalidateGuestsCache();
   }
 
   // Travel Agent operations
@@ -770,7 +778,12 @@ export class DatabaseStorage implements IStorage {
 
   // Booking operations
   async getAllBookings(): Promise<Booking[]> {
-    return await db.select().from(bookings).orderBy(desc(bookings.createdAt));
+    if (this._bookingsCache && Date.now() - this._bookingsCache.ts < this._bookingsCacheTTL) {
+      return this._bookingsCache.data;
+    }
+    const result = await db.select().from(bookings).orderBy(desc(bookings.createdAt));
+    this._bookingsCache = { data: result, ts: Date.now() };
+    return result;
   }
 
   async getBooking(id: number): Promise<Booking | undefined> {
@@ -790,39 +803,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBooking(booking: InsertBooking): Promise<Booking> {
-    console.log('🔍 [STORAGE DEBUG] createBooking called with:', {
-      roomId: booking.roomId,
-      numberOfGuests: booking.numberOfGuests,
-      bedsBooked: booking.bedsBooked,
-      hasBedsBooked: 'bedsBooked' in booking,
-      bedsBookedType: typeof booking.bedsBooked
-    });
-    
-    // Auto-assign room if not provided
     if (!booking.roomId && booking.propertyId) {
       const availableRooms = await this.getAvailableRooms(booking.propertyId);
       if (availableRooms.length > 0) {
         booking.roomId = availableRooms[0].id;
       }
     }
-    // NOTE: Room status is NOT changed here - availability is determined by checking booking dates
-    // Room status is only changed for operational purposes (check-in, check-out, cleaning, maintenance)
 
-    // Update guest's total stays only when a guest is linked (avoids no-op/error when guestId is null)
     if (booking.guestId != null) {
       await db
         .update(guests)
         .set({ totalStays: sql`${guests.totalStays} + 1` })
         .where(eq(guests.id, booking.guestId));
+      this.invalidateGuestsCache();
     }
 
-    console.log('🔍 [STORAGE DEBUG] About to insert booking with bedsBooked:', booking.bedsBooked);
     const [newBooking] = await db.insert(bookings).values(booking).returning();
-    console.log('🔍 [STORAGE DEBUG] Created booking:', {
-      id: newBooking.id,
-      bedsBooked: newBooking.bedsBooked,
-      numberOfGuests: newBooking.numberOfGuests
-    });
+    this.invalidateBookingsCache();
     
     // Publish event for automatic propagation
     eventBus.publish({
@@ -840,6 +837,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...booking, updatedAt: new Date() })
       .where(eq(bookings.id, id))
       .returning();
+    this.invalidateBookingsCache();
     return updated;
   }
 
@@ -874,11 +872,13 @@ export class DatabaseStorage implements IStorage {
       .set({ status, updatedAt: new Date() })
       .where(eq(bookings.id, id))
       .returning();
+    this.invalidateBookingsCache();
     return updated;
   }
 
   async deleteBooking(id: number): Promise<void> {
     await db.delete(bookings).where(eq(bookings.id, id));
+    this.invalidateBookingsCache();
   }
 
   // Menu Item operations
@@ -1309,6 +1309,20 @@ export class DatabaseStorage implements IStorage {
     await db.delete(extraServices).where(eq(extraServices.id, id));
   }
 
+  private _bookingsCache: { data: Booking[]; ts: number } | null = null;
+  private readonly _bookingsCacheTTL = 30 * 1000;
+
+  invalidateBookingsCache() {
+    this._bookingsCache = null;
+  }
+
+  private _guestsCache: { data: Guest[]; ts: number } | null = null;
+  private readonly _guestsCacheTTL = 60 * 1000;
+
+  invalidateGuestsCache() {
+    this._guestsCache = null;
+  }
+
   // Bill operations
   private _billsCache: { data: any[]; ts: number } | null = null;
   private readonly _billsCacheTTL = 45 * 1000; // 45 seconds
@@ -1322,7 +1336,7 @@ export class DatabaseStorage implements IStorage {
       return this._billsCache.data;
     }
     try {
-      console.log("[Storage] getAllBills - starting query");
+      
       // Get bills without join first to avoid type casting issues
       // Use raw SQL to avoid Drizzle type casting issues with invalid data
       let billsOnly: any[] = [];

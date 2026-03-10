@@ -167,8 +167,8 @@ export default function Bookings() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
-    staleTime: 30 * 1000,
-    refetchInterval: 30000,
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const { data: properties } = useQuery<Property[]>({
@@ -178,7 +178,7 @@ export default function Bookings() {
 
   const { data: guests } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: rooms } = useQuery<Room[]>({
