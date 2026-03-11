@@ -54,6 +54,9 @@ export default function Wallets() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [isOpeningBalanceDialogOpen, setIsOpeningBalanceDialogOpen] = useState(false);
   const [openingBalances, setOpeningBalances] = useState<Record<number, string>>({});
+  const [txWalletFilter, setTxWalletFilter] = useState<string>("all");
+  const [txTypeFilter, setTxTypeFilter] = useState<string>("all");
+  const [txSearch, setTxSearch] = useState<string>("");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -719,57 +722,116 @@ export default function Wallets() {
                   <CardTitle>Transaction History</CardTitle>
                   <CardDescription>All wallet transactions for this property</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
+                  {/* Filters */}
+                  <div className="flex flex-wrap gap-2">
+                    <Select value={txWalletFilter} onValueChange={setTxWalletFilter}>
+                      <SelectTrigger className="w-44" data-testid="select-tx-wallet-filter">
+                        <SelectValue placeholder="All Wallets" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Wallets</SelectItem>
+                        {wallets.map(w => (
+                          <SelectItem key={w.id} value={String(w.id)}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={txTypeFilter} onValueChange={setTxTypeFilter}>
+                      <SelectTrigger className="w-36" data-testid="select-tx-type-filter">
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="credit">Money In (Credit)</SelectItem>
+                        <SelectItem value="debit">Money Out (Debit)</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <input
+                      type="text"
+                      placeholder="Search description..."
+                      value={txSearch}
+                      onChange={e => setTxSearch(e.target.value)}
+                      className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring w-52"
+                      data-testid="input-tx-search"
+                    />
+
+                    {(txWalletFilter !== "all" || txTypeFilter !== "all" || txSearch) && (
+                      <button
+                        onClick={() => { setTxWalletFilter("all"); setTxTypeFilter("all"); setTxSearch(""); }}
+                        className="text-sm text-muted-foreground underline self-center"
+                        data-testid="button-clear-tx-filters"
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Transaction list */}
                   {transactionsLoading ? (
                     <div className="space-y-2">
                       {[1, 2, 3, 4, 5].map((i) => (
                         <Skeleton key={i} className="h-12" />
                       ))}
                     </div>
-                  ) : transactions.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No transactions recorded yet
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-[400px]">
-                      <div className="space-y-2">
-                        {transactions.map((tx) => {
-                          const wallet = wallets.find(w => w.id === tx.walletId);
-                          return (
-                            <div 
-                              key={tx.id} 
-                              className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                              data-testid={`row-transaction-${tx.id}`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-full ${tx.transactionType === "credit" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
-                                  {tx.transactionType === "credit" ? (
-                                    <ArrowUpRight className="h-4 w-4 text-green-600" />
-                                  ) : (
-                                    <ArrowDownRight className="h-4 w-4 text-red-600" />
-                                  )}
+                  ) : (() => {
+                    const filtered = transactions.filter(tx => {
+                      if (txWalletFilter !== "all" && String(tx.walletId) !== txWalletFilter) return false;
+                      if (txTypeFilter !== "all" && tx.transactionType !== txTypeFilter) return false;
+                      if (txSearch && !(tx.description || tx.source || "").toLowerCase().includes(txSearch.toLowerCase())) return false;
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-muted-foreground">
+                          No transactions match your filters
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <ScrollArea className="h-[400px]">
+                        <div className="space-y-2">
+                          {filtered.map((tx) => {
+                            const wallet = wallets.find(w => w.id === tx.walletId);
+                            return (
+                              <div
+                                key={tx.id}
+                                className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                                data-testid={`row-transaction-${tx.id}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`p-2 rounded-full ${tx.transactionType === "credit" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
+                                    {tx.transactionType === "credit" ? (
+                                      <ArrowUpRight className="h-4 w-4 text-green-600" />
+                                    ) : (
+                                      <ArrowDownRight className="h-4 w-4 text-red-600" />
+                                    )}
+                                  </div>
+                                  <div>
+                                    <p className="font-medium">{tx.description || tx.source}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {wallet?.name} • {format(new Date(tx.transactionDate), "dd MMM yyyy, HH:mm")}
+                                    </p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-medium">{tx.description || tx.source}</p>
+                                <div className="text-right">
+                                  <p className={`font-bold ${tx.transactionType === "credit" ? "text-green-600" : "text-red-600"}`}>
+                                    {tx.transactionType === "credit" ? "+" : "-"}₹{parseFloat(tx.amount?.toString() || "0").toLocaleString()}
+                                  </p>
                                   <p className="text-sm text-muted-foreground">
-                                    {wallet?.name} • {format(new Date(tx.transactionDate), "dd MMM yyyy, HH:mm")}
+                                    Bal: ₹{parseFloat(tx.balanceAfter?.toString() || "0").toLocaleString()}
                                   </p>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className={`font-bold ${tx.transactionType === "credit" ? "text-green-600" : "text-red-600"}`}>
-                                  {tx.transactionType === "credit" ? "+" : "-"}₹{parseFloat(tx.amount?.toString() || "0").toLocaleString()}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Bal: ₹{parseFloat(tx.balanceAfter?.toString() || "0").toLocaleString()}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                  )}
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </TabsContent>
