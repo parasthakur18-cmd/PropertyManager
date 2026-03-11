@@ -165,6 +165,15 @@ export default function Bookings() {
     }
   }, [isDialogOpen]);
 
+  // Auto-select property when dialog opens and only one property exists
+  useEffect(() => {
+    if (isDialogOpen && properties && properties.length === 1) {
+      if (!form.getValues("propertyId")) {
+        form.setValue("propertyId", properties[0].id);
+      }
+    }
+  }, [isDialogOpen, properties]);
+
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
     staleTime: 2 * 60 * 1000,
@@ -1230,7 +1239,7 @@ export default function Bookings() {
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-property">
-                            <SelectValue placeholder="Select property (optional - filters rooms)" />
+                            <SelectValue placeholder="Select property" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -1241,9 +1250,6 @@ export default function Bookings() {
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Select a property to filter rooms and enable travel agent selection
-                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1266,25 +1272,21 @@ export default function Bookings() {
                             onValueChange={(value) => {
                               const roomId = parseInt(value);
                               field.onChange(roomId);
-                              const selectedRoom = rooms?.find(r => r.id === roomId);
-                              if (selectedRoom) {
-                                form.setValue("propertyId", selectedRoom.propertyId);
-                              }
                             }}
                             value={field.value ? field.value.toString() : undefined}
+                            disabled={!selectedPropertyId}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-booking-room">
-                                <SelectValue placeholder="Select room" />
+                                <SelectValue placeholder={selectedPropertyId ? "Select room" : "Select a property first"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
                               {getRoomsForBookingType("single", { isEditMode: false }).map((room) => {
-                                const property = properties?.find(p => p.id === room.propertyId);
                                 const roomDescription = room.roomType || "Standard";
                                 return (
                                   <SelectItem key={room.id} value={room.id.toString()}>
-                                    {property?.name} - Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
+                                    Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
                                   </SelectItem>
                                 );
                               })}
@@ -1308,24 +1310,20 @@ export default function Bookings() {
                             onValueChange={(value) => {
                               const roomId = parseInt(value);
                               field.onChange(roomId);
-                              const selectedRoom = rooms?.find(r => r.id === roomId);
-                              if (selectedRoom) {
-                                form.setValue("propertyId", selectedRoom.propertyId);
-                              }
                             }}
                             value={field.value ? field.value.toString() : undefined}
+                            disabled={!selectedPropertyId}
                           >
                             <FormControl>
                               <SelectTrigger data-testid="select-dormitory-room">
-                                <SelectValue placeholder="Select dormitory room" />
+                                <SelectValue placeholder={selectedPropertyId ? "Select dormitory room" : "Select a property first"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
                               {getRoomsForBookingType("dormitory", { isEditMode: false }).map((room) => {
-                                const property = properties?.find(p => p.id === room.propertyId);
                                 return (
                                   <SelectItem key={room.id} value={room.id.toString()}>
-                                    {property?.name} - Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
+                                    Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
                                   </SelectItem>
                                 );
                               })}
@@ -1402,7 +1400,12 @@ export default function Bookings() {
                           {selectedRoomIds.length} room{selectedRoomIds.length !== 1 ? 's' : ''} selected
                         </Badge>
                       </div>
-                      <div className="border border-border rounded-md max-h-64 overflow-y-auto">
+                      {!selectedPropertyId && (
+                        <div className="border border-dashed border-border rounded-md p-6 text-center text-sm text-muted-foreground">
+                          Select a property above to see available rooms
+                        </div>
+                      )}
+                      <div className={`border border-border rounded-md max-h-64 overflow-y-auto ${!selectedPropertyId ? 'hidden' : ''}`}>
                         <table className="w-full">
                           <thead className="bg-muted sticky top-0">
                             <tr className="border-b border-border">
