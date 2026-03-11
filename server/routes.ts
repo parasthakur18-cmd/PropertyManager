@@ -4709,9 +4709,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
           const foodCharges = bookingOrders.filter(o => o.status !== "rejected").reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
           
-          const allExtras = await storage.getAllExtraServices();
-          const bookingExtras = allExtras.filter(e => e.bookingId === booking.id);
-          const extraCharges = bookingExtras.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0);
+          let bookingExtras: any[] = [];
+          try {
+            bookingExtras = await storage.getExtraServicesByBooking(booking.id);
+          } catch (extErr: any) {
+            console.warn(`[AutoCheckout] Could not fetch extra services for booking ${booking.id}: ${extErr.message}`);
+          }
+          const extraCharges = bookingExtras.reduce((sum: number, e: any) => sum + parseFloat(e.amount || "0"), 0);
 
           const subtotal = roomCharges + foodCharges + extraCharges;
           const gstAmount = (roomCharges * 5) / 100;
@@ -6719,9 +6723,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const allOrders = await storage.getAllOrders();
       const orders = allOrders.filter(o => o.bookingId === booking.id);
 
-      // Fetch extra services for this booking
-      const allExtras = await storage.getAllExtraServices();
-      const extraServices = allExtras.filter(e => e.bookingId === booking.id);
+      // Fetch extra services for this booking (resilient: works even if property_id column is missing on older DBs)
+      let extraServices: any[] = [];
+      try {
+        extraServices = await storage.getExtraServicesByBooking(booking.id);
+      } catch (extrasErr: any) {
+        console.warn(`[BillDetails] Could not fetch extra services for booking ${booking.id}: ${extrasErr.message}`);
+      }
 
       // Return enriched bill data
       res.json({
