@@ -1283,35 +1283,179 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Extra Service operations
+  // NOTE: Uses raw SQL with graceful fallback for production DBs missing the property_id column.
+  private _extraServicesHasPropertyId: boolean | null = null;
+
+  private async _extraServicesPropertyIdExists(): Promise<boolean> {
+    if (this._extraServicesHasPropertyId !== null) return this._extraServicesHasPropertyId;
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'extra_services' AND column_name = 'property_id'`
+      );
+      this._extraServicesHasPropertyId = result.rows.length > 0;
+    } catch {
+      this._extraServicesHasPropertyId = false;
+    } finally {
+      client.release();
+    }
+    return this._extraServicesHasPropertyId!;
+  }
+
+  private _extraServiceCols(): string {
+    return `id, booking_id, service_name, description, amount, created_at, service_type,
+            vendor_name, vendor_contact, commission, service_date, is_paid, payment_method`;
+  }
+
+  private _mapExtraServiceRow(row: any): ExtraService {
+    return {
+      id: row.id,
+      bookingId: row.booking_id,
+      propertyId: row.property_id ?? null,
+      serviceName: row.service_name,
+      description: row.description ?? null,
+      amount: row.amount,
+      createdAt: row.created_at,
+      serviceType: row.service_type,
+      vendorName: row.vendor_name ?? null,
+      vendorContact: row.vendor_contact ?? null,
+      commission: row.commission ?? null,
+      serviceDate: row.service_date,
+      isPaid: row.is_paid,
+      paymentMethod: row.payment_method ?? null,
+    };
+  }
+
   async getAllExtraServices(): Promise<ExtraService[]> {
-    return await db.select().from(extraServices).orderBy(desc(extraServices.createdAt));
+    const hasCol = await this._extraServicesPropertyIdExists();
+    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT ${cols} FROM extra_services ORDER BY created_at DESC`
+      );
+      return result.rows.map(r => this._mapExtraServiceRow(r));
+    } finally {
+      client.release();
+    }
   }
 
   async getExtraService(id: number): Promise<ExtraService | undefined> {
-    const [service] = await db.select().from(extraServices).where(eq(extraServices.id, id));
-    return service;
+    const hasCol = await this._extraServicesPropertyIdExists();
+    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT ${cols} FROM extra_services WHERE id = $1`,
+        [id]
+      );
+      return result.rows[0] ? this._mapExtraServiceRow(result.rows[0]) : undefined;
+    } finally {
+      client.release();
+    }
   }
 
   async getExtraServicesByBooking(bookingId: number): Promise<ExtraService[]> {
-    return await db
-      .select()
-      .from(extraServices)
-      .where(eq(extraServices.bookingId, bookingId))
-      .orderBy(desc(extraServices.createdAt));
+    const hasCol = await this._extraServicesPropertyIdExists();
+    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `SELECT ${cols} FROM extra_services WHERE booking_id = $1 ORDER BY created_at DESC`,
+        [bookingId]
+      );
+      return result.rows.map(r => this._mapExtraServiceRow(r));
+    } finally {
+      client.release();
+    }
   }
 
   async createExtraService(service: InsertExtraService): Promise<ExtraService> {
-    const [newService] = await db.insert(extraServices).values(service).returning();
-    return newService;
+    const hasCol = await this._extraServicesPropertyIdExists();
+    const client = await pool.connect();
+    try {
+      let result;
+      if (hasCol) {
+        result = await client.query(
+          `INSERT INTO extra_services
+             (booking_id, property_id, service_name, description, amount, service_type,
+              vendor_name, vendor_contact, commission, service_date, is_paid, payment_method)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           RETURNING ${this._extraServiceCols()}, property_id`,
+          [
+            service.bookingId ?? null,
+            service.propertyId ?? null,
+            service.serviceName,
+            service.description ?? null,
+            service.amount,
+            service.serviceType,
+            service.vendorName ?? null,
+            service.vendorContact ?? null,
+            service.commission ?? null,
+            service.serviceDate,
+            service.isPaid ?? false,
+            service.paymentMethod ?? null,
+          ]
+        );
+      } else {
+        result = await client.query(
+          `INSERT INTO extra_services
+             (booking_id, service_name, description, amount, service_type,
+              vendor_name, vendor_contact, commission, service_date, is_paid, payment_method)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           RETURNING ${this._extraServiceCols()}`,
+          [
+            service.bookingId ?? null,
+            service.serviceName,
+            service.description ?? null,
+            service.amount,
+            service.serviceType,
+            service.vendorName ?? null,
+            service.vendorContact ?? null,
+            service.commission ?? null,
+            service.serviceDate,
+            service.isPaid ?? false,
+            service.paymentMethod ?? null,
+          ]
+        );
+      }
+      return this._mapExtraServiceRow(result.rows[0]);
+    } finally {
+      client.release();
+    }
   }
 
   async updateExtraService(id: number, service: Partial<InsertExtraService>): Promise<ExtraService> {
-    const [updated] = await db
-      .update(extraServices)
-      .set(service)
-      .where(eq(extraServices.id, id))
-      .returning();
-    return updated;
+    const hasCol = await this._extraServicesPropertyIdExists();
+    const setClauses: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (service.serviceName !== undefined) { setClauses.push(`service_name = $${idx++}`); params.push(service.serviceName); }
+    if (service.description !== undefined) { setClauses.push(`description = $${idx++}`); params.push(service.description); }
+    if (service.amount !== undefined) { setClauses.push(`amount = $${idx++}`); params.push(service.amount); }
+    if (service.serviceType !== undefined) { setClauses.push(`service_type = $${idx++}`); params.push(service.serviceType); }
+    if (service.vendorName !== undefined) { setClauses.push(`vendor_name = $${idx++}`); params.push(service.vendorName); }
+    if (service.vendorContact !== undefined) { setClauses.push(`vendor_contact = $${idx++}`); params.push(service.vendorContact); }
+    if (service.commission !== undefined) { setClauses.push(`commission = $${idx++}`); params.push(service.commission); }
+    if (service.serviceDate !== undefined) { setClauses.push(`service_date = $${idx++}`); params.push(service.serviceDate); }
+    if (service.isPaid !== undefined) { setClauses.push(`is_paid = $${idx++}`); params.push(service.isPaid); }
+    if (service.paymentMethod !== undefined) { setClauses.push(`payment_method = $${idx++}`); params.push(service.paymentMethod); }
+    if (hasCol && service.propertyId !== undefined) { setClauses.push(`property_id = $${idx++}`); params.push(service.propertyId); }
+
+    params.push(id);
+    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `UPDATE extra_services SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING ${cols}`,
+        params
+      );
+      return this._mapExtraServiceRow(result.rows[0]);
+    } finally {
+      client.release();
+    }
   }
 
   async deleteExtraService(id: number): Promise<void> {
