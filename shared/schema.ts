@@ -448,6 +448,10 @@ export const extraServices = pgTable("extra_services", {
 export const insertExtraServiceSchema = createInsertSchema(extraServices).omit({
   id: true,
   createdAt: true,
+}).extend({
+  serviceDate: z.union([z.string(), z.date()]).transform((val) =>
+    typeof val === "string" ? new Date(val) : val
+  ),
 });
 
 export type InsertExtraService = z.infer<typeof insertExtraServiceSchema>;
