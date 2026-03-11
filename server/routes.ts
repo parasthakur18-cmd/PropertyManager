@@ -3797,13 +3797,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           .reduce((sum, order) => sum + parseFloat(order.totalAmount || "0"), 0);
 
         // Fetch and calculate extra service charges (now including manual charges)
-        const allExtras = await storage.getAllExtraServices();
-        const bookingExtras = allExtras.filter(e => e.bookingId === bookingId);
-        extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+        let bookingExtras: any[] = [];
+        try {
+          bookingExtras = await storage.getExtraServicesByBooking(bookingId);
+        } catch (extrasErr: any) {
+          console.warn(`[Checkout] Could not fetch extra services (non-critical): ${extrasErr.message}`);
+        }
+        extraCharges = bookingExtras.reduce((sum: number, extra: any) => sum + parseFloat(extra.amount || "0"), 0);
         // Track services already collected separately so they are not double-charged at checkout
         alreadyCollectedServices = bookingExtras
-          .filter(e => e.isPaid)
-          .reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+          .filter((e: any) => e.isPaid)
+          .reduce((sum: number, extra: any) => sum + parseFloat(extra.amount || "0"), 0);
 
         // Calculate totals
         // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
