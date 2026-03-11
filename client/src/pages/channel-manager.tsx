@@ -262,17 +262,6 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId && !!config,
   });
 
-  if (!config) {
-    return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
-        </AlertDescription>
-      </Alert>
-    );
-  }
-
   const saveMappings = useMutation({
     mutationFn: async (allMappings: { hostezeeRoomType: string; aiosellRoomCode: string }[]) => {
       return apiRequest("/api/aiosell/room-mappings", "POST", { propertyId, mappings: allMappings });
@@ -284,6 +273,17 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  if (!config) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   const existingMappingData = mappings.map(m => ({ hostezeeRoomType: m.hostezeeRoomType, aiosellRoomCode: m.aiosellRoomCode }));
   const allMappings = [...existingMappingData, ...newMappings];
