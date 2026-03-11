@@ -16223,12 +16223,28 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
       }
 
+      // Resolve room IDs before deleting/inserting to fail early if any room is not found
+      const resolvedMappings = [];
+      for (const m of mappings) {
+        const [room] = await db
+          .select({ id: rooms.id })
+          .from(rooms)
+          .where(and(eq(rooms.propertyId, propertyId), eq(rooms.roomType, m.hostezeeRoomType)));
+        if (!room) {
+          return res.status(400).json({
+            message: `Room not found for type "${m.hostezeeRoomType}" in property ${propertyId}`,
+          });
+        }
+        resolvedMappings.push({ ...m, hostezeeRoomId: room.id });
+      }
+
       await db.delete(aiosellRoomMappings).where(eq(aiosellRoomMappings.configId, config.id));
       const created = [];
-      for (const m of mappings) {
+      for (const m of resolvedMappings) {
         const [mapping] = await db.insert(aiosellRoomMappings).values({
           configId: config.id,
           propertyId,
+          hostezeeRoomId: m.hostezeeRoomId,
           hostezeeRoomType: m.hostezeeRoomType,
           aiosellRoomCode: m.aiosellRoomCode,
         }).returning();

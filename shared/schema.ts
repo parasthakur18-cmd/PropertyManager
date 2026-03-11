@@ -1693,6 +1693,7 @@ export const aiosellRoomMappings = pgTable("aiosell_room_mappings", {
   id: serial("id").primaryKey(),
   configId: integer("config_id").notNull(),
   propertyId: integer("property_id").notNull(),
+  hostezeeRoomId: integer("hostezee_room_id").notNull(),
   hostezeeRoomType: varchar("hostezee_room_type", { length: 100 }).notNull(),
   aiosellRoomCode: varchar("aiosell_room_code", { length: 100 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
