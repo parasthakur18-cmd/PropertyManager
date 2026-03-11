@@ -1,0 +1,173 @@
+We need to improve and stabilize the **Menu Management and Bulk CSV Import system** in our PMS (Hostezee). The goal is to ensure that menu uploads, edits, category management, and item availability work reliably for hotel room service menus.
+
+Current Flow:
+
+1. Admin downloads CSV template from Menu Management → Bulk Import CSV → Download Template.
+2. Admin fills menu data in the CSV file.
+3. Admin uploads CSV to import menu items.
+4. System shows preview and then imports the menu.
+
+The current CSV columns are:
+
+* sequence (optional)
+* name (required)
+* category (required)
+* price (required)
+* description (optional)
+* isVeg (optional)
+* isAvailable (optional)
+* variants (optional)
+* addOns (optional)
+
+We need to audit and improve the entire flow so menu uploads and updates work properly.
+
+Required Improvements:
+
+1. CSV Validation
+   Add strict validation before import.
+
+Required fields:
+
+* name
+* category
+* price
+
+If any required field is missing, the row must be flagged as an error and cannot be imported.
+
+Validate numeric values:
+
+* price must be a valid number.
+
+Validate boolean fields:
+
+* isVeg must be true or false.
+* isAvailable must be true, false, or blank (default true).
+
+Validate variants format:
+Correct format:
+Name:Price|Name:Price
+
+Example:
+Half:150|Full:280
+
+If format is incorrect, show an error message identifying the row and column.
+
+Validate addOns format:
+Correct format:
+Name:Price|Name:Price
+
+Example:
+Extra Raita:30|Extra Salan:20
+
+If invalid, block import for that row.
+
+2. Category Handling
+   Currently the system auto-creates categories if they don't exist.
+
+Improve this logic:
+
+* Trim extra spaces from category names.
+* Ignore case differences (e.g., "Biryani" vs "biryani").
+* Warn admin before creating a new category.
+
+Example message:
+Category "Biriyani" does not exist. Create new category?
+
+Allow admin to confirm or map to an existing category.
+
+3. CSV Import Preview Screen
+   Improve preview screen before import.
+
+Preview must show:
+
+* sequence
+* name
+* category
+* price
+* availability
+* validation errors
+
+Rows with errors must be highlighted and blocked from import until fixed.
+
+4. Menu Image Support
+   Add support for menu images in CSV.
+
+Add new column:
+imageUrl
+
+Example:
+https://example.com/menu/chicken-biryani.jpg
+
+If imageUrl is provided:
+
+* download and store image
+* associate with menu item.
+
+If missing, menu item should still import.
+
+5. Menu Item Availability
+   When importing items:
+
+* isAvailable=true → item visible in menu.
+* isAvailable=false → item imported but disabled.
+
+Disabled items:
+
+* must not appear in guest menu.
+* must not be orderable.
+
+Admin must also have a quick toggle in the UI to enable/disable items instantly.
+
+6. Property-Based Menu Handling
+   Menu import must apply only to the selected property.
+
+Flow:
+Admin selects property from dropdown.
+CSV import affects only that property.
+
+Example:
+Forest Pinnacle menu import should not affect Woodpecker Inn.
+
+7. Menu Duplication Feature
+   Add a feature to copy a menu from one property to another.
+
+Example:
+Copy menu from Forest Pinnacle → Woodpecker Inn.
+
+This avoids re-uploading CSV files multiple times.
+
+8. Post Import Behavior
+   After importing the menu:
+
+* categories must appear immediately in Menu Management.
+* menu items must be editable.
+* menu must appear instantly in the guest ordering interface.
+
+Ensure kitchen system receives orders correctly after import.
+
+9. Menu Editing After Import
+   Admin must be able to:
+
+* edit menu items
+* change category
+* change price
+* update variants
+* update add-ons
+* enable/disable item
+
+Item card should show:
+
+* item name
+* category
+* price
+* availability toggle
+* edit button
+* delete button.
+
+10. Performance
+    CSV imports must handle large menus (200+ items).
+
+Preview must load quickly and prevent server crashes.
+
+Goal:
+Make the Menu Management system reliable so staff can upload or update menu items easily without errors, and ensure that changes appear correctly in the guest ordering interface and kitchen system.
