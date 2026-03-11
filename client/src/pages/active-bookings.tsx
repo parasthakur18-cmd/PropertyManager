@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -12,6 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { SERVICE_TYPES, PAYMENT_METHODS, serviceTypeLabels } from "@/pages/addons";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -199,6 +201,18 @@ export default function ActiveBookings() {
     advancePaid: number;
     nights: number;
   }> | null>(null);
+
+  const [addServiceDialog, setAddServiceDialog] = useState<{ open: boolean; bookingId: number | null; guestName: string }>({
+    open: false, bookingId: null, guestName: ""
+  });
+  const [svcType, setSvcType] = useState("taxi");
+  const [svcName, setSvcName] = useState("");
+  const [svcAmount, setSvcAmount] = useState("");
+  const [svcDate, setSvcDate] = useState(new Date().toISOString().split("T")[0]);
+  const [svcDescription, setSvcDescription] = useState("");
+  const [svcCollectNow, setSvcCollectNow] = useState(false);
+  const [svcPaymentMethod, setSvcPaymentMethod] = useState("cash");
+  const [svcCustomType, setSvcCustomType] = useState("");
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -629,6 +643,32 @@ export default function ActiveBookings() {
         description: error.message || "Unable to confirm advance payment",
         variant: "destructive",
       });
+    },
+  });
+
+  const addServiceMutation = useMutation({
+    mutationFn: async (data: {
+      bookingId: number; serviceType: string; serviceName: string;
+      amount: string; serviceDate: string; description?: string;
+      isPaid?: boolean; paymentMethod?: string;
+    }) => {
+      return await apiRequest("/api/extra-services", "POST", {
+        ...data,
+        paymentMethod: data.isPaid ? (data.paymentMethod || "cash") : null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
+      toast({ title: "Service added", description: "Service has been added to the guest bill" });
+      setAddServiceDialog({ open: false, bookingId: null, guestName: "" });
+      setSvcName(""); setSvcAmount(""); setSvcDescription(""); setSvcType("taxi");
+      setSvcCollectNow(false); setSvcPaymentMethod("cash"); setSvcCustomType("");
+      setSvcDate(new Date().toISOString().split("T")[0]);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to add service", variant: "destructive" });
     },
   });
 
@@ -1149,7 +1189,18 @@ export default function ActiveBookings() {
                   </div>
                 )}
 
-                <div className="mt-auto pt-3 flex gap-2">
+                <div className="mt-auto pt-3 space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                    onClick={() => setAddServiceDialog({ open: true, bookingId: booking.id, guestName: booking.guest.fullName })}
+                    data-testid={`button-add-service-${booking.id}`}
+                  >
+                    <Wrench className="h-4 w-4 mr-2" />
+                    Add Service
+                  </Button>
+                  <div className="flex gap-2">
                   <Button
                     variant="outline"
                     className="flex-1"
@@ -1250,6 +1301,7 @@ export default function ActiveBookings() {
                     <LogOut className="h-4 w-4 mr-2" />
                     Checkout
                   </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -2058,10 +2110,15 @@ export default function ActiveBookings() {
                   {billPreviewBooking.extraServices && billPreviewBooking.extraServices.length > 0 && (
                     <div style={{ marginBottom: "15px" }}>
                       <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Extra Services</h3>
-                      {billPreviewBooking.extraServices.map((service) => (
-                        <div key={service.id} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                          <span>{service.serviceName}</span>
-                          <span>₹{service.amount}</span>
+                      {billPreviewBooking.extraServices.map((service: any) => (
+                        <div key={service.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+                          <span style={{ flex: 1 }}>{service.serviceName}</span>
+                          {service.isPaid && (
+                            <span style={{ fontSize: "11px", color: "#16a34a", marginRight: "8px", fontStyle: "italic" }}>
+                              ✓ collected
+                            </span>
+                          )}
+                          <span style={{ fontWeight: service.isPaid ? "normal" : "bold" }}>₹{service.amount}</span>
                         </div>
                       ))}
                       <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: "5px" }}>
@@ -2348,6 +2405,162 @@ export default function ActiveBookings() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={addServiceDialog.open} onOpenChange={(open) => {
+        if (!open) {
+          setAddServiceDialog({ open: false, bookingId: null, guestName: "" });
+          setSvcName(""); setSvcAmount(""); setSvcDescription(""); setSvcType("taxi");
+          setSvcCollectNow(false); setSvcPaymentMethod("cash"); setSvcCustomType("");
+          setSvcDate(new Date().toISOString().split("T")[0]);
+        }
+      }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-add-service">
+          <DialogHeader>
+            <DialogTitle>
+              Add Service — {addServiceDialog.guestName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="svc-type">Service Type</Label>
+              <Select value={svcType} onValueChange={(v) => {
+                setSvcType(v);
+                setSvcCustomType("");
+                const label = SERVICE_TYPES.find(t => t.value === v)?.label || "";
+                setSvcName(v !== "other" ? label : "");
+              }}>
+                <SelectTrigger id="svc-type" data-testid="select-svc-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVICE_TYPES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {svcType === "other" && (
+              <div className="space-y-1">
+                <Label>Custom Type Name</Label>
+                <Input
+                  placeholder="e.g., Bike Rental, Spa"
+                  value={svcCustomType}
+                  onChange={(e) => {
+                    setSvcCustomType(e.target.value);
+                    setSvcName(e.target.value);
+                  }}
+                  data-testid="input-svc-custom-type"
+                />
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label htmlFor="svc-name">Service Name / Description</Label>
+              <Input
+                id="svc-name"
+                placeholder="e.g., Airport pickup at 6PM"
+                value={svcName}
+                onChange={(e) => setSvcName(e.target.value)}
+                data-testid="input-svc-name"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="svc-amount">Amount (₹)</Label>
+                <Input
+                  id="svc-amount"
+                  type="number"
+                  placeholder="500"
+                  value={svcAmount}
+                  onChange={(e) => setSvcAmount(e.target.value)}
+                  data-testid="input-svc-amount"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="svc-date">Service Date</Label>
+                <Input
+                  id="svc-date"
+                  type="date"
+                  value={svcDate}
+                  onChange={(e) => setSvcDate(e.target.value)}
+                  data-testid="input-svc-date"
+                />
+              </div>
+            </div>
+
+            <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold">Collect Payment Now</p>
+                  <p className="text-xs text-muted-foreground">Guest is paying for this service right now</p>
+                </div>
+                <Switch
+                  checked={svcCollectNow}
+                  onCheckedChange={setSvcCollectNow}
+                  data-testid="switch-svc-collect-now"
+                />
+              </div>
+              {svcCollectNow && (
+                <div className="space-y-1">
+                  <Label>Payment Method</Label>
+                  <Select value={svcPaymentMethod} onValueChange={setSvcPaymentMethod}>
+                    <SelectTrigger data-testid="select-svc-payment-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_METHODS.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Will be recorded to wallet immediately</p>
+                </div>
+              )}
+              {!svcCollectNow && (
+                <p className="text-xs text-muted-foreground">
+                  Service will be added to the final bill at checkout
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setAddServiceDialog({ open: false, bookingId: null, guestName: "" })}
+                data-testid="button-cancel-add-service"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  if (!addServiceDialog.bookingId || !svcAmount || !svcName) {
+                    toast({ title: "Missing fields", description: "Please fill in service name and amount", variant: "destructive" });
+                    return;
+                  }
+                  addServiceMutation.mutate({
+                    bookingId: addServiceDialog.bookingId,
+                    serviceType: svcType === "other" ? (svcCustomType || "other") : svcType,
+                    serviceName: svcName,
+                    amount: svcAmount,
+                    serviceDate: svcDate,
+                    description: svcDescription || undefined,
+                    isPaid: svcCollectNow,
+                    paymentMethod: svcCollectNow ? svcPaymentMethod : undefined,
+                  });
+                }}
+                disabled={addServiceMutation.isPending}
+                data-testid="button-confirm-add-service"
+              >
+                {addServiceMutation.isPending ? "Adding..." : svcCollectNow ? "Add & Collect" : "Add to Bill"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -431,6 +431,7 @@ export type Order = typeof orders.$inferSelect;
 export const extraServices = pgTable("extra_services", {
   id: serial("id").primaryKey(),
   bookingId: integer("booking_id").references(() => bookings.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   serviceName: varchar("service_name", { length: 255 }).notNull(),
   description: text("description"),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
@@ -440,6 +441,8 @@ export const extraServices = pgTable("extra_services", {
   vendorContact: varchar("vendor_contact", { length: 20 }),
   commission: decimal("commission", { precision: 10, scale: 2 }),
   serviceDate: timestamp("service_date").notNull(),
+  isPaid: boolean("is_paid").default(false).notNull(),
+  paymentMethod: varchar("payment_method", { length: 50 }),
 });
 
 export const insertExtraServiceSchema = createInsertSchema(extraServices).omit({

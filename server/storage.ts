@@ -456,6 +456,7 @@ export interface IStorage {
   recordSalaryAdvanceToWallet(propertyId: number, advanceId: number, amount: number, paymentMethod: string, staffName: string, userId: string | null): Promise<WalletTransaction | null>;
   recordLeasePaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordVendorPaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, vendorName: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordExtraServicePaymentToWallet(propertyId: number, serviceId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4745,6 +4746,32 @@ export class DatabaseStorage implements IStorage {
       'vendor_payment',
       paymentId,
       `Vendor payment - ${vendorName}`,
+      null,
+      new Date(),
+      userId
+    );
+  }
+
+  async recordExtraServicePaymentToWallet(
+    propertyId: number,
+    serviceId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
+      return null;
+    }
+    return this.recordPaymentToWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'extra_service_payment',
+      serviceId,
+      description,
       null,
       new Date(),
       userId

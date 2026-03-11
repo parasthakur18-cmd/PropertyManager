@@ -410,6 +410,7 @@ export default function Wallets() {
       case "cancellation_charge": return "Cancellation";
       case "refund": return "Refund";
       case "manual": return "Manual Entry";
+      case "extra_service_payment": return "Extra Service";
       default: return source?.replace(/_/g, " ") || "Other";
     }
   };
@@ -425,6 +426,7 @@ export default function Wallets() {
       case "cancellation_charge": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
       case "refund": return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
       case "manual": return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+      case "extra_service_payment": return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200";
       default: return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
     }
   };
@@ -795,6 +797,7 @@ export default function Wallets() {
                         <SelectItem value="booking_payment">Room Payment</SelectItem>
                         <SelectItem value="food_order_payment">Food Order</SelectItem>
                         <SelectItem value="advance_payment">Advance</SelectItem>
+                        <SelectItem value="extra_service_payment">Extra Service</SelectItem>
                         <SelectItem value="expense">Expense</SelectItem>
                         <SelectItem value="vendor_payment">Vendor</SelectItem>
                         <SelectItem value="salary_payment">Salary</SelectItem>

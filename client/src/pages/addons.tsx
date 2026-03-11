@@ -9,33 +9,20 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertExtraServiceSchema, type ExtraService, type Booking } from "@shared/schema";
-
-interface ActiveBookingWithDetails extends Booking {
-  guest: {
-    id: number;
-    fullName: string;
-    email: string | null;
-    phone: string;
-  };
-  room: {
-    id: number;
-    roomNumber: string;
-    type: string;
-    pricePerNight: string;
-  };
-  property?: {
-    id: number;
-    name: string;
-    location: string;
-  };
-}
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Car, MapPin, Mountain, Percent, Trash2 } from "lucide-react";
+import { Plus, Car, MapPin, Mountain, Percent, Trash2, CheckCircle2, Clock, Flame, Shirt, BedDouble, Bus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+interface ActiveBookingWithDetails extends Booking {
+  guest: { id: number; fullName: string; email: string | null; phone: string };
+  room: { id: number; roomNumber: string; type: string; pricePerNight: string };
+  property?: { id: number; name: string; location: string };
+}
 
 const serviceFormSchema = insertExtraServiceSchema.extend({
   amount: z.string().min(1, "Amount is required"),
@@ -45,28 +32,59 @@ const serviceFormSchema = insertExtraServiceSchema.extend({
   vendorName: z.string().optional(),
   vendorContact: z.string().optional(),
   description: z.string().optional(),
+  isPaid: z.boolean().optional(),
+  paymentMethod: z.string().optional(),
 });
 
-const serviceTypeIcons: Record<string, any> = {
+export const serviceTypeIcons: Record<string, any> = {
   taxi: Car,
   guide: MapPin,
   adventure: Mountain,
   partner_commission: Percent,
+  bonfire: Flame,
+  laundry: Shirt,
+  extra_bed: BedDouble,
+  local_tour: Bus,
 };
 
-const serviceTypeLabels: Record<string, string> = {
+export const serviceTypeLabels: Record<string, string> = {
   taxi: "Taxi/Cab",
   guide: "Local Guide",
   adventure: "Adventure Package",
   partner_commission: "Partner Commission",
-  other: "Other/Custom Service",
+  bonfire: "Bonfire",
+  laundry: "Laundry",
+  extra_bed: "Extra Bed",
+  local_tour: "Local Tour",
+  other: "Other/Custom",
 };
+
+export const SERVICE_TYPES = [
+  { value: "taxi", label: "Taxi/Cab Booking" },
+  { value: "bonfire", label: "Bonfire" },
+  { value: "laundry", label: "Laundry" },
+  { value: "extra_bed", label: "Extra Bed" },
+  { value: "local_tour", label: "Local Tour / Transport" },
+  { value: "guide", label: "Local Guide" },
+  { value: "adventure", label: "Adventure Package" },
+  { value: "partner_commission", label: "Partner Commission" },
+  { value: "other", label: "Other / Custom" },
+];
+
+export const PAYMENT_METHODS = [
+  { value: "cash", label: "Cash" },
+  { value: "upi", label: "UPI / PhonePe / GPay" },
+  { value: "bank", label: "Bank Transfer / NEFT" },
+  { value: "card", label: "Card" },
+];
 
 export default function AddOnServices() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
   const [showCustomServiceType, setShowCustomServiceType] = useState(false);
+  const [markPaidDialog, setMarkPaidDialog] = useState<{ open: boolean; serviceId: number | null }>({ open: false, serviceId: null });
+  const [markPaidMethod, setMarkPaidMethod] = useState("cash");
 
   const { data: services = [], isLoading } = useQuery<ExtraService[]>({
     queryKey: ["/api/extra-services"],
@@ -88,11 +106,13 @@ export default function AddOnServices() {
       vendorContact: "",
       commission: "",
       serviceDate: new Date().toISOString().split("T")[0],
+      isPaid: false,
+      paymentMethod: "cash",
     },
   });
 
-  // Watch the serviceType field to show/hide custom input
   const selectedServiceType = form.watch("serviceType");
+  const collectNow = form.watch("isPaid");
 
   const createServiceMutation = useMutation({
     mutationFn: async (data: z.infer<typeof serviceFormSchema>) => {
@@ -100,24 +120,19 @@ export default function AddOnServices() {
         ...data,
         amount: data.amount,
         commission: data.commission || null,
+        paymentMethod: data.isPaid ? (data.paymentMethod || "cash") : null,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
-      toast({
-        title: "Service added",
-        description: "Add-on service has been recorded successfully",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
+      toast({ title: "Service added", description: "Add-on service has been recorded successfully" });
       setIsDialogOpen(false);
       form.reset();
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to add service",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to add service", variant: "destructive" });
     },
   });
 
@@ -128,17 +143,27 @@ export default function AddOnServices() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
-      toast({
-        title: "Service deleted",
-        description: "Add-on service has been removed",
-      });
+      toast({ title: "Service deleted", description: "Add-on service has been removed" });
     },
     onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete service",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message || "Failed to delete service", variant: "destructive" });
+    },
+  });
+
+  const markPaidMutation = useMutation({
+    mutationFn: async ({ serviceId, paymentMethod }: { serviceId: number; paymentMethod: string }) => {
+      return await apiRequest(`/api/extra-services/${serviceId}/mark-paid`, "POST", { paymentMethod });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
+      toast({ title: "Payment recorded", description: "Service payment has been recorded to your wallet" });
+      setMarkPaidDialog({ open: false, serviceId: null });
+      setMarkPaidMethod("cash");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to record payment", variant: "destructive" });
     },
   });
 
@@ -146,21 +171,19 @@ export default function AddOnServices() {
     createServiceMutation.mutate(data);
   });
 
-  const getBookingInfo = (bookingId: number) => {
+  const getBookingInfo = (bookingId: number | null) => {
+    if (!bookingId) return "No booking";
     const booking = activeBookings.find(b => b.id === bookingId);
     if (!booking) return `Booking #${bookingId}`;
-    
     const roomNumber = booking.room?.roomNumber || booking.roomId;
     const guestName = booking.guest?.fullName || "Guest";
-    
     return `Room ${roomNumber} - ${guestName}`;
   };
 
-  const filteredServices = filterType === "all" 
-    ? services 
+  const filteredServices = filterType === "all"
+    ? services
     : services.filter(s => s.serviceType === filterType);
 
-  // Get unique service types from the data
   const uniqueServiceTypes = Array.from(new Set(services.map(s => s.serviceType)));
 
   if (isLoading) {
@@ -177,7 +200,7 @@ export default function AddOnServices() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-semibold" data-testid="text-page-title">Add-on Services</h1>
-            <p className="text-muted-foreground mt-1">Manage taxi, guide, adventure packages, and partner services</p>
+            <p className="text-muted-foreground mt-1">Manage taxi, bonfire, laundry, extra bed, tours, and other guest services</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -211,7 +234,6 @@ export default function AddOnServices() {
                             {activeBookings.map((booking) => {
                               const roomNumber = booking.room?.roomNumber || booking.roomId;
                               const guestName = booking.guest?.fullName || "Guest";
-                              
                               return (
                                 <SelectItem key={booking.id} value={booking.id.toString()}>
                                   Room {roomNumber} - {guestName}
@@ -231,11 +253,11 @@ export default function AddOnServices() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Service Type</FormLabel>
-                        <Select 
+                        <Select
                           onValueChange={(value) => {
                             field.onChange(value);
                             setShowCustomServiceType(value === "other");
-                          }} 
+                          }}
                           value={field.value}
                         >
                           <FormControl>
@@ -244,11 +266,9 @@ export default function AddOnServices() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="taxi">Taxi/Cab Booking</SelectItem>
-                            <SelectItem value="guide">Local Guide</SelectItem>
-                            <SelectItem value="adventure">Adventure Package</SelectItem>
-                            <SelectItem value="partner_commission">Partner Service Commission</SelectItem>
-                            <SelectItem value="other">Other/Custom Service</SelectItem>
+                            {SERVICE_TYPES.map(t => (
+                              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -256,24 +276,20 @@ export default function AddOnServices() {
                     )}
                   />
 
-                  {/* Show custom service type input when "Other" is selected */}
-                  {selectedServiceType === "other" && (
+                  {showCustomServiceType && (
                     <FormItem>
                       <FormLabel>Custom Service Type Name</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="e.g., Bike Rental, Massage, Laundry"
+                        <Input
+                          placeholder="e.g., Bike Rental, Massage"
                           onChange={(e) => {
-                            // Store custom type in serviceName field temporarily
                             const customType = e.target.value;
                             form.setValue("serviceType", customType || "other");
                           }}
                           data-testid="input-custom-service-type"
                         />
                       </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        Enter your custom service type (e.g., "Bike Rental", "Spa Service")
-                      </p>
+                      <p className="text-xs text-muted-foreground">Enter your custom service type</p>
                     </FormItem>
                   )}
 
@@ -284,7 +300,7 @@ export default function AddOnServices() {
                       <FormItem>
                         <FormLabel>Service Name</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="e.g., Airport Transfer, Mountain Trek" data-testid="input-service-name" />
+                          <Input {...field} placeholder="e.g., Airport Transfer, Bonfire for 2" data-testid="input-service-name" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -297,20 +313,14 @@ export default function AddOnServices() {
                       name="amount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Amount</FormLabel>
+                          <FormLabel>Amount (₹)</FormLabel>
                           <FormControl>
-                            <Input
-                              {...field}
-                              type="number"
-                              placeholder="1500"
-                              data-testid="input-amount"
-                            />
+                            <Input {...field} type="number" placeholder="1500" data-testid="input-amount" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="serviceDate"
@@ -326,12 +336,58 @@ export default function AddOnServices() {
                     />
                   </div>
 
+                  <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                    <FormField
+                      control={form.control}
+                      name="isPaid"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between">
+                          <div>
+                            <FormLabel className="text-sm font-semibold">Collect Payment Now</FormLabel>
+                            <p className="text-xs text-muted-foreground">Turn on if guest has already paid for this service</p>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={!!field.value}
+                              onCheckedChange={field.onChange}
+                              data-testid="switch-collect-now"
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                    {collectNow && (
+                      <FormField
+                        control={form.control}
+                        name="paymentMethod"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Payment Method</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || "cash"}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-payment-method">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {PAYMENT_METHODS.map(m => (
+                                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">Payment will be recorded to your wallet immediately</p>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+
                   <FormField
                     control={form.control}
                     name="vendorName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Vendor/Partner Name (Optional)</FormLabel>
+                        <FormLabel>Vendor / Partner Name (Optional)</FormLabel>
                         <FormControl>
                           <Input {...field} value={field.value || ""} placeholder="e.g., Mountain Adventure Co." data-testid="input-vendor-name" />
                         </FormControl>
@@ -354,7 +410,6 @@ export default function AddOnServices() {
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="commission"
@@ -362,13 +417,7 @@ export default function AddOnServices() {
                         <FormItem>
                           <FormLabel>Commission (Optional)</FormLabel>
                           <FormControl>
-                            <Input
-                              {...field}
-                              value={field.value || ""}
-                              type="number"
-                              placeholder="150"
-                              data-testid="input-commission"
-                            />
+                            <Input {...field} value={field.value || ""} type="number" placeholder="150" data-testid="input-commission" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -381,14 +430,14 @@ export default function AddOnServices() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Description (Optional)</FormLabel>
+                        <FormLabel>Notes (Optional)</FormLabel>
                         <FormControl>
                           <Textarea
                             {...field}
                             value={field.value || ""}
                             placeholder="Additional details about the service"
                             className="resize-none"
-                            rows={3}
+                            rows={2}
                             data-testid="input-description"
                           />
                         </FormControl>
@@ -398,12 +447,7 @@ export default function AddOnServices() {
                   />
 
                   <div className="flex justify-end gap-2 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
-                      data-testid="button-cancel"
-                    >
+                    <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} data-testid="button-cancel">
                       Cancel
                     </Button>
                     <Button type="submit" disabled={createServiceMutation.isPending} data-testid="button-submit">
@@ -444,7 +488,7 @@ export default function AddOnServices() {
               <Plus className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No services recorded</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Start by adding taxi, guide, or adventure services
+                Add taxi, bonfire, laundry, extra bed, or any other guest service
               </p>
             </CardContent>
           </Card>
@@ -460,9 +504,22 @@ export default function AddOnServices() {
                         <Icon className="h-5 w-5 text-primary" />
                         <CardTitle className="text-base">{service.serviceName}</CardTitle>
                       </div>
-                      <Badge variant="outline" data-testid={`badge-type-${service.id}`}>
-                        {serviceTypeLabels[service.serviceType] || service.serviceType}
-                      </Badge>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant="outline" data-testid={`badge-type-${service.id}`}>
+                          {serviceTypeLabels[service.serviceType] || service.serviceType}
+                        </Badge>
+                        {service.isPaid ? (
+                          <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs" data-testid={`badge-paid-${service.id}`}>
+                            <CheckCircle2 className="h-3 w-3 mr-1" />
+                            Collected
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-xs" data-testid={`badge-unpaid-${service.id}`}>
+                            <Clock className="h-3 w-3 mr-1" />
+                            On Bill
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -481,6 +538,12 @@ export default function AddOnServices() {
                         <span className="text-muted-foreground">Date</span>
                         <span className="font-medium">{format(new Date(service.serviceDate), "MMM d, yyyy")}</span>
                       </div>
+                      {service.paymentMethod && service.isPaid && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Paid via</span>
+                          <span className="font-medium capitalize">{service.paymentMethod}</span>
+                        </div>
+                      )}
                       {service.vendorName && (
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Vendor</span>
@@ -501,17 +564,32 @@ export default function AddOnServices() {
                       <p className="text-sm text-muted-foreground border-t pt-2">{service.description}</p>
                     )}
 
-                    <div className="pt-2 border-t">
+                    <div className="pt-2 border-t flex gap-2">
+                      {!service.isPaid && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          onClick={() => {
+                            setMarkPaidDialog({ open: true, serviceId: service.id });
+                            setMarkPaidMethod("cash");
+                          }}
+                          data-testid={`button-mark-paid-${service.id}`}
+                        >
+                          <CheckCircle2 className="h-4 w-4 mr-1" />
+                          Mark Paid
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
-                        className="w-full"
+                        className={service.isPaid ? "w-full" : "flex-1"}
                         onClick={() => deleteServiceMutation.mutate(service.id)}
                         disabled={deleteServiceMutation.isPending}
                         data-testid={`button-delete-${service.id}`}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Remove Service
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
                       </Button>
                     </div>
                   </CardContent>
@@ -521,6 +599,53 @@ export default function AddOnServices() {
           </div>
         )}
       </div>
+
+      <Dialog open={markPaidDialog.open} onOpenChange={(open) => setMarkPaidDialog({ open, serviceId: open ? markPaidDialog.serviceId : null })}>
+        <DialogContent className="max-w-sm" data-testid="dialog-mark-paid">
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Select how the guest paid for this service. Payment will be recorded to your wallet immediately.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Payment Method</label>
+              <Select value={markPaidMethod} onValueChange={setMarkPaidMethod}>
+                <SelectTrigger data-testid="select-mark-paid-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setMarkPaidDialog({ open: false, serviceId: null })}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  if (markPaidDialog.serviceId) {
+                    markPaidMutation.mutate({ serviceId: markPaidDialog.serviceId, paymentMethod: markPaidMethod });
+                  }
+                }}
+                disabled={markPaidMutation.isPending}
+                data-testid="button-confirm-mark-paid"
+              >
+                {markPaidMutation.isPending ? "Recording..." : "Confirm Payment"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

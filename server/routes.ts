@@ -2755,13 +2755,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const amount = extra.amount ? parseFloat(String(extra.amount)) : 0;
           return sum + (isNaN(amount) ? 0 : amount);
         }, 0);
+        const alreadyCollectedServices = bookingExtras.reduce((sum, extra) => {
+          if (!extra.isPaid) return sum;
+          const amount = extra.amount ? parseFloat(String(extra.amount)) : 0;
+          return sum + (isNaN(amount) ? 0 : amount);
+        }, 0);
 
         const subtotal = roomCharges + foodCharges + extraCharges;
         // Don't automatically apply GST/Service charges in the card display
         // They are optional and applied only at checkout based on user selection
         const totalAmount = subtotal;
         const advancePaid = booking.advanceAmount ? parseFloat(String(booking.advanceAmount)) : 0;
-        const balanceAmount = totalAmount - advancePaid;
+        const balanceAmount = totalAmount - advancePaid - alreadyCollectedServices;
 
         return {
           ...booking,
@@ -3735,6 +3740,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       let roomCharges: number;
       let foodCharges: number;
       let extraCharges: number;
+      let alreadyCollectedServices = 0;
       let subtotal: number;
       let gstAmount: number;
       let serviceChargeAmount: number;
@@ -3794,6 +3800,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const allExtras = await storage.getAllExtraServices();
         const bookingExtras = allExtras.filter(e => e.bookingId === bookingId);
         extraCharges = bookingExtras.reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
+        // Track services already collected separately so they are not double-charged at checkout
+        alreadyCollectedServices = bookingExtras
+          .filter(e => e.isPaid)
+          .reduce((sum, extra) => sum + parseFloat(extra.amount || "0"), 0);
 
         // Calculate totals
         // IMPORTANT: Apply GST/Service Charge ONLY to room charges, NOT to food or extra charges
@@ -3838,8 +3848,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       } else {
         advancePaid = parseFloat(booking.advanceAmount || "0");
       }
-      const balanceAmount = totalAmount - advancePaid;
-      console.log(`[CHECKOUT] Total: ${totalAmount}, Advance: ${advancePaid}, Balance: ${balanceAmount}`);
+      const balanceAmount = totalAmount - advancePaid - alreadyCollectedServices;
+      console.log(`[CHECKOUT] Total: ${totalAmount}, Advance: ${advancePaid}, AlreadyCollected: ${alreadyCollectedServices}, Balance: ${balanceAmount}`);
 
       // Create/Update bill with server-calculated amounts
       // When payment status is "paid", set balance to 0 (payment collected)
@@ -6382,11 +6392,41 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.post("/api/extra-services", isAuthenticated, async (req, res) => {
+  app.post("/api/extra-services", isAuthenticated, async (req: any, res) => {
     try {
       const { insertExtraServiceSchema } = await import("@shared/schema");
       const data = insertExtraServiceSchema.parse(req.body);
+
+      // Auto-populate propertyId from booking if not provided
+      if (!data.propertyId && data.bookingId) {
+        const booking = await storage.getBooking(data.bookingId);
+        if (booking) {
+          (data as any).propertyId = booking.propertyId;
+        }
+      }
+
       const service = await storage.createExtraService(data);
+
+      // If service is already paid, record to wallet immediately
+      if (service.isPaid && service.propertyId && data.paymentMethod) {
+        try {
+          const booking = service.bookingId ? await storage.getBooking(service.bookingId) : null;
+          const guestInfo = booking ? await storage.getGuest(booking.guestId) : null;
+          const guestName = guestInfo?.fullName || 'Guest';
+          await storage.recordExtraServicePaymentToWallet(
+            service.propertyId,
+            service.id,
+            parseFloat(service.amount),
+            data.paymentMethod,
+            `Service: ${service.serviceName} - ${guestName}`,
+            req.user?.claims?.sub || req.user?.id || null
+          );
+          console.log(`[Wallet] Recorded extra service payment ₹${service.amount} for service #${service.id}`);
+        } catch (walletErr) {
+          console.log(`[Wallet] Could not record extra service payment:`, walletErr);
+        }
+      }
+
       res.status(201).json(service);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -6402,6 +6442,44 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!service) {
         return res.status(404).json({ message: "Service not found" });
       }
+      res.json(service);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/extra-services/:id/mark-paid", isAuthenticated, async (req: any, res) => {
+    try {
+      const serviceId = parseInt(req.params.id);
+      const { paymentMethod } = req.body;
+      if (!paymentMethod) return res.status(400).json({ message: "paymentMethod required" });
+
+      const existing = await storage.getExtraService(serviceId);
+      if (!existing) return res.status(404).json({ message: "Service not found" });
+      if (existing.isPaid) return res.status(400).json({ message: "Service is already paid" });
+
+      const service = await storage.updateExtraService(serviceId, { isPaid: true, paymentMethod });
+      if (!service) return res.status(404).json({ message: "Service not found" });
+
+      // Record wallet transaction
+      if (service.propertyId) {
+        try {
+          const booking = service.bookingId ? await storage.getBooking(service.bookingId) : null;
+          const guestInfo = booking ? await storage.getGuest(booking.guestId) : null;
+          const guestName = guestInfo?.fullName || 'Guest';
+          await storage.recordExtraServicePaymentToWallet(
+            service.propertyId,
+            service.id,
+            parseFloat(service.amount),
+            paymentMethod,
+            `Service: ${service.serviceName} - ${guestName}`,
+            req.user?.claims?.sub || req.user?.id || null
+          );
+        } catch (walletErr) {
+          console.log(`[Wallet] Could not record extra service payment:`, walletErr);
+        }
+      }
+
       res.json(service);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

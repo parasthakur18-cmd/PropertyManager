@@ -45,6 +45,17 @@ The schema covers comprehensive PMS functionalities including `users`, `properti
 
 The `bookingGuests` table stores multiple guest ID proofs per booking with front/back images. It has: `bookingId`, `guestName`, `phone`, `email`, `idProofType`, `idProofNumber`, `idProofFront`, `idProofBack`, `isPrimary`.
 
+### Extra Services (Add-ons)
+- **Table**: `extra_services` — `bookingId`, `serviceType`, `serviceName`, `amount`, `serviceDate`, `description`, `isPaid`, `paymentMethod`, `propertyId`
+- **Collect Now**: When `isPaid=true` on creation, server auto-records `extra_service_payment` wallet transaction; `paymentMethod` maps to the correct wallet (cash/upi/bank)
+- **Mark Paid**: `POST /api/extra-services/:id/mark-paid` marks a service paid and records wallet transaction immediately
+- **Checkout**: `alreadyCollectedServices` (sum of `isPaid=true` extras) is subtracted from balance due to avoid double-charging
+- **Active bookings card balance**: `balanceAmount = total - advance - alreadyCollectedServices` (shows correct net balance)
+- **Bill preview**: Extra services show "✓ collected" label for already-paid ones
+- **Add Service from Active Bookings**: Each booking card has "Add Service" button (indigo outline) opening a dialog with service type, name, amount, date, Collect Now toggle, and payment method selector
+- **Exports from addons.tsx**: `SERVICE_TYPES`, `PAYMENT_METHODS`, `serviceTypeLabels` — used in active-bookings.tsx
+- **Wallet display**: `extra_service_payment` source shows indigo badge in wallets.tsx
+
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.
 - **Insert schemas**: Zod schemas for request validation.
