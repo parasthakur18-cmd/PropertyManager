@@ -489,16 +489,34 @@ export default function ActiveBookings() {
         onlineAmount,
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
+
+      // Build a payment breakdown description
+      let paymentDesc = "Guest has been checked out and bill has been generated.";
+      if (variables.paymentStatus === "pending") {
+        paymentDesc = "Guest checked out. Bill marked as pending — collect from Billing page.";
+      } else if (variables.cashAmount && variables.onlineAmount) {
+        paymentDesc = `Cash: ₹${Number(variables.cashAmount).toLocaleString("en-IN")}   |   UPI: ₹${Number(variables.onlineAmount).toLocaleString("en-IN")}`;
+      } else if (variables.cashAmount && !variables.onlineAmount) {
+        paymentDesc = `Cash collected: ₹${Number(variables.cashAmount).toLocaleString("en-IN")}`;
+      } else if (variables.paymentMethod === "upi") {
+        paymentDesc = "Full payment recorded as UPI.";
+      } else if (variables.paymentMethod === "cash") {
+        paymentDesc = "Full payment recorded as Cash.";
+      }
+
       toast({
-        title: "Checkout Successful",
-        description: "Guest has been checked out and bill has been generated",
+        title: variables.paymentStatus === "pending" ? "Checkout — Bill Pending" : "Checkout Successful ✓",
+        description: paymentDesc,
       });
       setCheckoutDialog({ open: false, booking: null });
       setPaymentMethod("cash");
+      setCashAmount("");
       setPaymentStatus("paid");
       setDueDate("");
       setPendingReason("");
@@ -1954,6 +1972,10 @@ export default function ActiveBookings() {
                       variant={paymentStatus === "pending" ? "secondary" : "default"}
                       onClick={async () => {
                         try {
+                          // Compute split amounts when UPI + cash
+                          const splitCash = paymentMethod === "upi" && cashPaid > 0 ? cashPaid : undefined;
+                          const splitOnline = paymentMethod === "upi" && cashPaid > 0 ? Math.max(0, remainingBalance) : undefined;
+
                           await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: booking.id,
                             paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
@@ -1963,14 +1985,11 @@ export default function ActiveBookings() {
                             gstOnRooms,
                             gstOnFood,
                             includeServiceCharge,
-                            gstAmount: totalGst,
-                            serviceChargeAmount: serviceCharge,
                             discountType: discountType === "none" ? null : discountType,
                             discountValue: discountType === "none" ? null : parseFloat(discountValue),
                             manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
-                            cashReceived: cashPaid,
-                            remainingBalance: Math.max(0, remainingBalance),
-                            totalAmount: grandTotal
+                            cashAmount: splitCash,
+                            onlineAmount: splitOnline,
                           });
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
@@ -1978,6 +1997,8 @@ export default function ActiveBookings() {
                           queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+                          queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
                           setCheckoutDialog({ open: false, booking: null });
                           setCashAmount("");
                           setGstOnRooms(true);
@@ -1989,11 +2010,21 @@ export default function ActiveBookings() {
                           setPaymentStatus("paid");
                           setDueDate("");
                           setPendingReason("");
+
+                          // Build payment breakdown for the toast
+                          let toastDesc = "Checkout completed successfully.";
+                          if (paymentStatus === "pending") {
+                            toastDesc = `Guest checked out. ₹${Math.max(0, remainingBalance).toFixed(2)} pending — collect from Billing page.`;
+                          } else if (splitCash && splitOnline) {
+                            toastDesc = `Cash: ₹${splitCash.toLocaleString("en-IN")}   |   UPI: ₹${splitOnline.toLocaleString("en-IN")}`;
+                          } else if (paymentMethod === "upi") {
+                            toastDesc = "Full payment recorded as UPI.";
+                          } else if (paymentMethod === "cash") {
+                            toastDesc = "Full payment recorded as Cash.";
+                          }
                           toast({ 
-                            title: paymentStatus === "pending" ? "Checkout with Pending Bill" : "Checkout Complete", 
-                            description: paymentStatus === "pending" 
-                              ? `Guest checked out. ₹${remainingBalance.toFixed(2)} pending - collect from Billing page.`
-                              : "Checkout completed successfully" 
+                            title: paymentStatus === "pending" ? "Checkout — Bill Pending" : "Checkout Successful ✓", 
+                            description: toastDesc,
                           });
                         } catch (error: any) {
                           const errorMsg = error.message || "Checkout failed";
