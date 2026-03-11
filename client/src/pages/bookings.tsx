@@ -3234,12 +3234,14 @@ function CheckoutBillSummary({
   onClose: () => void;
 }) {
   const { toast } = useToast();
-  const [gstOnRooms, setGstOnRooms] = useState<boolean>(true); // Default ON for room charges
-  const [gstOnFood, setGstOnFood] = useState<boolean>(false); // Default OFF for food charges
-  const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false); // Default OFF (0%)
+  const [gstOnRooms, setGstOnRooms] = useState<boolean>(true);
+  const [gstOnFood, setGstOnFood] = useState<boolean>(false);
+  const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false);
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("paid");
   const [dueDate, setDueDate] = useState<string>("");
   const [pendingReason, setPendingReason] = useState<string>("");
+  const [cashSplit, setCashSplit] = useState<string>("");
+  const [onlineSplit, setOnlineSplit] = useState<string>("");
 
   // Fetch booking details
   const { data: bookings } = useQuery<Booking[]>({
@@ -3350,16 +3352,41 @@ function CheckoutBillSummary({
   const balanceAmount = totalAmount - advancePaid;
 
   const handleCheckout = () => {
-    checkoutMutation.mutate({
-      bookingId,
-      paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
-      paymentStatus,
-      dueDate: paymentStatus === "pending" && dueDate ? dueDate : null,
-      pendingReason: paymentStatus === "pending" ? pendingReason : null,
-      gstOnRooms,
-      gstOnFood,
-      includeServiceCharge,
-    });
+    if (paymentStatus === "paid" && paymentMethod === "split") {
+      const cash = parseFloat(cashSplit) || 0;
+      const online = parseFloat(onlineSplit) || 0;
+      if (cash <= 0 || online <= 0) {
+        toast({ title: "Enter both cash and online amounts for split payment", variant: "destructive" });
+        return;
+      }
+      const diff = Math.abs(cash + online - balanceAmount);
+      if (diff > 0.01) {
+        toast({ title: `Split amounts must add up to ₹${balanceAmount.toFixed(2)}`, variant: "destructive" });
+        return;
+      }
+      checkoutMutation.mutate({
+        bookingId,
+        cashAmount: cash,
+        onlineAmount: online,
+        paymentStatus,
+        dueDate: null,
+        pendingReason: null,
+        gstOnRooms,
+        gstOnFood,
+        includeServiceCharge,
+      });
+    } else {
+      checkoutMutation.mutate({
+        bookingId,
+        paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
+        paymentStatus,
+        dueDate: paymentStatus === "pending" && dueDate ? dueDate : null,
+        pendingReason: paymentStatus === "pending" ? pendingReason : null,
+        gstOnRooms,
+        gstOnFood,
+        includeServiceCharge,
+      });
+    }
   };
 
   return (
@@ -3571,17 +3598,72 @@ function CheckoutBillSummary({
 
       {/* Payment Method - Only show when Paid */}
       {paymentStatus === "paid" && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Payment Method</label>
-          <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-            <SelectTrigger data-testid="select-checkout-payment-method">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="upi">UPI</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Payment Method</label>
+            <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v); setCashSplit(""); setOnlineSplit(""); }}>
+              <SelectTrigger data-testid="select-checkout-payment-method">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="upi">UPI / Online</SelectItem>
+                <SelectItem value="split">Split (Cash + UPI)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {paymentMethod === "split" && (
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium">Enter split amounts (total must equal ₹{balanceAmount.toFixed(2)})</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Cash (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="0.00"
+                    value={cashSplit}
+                    onChange={(e) => {
+                      setCashSplit(e.target.value);
+                      const cash = parseFloat(e.target.value) || 0;
+                      const remaining = balanceAmount - cash;
+                      setOnlineSplit(remaining > 0 ? remaining.toFixed(2) : "");
+                    }}
+                    data-testid="input-split-cash"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">UPI / Online (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    placeholder="0.00"
+                    value={onlineSplit}
+                    onChange={(e) => {
+                      setOnlineSplit(e.target.value);
+                      const online = parseFloat(e.target.value) || 0;
+                      const remaining = balanceAmount - online;
+                      setCashSplit(remaining > 0 ? remaining.toFixed(2) : "");
+                    }}
+                    data-testid="input-split-online"
+                  />
+                </div>
+              </div>
+              {cashSplit && onlineSplit && (
+                <p className={`text-xs ${Math.abs((parseFloat(cashSplit)||0) + (parseFloat(onlineSplit)||0) - balanceAmount) < 0.01 ? "text-green-600" : "text-red-500"}`}>
+                  Total: ₹{((parseFloat(cashSplit)||0) + (parseFloat(onlineSplit)||0)).toFixed(2)}
+                  {Math.abs((parseFloat(cashSplit)||0) + (parseFloat(onlineSplit)||0) - balanceAmount) < 0.01
+                    ? " ✓ Matches balance"
+                    : ` (needs ₹${balanceAmount.toFixed(2)})`}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

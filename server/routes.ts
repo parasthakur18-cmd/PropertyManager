@@ -3687,8 +3687,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(400).json({ message: "Booking ID is required" });
       }
       
-      // Payment method is required only when marking as paid
-      if (paymentStatus === "paid" && !paymentMethod && (!paymentMethods || paymentMethods.length === 0)) {
+      // Payment method is required only when marking as paid (split cashAmount+onlineAmount is also valid)
+      if (paymentStatus === "paid" && !paymentMethod && (!paymentMethods || paymentMethods.length === 0) && !cashAmount && !onlineAmount) {
         return res.status(400).json({ message: "Payment method is required when marking as paid" });
       }
 

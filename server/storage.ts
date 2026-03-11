@@ -4552,9 +4552,10 @@ export class DatabaseStorage implements IStorage {
       walletType = 'cash';
     }
     
-    // Find matching wallet, prefer default
+    // Find matching wallet, prefer default; for bank/online fallback to upi
     const matchingWallet = propertyWallets.find(w => w.type === walletType && w.isDefault) 
       || propertyWallets.find(w => w.type === walletType)
+      || (walletType === 'bank' ? propertyWallets.find(w => w.type === 'upi' && w.isDefault) || propertyWallets.find(w => w.type === 'upi') : null)
       || propertyWallets.find(w => w.isDefault)
       || propertyWallets[0];
     
