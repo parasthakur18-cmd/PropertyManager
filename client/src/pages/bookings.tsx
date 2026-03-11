@@ -165,15 +165,6 @@ export default function Bookings() {
     }
   }, [isDialogOpen]);
 
-  // Auto-select property when dialog opens and only one property exists
-  useEffect(() => {
-    if (isDialogOpen && properties && properties.length === 1) {
-      if (!form.getValues("propertyId")) {
-        form.setValue("propertyId", properties[0].id);
-      }
-    }
-  }, [isDialogOpen, properties]);
-
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
     staleTime: 2 * 60 * 1000,
@@ -184,6 +175,15 @@ export default function Bookings() {
     queryKey: ["/api/properties"],
     staleTime: 5 * 60 * 1000,
   });
+
+  // Auto-select property when dialog opens and only one property exists
+  useEffect(() => {
+    if (isDialogOpen && properties && properties.length === 1) {
+      if (!form.getValues("propertyId")) {
+        form.setValue("propertyId", properties[0].id);
+      }
+    }
+  }, [isDialogOpen, properties]);
 
   const { data: guests } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
