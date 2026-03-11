@@ -380,14 +380,28 @@ export default function EnhancedMenu() {
   };
 
   const deleteAllMenuItems = async () => {
-    const propertyToDelete = selectedProperty || properties?.[0]?.id;
-    if (!propertyToDelete) {
-      toast({ title: "No property selected", variant: "destructive" });
-      return;
-    }
     try {
-      const response = await apiRequest(`/api/menu-items/delete-all/${propertyToDelete}`, "POST");
-      toast({ title: "Deleted", description: response.message });
+      if (selectedProperty && selectedProperty !== 0) {
+        // Delete from the specific selected property only
+        await apiRequest(`/api/menu-items/delete-all/${selectedProperty}`, "POST");
+        toast({ title: "Deleted", description: "All menu items for the selected property deleted" });
+      } else {
+        // "All Properties" is selected — delete from every accessible property
+        if (!properties || properties.length === 0) {
+          toast({ title: "No properties found", variant: "destructive" });
+          return;
+        }
+        let totalDeleted = 0;
+        for (const prop of properties) {
+          const res = await apiRequest(`/api/menu-items/delete-all/${prop.id}`, "POST");
+          const data = await res.json();
+          if (data.message) {
+            const match = data.message.match(/\d+/);
+            if (match) totalDeleted += parseInt(match[0]);
+          }
+        }
+        toast({ title: "Deleted", description: `All menu items deleted across all properties (${totalDeleted} items removed)` });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
     } catch (error: any) {
