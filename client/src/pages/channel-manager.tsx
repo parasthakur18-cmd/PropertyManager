@@ -594,16 +594,14 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId && !!config,
   });
 
-  if (!config) {
-    return (
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string }[]>({
+    queryKey: ["/api/rooms", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
 
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
 
@@ -631,6 +629,17 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  if (!config) {
+    return (
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          AioSell is not configured for this property yet. Please go to the <strong>Settings</strong> tab first and save your Hotel Code and PMS Name.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (ratePlans.length === 0) {
     return (
@@ -668,6 +677,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                 <TableHead>Room</TableHead>
                 <TableHead>Rate Plan</TableHead>
                 <TableHead>Occupancy</TableHead>
+                <TableHead>Room Count</TableHead>
                 <TableHead>Base Rate</TableHead>
                 <TableHead>Rate to Push</TableHead>
               </TableRow>
@@ -675,11 +685,13 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
             <TableBody>
               {ratePlans.map(rp => {
                 const mapping = mappings.find(m => m.id === rp.roomMappingId);
+                const roomCount = allRooms.filter(r => r.roomType === mapping?.hostezeeRoomType).length;
                 return (
                   <TableRow key={rp.id} data-testid={`row-push-rate-${rp.id}`}>
                     <TableCell>{mapping?.hostezeeRoomType || "—"} <span className="text-muted-foreground text-xs">({mapping?.aiosellRoomCode})</span></TableCell>
                     <TableCell>{rp.ratePlanName}</TableCell>
                     <TableCell><Badge variant="outline">{rp.occupancy}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary">{roomCount}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{rp.baseRate || "—"}</TableCell>
                     <TableCell>
                       <Input
