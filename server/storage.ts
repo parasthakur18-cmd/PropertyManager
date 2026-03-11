@@ -2514,7 +2514,7 @@ export class DatabaseStorage implements IStorage {
       const leaseStartDate = new Date(lease.startDate);
       const leaseEndDate = lease.endDate ? new Date(lease.endDate) : new Date();
 
-      // Get revenue during lease period
+      // Get revenue during lease period — only PAID bills count as recognised revenue
       const [revenueResult] = await db
         .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
         .from(bills)
@@ -2522,6 +2522,7 @@ export class DatabaseStorage implements IStorage {
         .where(
           and(
             eq(bookings.propertyId, propertyId),
+            eq(bills.paymentStatus, 'paid'),
             gte(bills.createdAt, leaseStartDate),
             lte(bills.createdAt, leaseEndDate)
           )
@@ -2639,7 +2640,7 @@ export class DatabaseStorage implements IStorage {
     const startDate = new Date(year, monthNum - 1, 1); // First day of month
     const endDate = new Date(year, monthNum, 0, 23, 59, 59); // Last day of month
 
-    // Get revenue during the month (from bills)
+    // Get revenue during the month — only PAID bills count as recognised revenue
     const [revenueResult] = await db
       .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
       .from(bills)
@@ -2647,6 +2648,7 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(bookings.propertyId, propertyId),
+          eq(bills.paymentStatus, 'paid'),
           gte(bills.createdAt, startDate),
           lte(bills.createdAt, endDate)
         )

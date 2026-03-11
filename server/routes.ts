@@ -8767,14 +8767,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return true;
       };
 
-      // Bills settled in this month (final checkouts)
+      // Build bookingId → propertyId lookup (bills don't carry propertyId directly)
+      const allBookingsForBills = await storage.getAllBookings();
+      const bookingPropMap = new Map<number, number>();
+      for (const bk of allBookingsForBills) {
+        if (bk.id && bk.propertyId) bookingPropMap.set(bk.id, bk.propertyId);
+      }
+
+      // Bills settled in this month (final checkouts) — resolve propertyId via bookingId
       const allBills = await storage.getAllBills();
       const monthBills = allBills.filter((b: any) => {
-        if (!b.propertyId && !b.bookingId) return false;
+        if (!b.bookingId) return false;
+        const bPropId = bookingPropMap.get(b.bookingId);
+        if (!bPropId) return false;
         const bDate = b.createdAt ? new Date(b.createdAt) : null;
         if (!bDate || bDate < startDate || bDate > endDate) return false;
-        if (propertyId && b.propertyId !== propertyId) return false;
-        if (allowedIds && b.propertyId && !allowedIds.includes(b.propertyId)) return false;
+        if (propertyId && bPropId !== propertyId) return false;
+        if (allowedIds && !allowedIds.includes(bPropId)) return false;
         return true;
       });
 
@@ -8785,7 +8794,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const totalBilled = paidBills.reduce((s: number, b: any) => s + toN(b.totalAmount), 0);
 
       // All extra services by service date in this month
-      let allExtras = await db.select().from(extraServices);
+      let allExtras: any[] = [];
+      try {
+        allExtras = await db.select().from(extraServices);
+      } catch (extErr: any) {
+        console.warn(`[MonthlyIncome] Could not fetch extra services: ${extErr.message}`);
+      }
       const monthExtras = allExtras.filter((e: any) => {
         const d = e.serviceDate ? new Date(e.serviceDate) : null;
         if (!d || d < startDate || d > endDate) return false;
@@ -8809,9 +8823,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         .filter((o: any) => ["delivered", "completed"].includes(o.status))
         .reduce((s: number, o: any) => s + toN(o.totalAmount), 0);
 
-      // Advance payments: bookings created in this month
-      let allBookings = await storage.getAllBookings();
-      const monthBookings = allBookings.filter((b: any) => {
+      // Advance payments: bookings created in this month (reuse already-fetched bookings)
+      const monthBookings = allBookingsForBills.filter((b: any) => {
         const d = b.createdAt ? new Date(b.createdAt) : null;
         if (!d || d < startDate || d > endDate) return false;
         if (!propFilter(b.propertyId)) return false;
@@ -8821,7 +8834,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const newBookingsCount = monthBookings.length;
 
       // Checkouts in this month
-      const checkoutBookings = allBookings.filter((b: any) => {
+      const checkoutBookings = allBookingsForBills.filter((b: any) => {
         const d = b.checkOutDate ? new Date(b.checkOutDate) : null;
         if (!d || d < startDate || d > endDate) return false;
         if (!propFilter(b.propertyId)) return false;
