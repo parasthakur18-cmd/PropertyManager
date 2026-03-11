@@ -577,7 +577,12 @@ export default function Billing() {
                   <div>
                     <p className="text-muted-foreground mb-1">Balance Due</p>
                     <p className="font-semibold font-mono text-orange-600" data-testid={`text-bill-balance-${bill.id}`}>
-                      ₹{Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"))).toFixed(2)}
+                      ₹{(() => {
+                        if (bill.paymentStatus === "paid") return "0.00";
+                        const stored = parseFloat(String(bill.balanceAmount || "0"));
+                        if (stored > 0) return stored.toFixed(2);
+                        return Math.max(0, parseFloat(String(bill.totalAmount || "0")) - parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"))).toFixed(2);
+                      })()}
                     </p>
                   </div>
                   <div>
@@ -586,7 +591,6 @@ export default function Billing() {
                       ₹{(() => {
                         const total = parseFloat(String(bill.totalAmount || "0"));
                         const advance = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
-                        const balance = Math.max(0, total - advance);
                         if (bill.paymentStatus === "paid") return total.toFixed(2);
                         return advance.toFixed(2);
                       })()}
