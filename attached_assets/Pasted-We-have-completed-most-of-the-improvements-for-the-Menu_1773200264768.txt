@@ -1,0 +1,88 @@
+We have completed most of the improvements for the Menu CSV Import and Menu Management system. Now we need to perform a final verification and add a few finishing improvements so the system becomes fully production-ready.
+
+Please perform the following checks and improvements.
+
+1. Verify CSV Import Functionality
+
+Test importing a CSV menu that contains:
+
+* multiple categories
+* variants using pipe format (Name:Price|Name:Price)
+* add-ons using pipe format
+* imageUrl values
+* mixed availability values
+
+Ensure that:
+
+* categories are created correctly
+* variants and add-ons parse correctly using the pipe delimiter
+* imageUrl values are stored and images appear in the guest ordering interface
+* items appear immediately in Menu Management after import
+* guest menu reflects the new items without cache issues
+
+2. Error Validation
+
+Confirm that CSV validation properly detects:
+
+* missing required fields (name, category, price)
+* invalid numeric values in price
+* incorrect variant format
+* incorrect add-on format
+
+Error rows must be highlighted in the preview table and blocked from import.
+
+3. Availability Handling
+
+Verify that:
+
+* isAvailable=false imports items as disabled
+* disabled items are hidden from the guest ordering interface
+* disabled items remain editable in the admin menu
+
+4. Property-Based Import
+
+Confirm that menu imports apply only to the selected property and do not affect other properties.
+
+Test scenario:
+
+Import menu for "Forest Pinnacle" and confirm it does not appear under "Woodpecker Inn".
+
+5. Copy Menu Feature
+
+Test the new Copy Menu dialog.
+
+Verify that copying a menu from one property to another duplicates:
+
+* categories
+* menu items
+* variants
+* add-ons
+* images
+
+Example:
+Copy menu from Forest Pinnacle → Woodpecker Inn.
+
+6. Import Summary
+
+Add an import result summary after successful import showing:
+
+* Items Added
+* Items Updated
+* New Categories Created
+* Rows Skipped Due to Errors
+
+This summary should appear as a confirmation message after import.
+
+7. Large Menu Performance
+
+Test importing a large menu (150–200 items).
+
+Ensure:
+
+* preview table paginates correctly
+* UI remains responsive
+* import completes without timeout
+
+Goal:
+
+Ensure the Menu Management and CSV Import system is stable, reliable, and capable of handling real restaurant menus without errors so staff can upload or modify menus safely.

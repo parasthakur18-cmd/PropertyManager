@@ -5795,11 +5795,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const createdItem = await storage.createMenuItem(menuItemData);
 
           // Create variants if provided
-          const basePrice = parseFloat(item.price?.toString() || "0");
+          // Prices in CSV are treated as absolute prices (not modifiers)
           for (const variant of parsedVariants) {
-            const priceModifier = parseFloat(variant.priceModifier);
-            if (!isNaN(priceModifier)) {
-              const actualPrice = basePrice + priceModifier;
+            const actualPrice = parseFloat(variant.priceModifier);
+            if (!isNaN(actualPrice) && actualPrice >= 0) {
               await storage.createMenuItemVariant({
                 menuItemId: createdItem.id,
                 variantName: variant.name,

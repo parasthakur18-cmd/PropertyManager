@@ -77,7 +77,8 @@ export default function EnhancedMenu() {
   const [duplicateTargetId, setDuplicateTargetId] = useState<number>(0);
   const [parsedItems, setParsedItems] = useState<any[]>([]);
   const [rowResults, setRowResults] = useState<{ row: number; item?: any; errors: string[] }[]>([]);
-  const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{ created: number; failed: number; categoriesCreated: number; skipped: number; errors: string[] } | null>(null);
+  const [previewPage, setPreviewPage] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [whatsappNumbers, setWhatsappNumbers] = useState("");
@@ -379,6 +380,7 @@ export default function EnhancedMenu() {
       setParsedItems(result.items);
       setRowResults(result.rowResults);
       setImportResult(null);
+      setPreviewPage(0);
     };
     reader.readAsText(file);
   };
@@ -419,6 +421,7 @@ export default function EnhancedMenu() {
     setParsedItems([]);
     setRowResults([]);
     setImportResult(null);
+    setPreviewPage(0);
   };
 
   const deleteAllMenuItems = async () => {
@@ -453,11 +456,17 @@ export default function EnhancedMenu() {
 
   const bulkImportMutation = useMutation({
     mutationFn: async (data: { items: any[]; propertyId: number }) => {
-      return await apiRequest("/api/menu-items/bulk-import", "POST", data);
+      const res = await apiRequest("/api/menu-items/bulk-import", "POST", data);
+      return res.json();
     },
-    onSuccess: (result: any) => {
+    onSuccess: (data: any, variables: any) => {
+      const skipped = rowResults.filter(r => r.errors.length > 0).length;
+      const result = { ...data, skipped };
       setImportResult(result);
-      toast({ title: "Import Complete", description: `${result.created} items imported successfully` });
+      const parts = [`${data.created} item${data.created !== 1 ? 's' : ''} added`];
+      if (data.categoriesCreated > 0) parts.push(`${data.categoriesCreated} new categor${data.categoriesCreated !== 1 ? 'ies' : 'y'}`);
+      if (skipped > 0) parts.push(`${skipped} skipped`);
+      toast({ title: "Import Complete", description: parts.join(', ') });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
     },
@@ -898,7 +907,7 @@ export default function EnhancedMenu() {
               <div className="text-xs text-muted-foreground bg-muted/50 rounded p-3 space-y-1">
                 <p className="font-medium text-foreground">CSV Columns:</p>
                 <p>sequence, name*, category*, price*, description, isVeg (true/false), isAvailable (true/false), variants, addOns, imageUrl</p>
-                <p className="text-amber-600 font-medium mt-1">Variants & Add-ons format: <code>Name:Price|Name:Price</code> — e.g. <code>Half:150|Full:280</code></p>
+                <p className="text-amber-600 font-medium mt-1">Variants & Add-ons format: <code>Name:Price|Name:Price</code> — e.g. <code>Half:150|Full:280</code> (prices are absolute, not modifiers)</p>
                 <p>* = required fields</p>
               </div>
 
@@ -914,15 +923,38 @@ export default function EnhancedMenu() {
                 />
               </div>
 
-              {/* Import Result */}
+              {/* Import Result Summary */}
               {importResult && (
                 <Alert className={importResult.failed > 0 ? "border-amber-500 bg-amber-50 dark:bg-amber-950" : "border-green-500 bg-green-50 dark:bg-green-950"}>
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <AlertTitle>Import Complete</AlertTitle>
                   <AlertDescription>
-                    <p>{importResult.created} items imported successfully</p>
-                    {importResult.failed > 0 && <p className="text-amber-700 font-medium">{importResult.failed} items failed</p>}
-                    {importResult.errors?.map((e, i) => <p key={i} className="text-xs text-amber-600">{e}</p>)}
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-green-700 dark:text-green-300 text-base">{importResult.created}</span>
+                        <span>Items Added</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-blue-700 dark:text-blue-300 text-base">{importResult.categoriesCreated ?? 0}</span>
+                        <span>New Categories Created</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-muted-foreground text-base">0</span>
+                        <span>Items Updated</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-semibold text-base ${(importResult.skipped ?? 0) + importResult.failed > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}`}>
+                          {(importResult.skipped ?? 0) + importResult.failed}
+                        </span>
+                        <span>Rows Skipped</span>
+                      </div>
+                    </div>
+                    {importResult.errors && importResult.errors.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {importResult.errors.slice(0, 3).map((e, i) => <p key={i} className="text-xs text-amber-600">{e}</p>)}
+                        {importResult.errors.length > 3 && <p className="text-xs text-muted-foreground">…and {importResult.errors.length - 3} more server errors</p>}
+                      </div>
+                    )}
                   </AlertDescription>
                 </Alert>
               )}
@@ -956,48 +988,75 @@ export default function EnhancedMenu() {
                       </Alert>
                     )}
 
-                    {/* Preview table */}
-                    <div className="border rounded overflow-auto max-h-[300px]">
-                      <table className="w-full text-xs">
-                        <thead className="bg-muted sticky top-0">
-                          <tr>
-                            <th className="text-left p-2 w-12">Row</th>
-                            <th className="text-left p-2">Name</th>
-                            <th className="text-left p-2">Category</th>
-                            <th className="text-left p-2 w-16">Price</th>
-                            <th className="text-left p-2 w-16">Avail.</th>
-                            <th className="text-left p-2 w-12">Veg</th>
-                            <th className="text-left p-2">Variants / Add-ons</th>
-                            <th className="text-left p-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rowResults.map((r) => (
-                            <tr key={r.row} className={r.errors.length > 0 ? "bg-red-50 dark:bg-red-950 border-l-2 border-red-500" : "hover:bg-muted/30"}>
-                              <td className="p-2 text-muted-foreground">{r.row}</td>
-                              <td className="p-2 font-medium">{r.item?.name || <span className="text-red-500">—</span>}</td>
-                              <td className="p-2">
-                                {r.item?.category}
-                                {r.item?.isNewCategory && <span className="ml-1 text-blue-500 text-[10px]">new</span>}
-                              </td>
-                              <td className="p-2">₹{r.item?.price ?? '—'}</td>
-                              <td className="p-2">{r.item?.isAvailable !== false ? <span className="text-green-600">Yes</span> : <span className="text-muted-foreground">No</span>}</td>
-                              <td className="p-2">{r.item?.isVeg ? '🟢' : '🔴'}</td>
-                              <td className="p-2 max-w-[120px] truncate">
-                                {r.item?.variants && <span className="text-muted-foreground">{r.item.variants}</span>}
-                                {r.item?.addOns && <span className="text-muted-foreground ml-1">| {r.item.addOns}</span>}
-                              </td>
-                              <td className="p-2">
-                                {r.errors.length > 0
-                                  ? <span className="text-red-600 font-medium" title={r.errors.join('; ')}>⚠ {r.errors[0]}{r.errors.length > 1 ? ` +${r.errors.length - 1}` : ''}</span>
-                                  : <span className="text-green-600">✓ OK</span>
-                                }
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    {/* Preview table with pagination */}
+                    {(() => {
+                      const PAGE_SIZE = 50;
+                      const totalPages = Math.ceil(rowResults.length / PAGE_SIZE);
+                      const pageRows = rowResults.slice(previewPage * PAGE_SIZE, (previewPage + 1) * PAGE_SIZE);
+                      return (
+                        <>
+                          <div className="border rounded overflow-auto max-h-[280px]">
+                            <table className="w-full text-xs">
+                              <thead className="bg-muted sticky top-0">
+                                <tr>
+                                  <th className="text-left p-2 w-12">Row</th>
+                                  <th className="text-left p-2">Name</th>
+                                  <th className="text-left p-2">Category</th>
+                                  <th className="text-left p-2 w-16">Price</th>
+                                  <th className="text-left p-2 w-16">Avail.</th>
+                                  <th className="text-left p-2 w-12">Veg</th>
+                                  <th className="text-left p-2">Variants / Add-ons</th>
+                                  <th className="text-left p-2">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {pageRows.map((r) => (
+                                  <tr key={r.row} className={r.errors.length > 0 ? "bg-red-50 dark:bg-red-950 border-l-2 border-red-500" : "hover:bg-muted/30"}>
+                                    <td className="p-2 text-muted-foreground">{r.row}</td>
+                                    <td className="p-2 font-medium">{r.item?.name || <span className="text-red-500">—</span>}</td>
+                                    <td className="p-2">
+                                      {r.item?.category}
+                                      {r.item?.isNewCategory && <span className="ml-1 text-blue-500 text-[10px]">new</span>}
+                                    </td>
+                                    <td className="p-2">₹{r.item?.price ?? '—'}</td>
+                                    <td className="p-2">{r.item?.isAvailable !== false ? <span className="text-green-600">Yes</span> : <span className="text-muted-foreground">No</span>}</td>
+                                    <td className="p-2">{r.item?.isVeg ? '🟢' : '🔴'}</td>
+                                    <td className="p-2 max-w-[120px] truncate">
+                                      {r.item?.variants && <span className="text-muted-foreground">{r.item.variants}</span>}
+                                      {r.item?.addOns && <span className="text-muted-foreground ml-1">| {r.item.addOns}</span>}
+                                    </td>
+                                    <td className="p-2">
+                                      {r.errors.length > 0
+                                        ? <span className="text-red-600 font-medium" title={r.errors.join('; ')}>⚠ {r.errors[0]}{r.errors.length > 1 ? ` +${r.errors.length - 1}` : ''}</span>
+                                        : <span className="text-green-600">✓ OK</span>
+                                      }
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                              <span>Showing {previewPage * PAGE_SIZE + 1}–{Math.min((previewPage + 1) * PAGE_SIZE, rowResults.length)} of {rowResults.length} rows</span>
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => setPreviewPage(p => Math.max(0, p - 1))}
+                                  disabled={previewPage === 0}
+                                  className="px-2 py-0.5 border rounded disabled:opacity-40 hover:bg-muted"
+                                >‹ Prev</button>
+                                <span className="px-2 py-0.5">Page {previewPage + 1}/{totalPages}</span>
+                                <button
+                                  onClick={() => setPreviewPage(p => Math.min(totalPages - 1, p + 1))}
+                                  disabled={previewPage >= totalPages - 1}
+                                  className="px-2 py-0.5 border rounded disabled:opacity-40 hover:bg-muted"
+                                >Next ›</button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               })()}
