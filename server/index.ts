@@ -77,6 +77,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Auto-apply any pending column/type migrations before anything else
+  try {
+    const { runStartupMigrations } = await import("./startup-migrations");
+    await runStartupMigrations();
+  } catch (err: any) {
+    console.warn("[MIGRATIONS] Startup migration error (non-fatal):", err.message);
+  }
+
   // Validate database schema at startup (fail fast if schema drift detected)
   try {
     const { validateDatabaseSchema } = await import("./db-validator");
