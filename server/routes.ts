@@ -611,6 +611,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== PUBLIC ROUTES (No Authentication Required) =====
 
+  // Sitemap - publicly accessible, no auth
+  app.get("/sitemap.xml", (_req, res) => {
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://hostezee.in/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://hostezee.in/features</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://hostezee.in/pricing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://hostezee.in/contact</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://hostezee.in/demo</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+</urlset>`;
+    res.setHeader("Content-Type", "application/xml");
+    res.send(sitemap);
+  });
+
   // Health check - no auth; use for uptime/monitoring (returns 200 when API is up)
   app.get("/api/health", async (_req, res) => {
     res.json({ ok: true });
