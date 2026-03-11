@@ -1283,29 +1283,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Extra Service operations
-  // NOTE: Uses raw SQL with graceful fallback for production DBs missing the property_id column.
-  private _extraServicesHasPropertyId: boolean | null = null;
+  // NOTE: Uses raw SQL with dynamic column detection for production DBs with partial schemas.
+  private _extraServicesCols: Set<string> | null = null;
 
-  private async _extraServicesPropertyIdExists(): Promise<boolean> {
-    if (this._extraServicesHasPropertyId !== null) return this._extraServicesHasPropertyId;
+  private async _getExtraServicesCols(): Promise<Set<string>> {
+    if (this._extraServicesCols !== null) return this._extraServicesCols;
     const client = await pool.connect();
     try {
       const result = await client.query(
-        `SELECT 1 FROM information_schema.columns
-         WHERE table_name = 'extra_services' AND column_name = 'property_id'`
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'extra_services'`
       );
-      this._extraServicesHasPropertyId = result.rows.length > 0;
+      this._extraServicesCols = new Set(result.rows.map((r: any) => r.column_name));
     } catch {
-      this._extraServicesHasPropertyId = false;
+      // Fallback: assume minimal columns only
+      this._extraServicesCols = new Set(['id', 'booking_id', 'service_name', 'description', 'amount', 'created_at', 'service_type', 'service_date']);
     } finally {
       client.release();
     }
-    return this._extraServicesHasPropertyId!;
+    return this._extraServicesCols!;
   }
 
-  private _extraServiceCols(): string {
-    return `id, booking_id, service_name, description, amount, created_at, service_type,
-            vendor_name, vendor_contact, commission, service_date, is_paid, payment_method`;
+  private async _buildExtraServiceSelectCols(): Promise<string> {
+    const cols = await this._getExtraServicesCols();
+    const always = ['id', 'booking_id', 'service_name', 'description', 'amount', 'created_at', 'service_type', 'service_date'];
+    const optional = ['vendor_name', 'vendor_contact', 'commission', 'is_paid', 'payment_method', 'property_id'];
+    const parts = [...always, ...optional.filter(c => cols.has(c))];
+    return parts.join(', ');
   }
 
   private _mapExtraServiceRow(row: any): ExtraService {
@@ -1322,19 +1325,16 @@ export class DatabaseStorage implements IStorage {
       vendorContact: row.vendor_contact ?? null,
       commission: row.commission ?? null,
       serviceDate: row.service_date,
-      isPaid: row.is_paid,
+      isPaid: row.is_paid ?? false,
       paymentMethod: row.payment_method ?? null,
     };
   }
 
   async getAllExtraServices(): Promise<ExtraService[]> {
-    const hasCol = await this._extraServicesPropertyIdExists();
-    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const cols = await this._buildExtraServiceSelectCols();
     const client = await pool.connect();
     try {
-      const result = await client.query(
-        `SELECT ${cols} FROM extra_services ORDER BY created_at DESC`
-      );
+      const result = await client.query(`SELECT ${cols} FROM extra_services ORDER BY created_at DESC`);
       return result.rows.map(r => this._mapExtraServiceRow(r));
     } finally {
       client.release();
@@ -1342,14 +1342,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExtraService(id: number): Promise<ExtraService | undefined> {
-    const hasCol = await this._extraServicesPropertyIdExists();
-    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const cols = await this._buildExtraServiceSelectCols();
     const client = await pool.connect();
     try {
-      const result = await client.query(
-        `SELECT ${cols} FROM extra_services WHERE id = $1`,
-        [id]
-      );
+      const result = await client.query(`SELECT ${cols} FROM extra_services WHERE id = $1`, [id]);
       return result.rows[0] ? this._mapExtraServiceRow(result.rows[0]) : undefined;
     } finally {
       client.release();
@@ -1357,8 +1353,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getExtraServicesByBooking(bookingId: number): Promise<ExtraService[]> {
-    const hasCol = await this._extraServicesPropertyIdExists();
-    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
+    const cols = await this._buildExtraServiceSelectCols();
     const client = await pool.connect();
     try {
       const result = await client.query(
@@ -1372,54 +1367,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExtraService(service: InsertExtraService): Promise<ExtraService> {
-    const hasCol = await this._extraServicesPropertyIdExists();
+    const existingCols = await this._getExtraServicesCols();
+    const cols = await this._buildExtraServiceSelectCols();
     const client = await pool.connect();
     try {
-      let result;
-      if (hasCol) {
-        result = await client.query(
-          `INSERT INTO extra_services
-             (booking_id, property_id, service_name, description, amount, service_type,
-              vendor_name, vendor_contact, commission, service_date, is_paid, payment_method)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           RETURNING ${this._extraServiceCols()}, property_id`,
-          [
-            service.bookingId ?? null,
-            service.propertyId ?? null,
-            service.serviceName,
-            service.description ?? null,
-            service.amount,
-            service.serviceType,
-            service.vendorName ?? null,
-            service.vendorContact ?? null,
-            service.commission ?? null,
-            service.serviceDate,
-            service.isPaid ?? false,
-            service.paymentMethod ?? null,
-          ]
-        );
-      } else {
-        result = await client.query(
-          `INSERT INTO extra_services
-             (booking_id, service_name, description, amount, service_type,
-              vendor_name, vendor_contact, commission, service_date, is_paid, payment_method)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-           RETURNING ${this._extraServiceCols()}`,
-          [
-            service.bookingId ?? null,
-            service.serviceName,
-            service.description ?? null,
-            service.amount,
-            service.serviceType,
-            service.vendorName ?? null,
-            service.vendorContact ?? null,
-            service.commission ?? null,
-            service.serviceDate,
-            service.isPaid ?? false,
-            service.paymentMethod ?? null,
-          ]
-        );
+      // Build INSERT dynamically — only include columns that actually exist in the DB
+      const colNames: string[] = ['booking_id', 'service_name', 'description', 'amount', 'service_type', 'service_date'];
+      const values: any[] = [
+        service.bookingId ?? null,
+        service.serviceName,
+        service.description ?? null,
+        service.amount,
+        service.serviceType,
+        service.serviceDate,
+      ];
+      const optionalFields: Array<[string, any]> = [
+        ['vendor_name', service.vendorName ?? null],
+        ['vendor_contact', service.vendorContact ?? null],
+        ['commission', service.commission ?? null],
+        ['is_paid', service.isPaid ?? false],
+        ['payment_method', service.paymentMethod ?? null],
+        ['property_id', service.propertyId ?? null],
+      ];
+      for (const [col, val] of optionalFields) {
+        if (existingCols.has(col)) {
+          colNames.push(col);
+          values.push(val);
+        }
       }
+      const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+      const result = await client.query(
+        `INSERT INTO extra_services (${colNames.join(', ')}) VALUES (${placeholders}) RETURNING ${cols}`,
+        values
+      );
       return this._mapExtraServiceRow(result.rows[0]);
     } finally {
       client.release();
@@ -1427,25 +1407,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateExtraService(id: number, service: Partial<InsertExtraService>): Promise<ExtraService> {
-    const hasCol = await this._extraServicesPropertyIdExists();
+    const existingCols = await this._getExtraServicesCols();
+    const cols = await this._buildExtraServiceSelectCols();
     const setClauses: string[] = [];
     const params: any[] = [];
     let idx = 1;
 
-    if (service.serviceName !== undefined) { setClauses.push(`service_name = $${idx++}`); params.push(service.serviceName); }
-    if (service.description !== undefined) { setClauses.push(`description = $${idx++}`); params.push(service.description); }
-    if (service.amount !== undefined) { setClauses.push(`amount = $${idx++}`); params.push(service.amount); }
-    if (service.serviceType !== undefined) { setClauses.push(`service_type = $${idx++}`); params.push(service.serviceType); }
-    if (service.vendorName !== undefined) { setClauses.push(`vendor_name = $${idx++}`); params.push(service.vendorName); }
-    if (service.vendorContact !== undefined) { setClauses.push(`vendor_contact = $${idx++}`); params.push(service.vendorContact); }
-    if (service.commission !== undefined) { setClauses.push(`commission = $${idx++}`); params.push(service.commission); }
-    if (service.serviceDate !== undefined) { setClauses.push(`service_date = $${idx++}`); params.push(service.serviceDate); }
-    if (service.isPaid !== undefined) { setClauses.push(`is_paid = $${idx++}`); params.push(service.isPaid); }
-    if (service.paymentMethod !== undefined) { setClauses.push(`payment_method = $${idx++}`); params.push(service.paymentMethod); }
-    if (hasCol && service.propertyId !== undefined) { setClauses.push(`property_id = $${idx++}`); params.push(service.propertyId); }
-
+    const fieldMap: Array<[string, keyof typeof service]> = [
+      ['service_name', 'serviceName'],
+      ['description', 'description'],
+      ['amount', 'amount'],
+      ['service_type', 'serviceType'],
+      ['service_date', 'serviceDate'],
+      ['vendor_name', 'vendorName'],
+      ['vendor_contact', 'vendorContact'],
+      ['commission', 'commission'],
+      ['is_paid', 'isPaid'],
+      ['payment_method', 'paymentMethod'],
+      ['property_id', 'propertyId'],
+    ];
+    for (const [col, key] of fieldMap) {
+      if (existingCols.has(col) && service[key] !== undefined) {
+        setClauses.push(`${col} = $${idx++}`);
+        params.push(service[key]);
+      }
+    }
     params.push(id);
-    const cols = hasCol ? `${this._extraServiceCols()}, property_id` : this._extraServiceCols();
     const client = await pool.connect();
     try {
       const result = await client.query(

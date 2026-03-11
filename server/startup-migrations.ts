@@ -102,6 +102,52 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_extra_services_is_paid",
+    async run() {
+      if (!(await tableExists("extra_services"))) return;
+      if (await columnExists("extra_services", "is_paid")) return;
+      await runRaw(`
+        ALTER TABLE extra_services
+          ADD COLUMN is_paid boolean NOT NULL DEFAULT false
+      `);
+    },
+  },
+  {
+    name: "add_extra_services_payment_method",
+    async run() {
+      if (!(await tableExists("extra_services"))) return;
+      if (await columnExists("extra_services", "payment_method")) return;
+      await runRaw(`
+        ALTER TABLE extra_services
+          ADD COLUMN payment_method varchar(50)
+      `);
+    },
+  },
+  {
+    name: "add_extra_services_vendor_name",
+    async run() {
+      if (!(await tableExists("extra_services"))) return;
+      if (await columnExists("extra_services", "vendor_name")) return;
+      await runRaw(`ALTER TABLE extra_services ADD COLUMN vendor_name varchar(255)`);
+    },
+  },
+  {
+    name: "add_extra_services_vendor_contact",
+    async run() {
+      if (!(await tableExists("extra_services"))) return;
+      if (await columnExists("extra_services", "vendor_contact")) return;
+      await runRaw(`ALTER TABLE extra_services ADD COLUMN vendor_contact varchar(100)`);
+    },
+  },
+  {
+    name: "add_extra_services_commission",
+    async run() {
+      if (!(await tableExists("extra_services"))) return;
+      if (await columnExists("extra_services", "commission")) return;
+      await runRaw(`ALTER TABLE extra_services ADD COLUMN commission numeric(10,2)`);
+    },
+  },
 ];
 
 export async function runStartupMigrations(): Promise<void> {
