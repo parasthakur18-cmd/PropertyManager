@@ -284,13 +284,16 @@ export default function EnhancedMenu() {
         }
       }
 
-      const matchedCategory = categories?.find(c => c.name.toLowerCase().trim() === (categoryName || '').toLowerCase().trim());
+      // Only match categories that belong to the SELECTED property — never cross-property
+      const matchedCategory = categories?.filter(c =>
+        !selectedProperty || selectedProperty === 0 || c.propertyId === selectedProperty
+      ).find(c => c.name.toLowerCase().trim() === (categoryName || '').toLowerCase().trim());
 
       const parsedItem = {
         sequence,
         name: (name || '').trim(),
         category: (categoryName || '').trim(),
-        categoryId: matchedCategory?.id || null,
+        categoryId: null,  // Never pass categoryId — backend always resolves by name for the target property
         isNewCategory: !matchedCategory && !!categoryName?.trim(),
         price: isNaN(parsedPrice) ? 0 : parsedPrice,
         description: (description || '').trim(),

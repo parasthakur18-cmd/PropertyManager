@@ -5721,11 +5721,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       for (const item of items) {
         try {
-          // Auto-create category if it doesn't exist
-          let categoryId = item.categoryId;
+          // Always resolve category by NAME for the target property — ignore any categoryId from client
+          // (client may have matched against a different property's category ID)
+          let categoryId: number | undefined;
           const categoryName = item.category?.trim();
-          
-          if (categoryName && !categoryId) {
+
+          if (categoryName) {
             const cacheKey = categoryName.toLowerCase();
             if (categoryCache.has(cacheKey)) {
               categoryId = categoryCache.get(cacheKey);
