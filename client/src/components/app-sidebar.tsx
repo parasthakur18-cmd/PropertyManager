@@ -83,7 +83,6 @@ const adminRoomItems = [
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
-  { title: "Services Report", url: "/services-report", icon: Package },
 ];
 
 const adminGuestItems = [
@@ -117,6 +116,7 @@ const adminFinanceItems = [
   { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "Financials", url: "/financials", icon: TrendingUp },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+  { title: "Services Report", url: "/services-report", icon: Package },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Performance", url: "/performance", icon: BarChart3 },
   { title: "Attendance", url: "/attendance", icon: Clock },
@@ -139,7 +139,6 @@ const managerRoomItems = [
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
-  { title: "Services Report", url: "/services-report", icon: Package },
 ];
 
 const managerGuestItems = [
@@ -165,6 +164,7 @@ const managerFinanceItems = [
   { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+  { title: "Services Report", url: "/services-report", icon: Package },
 ];
 
 // Staff menu items
@@ -242,7 +242,6 @@ export function AppSidebar() {
         { title: "Rooms", url: "/rooms", icon: Hotel },
         { title: "QR Codes", url: "/qr-codes", icon: QrCode },
         { title: "Add-ons", url: "/addons", icon: Plus },
-        { title: "Services Report", url: "/services-report", icon: Package },
       ] : [];
 
       const guestItems = hasAccess("guests") ? [
@@ -275,6 +274,7 @@ export function AppSidebar() {
         { title: "Expenses", url: "/expenses", icon: FileText },
         ...(hasAccess("reports") ? [
           { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+          { title: "Services Report", url: "/services-report", icon: Package },
           { title: "Analytics", url: "/analytics", icon: BarChart3 },
         ] : []),
       ] : [];
