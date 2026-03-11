@@ -8630,6 +8630,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!currentUser) {
         return res.status(403).json({ message: "User not found" });
       }
+      if (currentUser.role !== "admin" && currentUser.role !== "super-admin") {
+        return res.status(403).json({ message: "Access denied: admin only" });
+      }
 
       const { propertyId } = req.query;
       const tenant = getTenantContext(currentUser);
@@ -8656,6 +8659,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
       const { tenant } = auth;
+      if (tenant.role !== "admin" && tenant.role !== "super-admin") {
+        return res.status(403).json({ message: "Access denied: admin only" });
+      }
 
       if (req.body.propertyId && !canAccessProperty(tenant, req.body.propertyId)) {
         return res.status(403).json({ message: "Access denied to this property" });
@@ -8698,8 +8704,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.patch("/api/expenses/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/expenses/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authenticated" });
+      if (auth.tenant.role !== "admin" && auth.tenant.role !== "super-admin") {
+        return res.status(403).json({ message: "Access denied: admin only" });
+      }
       const expense = await storage.updateExpense(parseInt(req.params.id), req.body);
       if (!expense) {
         return res.status(404).json({ message: "Expense not found" });
@@ -8713,8 +8724,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.delete("/api/expenses/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/expenses/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authenticated" });
+      if (auth.tenant.role !== "admin" && auth.tenant.role !== "super-admin") {
+        return res.status(403).json({ message: "Access denied: admin only" });
+      }
       await storage.deleteExpense(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {

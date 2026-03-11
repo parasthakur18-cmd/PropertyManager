@@ -161,7 +161,6 @@ const managerAdminItems = [
 
 const managerFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
-  { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
@@ -273,7 +272,6 @@ export function AppSidebar() {
 
       const financeItems = hasAccess("payments") ? [
         { title: "Billing", url: "/billing", icon: Receipt },
-        { title: "Expenses", url: "/expenses", icon: FileText },
         ...(hasAccess("reports") ? [
           { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
           { title: "Services Report", url: "/services-report", icon: Package },

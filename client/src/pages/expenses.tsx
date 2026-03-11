@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,12 +46,19 @@ const categoryFormSchema = z.object({
 });
 
 export default function Expenses() {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "trends" | "insights" | "budget" | "efficiency" | "forecast" | "comparison" | "savings" | "anomalies">("overview");
+
+  if (user && user.role !== "admin" && user.role !== "super-admin") {
+    navigate("/");
+    return null;
+  }
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
