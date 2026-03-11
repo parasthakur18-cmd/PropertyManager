@@ -5744,26 +5744,32 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             }
           }
 
-          // Parse variants from CSV string format: "Name:Price,Name:Price"
+          // Parse variants from CSV string format: "Name:Price|Name:Price" (pipe-separated, comma also supported)
           const parsedVariants: { name: string; priceModifier: string }[] = [];
           if (item.variants && typeof item.variants === 'string' && item.variants.trim()) {
-            const variantParts = item.variants.split(',');
+            const delimiter = item.variants.includes('|') ? '|' : ',';
+            const variantParts = item.variants.split(delimiter);
             for (const part of variantParts) {
-              const [vName, vPrice] = part.split(':').map((s: string) => s.trim());
-              if (vName && vPrice) {
-                parsedVariants.push({ name: vName, priceModifier: vPrice });
+              const colonIdx = part.lastIndexOf(':');
+              if (colonIdx > 0) {
+                const vName = part.substring(0, colonIdx).trim();
+                const vPrice = part.substring(colonIdx + 1).trim();
+                if (vName && vPrice) parsedVariants.push({ name: vName, priceModifier: vPrice });
               }
             }
           }
 
-          // Parse add-ons from CSV string format: "Name:Price,Name:Price"
+          // Parse add-ons from CSV string format: "Name:Price|Name:Price" (pipe-separated, comma also supported)
           const parsedAddOns: { name: string; price: string }[] = [];
           if (item.addOns && typeof item.addOns === 'string' && item.addOns.trim()) {
-            const addOnParts = item.addOns.split(',');
+            const delimiter = item.addOns.includes('|') ? '|' : ',';
+            const addOnParts = item.addOns.split(delimiter);
             for (const part of addOnParts) {
-              const [aName, aPrice] = part.split(':').map((s: string) => s.trim());
-              if (aName && aPrice) {
-                parsedAddOns.push({ name: aName, price: aPrice });
+              const colonIdx = part.lastIndexOf(':');
+              if (colonIdx > 0) {
+                const aName = part.substring(0, colonIdx).trim();
+                const aPrice = part.substring(colonIdx + 1).trim();
+                if (aName && aPrice) parsedAddOns.push({ name: aName, price: aPrice });
               }
             }
           }
@@ -5783,6 +5789,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             hasVariants: parsedVariants.length > 0,
             hasAddOns: parsedAddOns.length > 0,
             displayOrder: item.sequence || item.displayOrder || 0,
+            imageUrl: item.imageUrl || null,
           };
 
           const createdItem = await storage.createMenuItem(menuItemData);
@@ -5843,7 +5850,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const categories = await storage.getMenuCategoriesByProperty(propertyId);
       const catMap = new Map(categories.map(c => [c.id, c.name]));
 
-      let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns\n';
+      let csv = 'sequence,name,category,price,description,isVeg,isAvailable,variants,addOns,imageUrl\n';
       for (const item of items) {
         const cat = item.categoryId ? (catMap.get(item.categoryId) || '') : '';
         
@@ -5854,15 +5861,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const variants = await storage.getVariantsByMenuItem(item.id);
           const addOns = await storage.getAddOnsByMenuItem(item.id);
           
-          // Format: "VariantName:Price,VariantName2:Price2"
-          // Database fields: variantName, actualPrice for variants; addOnName, addOnPrice for add-ons
-          variantsStr = variants.map(v => `${v.variantName}:${v.actualPrice || 0}`).join(',');
-          addOnsStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice || 0}`).join(',');
+          // Format: "VariantName:Price|VariantName2:Price2" (pipe-separated)
+          variantsStr = variants.map(v => `${v.variantName}:${v.actualPrice || 0}`).join('|');
+          addOnsStr = addOns.map(a => `${a.addOnName}:${a.addOnPrice || 0}`).join('|');
         } catch (err) {
           console.warn(`[EXPORT] Could not fetch variants/add-ons for item ${item.id}:`, err);
         }
         
-        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'True' : 'False'},${item.isAvailable ? 'True' : 'False'},"${variantsStr}","${addOnsStr}"\n`;
+        csv += `${item.displayOrder || 0},"${(item.name || '').replace(/"/g, '""')}","${cat.replace(/"/g, '""')}",${item.price || 0},"${(item.description || '').replace(/"/g, '""')}",${item.foodType === 'veg' ? 'true' : 'false'},${item.isAvailable ? 'true' : 'false'},"${variantsStr}","${addOnsStr}","${item.imageUrl || ''}"\n`;
       }
 
       res.setHeader('Content-Type', 'text/csv');
@@ -5891,6 +5897,88 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.json({ message: `Deleted ${itemsToDelete.length} menu items` });
     } catch (error: any) {
       res.status(500).json({ message: 'Delete failed: ' + error.message });
+    }
+  });
+
+  // Duplicate menu from one property to another
+  app.post("/api/menu-items/duplicate-to-property", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { sourcePropertyId, targetPropertyId } = req.body;
+      if (!sourcePropertyId || !targetPropertyId) return res.status(400).json({ message: "sourcePropertyId and targetPropertyId are required" });
+      if (!canAccessProperty(tenant, sourcePropertyId) || !canAccessProperty(tenant, targetPropertyId)) {
+        return res.status(403).json({ message: "Access denied to one or both properties" });
+      }
+
+      // Load source categories and items
+      const sourceCategories = await storage.getMenuCategoriesByProperty(sourcePropertyId);
+      const allItems = await storage.getAllMenuItems();
+      const sourceItems = allItems.filter(i => i.propertyId === sourcePropertyId);
+
+      // Map: old category id → new category id
+      const categoryMap = new Map<number, number>();
+
+      // Create categories in target property
+      for (const cat of sourceCategories) {
+        const newCat = await storage.createMenuCategory({
+          propertyId: targetPropertyId,
+          name: cat.name,
+          description: cat.description || null,
+          displayOrder: cat.displayOrder || 0,
+          imageUrl: cat.imageUrl || null,
+        });
+        categoryMap.set(cat.id, newCat.id);
+      }
+
+      let itemsCopied = 0;
+      for (const item of sourceItems) {
+        const newCategoryId = item.categoryId ? categoryMap.get(item.categoryId) || null : null;
+        const newItem = await storage.createMenuItem({
+          propertyId: targetPropertyId,
+          categoryId: newCategoryId,
+          name: item.name,
+          description: item.description || null,
+          category: item.category || null,
+          price: item.price?.toString() || "0",
+          isAvailable: item.isAvailable,
+          foodType: item.foodType || null,
+          hasVariants: item.hasVariants || false,
+          hasAddOns: item.hasAddOns || false,
+          displayOrder: item.displayOrder || 0,
+          imageUrl: item.imageUrl || null,
+          preparationTime: item.preparationTime || null,
+          actualPrice: item.actualPrice?.toString() || null,
+          discountedPrice: item.discountedPrice?.toString() || null,
+        });
+
+        // Copy variants
+        const variants = await storage.getVariantsByMenuItem(item.id);
+        for (const v of variants) {
+          await storage.createMenuItemVariant({
+            menuItemId: newItem.id,
+            variantName: v.variantName,
+            actualPrice: v.actualPrice?.toString() || "0",
+            discountedPrice: v.discountedPrice?.toString() || null,
+          });
+        }
+
+        // Copy add-ons
+        const addOns = await storage.getAddOnsByMenuItem(item.id);
+        for (const a of addOns) {
+          await storage.createMenuItemAddOn({
+            menuItemId: newItem.id,
+            addOnName: a.addOnName,
+            addOnPrice: a.addOnPrice?.toString() || "0",
+          });
+        }
+        itemsCopied++;
+      }
+
+      res.json({ message: `Copied ${itemsCopied} items and ${sourceCategories.length} categories to target property`, itemsCopied, categoriesCopied: sourceCategories.length });
+    } catch (error: any) {
+      res.status(500).json({ message: 'Duplication failed: ' + error.message });
     }
   });
 

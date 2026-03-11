@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle, Settings } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle, Settings, Copy } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -72,8 +72,11 @@ export default function EnhancedMenu() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isDuplicateOpen, setIsDuplicateOpen] = useState(false);
+  const [duplicateSourceId, setDuplicateSourceId] = useState<number>(0);
+  const [duplicateTargetId, setDuplicateTargetId] = useState<number>(0);
   const [parsedItems, setParsedItems] = useState<any[]>([]);
-  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [rowResults, setRowResults] = useState<{ row: number; item?: any; errors: string[] }[]>([]);
   const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
@@ -212,60 +215,99 @@ export default function EnhancedMenu() {
     return result;
   }
 
-  function parseCSV(csvText: string): { items: any[]; errors: string[] } {
+  function parseCSV(csvText: string): { items: any[]; rowResults: { row: number; item?: any; errors: string[] }[] } {
     const lines = csvText.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return { items: [], errors: ['CSV file must have headers and at least one data row'] };
+    if (lines.length < 2) return { items: [], rowResults: [{ row: 1, errors: ['CSV file must have headers and at least one data row'] }] };
     const items: any[] = [];
-    const errors: string[] = [];
-    
-    // Check if first column is sequence (number) or name (text) by looking at header
-    const headerValues = parseCSVLine(lines[0]);
-    const hasSequenceColumn = headerValues[0]?.toLowerCase().trim() === 'sequence';
-    
+    const rowResults: { row: number; item?: any; errors: string[] }[] = [];
+
+    const headerValues = parseCSVLine(lines[0]).map(h => h.toLowerCase().trim());
+    const hasSequenceColumn = headerValues[0] === 'sequence';
+
     for (let i = 1; i < lines.length; i++) {
+      const rowNum = i + 1;
       const values = parseCSVLine(lines[i]);
-      
-      let sequence: number, name: string, categoryName: string, price: string, description: string, isVeg: string, isAvailable: string, variants: string, addOns: string;
-      
+      const rowErrors: string[] = [];
+
+      let sequence: number, name: string, categoryName: string, price: string,
+          description: string, isVeg: string, isAvailable: string,
+          variants: string, addOns: string, imageUrl: string;
+
       if (hasSequenceColumn) {
-        // Format: sequence, name, category, price, ...
-        if (values.length < 4) { errors.push(`Row ${i + 1}: Need at least 4 columns`); continue; }
+        [, name, categoryName, price, description, isVeg, isAvailable, variants, addOns, imageUrl] = values;
         const seq = parseInt(values[0], 10);
         sequence = isNaN(seq) ? i : seq;
-        [, name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
       } else {
-        // Format: name, category, price, ... (no sequence - auto-number)
-        if (values.length < 3) { errors.push(`Row ${i + 1}: Need at least 3 columns (name, category, price)`); continue; }
+        [name, categoryName, price, description, isVeg, isAvailable, variants, addOns, imageUrl] = values;
         sequence = i;
-        [name, categoryName, price, description, isVeg, isAvailable, variants, addOns] = values;
       }
-      
-      if (!name || !name.trim()) { errors.push(`Row ${i + 1}: Missing name`); continue; }
-      if (!categoryName || !categoryName.trim()) { errors.push(`Row ${i + 1}: Missing category`); continue; }
-      
-      const parsedPrice = parseFloat(price || '0');
-      if (isNaN(parsedPrice)) { errors.push(`Row ${i + 1}: Invalid price "${price}"`); continue; }
-      
-      const matchedCategory = categories?.find(c => c.name.toLowerCase().trim() === categoryName.toLowerCase().trim());
-      
-      items.push({
+
+      // Required field checks
+      if (!name?.trim()) rowErrors.push('Missing name');
+      if (!categoryName?.trim()) rowErrors.push('Missing category');
+
+      // Price validation
+      const parsedPrice = parseFloat(price || '');
+      if (!price?.trim() || isNaN(parsedPrice) || parsedPrice < 0) rowErrors.push(`Invalid price "${price || ''}"`);
+
+      // Boolean field validation
+      const isVegLower = (isVeg || '').toLowerCase().trim();
+      if (isVegLower && isVegLower !== 'true' && isVegLower !== 'false') rowErrors.push(`isVeg must be "true" or "false", got "${isVeg}"`);
+
+      const isAvailLower = (isAvailable || '').toLowerCase().trim();
+      if (isAvailLower && isAvailLower !== 'true' && isAvailLower !== 'false') rowErrors.push(`isAvailable must be "true", "false", or blank, got "${isAvailable}"`);
+
+      // Variants format validation: Name:Price|Name:Price
+      const variantsTrimmed = (variants || '').trim();
+      if (variantsTrimmed) {
+        const delimiter = variantsTrimmed.includes('|') ? '|' : ',';
+        const parts = variantsTrimmed.split(delimiter);
+        for (const part of parts) {
+          const colonIdx = part.lastIndexOf(':');
+          if (colonIdx <= 0) { rowErrors.push(`Variants format error: "${part}" — use Name:Price|Name:Price`); break; }
+          const vPrice = part.substring(colonIdx + 1).trim();
+          if (isNaN(parseFloat(vPrice))) { rowErrors.push(`Variants price invalid: "${vPrice}"`); break; }
+        }
+      }
+
+      // AddOns format validation: Name:Price|Name:Price
+      const addOnsTrimmed = (addOns || '').trim();
+      if (addOnsTrimmed) {
+        const delimiter = addOnsTrimmed.includes('|') ? '|' : ',';
+        const parts = addOnsTrimmed.split(delimiter);
+        for (const part of parts) {
+          const colonIdx = part.lastIndexOf(':');
+          if (colonIdx <= 0) { rowErrors.push(`Add-ons format error: "${part}" — use Name:Price|Name:Price`); break; }
+          const aPrice = part.substring(colonIdx + 1).trim();
+          if (isNaN(parseFloat(aPrice))) { rowErrors.push(`Add-ons price invalid: "${aPrice}"`); break; }
+        }
+      }
+
+      const matchedCategory = categories?.find(c => c.name.toLowerCase().trim() === (categoryName || '').toLowerCase().trim());
+
+      const parsedItem = {
         sequence,
-        name: name.trim(), 
-        category: categoryName.trim(),
+        name: (name || '').trim(),
+        category: (categoryName || '').trim(),
         categoryId: matchedCategory?.id || null,
-        price: parsedPrice, 
+        isNewCategory: !matchedCategory && !!categoryName?.trim(),
+        price: isNaN(parsedPrice) ? 0 : parsedPrice,
         description: (description || '').trim(),
-        isVeg: isVeg?.toLowerCase() === 'true',
-        isAvailable: isAvailable?.toLowerCase() !== 'false',
-        variants: (variants || '').trim(), 
-        addOns: (addOns || '').trim()
-      });
+        isVeg: isVegLower === 'true',
+        isAvailable: isAvailLower !== 'false',
+        variants: variantsTrimmed,
+        addOns: addOnsTrimmed,
+        imageUrl: (imageUrl || '').trim(),
+      };
+
+      rowResults.push({ row: rowNum, item: parsedItem, errors: rowErrors });
+      if (rowErrors.length === 0) items.push(parsedItem);
     }
-    return { items, errors };
+    return { items, rowResults };
   }
 
   function generateCSVTemplate() {
-    const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns'];
+    const headers = ['sequence', 'name', 'category', 'price', 'description', 'isVeg', 'isAvailable', 'variants', 'addOns', 'imageUrl'];
     
     // If we have existing menu items, export them as template examples
     if (menuItems && menuItems.length > 0 && categories && categories.length > 0) {
@@ -307,22 +349,22 @@ export default function EnhancedMenu() {
       return [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
     }
     
-    // Fallback: Sample rows with sequence numbers
+    // Fallback: Sample rows with sequence numbers (variants/addOns use | separator)
     const sampleRows = [
-      ['1', 'Masala Omelette', 'Breakfast', '80', 'Spiced egg omelette with onions', 'false', 'true', '', ''],
-      ['2', 'Aloo Paratha', 'Breakfast', '60', 'Stuffed potato flatbread', 'true', 'true', '', 'Extra Butter:20'],
-      ['1', 'Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese cubes', 'true', 'true', 'Half:150,Full:280', 'Extra Sauce:30'],
-      ['2', 'Chicken Lollipop', 'Starters', '320', 'Crispy fried chicken wings', 'false', 'true', '', ''],
-      ['1', 'Butter Chicken', 'Main Course', '350', 'Creamy tomato chicken curry', 'false', 'true', 'Half:200,Full:350', 'Extra Gravy:50'],
-      ['2', 'Dal Makhani', 'Main Course', '220', 'Slow cooked black lentils', 'true', 'true', '', ''],
-      ['1', 'Veg Biryani', 'Rice & Biryani', '250', 'Fragrant rice with vegetables', 'true', 'true', '', 'Extra Raita:40'],
-      ['2', 'Chicken Biryani', 'Rice & Biryani', '320', 'Aromatic rice with chicken', 'false', 'true', 'Half:180,Full:320', 'Extra Raita:40'],
-      ['1', 'Butter Naan', 'Breads', '50', 'Soft buttered flatbread', 'true', 'true', '', ''],
-      ['2', 'Tandoori Roti', 'Breads', '30', 'Whole wheat bread from tandoor', 'true', 'true', '', ''],
-      ['1', 'Fresh Lime Soda', 'Beverages', '60', 'Sweet or salted lime drink', 'true', 'true', 'Sweet:60,Salted:60', ''],
-      ['2', 'Masala Chai', 'Beverages', '30', 'Indian spiced tea', 'true', 'true', '', ''],
-      ['1', 'Gulab Jamun', 'Desserts', '80', 'Sweet milk dumplings in syrup', 'true', 'true', '2pcs:80,4pcs:150', ''],
-      ['2', 'Ice Cream', 'Desserts', '100', 'Vanilla or chocolate', 'true', 'true', 'Single:60,Double:100', '']
+      ['1', 'Masala Omelette', 'Breakfast', '80', 'Spiced egg omelette with onions', 'false', 'true', '', '', ''],
+      ['2', 'Aloo Paratha', 'Breakfast', '60', 'Stuffed potato flatbread', 'true', 'true', '', 'Extra Butter:20', ''],
+      ['1', 'Paneer Tikka', 'Starters', '280', 'Grilled cottage cheese cubes', 'true', 'true', 'Half:150|Full:280', 'Extra Sauce:30', ''],
+      ['2', 'Chicken Lollipop', 'Starters', '320', 'Crispy fried chicken wings', 'false', 'true', '', '', ''],
+      ['1', 'Butter Chicken', 'Main Course', '350', 'Creamy tomato chicken curry', 'false', 'true', 'Half:200|Full:350', 'Extra Gravy:50', ''],
+      ['2', 'Dal Makhani', 'Main Course', '220', 'Slow cooked black lentils', 'true', 'true', '', '', ''],
+      ['1', 'Veg Biryani', 'Rice & Biryani', '250', 'Fragrant rice with vegetables', 'true', 'true', '', 'Extra Raita:40', ''],
+      ['2', 'Chicken Biryani', 'Rice & Biryani', '320', 'Aromatic rice with chicken', 'false', 'true', 'Half:180|Full:320', 'Extra Raita:40', ''],
+      ['1', 'Butter Naan', 'Breads', '50', 'Soft buttered flatbread', 'true', 'true', '', '', ''],
+      ['2', 'Tandoori Roti', 'Breads', '30', 'Whole wheat bread from tandoor', 'true', 'true', '', '', ''],
+      ['1', 'Fresh Lime Soda', 'Beverages', '60', 'Sweet or salted lime drink', 'true', 'true', 'Sweet:60|Salted:60', '', ''],
+      ['2', 'Masala Chai', 'Beverages', '30', 'Indian spiced tea', 'true', 'true', '', '', ''],
+      ['1', 'Gulab Jamun', 'Desserts', '80', 'Sweet milk dumplings in syrup', 'true', 'true', '2pcs:80|4pcs:150', '', ''],
+      ['2', 'Ice Cream', 'Desserts', '100', 'Vanilla or chocolate', 'true', 'true', 'Single:60|Double:100', '', '']
     ];
     return [headers.join(','), ...sampleRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
   }
@@ -335,7 +377,7 @@ export default function EnhancedMenu() {
       const text = e.target?.result as string;
       const result = parseCSV(text);
       setParsedItems(result.items);
-      setParseErrors(result.errors);
+      setRowResults(result.rowResults);
       setImportResult(null);
     };
     reader.readAsText(file);
@@ -375,7 +417,7 @@ export default function EnhancedMenu() {
 
   const resetBulkImport = () => {
     setParsedItems([]);
-    setParseErrors([]);
+    setRowResults([]);
     setImportResult(null);
   };
 
@@ -429,14 +471,28 @@ export default function EnhancedMenu() {
       toast({ title: "No items to import", description: "Please upload a CSV file first", variant: "destructive" });
       return;
     }
-    // Ensure a valid property is selected
-    const propertyToUse = selectedProperty || properties?.[0]?.id;
-    if (!propertyToUse) {
-      toast({ title: "No property selected", description: "Please select a property first", variant: "destructive" });
+    if (!selectedProperty || selectedProperty === 0) {
+      toast({ title: "Select a specific property", description: "Please choose a property from the dropdown before importing", variant: "destructive" });
       return;
     }
-    bulkImportMutation.mutate({ items: parsedItems, propertyId: propertyToUse });
+    bulkImportMutation.mutate({ items: parsedItems, propertyId: selectedProperty });
   };
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (data: { sourcePropertyId: number; targetPropertyId: number }) => {
+      const res = await apiRequest("/api/menu-items/duplicate-to-property", "POST", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Menu Copied!", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
+      setIsDuplicateOpen(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "Copy Failed", description: error.message, variant: "destructive" });
+    },
+  });
 
   // Handle category drag end
   const handleCategoryDragEnd = (event: DragEndEvent) => {
@@ -483,11 +539,17 @@ export default function EnhancedMenu() {
             Manage categories, items, variants, and add-ons for your restaurant menu
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={openSettingsDialog} data-testid="button-order-settings">
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </Button>
+          {properties && properties.length > 1 && (
+            <Button variant="outline" onClick={() => setIsDuplicateOpen(true)} data-testid="button-copy-menu">
+              <Copy className="h-4 w-4 mr-2" />
+              Copy Menu
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} data-testid="button-bulk-import">
             <Upload className="h-4 w-4 mr-2" />
             Bulk Import CSV
@@ -775,7 +837,7 @@ export default function EnhancedMenu() {
         if (!open) resetBulkImport();
         setIsBulkImportOpen(open);
       }}>
-        <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogContent className="max-w-4xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5 text-primary" />
@@ -786,49 +848,58 @@ export default function EnhancedMenu() {
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[60vh] pr-4">
-            <div className="space-y-4">
-              {/* Property Selection */}
-              {properties && properties.length > 1 && (
-                <div>
-                  <Label>Select Property</Label>
-                  <Select
-                    value={selectedProperty.toString()}
-                    onValueChange={(val) => setSelectedProperty(parseInt(val))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select property" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">All Properties</SelectItem>
-                      {properties.map((prop) => (
-                        <SelectItem key={prop.id} value={prop.id.toString()}>
-                          {prop.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+          <ScrollArea className="max-h-[65vh] pr-2">
+            <div className="space-y-4 pr-2">
+              {/* Property Selection — must pick a specific property */}
+              <div>
+                <Label>Select Property <span className="text-red-500">*</span></Label>
+                <Select
+                  value={selectedProperty.toString()}
+                  onValueChange={(val) => setSelectedProperty(parseInt(val))}
+                >
+                  <SelectTrigger data-testid="select-import-property">
+                    <SelectValue placeholder="Select a specific property" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">-- Select a property --</SelectItem>
+                    {properties?.map((prop) => (
+                      <SelectItem key={prop.id} value={prop.id.toString()}>
+                        {prop.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {(!selectedProperty || selectedProperty === 0) && (
+                  <p className="text-xs text-amber-600 mt-1">You must select a specific property before uploading or importing.</p>
+                )}
+              </div>
 
               {/* Download Template & Export */}
-              <div className="flex items-center gap-4 flex-wrap">
-                <Button variant="outline" onClick={downloadTemplate}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <Button variant="outline" size="sm" onClick={downloadTemplate}>
                   <Download className="h-4 w-4 mr-2" />
-                  Download CSV Template
+                  Download Template
                 </Button>
-                <Button variant="outline" onClick={downloadAllMenuItems}>
+                <Button variant="outline" size="sm" onClick={downloadAllMenuItems}>
                   <Download className="h-4 w-4 mr-2" />
                   Export Current Menu
                 </Button>
-                <Button variant="destructive" onClick={() => {
-                  if (confirm('Delete ALL menu items for this property? This cannot be undone.')) {
+                <Button variant="destructive" size="sm" onClick={() => {
+                  if (confirm('Delete ALL menu items for the selected property? This cannot be undone.')) {
                     deleteAllMenuItems();
                   }
                 }}>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  Delete All Menu Items
+                  Delete All
                 </Button>
+              </div>
+
+              {/* CSV Format Help */}
+              <div className="text-xs text-muted-foreground bg-muted/50 rounded p-3 space-y-1">
+                <p className="font-medium text-foreground">CSV Columns:</p>
+                <p>sequence, name*, category*, price*, description, isVeg (true/false), isAvailable (true/false), variants, addOns, imageUrl</p>
+                <p className="text-amber-600 font-medium mt-1">Variants & Add-ons format: <code>Name:Price|Name:Price</code> — e.g. <code>Half:150|Full:280</code></p>
+                <p>* = required fields</p>
               </div>
 
               {/* File Upload */}
@@ -839,60 +910,97 @@ export default function EnhancedMenu() {
                   accept=".csv"
                   onChange={handleFileUpload}
                   data-testid="input-csv-file"
+                  disabled={!selectedProperty || selectedProperty === 0}
                 />
               </div>
 
-              {/* Parse Errors */}
-              {parseErrors.length > 0 && !importResult && (
-                <Alert className="border-amber-500">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Some rows have errors</AlertTitle>
-                  <AlertDescription>
-                    <ul className="text-sm list-disc pl-4 mt-2">
-                      {parseErrors.slice(0, 5).map((error, i) => (
-                        <li key={i}>{error}</li>
-                      ))}
-                      {parseErrors.length > 5 && <li>...and {parseErrors.length - 5} more errors</li>}
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {/* Preview */}
-              {parsedItems.length > 0 && !importResult && (
-                <Alert className="border-green-500">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <AlertTitle>{parsedItems.length} items ready to import</AlertTitle>
-                  <AlertDescription>
-                    <ul className="text-sm mt-2">
-                      {parsedItems.slice(0, 5).map((item, i) => (
-                        <li key={i}>{item.name} - {item.category} - ₹{item.price}</li>
-                      ))}
-                      {parsedItems.length > 5 && <li>...and {parsedItems.length - 5} more items</li>}
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              )}
-
               {/* Import Result */}
               {importResult && (
-                <Alert className={importResult.failed > 0 ? "border-amber-500" : "border-green-500"}>
-                  <CheckCircle2 className="h-4 w-4" />
+                <Alert className={importResult.failed > 0 ? "border-amber-500 bg-amber-50 dark:bg-amber-950" : "border-green-500 bg-green-50 dark:bg-green-950"}>
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <AlertTitle>Import Complete</AlertTitle>
                   <AlertDescription>
                     <p>{importResult.created} items imported successfully</p>
-                    {importResult.failed > 0 && <p className="text-amber-600">{importResult.failed} items failed</p>}
+                    {importResult.failed > 0 && <p className="text-amber-700 font-medium">{importResult.failed} items failed</p>}
+                    {importResult.errors?.map((e, i) => <p key={i} className="text-xs text-amber-600">{e}</p>)}
                   </AlertDescription>
                 </Alert>
               )}
 
-              {/* CSV Format Help */}
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium mb-1">CSV Format:</p>
-                <p>sequence, name, category, price, description, isVeg (true/false), isAvailable (true/false), variants, addOns</p>
-                <p className="text-xs mt-1">Sequence: number for display order within category (1, 2, 3...)</p>
-                <p className="text-xs mt-1">Variants format: Name:Price,Name:Price (e.g., Half:150,Full:250)</p>
-              </div>
+              {/* Preview Table */}
+              {rowResults.length > 0 && !importResult && (() => {
+                const errorCount = rowResults.filter(r => r.errors.length > 0).length;
+                const validCount = rowResults.filter(r => r.errors.length === 0).length;
+                const newCategoryNames = [...new Set(rowResults.filter(r => r.item?.isNewCategory).map(r => r.item?.category))];
+                return (
+                  <div className="space-y-3">
+                    {/* Summary */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">{validCount} valid</Badge>
+                      {errorCount > 0 && <Badge variant="destructive">{errorCount} errors — will be skipped</Badge>}
+                      {newCategoryNames.length > 0 && (
+                        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                          {newCategoryNames.length} new {newCategoryNames.length === 1 ? 'category' : 'categories'} will be created
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* New categories notice */}
+                    {newCategoryNames.length > 0 && (
+                      <Alert className="border-blue-400 bg-blue-50 dark:bg-blue-950">
+                        <AlertCircle className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-blue-800 dark:text-blue-200">New categories will be created</AlertTitle>
+                        <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs">
+                          {newCategoryNames.join(', ')}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* Preview table */}
+                    <div className="border rounded overflow-auto max-h-[300px]">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted sticky top-0">
+                          <tr>
+                            <th className="text-left p-2 w-12">Row</th>
+                            <th className="text-left p-2">Name</th>
+                            <th className="text-left p-2">Category</th>
+                            <th className="text-left p-2 w-16">Price</th>
+                            <th className="text-left p-2 w-16">Avail.</th>
+                            <th className="text-left p-2 w-12">Veg</th>
+                            <th className="text-left p-2">Variants / Add-ons</th>
+                            <th className="text-left p-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rowResults.map((r) => (
+                            <tr key={r.row} className={r.errors.length > 0 ? "bg-red-50 dark:bg-red-950 border-l-2 border-red-500" : "hover:bg-muted/30"}>
+                              <td className="p-2 text-muted-foreground">{r.row}</td>
+                              <td className="p-2 font-medium">{r.item?.name || <span className="text-red-500">—</span>}</td>
+                              <td className="p-2">
+                                {r.item?.category}
+                                {r.item?.isNewCategory && <span className="ml-1 text-blue-500 text-[10px]">new</span>}
+                              </td>
+                              <td className="p-2">₹{r.item?.price ?? '—'}</td>
+                              <td className="p-2">{r.item?.isAvailable !== false ? <span className="text-green-600">Yes</span> : <span className="text-muted-foreground">No</span>}</td>
+                              <td className="p-2">{r.item?.isVeg ? '🟢' : '🔴'}</td>
+                              <td className="p-2 max-w-[120px] truncate">
+                                {r.item?.variants && <span className="text-muted-foreground">{r.item.variants}</span>}
+                                {r.item?.addOns && <span className="text-muted-foreground ml-1">| {r.item.addOns}</span>}
+                              </td>
+                              <td className="p-2">
+                                {r.errors.length > 0
+                                  ? <span className="text-red-600 font-medium" title={r.errors.join('; ')}>⚠ {r.errors[0]}{r.errors.length > 1 ? ` +${r.errors.length - 1}` : ''}</span>
+                                  : <span className="text-green-600">✓ OK</span>
+                                }
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </ScrollArea>
 
@@ -907,11 +1015,75 @@ export default function EnhancedMenu() {
             ) : (
               <Button
                 onClick={handleBulkImport}
-                disabled={parsedItems.length === 0 || bulkImportMutation.isPending}
+                disabled={parsedItems.length === 0 || bulkImportMutation.isPending || !selectedProperty || selectedProperty === 0}
+                data-testid="button-import-confirm"
               >
-                {bulkImportMutation.isPending ? "Importing..." : `Import ${parsedItems.length} Items`}
+                {bulkImportMutation.isPending ? "Importing..." : `Import ${parsedItems.length} Valid Items`}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Copy Menu to Another Property Dialog */}
+      <Dialog open={isDuplicateOpen} onOpenChange={(open) => { setIsDuplicateOpen(open); if (!open) { setDuplicateSourceId(0); setDuplicateTargetId(0); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="h-5 w-5 text-primary" />
+              Copy Menu to Another Property
+            </DialogTitle>
+            <DialogDescription>
+              Copy all categories and menu items from one property to another. Existing items in the target property will not be removed.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Copy From (Source)</Label>
+              <Select value={duplicateSourceId.toString()} onValueChange={(v) => setDuplicateSourceId(parseInt(v))}>
+                <SelectTrigger data-testid="select-duplicate-source">
+                  <SelectValue placeholder="Select source property" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">-- Select source --</SelectItem>
+                  {properties?.map((p) => (
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Copy To (Target)</Label>
+              <Select value={duplicateTargetId.toString()} onValueChange={(v) => setDuplicateTargetId(parseInt(v))}>
+                <SelectTrigger data-testid="select-duplicate-target">
+                  <SelectValue placeholder="Select target property" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">-- Select target --</SelectItem>
+                  {properties?.filter(p => p.id !== duplicateSourceId).map((p) => (
+                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {duplicateSourceId > 0 && duplicateTargetId > 0 && (
+              <Alert className="border-blue-400 bg-blue-50 dark:bg-blue-950">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <AlertDescription className="text-blue-700 dark:text-blue-300 text-sm">
+                  All menu items from <strong>{properties?.find(p => p.id === duplicateSourceId)?.name}</strong> will be copied to <strong>{properties?.find(p => p.id === duplicateTargetId)?.name}</strong>.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDuplicateOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => duplicateMutation.mutate({ sourcePropertyId: duplicateSourceId, targetPropertyId: duplicateTargetId })}
+              disabled={!duplicateSourceId || !duplicateTargetId || duplicateSourceId === duplicateTargetId || duplicateMutation.isPending}
+              data-testid="button-duplicate-confirm"
+            >
+              {duplicateMutation.isPending ? "Copying..." : "Copy Menu"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
