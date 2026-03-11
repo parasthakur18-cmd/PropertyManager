@@ -3864,7 +3864,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           splitPaymentMethods.push({ method: "cash", amount: cashAmount });
         }
         if (onlineAmount && onlineAmount > 0) {
-          splitPaymentMethods.push({ method: "online", amount: onlineAmount });
+          // Use the actual paymentMethod for the online portion (e.g. "upi", "bank")
+          // Fall back to "upi" if method is "split" or unrecognised
+          const onlineMethod = (paymentMethod && paymentMethod !== 'cash' && paymentMethod !== 'split')
+            ? paymentMethod
+            : 'upi';
+          splitPaymentMethods.push({ method: onlineMethod, amount: onlineAmount });
         }
       } else if (paymentStatus === "paid" && paymentMethod) {
         // If no split payment amounts, but marked as paid with a single method

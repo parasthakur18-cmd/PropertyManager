@@ -751,12 +751,17 @@ export default function ActiveBookings() {
     const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
     const balanceDue = finalTotal - advancePaid;
     
-    const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
-    const parsedCash = cashInput?.value ? parseFloat(cashInput.value) : (cashAmount ? parseFloat(cashAmount) : 0);
-    const finalCashAmount = Math.max(0, parsedCash);
-    const finalOnlineAmount = Math.max(0, balanceDue - finalCashAmount);
+    // Only build split amounts when "split" is explicitly chosen
+    let finalCashAmount = 0;
+    let finalOnlineAmount = 0;
+    if (paymentMethod === "split") {
+      const cashInput = document.getElementById("cash-amount") as HTMLInputElement;
+      const parsedCash = cashInput?.value ? parseFloat(cashInput.value) : (cashAmount ? parseFloat(cashAmount) : 0);
+      finalCashAmount = Math.max(0, parsedCash);
+      finalOnlineAmount = Math.max(0, balanceDue - finalCashAmount);
+    }
     
-    console.log(`[Checkout] Balance Due: ${balanceDue}, Cash: ${finalCashAmount}, Online: ${finalOnlineAmount}`);
+    console.log(`[Checkout] Balance Due: ${balanceDue}, Method: ${paymentMethod}, Cash: ${finalCashAmount}, Online: ${finalOnlineAmount}`);
     
     checkoutMutation.mutate({
       bookingId: checkoutDialog.booking.id,
@@ -771,8 +776,8 @@ export default function ActiveBookings() {
       gstOnFood,
       includeServiceCharge,
       manualCharges,
-      cashAmount: finalCashAmount > 0 ? finalCashAmount : undefined,
-      onlineAmount: finalOnlineAmount > 0 ? finalOnlineAmount : undefined,
+      cashAmount: paymentMethod === "split" && finalCashAmount > 0 ? finalCashAmount : undefined,
+      onlineAmount: paymentMethod === "split" && finalOnlineAmount > 0 ? finalOnlineAmount : undefined,
     });
   };
 
@@ -1756,36 +1761,40 @@ export default function ActiveBookings() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">Payment Method</Label>
-                    <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <SelectTrigger data-testid="select-payment-method">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Payment Method</Label>
+                  <Select value={paymentMethod} onValueChange={(val) => { setPaymentMethod(val); if (val !== "split") setCashAmount(""); }}>
+                    <SelectTrigger data-testid="select-payment-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank">Bank Transfer</SelectItem>
+                      <SelectItem value="split">Split (Cash + UPI)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {paymentMethod === "split" && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Cash Received</Label>
                     <Input
+                      id="cash-amount"
                       type="number"
                       value={cashAmount}
                       onChange={(e) => setCashAmount(e.target.value)}
-                      placeholder="0"
+                      placeholder="Enter cash amount"
                       data-testid="input-cash-received"
                     />
                   </div>
-                </div>
+                )}
 
                 <div className="bg-primary/10 p-3 rounded-md">
                   <div className="flex justify-between gap-4 items-center">
                     <span className="font-semibold">
-                      {paymentMethod === "split" && parseFloat(cashAmount || "0") > 0 
-                        ? "Online Payment:" 
+                      {paymentMethod === "split" && parseFloat(cashAmount || "0") > 0
+                        ? "UPI / Online Payment:"
                         : "Balance Due:"}
                     </span>
                     <span className={`font-mono text-xl font-bold whitespace-nowrap ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
@@ -1794,7 +1803,7 @@ export default function ActiveBookings() {
                   </div>
                   {paymentMethod === "split" && parseFloat(cashAmount || "0") > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + Online: ₹{Math.max(0, remainingBalance).toLocaleString()}
+                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + UPI: ₹{Math.max(0, remainingBalance).toLocaleString()}
                     </p>
                   )}
                 </div>
