@@ -41,6 +41,7 @@ import {
   ListTodo,
   Wallet,
   ArrowUpDown,
+  Package,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -82,6 +83,7 @@ const adminRoomItems = [
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
+  { title: "Services Report", url: "/services-report", icon: Package },
 ];
 
 const adminGuestItems = [
@@ -137,6 +139,7 @@ const managerRoomItems = [
   { title: "Rooms", url: "/rooms", icon: Hotel },
   { title: "QR Codes", url: "/qr-codes", icon: QrCode },
   { title: "Add-ons", url: "/addons", icon: Plus },
+  { title: "Services Report", url: "/services-report", icon: Package },
 ];
 
 const managerGuestItems = [
@@ -239,6 +242,7 @@ export function AppSidebar() {
         { title: "Rooms", url: "/rooms", icon: Hotel },
         { title: "QR Codes", url: "/qr-codes", icon: QrCode },
         { title: "Add-ons", url: "/addons", icon: Plus },
+        { title: "Services Report", url: "/services-report", icon: Package },
       ] : [];
 
       const guestItems = hasAccess("guests") ? [

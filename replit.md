@@ -55,6 +55,8 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Add Service from Active Bookings**: Each booking card has "Add Service" button (indigo outline) opening a dialog with service type, name, amount, date, Collect Now toggle, and payment method selector
 - **Exports from addons.tsx**: `SERVICE_TYPES`, `PAYMENT_METHODS`, `serviceTypeLabels` — used in active-bookings.tsx
 - **Wallet display**: `extra_service_payment` source shows indigo badge in wallets.tsx
+- **Service Types** (20 total): taxi, airport_pickup, airport_drop, bonfire, laundry, extra_bed, local_tour, guide, adventure, trekking, cycling, boating, camping, spa, yoga, photoshoot, room_decoration, cake, partner_commission, other
+- **Services Revenue Report**: `/services-report` page — summary cards, monthly bar chart (collected vs pending), service type breakdown with progress bars, day-wise table; API: `GET /api/extra-services/revenue?propertyId&year&month`
 
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.

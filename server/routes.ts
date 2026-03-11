@@ -6371,6 +6371,87 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.get("/api/extra-services/revenue", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authorized" });
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const month = req.query.month ? parseInt(req.query.month as string) : null;
+
+      const { tenant } = auth;
+      const allowedPropertyIds = tenant.role === "admin"
+        ? null
+        : (tenant.assignedPropertyIds || []).map(Number);
+
+      let services = await db.select().from(extraServices);
+
+      services = services.filter((s: any) => {
+        if (!s.propertyId) return false;
+        if (propertyId && s.propertyId !== propertyId) return false;
+        if (allowedPropertyIds && !allowedPropertyIds.includes(s.propertyId)) return false;
+        return true;
+      });
+
+      const toNum = (v: any) => parseFloat(String(v || 0));
+
+      const summary = {
+        totalEarned: services.reduce((s: number, e: any) => s + toNum(e.amount), 0),
+        totalCollected: services.filter((e: any) => e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+        totalPending: services.filter((e: any) => !e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+        totalCount: services.length,
+      };
+
+      const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const byMonth = monthNames.map((name, i) => {
+        const monthly = services.filter((e: any) => {
+          const d = e.serviceDate ? new Date(e.serviceDate) : null;
+          return d && d.getFullYear() === year && d.getMonth() === i;
+        });
+        return {
+          month: name,
+          monthNum: i + 1,
+          total: monthly.reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          collected: monthly.filter((e: any) => e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          pending: monthly.filter((e: any) => !e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          count: monthly.length,
+        };
+      });
+
+      const selectedMonth = month || new Date().getMonth() + 1;
+      const daysInMonth = new Date(year, selectedMonth, 0).getDate();
+      const byDay = Array.from({ length: daysInMonth }, (_, i) => {
+        const day = i + 1;
+        const daily = services.filter((e: any) => {
+          const d = e.serviceDate ? new Date(e.serviceDate) : null;
+          return d && d.getFullYear() === year && d.getMonth() + 1 === selectedMonth && d.getDate() === day;
+        });
+        return {
+          day,
+          total: daily.reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          collected: daily.filter((e: any) => e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          count: daily.length,
+        };
+      }).filter((d: any) => d.count > 0);
+
+      const allTypes = [...new Set(services.map((e: any) => e.serviceType))];
+      const byServiceType = allTypes.map((type: any) => {
+        const typed = services.filter((e: any) => e.serviceType === type);
+        return {
+          serviceType: type,
+          total: typed.reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          collected: typed.filter((e: any) => e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          pending: typed.filter((e: any) => !e.isPaid).reduce((s: number, e: any) => s + toNum(e.amount), 0),
+          count: typed.length,
+        };
+      }).sort((a: any, b: any) => b.total - a.total);
+
+      res.json({ summary, byMonth, byDay, byServiceType, year, month: selectedMonth });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/extra-services/:id", isAuthenticated, async (req, res) => {
     try {
       const service = await storage.getExtraService(parseInt(req.params.id));
