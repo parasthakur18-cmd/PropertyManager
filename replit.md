@@ -57,6 +57,7 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Wallet display**: `extra_service_payment` source shows indigo badge in wallets.tsx
 - **Service Types** (20 total): taxi, airport_pickup, airport_drop, bonfire, laundry, extra_bed, local_tour, guide, adventure, trekking, cycling, boating, camping, spa, yoga, photoshoot, room_decoration, cake, partner_commission, other
 - **Services Revenue Report**: `/services-report` page — summary cards, monthly bar chart (collected vs pending), service type breakdown with progress bars, day-wise table; API: `GET /api/extra-services/revenue?propertyId&year&month`
+- **Monthly Income Report**: `/monthly-report` page — unified view of rooms + food + services + expenses + net profit for any month; API: `GET /api/monthly-income?propertyId&month=YYYY-MM`
 
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.

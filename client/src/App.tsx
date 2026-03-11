@@ -35,6 +35,7 @@ import Financials from "@/pages/financials";
 import PnLStatement from "@/pages/pnl-statement";
 import AddOnServices from "@/pages/addons";
 import ServicesReport from "@/pages/services-report";
+import MonthlyReport from "@/pages/monthly-report";
 import UsersManagement from "@/pages/users";
 import ActiveBookings from "@/pages/active-bookings";
 import CheckIns from "@/pages/check-ins";
@@ -157,6 +158,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/pnl-statement" component={PnLStatement} />
           <Route path="/addons" component={AddOnServices} />
           <Route path="/services-report" component={ServicesReport} />
+          <Route path="/monthly-report" component={MonthlyReport} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/analytics-chat" component={AnalyticsChat} />
           <Route path="/salaries" component={Salaries} />

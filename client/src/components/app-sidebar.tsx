@@ -115,8 +115,9 @@ const adminFinanceItems = [
   { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Wallets", url: "/wallets", icon: Wallet },
   { title: "Financials", url: "/financials", icon: TrendingUp },
-  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+  { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
   { title: "Services Report", url: "/services-report", icon: Package },
+  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Performance", url: "/performance", icon: BarChart3 },
   { title: "Attendance", url: "/attendance", icon: Clock },
@@ -163,8 +164,9 @@ const managerFinanceItems = [
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Wallets", url: "/wallets", icon: Wallet },
-  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+  { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
   { title: "Services Report", url: "/services-report", icon: Package },
+  { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
 ];
 
 // Staff menu items
@@ -273,8 +275,9 @@ export function AppSidebar() {
         { title: "Billing", url: "/billing", icon: Receipt },
         { title: "Expenses", url: "/expenses", icon: FileText },
         ...(hasAccess("reports") ? [
-          { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+          { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
           { title: "Services Report", url: "/services-report", icon: Package },
+          { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
           { title: "Analytics", url: "/analytics", icon: BarChart3 },
         ] : []),
       ] : [];

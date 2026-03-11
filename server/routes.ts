@@ -8694,6 +8694,146 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Monthly Income Breakdown: rooms + food + services + expenses + salaries
+  app.get("/api/monthly-income", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authorized" });
+
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const monthParam = (req.query.month as string) || (() => {
+        const n = new Date();
+        return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
+      })();
+
+      const [year, monthNum] = monthParam.split("-").map(Number);
+      const startDate = new Date(year, monthNum - 1, 1);
+      const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+
+      const { tenant } = auth;
+      const allowedIds: number[] | null = tenant.role === "admin"
+        ? null
+        : (tenant.assignedPropertyIds || []).map(Number);
+
+      const toN = (v: any) => parseFloat(String(v || 0)) || 0;
+
+      // Filter helpers
+      const propFilter = (propId: number) => {
+        if (propertyId && propId !== propertyId) return false;
+        if (allowedIds && !allowedIds.includes(propId)) return false;
+        return true;
+      };
+
+      // Bills settled in this month (final checkouts)
+      const allBills = await storage.getAllBills();
+      const monthBills = allBills.filter((b: any) => {
+        if (!b.propertyId && !b.bookingId) return false;
+        const bDate = b.createdAt ? new Date(b.createdAt) : null;
+        if (!bDate || bDate < startDate || bDate > endDate) return false;
+        if (propertyId && b.propertyId !== propertyId) return false;
+        if (allowedIds && b.propertyId && !allowedIds.includes(b.propertyId)) return false;
+        return true;
+      });
+
+      const paidBills = monthBills.filter((b: any) => b.paymentStatus === "paid");
+      const roomRevenue = paidBills.reduce((s: number, b: any) => s + toN(b.roomCharges), 0);
+      const foodRevenueBilled = paidBills.reduce((s: number, b: any) => s + toN(b.foodCharges), 0);
+      const servicesRevenueBilled = paidBills.reduce((s: number, b: any) => s + toN(b.extraCharges), 0);
+      const totalBilled = paidBills.reduce((s: number, b: any) => s + toN(b.totalAmount), 0);
+
+      // All extra services by service date in this month
+      let allExtras = await db.select().from(extraServices);
+      const monthExtras = allExtras.filter((e: any) => {
+        const d = e.serviceDate ? new Date(e.serviceDate) : null;
+        if (!d || d < startDate || d > endDate) return false;
+        if (!propFilter(e.propertyId)) return false;
+        return true;
+      });
+      const extrasTotal = monthExtras.reduce((s: number, e: any) => s + toN(e.amount), 0);
+      const extrasCollected = monthExtras.filter((e: any) => e.isPaid).reduce((s: number, e: any) => s + toN(e.amount), 0);
+      const extrasPending = extrasTotal - extrasCollected;
+
+      // Food orders in this month (kitchen orders)
+      let allOrders = await db.select().from(orders);
+      const monthOrders = allOrders.filter((o: any) => {
+        const d = o.createdAt ? new Date(o.createdAt) : null;
+        if (!d || d < startDate || d > endDate) return false;
+        if (propertyId && o.propertyId !== propertyId) return false;
+        if (allowedIds && o.propertyId && !allowedIds.includes(o.propertyId)) return false;
+        return true;
+      });
+      const foodOrdersTotal = monthOrders
+        .filter((o: any) => ["delivered", "completed"].includes(o.status))
+        .reduce((s: number, o: any) => s + toN(o.totalAmount), 0);
+
+      // Advance payments: bookings created in this month
+      let allBookings = await storage.getAllBookings();
+      const monthBookings = allBookings.filter((b: any) => {
+        const d = b.createdAt ? new Date(b.createdAt) : null;
+        if (!d || d < startDate || d > endDate) return false;
+        if (!propFilter(b.propertyId)) return false;
+        return true;
+      });
+      const advanceCollected = monthBookings.reduce((s: number, b: any) => s + toN(b.advanceAmount), 0);
+      const newBookingsCount = monthBookings.length;
+
+      // Checkouts in this month
+      const checkoutBookings = allBookings.filter((b: any) => {
+        const d = b.checkOutDate ? new Date(b.checkOutDate) : null;
+        if (!d || d < startDate || d > endDate) return false;
+        if (!propFilter(b.propertyId)) return false;
+        return b.status === "checked_out";
+      });
+
+      // Expenses for this month
+      let expenses: any[] = [];
+      try {
+        if (propertyId) {
+          expenses = (await storage.getExpensesByProperty(propertyId)).filter((e: any) => {
+            const d = e.expenseDate ? new Date(e.expenseDate) : null;
+            return d && d >= startDate && d <= endDate;
+          });
+        }
+      } catch {}
+
+      const expensesByCategory: Record<string, number> = {};
+      for (const e of expenses) {
+        const cat = e.category || "Other";
+        expensesByCategory[cat] = (expensesByCategory[cat] || 0) + toN(e.amount);
+      }
+      const totalExpenses = expenses.reduce((s: number, e: any) => s + toN(e.amount), 0);
+
+      res.json({
+        month: monthParam,
+        year,
+        monthNum,
+        revenue: {
+          roomRevenue,
+          foodRevenueBilled,
+          servicesRevenueBilled,
+          totalBilled,
+          foodOrdersTotal,
+          extrasTotal,
+          extrasCollected,
+          extrasPending,
+          advanceCollected,
+        },
+        bookings: {
+          newBookings: newBookingsCount,
+          checkouts: checkoutBookings.length,
+          paidBills: paidBills.length,
+        },
+        expenses: {
+          total: totalExpenses,
+          byCategory: Object.entries(expensesByCategory).map(([category, total]) => ({ category, total })),
+        },
+        netIncome: totalBilled - totalExpenses,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // P&L Report endpoint (lease-period based with total lease amount)
   app.get("/api/properties/:propertyId/pnl", isAuthenticated, async (req, res) => {
     try {
