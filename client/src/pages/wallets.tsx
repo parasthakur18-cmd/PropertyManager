@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -56,6 +56,7 @@ export default function Wallets() {
   const [openingBalances, setOpeningBalances] = useState<Record<number, string>>({});
   const [txWalletFilter, setTxWalletFilter] = useState<string>("all");
   const [txTypeFilter, setTxTypeFilter] = useState<string>("all");
+  const [txSourceFilter, setTxSourceFilter] = useState<string>("all");
   const [txSearch, setTxSearch] = useState<string>("");
 
   const { data: properties = [] } = useQuery<Property[]>({
@@ -398,6 +399,43 @@ export default function Wallets() {
     }
   };
 
+  const getSourceLabel = (source: string) => {
+    switch (source) {
+      case "booking_payment": return "Room Payment";
+      case "food_order_payment": return "Food Order";
+      case "advance_payment": return "Advance";
+      case "expense": return "Expense";
+      case "vendor_payment": return "Vendor";
+      case "salary_payment": return "Salary";
+      case "cancellation_charge": return "Cancellation";
+      case "refund": return "Refund";
+      case "manual": return "Manual Entry";
+      default: return source?.replace(/_/g, " ") || "Other";
+    }
+  };
+
+  const getSourceColor = (source: string) => {
+    switch (source) {
+      case "booking_payment": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "food_order_payment": return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+      case "advance_payment": return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200";
+      case "expense": return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+      case "vendor_payment": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "salary_payment": return "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200";
+      case "cancellation_charge": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+      case "refund": return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
+      case "manual": return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+      default: return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
+    }
+  };
+
+  const getRefFromDescription = (desc: string | null, sourceId: number | null) => {
+    if (!desc) return sourceId ? `#${sourceId}` : "";
+    const match = desc.match(/#(\d+)/);
+    if (match) return `#${match[1]}`;
+    return sourceId ? `#${sourceId}` : "";
+  };
+
   const totalBalance = wallets.reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
   const cashBalance = wallets.filter(w => w.type === "cash").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
   const upiBalance = wallets.filter(w => w.type === "upi" || w.type === "bank").reduce((sum, w) => sum + parseFloat(w.currentBalance?.toString() || "0"), 0);
@@ -724,7 +762,7 @@ export default function Wallets() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Filters */}
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <Select value={txWalletFilter} onValueChange={setTxWalletFilter}>
                       <SelectTrigger className="w-44" data-testid="select-tx-wallet-filter">
                         <SelectValue placeholder="All Wallets" />
@@ -743,23 +781,39 @@ export default function Wallets() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Types</SelectItem>
-                        <SelectItem value="credit">Money In (Credit)</SelectItem>
-                        <SelectItem value="debit">Money Out (Debit)</SelectItem>
+                        <SelectItem value="credit">Money In</SelectItem>
+                        <SelectItem value="debit">Money Out</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={txSourceFilter ?? "all"} onValueChange={v => setTxSourceFilter(v)}>
+                      <SelectTrigger className="w-44" data-testid="select-tx-source-filter">
+                        <SelectValue placeholder="All Sources" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Sources</SelectItem>
+                        <SelectItem value="booking_payment">Room Payment</SelectItem>
+                        <SelectItem value="food_order_payment">Food Order</SelectItem>
+                        <SelectItem value="advance_payment">Advance</SelectItem>
+                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="vendor_payment">Vendor</SelectItem>
+                        <SelectItem value="salary_payment">Salary</SelectItem>
+                        <SelectItem value="manual">Manual Entry</SelectItem>
                       </SelectContent>
                     </Select>
 
                     <input
                       type="text"
-                      placeholder="Search description..."
+                      placeholder="Search by name, ref no..."
                       value={txSearch}
                       onChange={e => setTxSearch(e.target.value)}
                       className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring w-52"
                       data-testid="input-tx-search"
                     />
 
-                    {(txWalletFilter !== "all" || txTypeFilter !== "all" || txSearch) && (
+                    {(txWalletFilter !== "all" || txTypeFilter !== "all" || txSourceFilter !== "all" || txSearch) && (
                       <button
-                        onClick={() => { setTxWalletFilter("all"); setTxTypeFilter("all"); setTxSearch(""); }}
+                        onClick={() => { setTxWalletFilter("all"); setTxTypeFilter("all"); setTxSourceFilter("all"); setTxSearch(""); }}
                         className="text-sm text-muted-foreground underline self-center"
                         data-testid="button-clear-tx-filters"
                       >
@@ -779,6 +833,7 @@ export default function Wallets() {
                     const filtered = transactions.filter(tx => {
                       if (txWalletFilter !== "all" && String(tx.walletId) !== txWalletFilter) return false;
                       if (txTypeFilter !== "all" && tx.transactionType !== txTypeFilter) return false;
+                      if (txSourceFilter !== "all" && tx.source !== txSourceFilter) return false;
                       if (txSearch && !(tx.description || tx.source || "").toLowerCase().includes(txSearch.toLowerCase())) return false;
                       return true;
                     });
@@ -802,26 +857,41 @@ export default function Wallets() {
                                 className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
                                 data-testid={`row-transaction-${tx.id}`}
                               >
-                                <div className="flex items-center gap-3">
-                                  <div className={`p-2 rounded-full ${tx.transactionType === "credit" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className={`p-2 rounded-full shrink-0 ${tx.transactionType === "credit" ? "bg-green-100 dark:bg-green-900" : "bg-red-100 dark:bg-red-900"}`}>
                                     {tx.transactionType === "credit" ? (
                                       <ArrowUpRight className="h-4 w-4 text-green-600" />
                                     ) : (
                                       <ArrowDownRight className="h-4 w-4 text-red-600" />
                                     )}
                                   </div>
-                                  <div>
-                                    <p className="font-medium">{tx.description || tx.source}</p>
-                                    <p className="text-sm text-muted-foreground">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${getSourceColor(tx.source)}`}>
+                                        {getSourceLabel(tx.source)}
+                                      </span>
+                                      {getRefFromDescription(tx.description, tx.sourceId) && (
+                                        <span className="text-xs text-muted-foreground font-mono shrink-0">
+                                          Ref {getRefFromDescription(tx.description, tx.sourceId)}
+                                        </span>
+                                      )}
+                                      {tx.referenceNumber && (
+                                        <span className="text-xs text-muted-foreground font-mono shrink-0">
+                                          UTR: {tx.referenceNumber}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="font-medium text-sm truncate mt-0.5">{tx.description || tx.source}</p>
+                                    <p className="text-xs text-muted-foreground">
                                       {wallet?.name} • {format(new Date(tx.transactionDate), "dd MMM yyyy, HH:mm")}
                                     </p>
                                   </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right shrink-0">
                                   <p className={`font-bold ${tx.transactionType === "credit" ? "text-green-600" : "text-red-600"}`}>
                                     {tx.transactionType === "credit" ? "+" : "-"}₹{parseFloat(tx.amount?.toString() || "0").toLocaleString()}
                                   </p>
-                                  <p className="text-sm text-muted-foreground">
+                                  <p className="text-xs text-muted-foreground">
                                     Bal: ₹{parseFloat(tx.balanceAfter?.toString() || "0").toLocaleString()}
                                   </p>
                                 </div>
@@ -1078,6 +1148,129 @@ export default function Wallets() {
                         Download CSV
                       </Button>
                     </Card>
+                  </div>
+
+                  <Separator />
+
+                  {/* Income Breakdown by Source */}
+                  <div>
+                    <h4 className="font-semibold mb-1">Income & Expense Breakdown</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      Summary for {reportStartDate} to {reportEndDate} — grouped by source type and payment account
+                    </p>
+                    {(() => {
+                      const start = new Date(reportStartDate);
+                      start.setHours(0,0,0,0);
+                      const end = new Date(reportEndDate);
+                      end.setHours(23,59,59,999);
+
+                      const inRange = transactions.filter(tx => {
+                        const d = new Date(tx.transactionDate);
+                        return d >= start && d <= end;
+                      });
+
+                      const sources = Array.from(new Set(inRange.map(tx => tx.source))).sort();
+
+                      if (inRange.length === 0) {
+                        return <p className="text-sm text-muted-foreground">No transactions in this date range.</p>;
+                      }
+
+                      const walletCols = wallets.filter(w =>
+                        inRange.some(tx => tx.walletId === w.id)
+                      );
+
+                      const getAmt = (source: string, walletId: number, type: "credit" | "debit") =>
+                        inRange
+                          .filter(tx => tx.source === source && tx.walletId === walletId && tx.transactionType === type)
+                          .reduce((s, tx) => s + parseFloat(tx.amount?.toString() || "0"), 0);
+
+                      const getRowTotal = (source: string, type: "credit" | "debit") =>
+                        inRange
+                          .filter(tx => tx.source === source && tx.transactionType === type)
+                          .reduce((s, tx) => s + parseFloat(tx.amount?.toString() || "0"), 0);
+
+                      const getColTotal = (walletId: number, type: "credit" | "debit") =>
+                        inRange
+                          .filter(tx => tx.walletId === walletId && tx.transactionType === type)
+                          .reduce((s, tx) => s + parseFloat(tx.amount?.toString() || "0"), 0);
+
+                      const grandTotal = (type: "credit" | "debit") =>
+                        inRange.filter(tx => tx.transactionType === type)
+                          .reduce((s, tx) => s + parseFloat(tx.amount?.toString() || "0"), 0);
+
+                      return (
+                        <div className="overflow-x-auto rounded-lg border">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-muted/60 border-b">
+                                <th className="text-left px-3 py-2 font-medium">Source</th>
+                                {walletCols.map(w => (
+                                  <th key={w.id} className="text-right px-3 py-2 font-medium" colSpan={2}>
+                                    {w.name}
+                                  </th>
+                                ))}
+                                <th className="text-right px-3 py-2 font-medium" colSpan={2}>Total</th>
+                              </tr>
+                              <tr className="bg-muted/30 border-b text-xs text-muted-foreground">
+                                <th className="px-3 py-1"></th>
+                                {walletCols.map(w => (
+                                  <Fragment key={w.id}>
+                                    <th className="text-right px-3 py-1 text-green-600">In</th>
+                                    <th className="text-right px-3 py-1 text-red-500">Out</th>
+                                  </Fragment>
+                                ))}
+                                <th className="text-right px-3 py-1 text-green-600">In</th>
+                                <th className="text-right px-3 py-1 text-red-500">Out</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sources.map((source, i) => (
+                                <tr key={source} className={`border-b ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                                  <td className="px-3 py-2">
+                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getSourceColor(source)}`}>
+                                      {getSourceLabel(source)}
+                                    </span>
+                                  </td>
+                                  {walletCols.map(w => (
+                                    <Fragment key={w.id}>
+                                      <td className="text-right px-3 py-2 text-green-600 font-mono text-xs">
+                                        {getAmt(source, w.id, "credit") > 0 ? `₹${getAmt(source, w.id, "credit").toLocaleString()}` : "—"}
+                                      </td>
+                                      <td className="text-right px-3 py-2 text-red-500 font-mono text-xs">
+                                        {getAmt(source, w.id, "debit") > 0 ? `₹${getAmt(source, w.id, "debit").toLocaleString()}` : "—"}
+                                      </td>
+                                    </Fragment>
+                                  ))}
+                                  <td className="text-right px-3 py-2 font-semibold text-green-600 font-mono text-xs">
+                                    {getRowTotal(source, "credit") > 0 ? `₹${getRowTotal(source, "credit").toLocaleString()}` : "—"}
+                                  </td>
+                                  <td className="text-right px-3 py-2 font-semibold text-red-500 font-mono text-xs">
+                                    {getRowTotal(source, "debit") > 0 ? `₹${getRowTotal(source, "debit").toLocaleString()}` : "—"}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-muted/60 font-bold border-t-2">
+                                <td className="px-3 py-2 text-sm">Total</td>
+                                {walletCols.map(w => (
+                                  <Fragment key={w.id}>
+                                    <td className="text-right px-3 py-2 text-green-600 font-mono text-xs">
+                                      {getColTotal(w.id, "credit") > 0 ? `₹${getColTotal(w.id, "credit").toLocaleString()}` : "—"}
+                                    </td>
+                                    <td className="text-right px-3 py-2 text-red-500 font-mono text-xs">
+                                      {getColTotal(w.id, "debit") > 0 ? `₹${getColTotal(w.id, "debit").toLocaleString()}` : "—"}
+                                    </td>
+                                  </Fragment>
+                                ))}
+                                <td className="text-right px-3 py-2 text-green-600 font-mono text-xs">₹{grandTotal("credit").toLocaleString()}</td>
+                                <td className="text-right px-3 py-2 text-red-500 font-mono text-xs">₹{grandTotal("debit").toLocaleString()}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>
