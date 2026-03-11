@@ -456,7 +456,7 @@ export default function ActiveBookings() {
   };
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, gstOnRooms, gstOnFood, includeServiceCharge, manualCharges }: { 
+    mutationFn: async ({ bookingId, paymentMethod, paymentStatus, dueDate, pendingReason, discountType, discountValue, discountAppliesTo, gstOnRooms, gstOnFood, includeServiceCharge, manualCharges, cashAmount, onlineAmount }: { 
       bookingId: number; 
       paymentMethod?: string;
       paymentStatus: string;
@@ -469,13 +469,9 @@ export default function ActiveBookings() {
       gstOnFood: boolean;
       includeServiceCharge: boolean;
       manualCharges: Array<{ name: string; amount: string }>;
+      cashAmount?: number;
+      onlineAmount?: number;
     }) => {
-      if (paymentStatus === "paid" && paymentMethod === "upi") {
-        const link = await generateUpiLink();
-        if (!link) throw new Error("Failed to generate UPI link");
-        return { upiLink: link };
-      }
-      
       return await apiRequest("/api/bookings/checkout", "POST", { 
         bookingId, 
         paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
@@ -489,6 +485,8 @@ export default function ActiveBookings() {
         gstOnFood,
         includeServiceCharge,
         manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
+        cashAmount,
+        onlineAmount,
       });
     },
     onSuccess: (data: any) => {
@@ -746,6 +744,14 @@ export default function ActiveBookings() {
     const finalTotal = breakdown.grandTotal - discountAmt;
     const advancePaid = parseFloat(checkoutDialog.booking.charges.advancePaid);
     const balanceDue = finalTotal - advancePaid;
+
+    // When UPI is selected with some cash entered, send a split: cash portion + UPI remainder
+    let finalCashAmount: number | undefined;
+    let finalOnlineAmount: number | undefined;
+    if (paymentMethod === "upi" && cashAmount && parseFloat(cashAmount) > 0) {
+      finalCashAmount = Math.max(0, parseFloat(cashAmount));
+      finalOnlineAmount = Math.max(0, balanceDue - finalCashAmount);
+    }
     
     checkoutMutation.mutate({
       bookingId: checkoutDialog.booking.id,
@@ -760,6 +766,8 @@ export default function ActiveBookings() {
       gstOnFood,
       includeServiceCharge,
       manualCharges,
+      cashAmount: finalCashAmount,
+      onlineAmount: finalOnlineAmount,
     });
   };
 
@@ -1745,7 +1753,7 @@ export default function ActiveBookings() {
 
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Payment Method</Label>
-                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                  <Select value={paymentMethod} onValueChange={(val) => { setPaymentMethod(val); setCashAmount(""); }}>
                     <SelectTrigger data-testid="select-payment-method">
                       <SelectValue />
                     </SelectTrigger>
@@ -1756,13 +1764,37 @@ export default function ActiveBookings() {
                   </Select>
                 </div>
 
+                {paymentMethod === "upi" && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Cash Received (optional)</Label>
+                    <Input
+                      id="cash-amount"
+                      type="number"
+                      value={cashAmount}
+                      onChange={(e) => setCashAmount(e.target.value)}
+                      placeholder="Enter cash amount if any"
+                      data-testid="input-cash-received"
+                    />
+                    <p className="text-xs text-muted-foreground">Enter cash collected from guest — remaining will be the UPI amount due.</p>
+                  </div>
+                )}
+
                 <div className="bg-primary/10 p-3 rounded-md">
                   <div className="flex justify-between gap-4 items-center">
-                    <span className="font-semibold">Balance Due:</span>
+                    <span className="font-semibold">
+                      {paymentMethod === "upi" && parseFloat(cashAmount || "0") > 0
+                        ? "UPI Amount Due:"
+                        : "Balance Due:"}
+                    </span>
                     <span className={`font-mono text-xl font-bold whitespace-nowrap ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       ₹{Math.max(0, remainingBalance).toFixed(2)}
                     </span>
                   </div>
+                  {paymentMethod === "upi" && parseFloat(cashAmount || "0") > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + UPI: ₹{Math.max(0, remainingBalance).toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 {/* Payment Status - Mark as Paid or Pending */}
