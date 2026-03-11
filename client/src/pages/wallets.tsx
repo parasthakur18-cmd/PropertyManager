@@ -690,7 +690,15 @@ export default function Wallets() {
                   {wallets.map((wallet) => {
                     const Icon = getWalletIcon(wallet.type);
                     return (
-                      <Card key={wallet.id} className="relative" data-testid={`card-wallet-${wallet.id}`}>
+                      <Card
+                        key={wallet.id}
+                        className="relative cursor-pointer hover:shadow-md transition-shadow"
+                        data-testid={`card-wallet-${wallet.id}`}
+                        onClick={() => {
+                          setTxWalletFilter(String(wallet.id));
+                          setActiveTab("transactions");
+                        }}
+                      >
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -712,6 +720,7 @@ export default function Wallets() {
                               <p className="text-2xl font-bold" data-testid={`text-wallet-balance-${wallet.id}`}>
                                 ₹{parseFloat(wallet.currentBalance?.toString() || "0").toLocaleString()}
                               </p>
+                              <p className="text-xs text-muted-foreground mt-1 text-teal-600 font-medium">Tap to view transactions →</p>
                             </div>
                             {wallet.type === "upi" && wallet.upiId && (
                               <div className="text-sm">
@@ -722,7 +731,7 @@ export default function Wallets() {
                             <div className="flex gap-2 pt-2">
                               <Button 
                                 size="sm" 
-                                onClick={() => handleAddTransaction(wallet)}
+                                onClick={(e) => { e.stopPropagation(); handleAddTransaction(wallet); }}
                                 data-testid={`button-add-transaction-${wallet.id}`}
                               >
                                 <Plus className="h-4 w-4 mr-1" />
@@ -731,7 +740,7 @@ export default function Wallets() {
                               <Button 
                                 size="sm" 
                                 variant="outline" 
-                                onClick={() => handleEditWallet(wallet)}
+                                onClick={(e) => { e.stopPropagation(); handleEditWallet(wallet); }}
                                 data-testid={`button-edit-wallet-${wallet.id}`}
                               >
                                 <Pencil className="h-4 w-4" />
@@ -740,7 +749,7 @@ export default function Wallets() {
                                 <Button 
                                   size="sm" 
                                   variant="outline" 
-                                  onClick={() => deleteWalletMutation.mutate(wallet.id)}
+                                  onClick={(e) => { e.stopPropagation(); deleteWalletMutation.mutate(wallet.id); }}
                                   data-testid={`button-delete-wallet-${wallet.id}`}
                                 >
                                   <Trash2 className="h-4 w-4" />
