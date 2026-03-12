@@ -51,11 +51,13 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS aiosell_rate_plans (
         id SERIAL PRIMARY KEY,
-        property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-        aiosell_rate_plan_id VARCHAR(100) NOT NULL,
-        aiosell_rate_plan_name VARCHAR(255),
-        hostezee_room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        sync_enabled BOOLEAN DEFAULT true,
+        config_id INTEGER NOT NULL,
+        property_id INTEGER NOT NULL,
+        room_mapping_id INTEGER NOT NULL,
+        rate_plan_name VARCHAR(100) NOT NULL,
+        rate_plan_code VARCHAR(100) NOT NULL,
+        base_rate DECIMAL(10,2),
+        occupancy VARCHAR(20) DEFAULT 'single',
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);

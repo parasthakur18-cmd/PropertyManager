@@ -60,6 +60,33 @@ async function tableExists(table: string): Promise<boolean> {
 
 const migrations: Array<{ name: string; run: () => Promise<void> }> = [
   {
+    // The db-validator originally created aiosell_rate_plans with an old schema
+    // (aiosell_rate_plan_id, hostezee_room_id, sync_enabled) that doesn't match
+    // the Drizzle schema (config_id, room_mapping_id, rate_plan_name, rate_plan_code).
+    // This migration detects the old schema and rebuilds the table correctly.
+    name: "rebuild_aiosell_rate_plans_schema",
+    async run() {
+      if (!(await tableExists("aiosell_rate_plans"))) return;
+      // Old schema has aiosell_rate_plan_id; new schema has config_id
+      const isOldSchema = await columnExists("aiosell_rate_plans", "aiosell_rate_plan_id");
+      if (!isOldSchema) return; // already new schema, nothing to do
+      await runRaw(`
+        DROP TABLE IF EXISTS aiosell_rate_plans CASCADE;
+        CREATE TABLE aiosell_rate_plans (
+          id SERIAL PRIMARY KEY,
+          config_id INTEGER NOT NULL,
+          property_id INTEGER NOT NULL,
+          room_mapping_id INTEGER NOT NULL,
+          rate_plan_name VARCHAR(100) NOT NULL,
+          rate_plan_code VARCHAR(100) NOT NULL,
+          base_rate DECIMAL(10,2),
+          occupancy VARCHAR(20) DEFAULT 'single',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+    },
+  },
+  {
     name: "fix_aiosell_rate_plans_occupancy_type",
     async run() {
       if (!(await tableExists("aiosell_rate_plans"))) return;
