@@ -130,26 +130,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   });
 
   const today = new Date().toISOString().split("T")[0];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const oneYearAhead = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const [pullFromDate, setPullFromDate] = useState(thirtyDaysAgo);
-  const [pullToDate, setPullToDate] = useState(oneYearAhead);
-
-  const pullReservations = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("/api/aiosell/pull-reservations", "POST", { propertyId, fromDate: pullFromDate, toDate: pullToDate });
-      return response.json();
-    },
-    onSuccess: (data: any) => {
-      if (data.success) {
-        toast({ title: `Imported ${data.imported} reservation${data.imported !== 1 ? "s" : ""}`, description: data.message });
-        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      } else {
-        toast({ title: "Import failed", description: data.message, variant: "destructive" });
-      }
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
 
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
@@ -249,52 +229,21 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
             <div className="border-t pt-4 space-y-3">
               <div>
-                <h4 className="text-sm font-medium mb-1">Import Existing Reservations from Booking.com</h4>
-                <p className="text-xs text-muted-foreground">
-                  Pull reservations that are already on Booking.com (or other OTAs via AioSell) into the PMS. 
-                  Useful when you first set up the integration — future bookings arrive automatically via webhook. 
-                  Duplicates are skipped safely.
+                <h4 className="text-sm font-medium mb-1">How Booking.com Reservations Arrive</h4>
+                <p className="text-xs text-muted-foreground mb-2">
+                  AioSell works on a <strong>push model</strong> — Booking.com sends each new reservation to AioSell, which then posts it to this system automatically via webhook. You do not need to manually import future bookings.
                 </p>
+                <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <AlertDescription className="text-xs text-amber-800 dark:text-amber-300">
+                    <strong>For past bookings already on Booking.com:</strong> AioSell does not provide a REST API to pull historical reservations. To sync past bookings, contact AioSell support and ask them to <em>"resend all reservations"</em> for your hotel ID (<code>{config?.hotelCode}</code>) to your webhook URL. Each resent booking will automatically appear in this system.
+                  </AlertDescription>
+                </Alert>
               </div>
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">From Date</Label>
-                  <Input
-                    data-testid="input-pull-from-date"
-                    type="date"
-                    className="w-36 text-sm"
-                    value={pullFromDate}
-                    onChange={e => setPullFromDate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">To Date</Label>
-                  <Input
-                    data-testid="input-pull-to-date"
-                    type="date"
-                    className="w-36 text-sm"
-                    value={pullToDate}
-                    onChange={e => setPullToDate(e.target.value)}
-                  />
-                </div>
-                <Button
-                  data-testid="button-pull-reservations"
-                  variant="outline"
-                  onClick={() => pullReservations.mutate()}
-                  disabled={pullReservations.isPending}
-                >
-                  {pullReservations.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-                  Import from Booking.com
-                </Button>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                <span>Your webhook endpoint: <code className="bg-muted px-1 py-0.5 rounded text-xs">{typeof window !== "undefined" ? window.location.origin : ""}/api/aiosell/reservation</code></span>
               </div>
-              {pullReservations.data && (
-                <div className={`text-xs p-2 rounded ${pullReservations.data.success ? "bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-300" : "bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-300"}`}>
-                  {pullReservations.data.message}
-                  {pullReservations.data.errors?.length > 0 && (
-                    <div className="mt-1 text-red-600">{pullReservations.data.errors.join("; ")}</div>
-                  )}
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
