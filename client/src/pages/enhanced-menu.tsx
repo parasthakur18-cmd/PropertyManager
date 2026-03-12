@@ -155,7 +155,11 @@ export default function EnhancedMenu() {
       }
       return true;
     }
-  );
+  ).sort((a, b) => {
+    const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+    if (orderDiff !== 0) return orderDiff;
+    return a.name.localeCompare(b.name);
+  });
 
   const filteredItems = menuItems?.filter(
     (item) => {
@@ -207,7 +211,11 @@ export default function EnhancedMenu() {
 
   const handleMoveCategory = (categoryId: number, direction: 'up' | 'down') => {
     if (!categories) return;
-    const sorted = [...categories].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    const sorted = [...categories].sort((a, b) => {
+      const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
+    });
     const idx = sorted.findIndex(c => c.id === categoryId);
     if (idx < 0) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -660,6 +668,11 @@ export default function EnhancedMenu() {
               </Badge>
               {categories
                 ?.filter((cat) => selectedProperty === 0 || cat.propertyId === selectedProperty || cat.propertyId === null)
+                .sort((a, b) => {
+                  const orderDiff = (a.displayOrder ?? 0) - (b.displayOrder ?? 0);
+                  if (orderDiff !== 0) return orderDiff;
+                  return a.name.localeCompare(b.name);
+                })
                 .map((cat) => (
                   <Badge
                     key={cat.id}
