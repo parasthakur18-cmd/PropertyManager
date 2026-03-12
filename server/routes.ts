@@ -3458,17 +3458,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               const isTemplateEnabled = templateSetting?.isEnabled !== false;
               
               if (isTemplateEnabled) {
-                // Send comprehensive welcome message with menu link (single message)
-                let primaryRoomNumber = roomNumbers.split(",")[0].trim();
-                const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-                  : process.env.REPLIT_DOMAINS
-                    ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-                    : 'https://your-domain.com';
-                const menuLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${primaryRoomNumber}`;
-                
-                await sendWelcomeWithMenuLink(guest.phone, propertyName, guestName, menuLink);
-                console.log(`[WhatsApp] Booking #${booking.id} - Welcome message with menu link sent to ${guest.fullName}: ${menuLink}`);
+                // Send check-in notification (template: AUTHKEY_WA_CHECKIN_DETAILS, default 28733)
+                // Variables: propertyName, guestName, roomNumbers, checkInDate, checkOutDate
+                await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${process.env.AUTHKEY_WA_CHECKIN_DETAILS || '28733'})`);
               } else {
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled (template: ${isTemplateEnabled})`);
               }
