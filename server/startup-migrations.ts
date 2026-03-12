@@ -122,6 +122,94 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // aiosell_room_mappings was created without config_id and hostezee_room_type
+    name: "fix_aiosell_room_mappings_schema",
+    async run() {
+      if (!(await tableExists("aiosell_room_mappings"))) return;
+      if (!(await columnExists("aiosell_room_mappings", "config_id"))) {
+        await runRaw(`ALTER TABLE aiosell_room_mappings ADD COLUMN config_id INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!(await columnExists("aiosell_room_mappings", "hostezee_room_type"))) {
+        await runRaw(`ALTER TABLE aiosell_room_mappings ADD COLUMN hostezee_room_type VARCHAR(100) NOT NULL DEFAULT ''`);
+      }
+    },
+  },
+  {
+    // aiosell_rate_updates was created with a completely different schema:
+    // old: room_id, aiosell_room_code, check_in_date, check_out_date, availability
+    // new: config_id, room_mapping_id, rate_plan_id, start_date, end_date, is_pushed, pushed_at
+    name: "fix_aiosell_rate_updates_schema",
+    async run() {
+      if (!(await tableExists("aiosell_rate_updates"))) return;
+      const hasNewSchema = await columnExists("aiosell_rate_updates", "config_id");
+      if (hasNewSchema) return;
+      await runRaw(`
+        DROP TABLE IF EXISTS aiosell_rate_updates CASCADE;
+        CREATE TABLE aiosell_rate_updates (
+          id SERIAL PRIMARY KEY,
+          config_id INTEGER NOT NULL,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          room_mapping_id INTEGER NOT NULL,
+          rate_plan_id INTEGER NOT NULL,
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          rate DECIMAL(10,2) NOT NULL,
+          is_pushed BOOLEAN NOT NULL DEFAULT false,
+          pushed_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+    },
+  },
+  {
+    // aiosell_sync_logs was created without config_id, direction, request_payload, response_payload
+    name: "fix_aiosell_sync_logs_schema",
+    async run() {
+      if (!(await tableExists("aiosell_sync_logs"))) return;
+      if (!(await columnExists("aiosell_sync_logs", "config_id"))) {
+        await runRaw(`ALTER TABLE aiosell_sync_logs ADD COLUMN config_id INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!(await columnExists("aiosell_sync_logs", "direction"))) {
+        await runRaw(`ALTER TABLE aiosell_sync_logs ADD COLUMN direction VARCHAR(20) NOT NULL DEFAULT 'outbound'`);
+      }
+      if (!(await columnExists("aiosell_sync_logs", "request_payload"))) {
+        await runRaw(`ALTER TABLE aiosell_sync_logs ADD COLUMN request_payload JSONB`);
+      }
+      if (!(await columnExists("aiosell_sync_logs", "response_payload"))) {
+        await runRaw(`ALTER TABLE aiosell_sync_logs ADD COLUMN response_payload JSONB`);
+      }
+    },
+  },
+  {
+    // aiosell_inventory_restrictions was created with old schema
+    // old: room_id, aiosell_room_code, check_in_date, check_out_date, min_stay, max_stay, closed_to_arrival, closed_to_departure
+    // new: config_id, room_mapping_id, start_date, end_date, stop_sell, minimum_stay, close_on_arrival, close_on_departure, is_pushed
+    name: "fix_aiosell_inventory_restrictions_schema",
+    async run() {
+      if (!(await tableExists("aiosell_inventory_restrictions"))) return;
+      const hasNewSchema = await columnExists("aiosell_inventory_restrictions", "config_id");
+      if (hasNewSchema) return;
+      await runRaw(`
+        DROP TABLE IF EXISTS aiosell_inventory_restrictions CASCADE;
+        CREATE TABLE aiosell_inventory_restrictions (
+          id SERIAL PRIMARY KEY,
+          config_id INTEGER NOT NULL,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          room_mapping_id INTEGER NOT NULL,
+          start_date DATE NOT NULL,
+          end_date DATE NOT NULL,
+          stop_sell BOOLEAN NOT NULL DEFAULT false,
+          minimum_stay INTEGER DEFAULT 1,
+          close_on_arrival BOOLEAN NOT NULL DEFAULT false,
+          close_on_departure BOOLEAN NOT NULL DEFAULT false,
+          is_pushed BOOLEAN NOT NULL DEFAULT false,
+          pushed_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+    },
+  },
+  {
     name: "add_extra_services_property_id",
     async run() {
       if (!(await tableExists("extra_services"))) return;

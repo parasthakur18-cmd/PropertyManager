@@ -41,8 +41,10 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS aiosell_room_mappings (
         id SERIAL PRIMARY KEY,
+        config_id INTEGER NOT NULL DEFAULT 0,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-        hostezee_room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        hostezee_room_id INTEGER NOT NULL,
+        hostezee_room_type VARCHAR(100) NOT NULL DEFAULT '',
         aiosell_room_code VARCHAR(100) NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -65,10 +67,13 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS aiosell_sync_logs (
         id SERIAL PRIMARY KEY,
+        config_id INTEGER NOT NULL DEFAULT 0,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
         sync_type VARCHAR(50) NOT NULL,
+        direction VARCHAR(20) NOT NULL DEFAULT 'outbound',
         status VARCHAR(50) NOT NULL,
-        records_synced INTEGER,
+        request_payload JSONB,
+        response_payload JSONB,
         error_message TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -77,13 +82,15 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS aiosell_rate_updates (
         id SERIAL PRIMARY KEY,
+        config_id INTEGER NOT NULL,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-        room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        aiosell_room_code VARCHAR(100) NOT NULL,
-        check_in_date DATE NOT NULL,
-        check_out_date DATE NOT NULL,
-        rate DECIMAL(10, 2),
-        availability INTEGER,
+        room_mapping_id INTEGER NOT NULL,
+        rate_plan_id INTEGER NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        rate DECIMAL(10,2) NOT NULL,
+        is_pushed BOOLEAN NOT NULL DEFAULT false,
+        pushed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
@@ -91,15 +98,17 @@ export async function validateDatabaseSchema(): Promise<{ valid: boolean; errors
     await pool.query(`
       CREATE TABLE IF NOT EXISTS aiosell_inventory_restrictions (
         id SERIAL PRIMARY KEY,
+        config_id INTEGER NOT NULL,
         property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-        room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-        aiosell_room_code VARCHAR(100) NOT NULL,
-        check_in_date DATE,
-        check_out_date DATE,
-        min_stay INTEGER,
-        max_stay INTEGER,
-        closed_to_arrival BOOLEAN,
-        closed_to_departure BOOLEAN,
+        room_mapping_id INTEGER NOT NULL,
+        start_date DATE NOT NULL,
+        end_date DATE NOT NULL,
+        stop_sell BOOLEAN NOT NULL DEFAULT false,
+        minimum_stay INTEGER DEFAULT 1,
+        close_on_arrival BOOLEAN NOT NULL DEFAULT false,
+        close_on_departure BOOLEAN NOT NULL DEFAULT false,
+        is_pushed BOOLEAN NOT NULL DEFAULT false,
+        pushed_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
