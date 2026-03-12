@@ -67,9 +67,12 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     name: "rebuild_aiosell_rate_plans_schema",
     async run() {
       if (!(await tableExists("aiosell_rate_plans"))) return;
-      // Old schema has aiosell_rate_plan_id; new schema has config_id
-      const isOldSchema = await columnExists("aiosell_rate_plans", "aiosell_rate_plan_id");
-      if (!isOldSchema) return; // already new schema, nothing to do
+      // Detect old schema by checking for the new required column.
+      // Old variants had: aiosell_rate_plan_id, hostezee_room_id, sync_enabled
+      // New schema has: config_id, room_mapping_id, rate_plan_name, rate_plan_code
+      // If config_id is missing → old schema → rebuild.
+      const hasNewSchema = await columnExists("aiosell_rate_plans", "config_id");
+      if (hasNewSchema) return; // already correct schema, nothing to do
       await runRaw(`
         DROP TABLE IF EXISTS aiosell_rate_plans CASCADE;
         CREATE TABLE aiosell_rate_plans (
