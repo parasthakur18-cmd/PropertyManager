@@ -211,10 +211,11 @@ export default function EnhancedMenu() {
     if (idx < 0) return;
     const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
     if (swapIdx < 0 || swapIdx >= sorted.length) return;
-    const updates = [
-      { id: sorted[idx].id, displayOrder: sorted[swapIdx].displayOrder ?? swapIdx },
-      { id: sorted[swapIdx].id, displayOrder: sorted[idx].displayOrder ?? idx },
-    ];
+    // Swap the two items in the sorted array then assign clean sequential positions.
+    // This handles the case where all items share the same displayOrder (e.g. bulk-imported as 0).
+    const newOrder = [...sorted];
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    const updates = newOrder.map((item, i) => ({ id: item.id, displayOrder: i }));
     reorderItemsMutation.mutate(updates);
   };
 
