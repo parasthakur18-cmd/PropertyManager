@@ -120,7 +120,7 @@ export default function GuestSelfCheckin() {
 
   const uploadFile = async (file: File): Promise<string> => {
     const compressed = await compressImage(file);
-    const urlRes = await fetch("/api/objects/upload", {
+    const urlRes = await fetch("/api/guest/upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
