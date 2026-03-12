@@ -692,48 +692,84 @@ export default function Menu() {
                             )}
                           </div>
                           {isComplexItem(item) ? (
-                            <Button
-                              size="sm"
-                              onClick={() => openAddOnsSheet(item)}
-                              data-testid={`button-customize-${item.id}`}
-                              className="h-7 px-2 text-xs"
-                            >
-                              {getItemQuantityInCart(item.id) > 0 ? "Manage" : "Customize"}
-                            </Button>
-                          ) : (
-                            <div className="flex items-center gap-1 flex-shrink-0">
+                            getItemQuantityInCart(item.id) > 0 ? (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    const cartItems = cart.filter(ci => ci.id === item.id);
+                                    if (cartItems.length > 0) updateQuantity(cartItems[cartItems.length - 1].cartId, -1);
+                                  }}
+                                  data-testid={`button-decrease-complex-${item.id}`}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-6 text-center font-mono text-xs font-semibold">{getItemQuantityInCart(item.id)}</span>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    const cartItems = cart.filter(ci => ci.id === item.id);
+                                    if (cartItems.length > 0) updateQuantity(cartItems[cartItems.length - 1].cartId, 1);
+                                  }}
+                                  data-testid={`button-increase-complex-${item.id}`}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
                               <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-7 w-7"
-                                onClick={() => {
-                                  const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
-                                  if (cartItem) updateQuantity(cartItem.cartId, -1);
-                                }}
-                                disabled={getItemQuantityInCart(item.id) === 0}
-                                data-testid={`button-decrease-main-${item.id}`}
+                                size="sm"
+                                onClick={() => openAddOnsSheet(item)}
+                                data-testid={`button-add-complex-${item.id}`}
+                                className="h-7 px-4 text-xs font-bold tracking-wide"
                               >
-                                <Minus className="h-3 w-3" />
+                                ADD
                               </Button>
-                              <span className="w-6 text-center font-mono text-xs">{getItemQuantityInCart(item.id)}</span>
-                              <Button
-                                size="icon"
-                                variant="outline"
-                                className="h-7 w-7"
-                                onClick={() => {
-                                  const quantity = getItemQuantityInCart(item.id);
-                                  if (quantity > 0) {
+                            )
+                          ) : (
+                            getItemQuantityInCart(item.id) > 0 ? (
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
+                                    if (cartItem) updateQuantity(cartItem.cartId, -1);
+                                  }}
+                                  data-testid={`button-decrease-main-${item.id}`}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-6 text-center font-mono text-xs font-semibold">{getItemQuantityInCart(item.id)}</span>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  onClick={() => {
                                     const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
                                     if (cartItem) updateQuantity(cartItem.cartId, 1);
-                                  } else {
-                                    addToCart(item);
-                                  }
-                                }}
-                                data-testid={`button-increase-main-${item.id}`}
+                                    else addToCart(item);
+                                  }}
+                                  data-testid={`button-increase-main-${item.id}`}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() => addToCart(item)}
+                                data-testid={`button-add-simple-${item.id}`}
+                                className="h-7 px-4 text-xs font-bold tracking-wide"
                               >
-                                <Plus className="h-3 w-3" />
+                                ADD
                               </Button>
-                            </div>
+                            )
                           )}
                         </div>
                       </div>
@@ -939,16 +975,18 @@ export default function Menu() {
           <div className="container mx-auto px-4 py-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex-1">
-                <p className="text-xs text-muted-foreground">{cart.length} {cart.length === 1 ? 'item' : 'items'}</p>
-                <p className="text-lg font-bold">₹{calculateTotal().toFixed(2)}</p>
+                <p className="text-xs text-muted-foreground font-medium">
+                  {cart.reduce((sum, ci) => sum + ci.quantity, 0)} {cart.reduce((sum, ci) => sum + ci.quantity, 0) === 1 ? 'item' : 'items'} in cart
+                </p>
+                <p className="text-lg font-bold">₹{calculateTotal().toFixed(0)}</p>
               </div>
               <Button 
                 size="lg"
                 onClick={() => setIsCheckoutOpen(true)}
-                className="flex-shrink-0"
+                className="flex-shrink-0 gap-2"
                 data-testid="button-fixed-checkout"
               >
-                <ShoppingCart className="h-5 w-5 mr-2" />
+                <ShoppingCart className="h-5 w-5" />
                 View Cart
               </Button>
             </div>

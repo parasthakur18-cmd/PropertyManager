@@ -1,0 +1,138 @@
+We need to improve the menu ordering flow in Hostezee so that customers and staff can easily add multiple quantities of items without confusion.
+
+Currently the system opens customization (variants/add-ons) immediately when clicking a menu item, and the user cannot quickly add multiple quantities directly from the menu.
+
+This needs to be fixed using a Quick Add Menu + Modifier Groups + Smart Cart system.
+
+1. Menu Display with Quick Add
+
+Every menu item in the main menu should display like this:
+
+Aloo Paratha      ₹120        [ADD]
+Masala Tea        ₹40         [+]
+Butter Chicken    ₹580        [ADD]
+
+Behavior:
+
+• If item has no variants or add-ons
+→ Show + / - buttons
+
+Masala Tea
+[-] 1 [+]
+
+• If item has variants or add-ons
+→ Show ADD button
+
+Clicking ADD should open customization.
+
+2. Variant Selection (Only First Time)
+
+If item has variants (example: Half / Full):
+
+When clicking ADD, show popup:
+
+Butter Chicken
+
+Select Portion
+( ) Half – ₹320
+( ) Full – ₹580
+
+After selection:
+
+Butter Chicken (Half)
+
+[-] 1 [+]
+
+Increasing quantity should NOT reopen the popup.
+
+3. Add-on Selection
+
+If item has add-ons, show add-ons only once.
+
+Example:
+
+Aloo Paratha
+
+Add-ons
+[ ] Curd +40
+[ ] Tea +30
+[ ] Extra Butter +20
+
+After confirmation:
+
+Aloo Paratha (Curd)
+
+[-] 1 [+]
+
+Then quantity changes happen directly from menu.
+
+4. Fix Current Issue (Breakfast Items)
+
+Current problem:
+
+When selecting Aloo Paratha, the add-on popup opens but the user cannot easily add multiple quantities.
+
+Correct behavior:
+
+Click ADD
+
+Add-on popup opens
+
+Select add-ons
+
+Item appears with quantity = 1
+
+User can increase quantity using +
+
+Example:
+
+Aloo Paratha (Curd)
+
+[-] 1 [+]
+5. Smart Cart Logic
+
+Cart should group identical items.
+
+Example:
+
+Instead of
+
+Aloo Paratha
+Aloo Paratha
+Aloo Paratha
+
+Cart should show
+
+3 × Aloo Paratha
+
+If customization differs:
+
+2 × Aloo Paratha (Curd)
+1 × Aloo Paratha (Tea)
+6. Use Modifier Groups (Important)
+
+Instead of storing add-ons in each item, use Modifier Groups.
+
+Example:
+
+Modifier Group: Paratha Add-ons
+
+Curd
+Tea
+Extra Butter
+
+Assign this group to:
+
+Aloo Paratha
+Gobhi Paratha
+Paneer Paratha
+7. Final Ordering Flow
+
+Customer or staff should be able to order like this:
+
++ Aloo Paratha
++ Aloo Paratha
++ Masala Tea
++ Butter Chicken → select Half
+
+Without opening the cart.
