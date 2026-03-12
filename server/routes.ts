@@ -13461,6 +13461,31 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         console.warn(`[WHATSAPP] Failed to send welcome message:`, whatsappError);
       }
 
+      // Save booking guest records (ID proof details) if provided
+      const guestsData = req.body.guests;
+      if (Array.isArray(guestsData) && guestsData.length > 0) {
+        try {
+          await db.delete(bookingGuests).where(eq(bookingGuests.bookingId, booking.id));
+          for (const g of guestsData) {
+            await db.insert(bookingGuests).values({
+              bookingId: booking.id,
+              guestName: g.guestName || finalFullName || "Guest",
+              phone: g.phone || null,
+              email: g.email || null,
+              idProofType: g.idProofType || null,
+              idProofNumber: g.idProofNumber || null,
+              idProofFront: g.idProofFront || null,
+              idProofBack: g.idProofBack || null,
+              isPrimary: g.isPrimary ?? false,
+            });
+          }
+          console.log(`[SELF-CHECKIN] Saved ${guestsData.length} guest record(s) for booking ${booking.id}`);
+        } catch (guestSaveError: any) {
+          console.error("[SELF-CHECKIN] Failed to save guest records:", guestSaveError.message);
+          // Non-fatal — check-in still succeeds even if guest record save fails
+        }
+      }
+
       res.json({ message: "Check-in successful", booking: updatedBooking });
     } catch (error: any) {
       console.error("[SELF-CHECKIN ERROR]", error);

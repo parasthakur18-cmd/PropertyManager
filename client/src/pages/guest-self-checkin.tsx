@@ -169,28 +169,7 @@ export default function GuestSelfCheckin() {
         idProofBack = await uploadFile(idBackFile);
       }
 
-      const payload = {
-        bookingId: bookingData.id,
-        email: data.email,
-        phone: data.phone,
-        fullName: data.fullName,
-        idProofUrl: idProofFront,
-      };
-
-      const response = await fetch("/api/guest-self-checkin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Check-in failed");
-      }
-
-      const result = await response.json();
-
-      const allGuests = [{
+      const allGuests: any[] = [{
         guestName: data.fullName,
         phone: data.phone,
         email: data.email,
@@ -218,17 +197,27 @@ export default function GuestSelfCheckin() {
         });
       }
 
-      const guestSaveRes = await fetch(`/api/bookings/${bookingData.id}/guests`, {
+      const payload = {
+        bookingId: bookingData.id,
+        email: data.email,
+        phone: data.phone,
+        fullName: data.fullName,
+        idProofUrl: idProofFront,
+        guests: allGuests,
+      };
+
+      const response = await fetch("/api/guest-self-checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guests: allGuests }),
+        body: JSON.stringify(payload),
       });
 
-      if (!guestSaveRes.ok) {
-        throw new Error("Check-in completed but guest ID records could not be saved. Please contact the front desk to update your ID details.");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Check-in failed");
       }
 
-      return result;
+      return await response.json();
     },
     onSuccess: () => {
       setStep(3);
