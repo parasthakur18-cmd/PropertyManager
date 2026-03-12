@@ -692,6 +692,7 @@ export default function EnhancedMenu() {
                 key={category.id}
                 category={category}
                 items={filteredItems?.filter((item) => item.categoryId === category.id) || []}
+                allCategoryItems={menuItems?.filter((item) => item.categoryId === category.id) || []}
                 onEditCategory={(cat) => {
                   setSelectedCategory(cat);
                   setShowCategoryForm(true);
@@ -1182,6 +1183,7 @@ export default function EnhancedMenu() {
 function CategorySection({
   category,
   items,
+  allCategoryItems,
   onEditCategory,
   onAddItem,
   onEditItem,
@@ -1192,6 +1194,7 @@ function CategorySection({
 }: {
   category: MenuCategory;
   items: MenuItem[];
+  allCategoryItems: MenuItem[];
   onEditCategory: (cat: MenuCategory) => void;
   onAddItem: () => void;
   onEditItem: (item: MenuItem) => void;
@@ -1278,20 +1281,26 @@ function CategorySection({
 
         {/* Items List */}
         <div className="space-y-2">
-          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item, index, sortedArr) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onEdit={() => onEditItem(item)}
-              isExpanded={expandedItems.has(item.id)}
-              onToggleExpand={() => toggleItemExpanded(item.id)}
-              onMoveUp={() => onMoveItem(items, item.id, 'up')}
-              onMoveDown={() => onMoveItem(items, item.id, 'down')}
-              isFirst={index === 0}
-              isLast={index === sortedArr.length - 1}
-              isReordering={isReordering}
-            />
-          ))}
+          {(() => {
+            const allSorted = [...allCategoryItems].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+            return [...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item) => {
+              const fullIdx = allSorted.findIndex(i => i.id === item.id);
+              return (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  onEdit={() => onEditItem(item)}
+                  isExpanded={expandedItems.has(item.id)}
+                  onToggleExpand={() => toggleItemExpanded(item.id)}
+                  onMoveUp={() => onMoveItem(allCategoryItems, item.id, 'up')}
+                  onMoveDown={() => onMoveItem(allCategoryItems, item.id, 'down')}
+                  isFirst={fullIdx === 0}
+                  isLast={fullIdx === allSorted.length - 1}
+                  isReordering={isReordering}
+                />
+              );
+            });
+          })()}
         </div>
       </CardContent>
     </Card>
