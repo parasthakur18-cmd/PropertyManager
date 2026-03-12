@@ -2945,19 +2945,25 @@ export class DatabaseStorage implements IStorage {
       ? sql`
           SELECT COUNT(DISTINCT rid)::int as count FROM (
             SELECT room_id AS rid FROM bookings
-            WHERE status = 'checked-in' AND room_id IS NOT NULL AND property_id = ${propertyId}
+            WHERE status = 'checked-in' AND room_id IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
+              AND property_id = ${propertyId}
             UNION
             SELECT UNNEST(room_ids) AS rid FROM bookings
-            WHERE status = 'checked-in' AND room_ids IS NOT NULL AND property_id = ${propertyId}
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
+              AND property_id = ${propertyId}
           ) sub
         `
       : sql`
           SELECT COUNT(DISTINCT rid)::int as count FROM (
             SELECT room_id AS rid FROM bookings
             WHERE status = 'checked-in' AND room_id IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
             UNION
             SELECT UNNEST(room_ids) AS rid FROM bookings
             WHERE status = 'checked-in' AND room_ids IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
           ) sub
         `;
     const occupiedResult = await db.execute(occupiedRoomsQuery);
@@ -3106,19 +3112,25 @@ export class DatabaseStorage implements IStorage {
       ? sql`
           SELECT COUNT(DISTINCT rid)::int as count FROM (
             SELECT room_id AS rid FROM bookings
-            WHERE status = 'checked-in' AND room_id IS NOT NULL AND property_id = ${propertyId}
+            WHERE status = 'checked-in' AND room_id IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
+              AND property_id = ${propertyId}
             UNION
             SELECT UNNEST(room_ids) AS rid FROM bookings
-            WHERE status = 'checked-in' AND room_ids IS NOT NULL AND property_id = ${propertyId}
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
+              AND property_id = ${propertyId}
           ) sub
         `
       : sql`
           SELECT COUNT(DISTINCT rid)::int as count FROM (
             SELECT room_id AS rid FROM bookings
             WHERE status = 'checked-in' AND room_id IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
             UNION
             SELECT UNNEST(room_ids) AS rid FROM bookings
             WHERE status = 'checked-in' AND room_ids IS NOT NULL
+              AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
           ) sub
         `;
     const occupiedResult2 = await db.execute(occupiedRoomsQuery2);

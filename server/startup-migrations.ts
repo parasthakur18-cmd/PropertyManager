@@ -159,9 +159,11 @@ async function reconcileRoomStatuses(): Promise<void> {
         SELECT DISTINCT rid FROM (
           SELECT room_id AS rid FROM bookings
           WHERE status = 'checked-in' AND room_id IS NOT NULL
+            AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
           UNION
           SELECT UNNEST(room_ids) AS rid FROM bookings
           WHERE status = 'checked-in' AND room_ids IS NOT NULL
+            AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
         ) sub
       )
       AND status != 'occupied'
@@ -174,9 +176,11 @@ async function reconcileRoomStatuses(): Promise<void> {
         SELECT DISTINCT rid FROM (
           SELECT room_id AS rid FROM bookings
           WHERE status = 'checked-in' AND room_id IS NOT NULL
+            AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
           UNION
           SELECT UNNEST(room_ids) AS rid FROM bookings
           WHERE status = 'checked-in' AND room_ids IS NOT NULL
+            AND check_in_date <= CURRENT_DATE AND check_out_date >= CURRENT_DATE
         ) sub
       )
     `);
