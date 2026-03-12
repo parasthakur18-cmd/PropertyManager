@@ -10,7 +10,7 @@ export function usePropertyFilter() {
     queryKey: ["/api/properties"],
   });
 
-  const isSuperAdmin = user?.role === "super-admin";
+  const isSuperAdmin = user?.role === "super-admin" || user?.role === "admin";
 
   const availableProperties = useMemo(() => {
     if (!properties) return [];
