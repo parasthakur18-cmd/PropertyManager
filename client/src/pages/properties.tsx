@@ -45,21 +45,45 @@ export default function Properties() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      toast({
-        title: "Success",
-        description: "Property created successfully",
-      });
+      toast({ title: "Success", description: "Property created successfully" });
       setIsDialogOpen(false);
       form.reset();
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertProperty> }) => {
+      return await apiRequest(`/api/properties/${id}`, "PATCH", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      toast({ title: "Success", description: "Property updated successfully" });
+      setIsDialogOpen(false);
+      setEditingProperty(null);
+      form.reset();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleEdit = (property: Property) => {
+    setEditingProperty(property);
+    form.reset({
+      name: property.name,
+      location: property.location || "",
+      description: property.description || "",
+      totalRooms: property.totalRooms,
+      contactEmail: property.contactEmail || "",
+      contactPhone: property.contactPhone || "",
+      monthlyRent: property.monthlyRent || "0",
+      isActive: property.isActive ?? true,
+    });
+    setIsDialogOpen(true);
+  };
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -82,7 +106,11 @@ export default function Properties() {
   });
 
   const onSubmit = (data: InsertProperty) => {
-    createMutation.mutate(data);
+    if (editingProperty) {
+      updateMutation.mutate({ id: editingProperty.id, data });
+    } else {
+      createMutation.mutate(data);
+    }
   };
 
   const handleExportProperty = async (propertyId: number, propertyName: string) => {
@@ -141,7 +169,10 @@ export default function Properties() {
           <h1 className="text-3xl font-bold font-serif">Properties</h1>
           <p className="text-muted-foreground mt-1">Manage your resort properties</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) { setEditingProperty(null); form.reset(); }
+        }}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-property">
               <Plus className="h-4 w-4 mr-2" />
@@ -150,7 +181,7 @@ export default function Properties() {
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Property</DialogTitle>
+              <DialogTitle>{editingProperty ? "Edit Property" : "Add New Property"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -268,8 +299,8 @@ export default function Properties() {
                   )}
                 />
                 <DialogFooter>
-                  <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-property">
-                    {createMutation.isPending ? "Creating..." : "Create Property"}
+                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending} data-testid="button-submit-property">
+                    {createMutation.isPending ? "Creating..." : updateMutation.isPending ? "Saving..." : editingProperty ? "Save Changes" : "Create Property"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -309,6 +340,15 @@ export default function Properties() {
                     </CardDescription>
                   </div>
                   <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleEdit(property)}
+                      title="Edit property"
+                      data-testid={`button-edit-property-${property.id}`}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
                     <Button
                       size="icon"
                       variant="ghost"
