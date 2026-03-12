@@ -126,13 +126,24 @@ export async function sendWhatsAppMessage(params: WhatsAppMessageParams): Promis
     });
 
     const data = await response.json();
-    
-    if (response.ok) {
-      console.log("[WhatsApp] Message sent successfully");
+
+    // Authkey returns HTTP 200 even on failure — must check the response body.
+    // Success: data.type === "success" or data.status === "success"
+    // Failure: data.type === "error" / data.status === "error" with data.message
+    const isSuccess = response.ok && (
+      data.type === "success" ||
+      data.status === "success" ||
+      data.status === 200 ||
+      (data.messageId !== undefined) ||
+      (response.ok && data.type === undefined && data.status === undefined) // unknown format — assume ok
+    );
+
+    if (isSuccess) {
+      console.log(`[WhatsApp] ✅ Message delivered (template: ${params.templateId})`);
       return { success: true, message: "WhatsApp message sent successfully" };
     } else {
-      console.error("[WhatsApp] API error:", data);
-      return { success: false, error: data.message || "Failed to send WhatsApp message" };
+      console.error(`[WhatsApp] ❌ API rejected message (template: ${params.templateId}):`, JSON.stringify(data));
+      return { success: false, error: data.message || data.error || JSON.stringify(data) };
     }
   } catch (error: any) {
     console.error("[WhatsApp] Request failed:", error);
