@@ -65,6 +65,95 @@ interface SyncLog {
   createdAt: string;
 }
 
+function SyncExistingBookingsSection({ config }: { config: AiosellConfig | null | undefined }) {
+  const { toast } = useToast();
+  const [fromDate, setFromDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [toDate, setToDate] = useState(() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d.toISOString().split("T")[0]; });
+  const [copied, setCopied] = useState(false);
+
+  const webhookUrl = `${typeof window !== "undefined" ? window.location.origin : "https://hostezee.in"}/api/aiosell/reservation`;
+  const hotelCode = config?.hotelCode || "(your hotel code)";
+
+  const emailSubject = `Request: Resend all reservations to PMS webhook`;
+  const emailBody = `Hi AioSell Support,
+
+Please resend all reservations for our property to our PMS webhook endpoint.
+
+Hotel Code: ${hotelCode}
+From Date: ${fromDate}
+To Date: ${toDate}
+Webhook URL: ${webhookUrl}
+
+Please trigger a resend of all bookings (including pending future reservations) in the above date range to the webhook URL above.
+
+Thank you.`;
+
+  const copyEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(emailBody);
+      setCopied(true);
+      toast({ title: "Copied!", description: "Email template copied to clipboard." });
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      toast({ title: "Copy failed", description: "Please select and copy the text manually.", variant: "destructive" });
+    }
+  };
+
+  const openEmail = () => {
+    window.open(`mailto:support@aiosell.com?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`, "_blank");
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h4 className="text-sm font-semibold mb-1">Sync Existing Bookings from Booking.com</h4>
+        <p className="text-xs text-muted-foreground">
+          AioSell uses a <strong>push-only</strong> model — bookings flow from Booking.com → AioSell → your webhook automatically. There is no API to pull them manually.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          To get bookings already in your Booking.com dashboard, you need to ask AioSell to <strong>resend them</strong> to your webhook. Use the ready-made email below.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">From Date</Label>
+          <Input type="date" className="h-8 text-xs" value={fromDate} onChange={e => setFromDate(e.target.value)} data-testid="input-resend-from" />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">To Date</Label>
+          <Input type="date" className="h-8 text-xs" value={toDate} onChange={e => setToDate(e.target.value)} data-testid="input-resend-to" />
+        </div>
+      </div>
+
+      <div className="rounded-md border bg-muted/40 p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">Email to: support@aiosell.com</span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={copyEmail} data-testid="button-copy-email">
+              {copied ? <CheckCircle className="h-3 w-3 mr-1 text-green-600" /> : <Download className="h-3 w-3 mr-1" />}
+              {copied ? "Copied!" : "Copy"}
+            </Button>
+            <Button size="sm" variant="outline" className="h-6 text-xs px-2" onClick={openEmail} data-testid="button-open-email">
+              <Link2 className="h-3 w-3 mr-1" />
+              Open Mail
+            </Button>
+          </div>
+        </div>
+        <pre className="text-xs whitespace-pre-wrap text-foreground/80 font-mono leading-relaxed">{emailBody}</pre>
+      </div>
+
+      <div className="flex items-start gap-2 text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded p-2">
+        <Wifi className="h-3.5 w-3.5 text-blue-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <span className="font-medium text-blue-700 dark:text-blue-300">Your webhook URL (share this with AioSell):</span>
+          <div className="mt-0.5 font-mono break-all">{webhookUrl}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [hotelCode, setHotelCode] = useState("");
@@ -228,22 +317,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
             </div>
 
             <div className="border-t pt-4 space-y-3">
-              <div>
-                <h4 className="text-sm font-medium mb-1">How Booking.com Reservations Arrive</h4>
-                <p className="text-xs text-muted-foreground mb-2">
-                  AioSell works on a <strong>push model</strong> — Booking.com sends each new reservation to AioSell, which then posts it to this system automatically via webhook. You do not need to manually import future bookings.
-                </p>
-                <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
-                  <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  <AlertDescription className="text-xs text-amber-800 dark:text-amber-300">
-                    <strong>For past bookings already on Booking.com:</strong> AioSell does not provide a REST API to pull historical reservations. To sync past bookings, contact AioSell support and ask them to <em>"resend all reservations"</em> for your hotel ID (<code>{config?.hotelCode}</code>) to your webhook URL. Each resent booking will automatically appear in this system.
-                  </AlertDescription>
-                </Alert>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Wifi className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                <span>Your webhook endpoint: <code className="bg-muted px-1 py-0.5 rounded text-xs">{typeof window !== "undefined" ? window.location.origin : ""}/api/aiosell/reservation</code></span>
-              </div>
+              <SyncExistingBookingsSection config={config} />
             </div>
           </CardContent>
         </Card>
