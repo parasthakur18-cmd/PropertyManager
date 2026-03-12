@@ -16821,20 +16821,44 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending)`);
         await autoSyncInventoryForProperty(config.propertyId);
 
-        // Send OTA booking notification (template 28770) to property contactPhone
+        const notifGuestName = `${guest?.firstName || ""} ${guest?.lastName || ""}`.trim() || "OTA Guest";
+
+        // In-app PMS notification to all admins and property-assigned staff
+        try {
+          const allUsers = await storage.getAllUsers();
+          const notifyUsers = allUsers.filter(u =>
+            u.role === "admin" || u.role === "super-admin" ||
+            (u.assignedPropertyIds as number[] || []).includes(config.propertyId)
+          );
+          for (const u of notifyUsers) {
+            await db.insert(notifications).values({
+              userId: u.id,
+              type: "new_booking",
+              title: "New OTA Booking",
+              message: `New booking from ${channel} — Guest: ${notifGuestName}. Check-in: ${checkin}. Check-out: ${checkout}.`,
+              soundType: "info",
+              relatedId: newBooking.id,
+              relatedType: "booking",
+            });
+          }
+          console.log(`[NOTIFICATIONS] Booking #${newBooking.id} - in-app notifications sent to ${notifyUsers.length} users`);
+        } catch (notifErr: any) {
+          console.error(`[NOTIFICATIONS] Failed to send in-app notification:`, notifErr.message);
+        }
+
+        // WhatsApp OTA notification (template 28770) to property contactPhone
         try {
           const property = await storage.getProperty(config.propertyId);
+          const propertyName = property?.name || "Your Property";
           const staffPhone = property?.contactPhone?.trim();
           if (staffPhone) {
-            const propertyName = property?.name || "Your Property";
-            const notifGuestName = `${guest?.firstName || ""} ${guest?.lastName || ""}`.trim() || "OTA Guest";
             await sendOtaBookingNotification(staffPhone, propertyName, notifGuestName);
-            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification sent (template: ${process.env.AUTHKEY_WA_OTA_BOOKING || "28770"})`);
+            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification sent to staff (${staffPhone})`);
           } else {
-            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification skipped (no contactPhone on property)`);
+            console.warn(`[WhatsApp] Booking #${newBooking.id} - OTA notification skipped: property "${propertyName}" has no contactPhone set`);
           }
         } catch (notifErr: any) {
-          console.error(`[WhatsApp] OTA booking notification failed (non-critical):`, notifErr.message);
+          console.error(`[WhatsApp] OTA booking notification failed:`, notifErr.message);
         }
 
         return res.json({ success: true, message: "Reservation Updated Successfully" });
@@ -17021,6 +17045,29 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }).returning();
           imported++;
 
+          // In-app PMS notification for pulled booking
+          try {
+            const allUsers = await storage.getAllUsers();
+            const notifyUsers = allUsers.filter(u =>
+              u.role === "admin" || u.role === "super-admin" ||
+              (u.assignedPropertyIds as number[] || []).includes(config.propertyId)
+            );
+            const pullGuestName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
+            for (const u of notifyUsers) {
+              await db.insert(notifications).values({
+                userId: u.id,
+                type: "new_booking",
+                title: "New OTA Booking",
+                message: `New booking from ${r.channel} — Guest: ${pullGuestName}. Check-in: ${r.checkin}. Check-out: ${r.checkout}.`,
+                soundType: "info",
+                relatedId: insertedBooking.id,
+                relatedType: "booking",
+              });
+            }
+          } catch (notifErr: any) {
+            console.error(`[NOTIFICATIONS] Pull booking in-app notification failed:`, notifErr.message);
+          }
+
           // Send OTA booking notification to property staff (template 28770)
           try {
             const prop = await storage.getProperty(config.propertyId);
@@ -17029,6 +17076,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               const guestFullName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
               await sendOtaBookingNotification(staffPhone, prop?.name || "Your Property", guestFullName);
               console.log(`[WhatsApp] Pulled booking #${insertedBooking.id} - OTA notification sent`);
+            } else if (!staffPhone) {
+              console.warn(`[WhatsApp] Pulled booking #${insertedBooking.id} - skipped: no contactPhone on property`);
             }
           } catch (notifErr: any) {
             console.error(`[WhatsApp] Pull OTA notification failed (non-critical):`, notifErr.message);
