@@ -59,7 +59,7 @@ import {
   sendTaskReminder
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
-import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty } from "./aiosell";
+import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
 import { 
@@ -16794,6 +16794,126 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           ? `Test booking created for "${propertyName}"! Check-in: today, Check-out: ${checkout.toISOString().split("T")[0]}. Guest: Test OTA Guest. Go to Bookings page and select "${propertyName}" to see it.`
           : `Webhook returned: ${result.message}`,
         bookingId: testBookingId,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Pull existing reservations from AioSell for a date range and import them into PMS
+  app.post("/api/aiosell/pull-reservations", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, fromDate, toDate } = req.body;
+
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+
+      const from = fromDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]; // 30 days back
+      const to = toDate || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]; // 1 year ahead
+
+      const result = await pullReservationsFromAioSell(config, from, to);
+      if (!result.success) {
+        return res.json({ success: false, message: result.message, imported: 0, skipped: 0 });
+      }
+
+      const reservations = result.reservations || [];
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const r of reservations) {
+        try {
+          // Skip cancellations
+          if (r.action === "cancel") { skipped++; continue; }
+
+          // Check for duplicate by externalBookingId
+          const existing = await db.select({ id: bookings.id }).from(bookings).where(
+            and(
+              eq(bookings.propertyId, config.propertyId),
+              eq(bookings.externalBookingId, r.bookingId),
+            )
+          );
+          if (existing.length > 0) { skipped++; continue; }
+
+          // Upsert guest
+          let guestId: number | undefined;
+          const guestData = r.guest;
+          if (guestData) {
+            const guestFullName = `${guestData.firstName || ""} ${guestData.lastName || ""}`.trim() || "OTA Guest";
+            const guestEmail = guestData.email || "";
+            if (guestEmail) {
+              const [existingGuest] = await db.select({ id: guests.id }).from(guests).where(eq(guests.email, guestEmail));
+              if (existingGuest) { guestId = existingGuest.id; }
+            }
+            if (!guestId) {
+              const [newGuest] = await db.insert(guests).values({
+                fullName: guestFullName,
+                email: guestEmail || null,
+                phone: guestData.phone || "N/A",
+                address: guestData.address ? [guestData.address.line1, guestData.address.city, guestData.address.state, guestData.address.country].filter(Boolean).join(", ") : null,
+              }).returning();
+              guestId = newGuest.id;
+              storage.invalidateGuestsCache();
+            }
+          }
+
+          // Try to assign a room
+          const mappings = await getRoomMappingsForConfig(config.id);
+          let assignedRoomId: number | undefined;
+          if (r.rooms && r.rooms.length > 0) {
+            const roomCode = r.rooms[0].roomCode;
+            const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
+            if (mapping) {
+              const [availableRoom] = await db.select({ id: rooms.id }).from(rooms).where(
+                and(eq(rooms.propertyId, config.propertyId), eq(rooms.type, mapping.hostezeeRoomType), eq(rooms.status, "available"))
+              );
+              if (availableRoom) assignedRoomId = availableRoom.id;
+            }
+          }
+
+          const adults = r.rooms?.[0]?.occupancy?.adults || 1;
+          const children = r.rooms?.[0]?.occupancy?.children || 0;
+          const totalAmount = r.amount?.amountAfterTax?.toString() || "0";
+
+          await db.insert(bookings).values({
+            propertyId: config.propertyId,
+            roomId: assignedRoomId || null,
+            guestId: guestId || null,
+            checkInDate: new Date(r.checkin),
+            checkOutDate: new Date(r.checkout),
+            numberOfGuests: adults + children,
+            totalAmount,
+            status: "pending",
+            source: `aiosell-${r.channel}`,
+            externalBookingId: r.bookingId,
+            externalSource: `aiosell-${r.channel}`,
+            specialRequests: r.specialRequests || null,
+            metadata: { aiosellBookingId: r.bookingId, cmBookingId: r.cmBookingId, channel: r.channel },
+          });
+          imported++;
+        } catch (err: any) {
+          errors.push(`bookingId=${r.bookingId}: ${err.message}`);
+          skipped++;
+        }
+      }
+
+      storage.invalidateBookingsCache();
+      await autoSyncInventoryForProperty(config.propertyId);
+
+      console.log(`[AIOSELL] pull-reservations: ${imported} imported, ${skipped} skipped, ${errors.length} errors`);
+      res.json({
+        success: true,
+        total: reservations.length,
+        imported,
+        skipped,
+        errors: errors.slice(0, 5),
+        message: `Imported ${imported} new reservation${imported !== 1 ? "s" : ""} from AioSell (${skipped} already existed or skipped).`,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

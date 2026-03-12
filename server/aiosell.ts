@@ -281,6 +281,73 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
   }
 }
 
+export interface AiosellReservation {
+  action: string;
+  hotelCode: string;
+  channel: string;
+  bookingId: string;
+  cmBookingId: string;
+  bookedOn: string;
+  checkin: string;
+  checkout: string;
+  segment?: string;
+  specialRequests?: string;
+  pah?: boolean;
+  amount?: { amountAfterTax?: number; amountBeforeTax?: number; tax?: number; currency?: string };
+  guest?: { firstName?: string; lastName?: string; email?: string; phone?: string; address?: { line1?: string; city?: string; state?: string; country?: string } };
+  rooms?: { roomCode: string; occupancy?: { adults?: number; children?: number } }[];
+}
+
+export async function pullReservationsFromAioSell(
+  config: AiosellConfig,
+  fromDate: string,
+  toDate: string,
+): Promise<{ success: boolean; reservations?: AiosellReservation[]; message?: string }> {
+  const url = `${config.apiBaseUrl}/api/v2/cm/get-reservations/${config.pmsName}`;
+  const payload = { hotelCode: config.hotelCode, from: fromDate, to: toDate };
+
+  console.log(`[AIOSELL] pull-reservations → ${url} from=${fromDate} to=${toDate}`);
+
+  try {
+    const authHeader = config.pmsPassword
+      ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
+      : undefined;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(authHeader ? { Authorization: authHeader } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    await db.insert(aiosellSyncLogs).values({
+      configId: config.id,
+      propertyId: config.propertyId,
+      syncType: "reservation_pull",
+      direction: "inbound",
+      status: response.ok && data.success !== false ? "success" : "failed",
+      requestPayload: payload,
+      responsePayload: data,
+      errorMessage: response.ok ? null : (data.message || `HTTP ${response.status}`),
+    });
+
+    if (!response.ok) {
+      return { success: false, message: data.message || `AioSell returned HTTP ${response.status}` };
+    }
+
+    // AioSell may return reservations as data.reservations or data.data
+    const reservations: AiosellReservation[] = data.reservations || data.data || [];
+    return { success: true, reservations };
+  } catch (error: any) {
+    console.error(`[AIOSELL] pull-reservations failed:`, error.message);
+    return { success: false, message: error.message };
+  }
+}
+
 export async function getConfigForProperty(propertyId: number): Promise<AiosellConfig | null> {
   const [config] = await db
     .select()

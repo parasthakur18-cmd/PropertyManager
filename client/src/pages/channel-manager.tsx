@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2 } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -128,6 +128,28 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const today = new Date().toISOString().split("T")[0];
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const oneYearAhead = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const [pullFromDate, setPullFromDate] = useState(thirtyDaysAgo);
+  const [pullToDate, setPullToDate] = useState(oneYearAhead);
+
+  const pullReservations = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("/api/aiosell/pull-reservations", "POST", { propertyId, fromDate: pullFromDate, toDate: pullToDate });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({ title: `Imported ${data.imported} reservation${data.imported !== 1 ? "s" : ""}`, description: data.message });
+        queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      } else {
+        toast({ title: "Import failed", description: data.message, variant: "destructive" });
+      }
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
   const isConfigured = !!config;
@@ -222,6 +244,56 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
                 {testWebhook.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <TestTube2 className="h-4 w-4 mr-2" />}
                 Send Test Booking
               </Button>
+            </div>
+
+            <div className="border-t pt-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-medium mb-1">Import Existing Reservations from Booking.com</h4>
+                <p className="text-xs text-muted-foreground">
+                  Pull reservations that are already on Booking.com (or other OTAs via AioSell) into the PMS. 
+                  Useful when you first set up the integration — future bookings arrive automatically via webhook. 
+                  Duplicates are skipped safely.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">From Date</Label>
+                  <Input
+                    data-testid="input-pull-from-date"
+                    type="date"
+                    className="w-36 text-sm"
+                    value={pullFromDate}
+                    onChange={e => setPullFromDate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">To Date</Label>
+                  <Input
+                    data-testid="input-pull-to-date"
+                    type="date"
+                    className="w-36 text-sm"
+                    value={pullToDate}
+                    onChange={e => setPullToDate(e.target.value)}
+                  />
+                </div>
+                <Button
+                  data-testid="button-pull-reservations"
+                  variant="outline"
+                  onClick={() => pullReservations.mutate()}
+                  disabled={pullReservations.isPending}
+                >
+                  {pullReservations.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                  Import from Booking.com
+                </Button>
+              </div>
+              {pullReservations.data && (
+                <div className={`text-xs p-2 rounded ${pullReservations.data.success ? "bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-300" : "bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-300"}`}>
+                  {pullReservations.data.message}
+                  {pullReservations.data.errors?.length > 0 && (
+                    <div className="mt-1 text-red-600">{pullReservations.data.errors.join("; ")}</div>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
