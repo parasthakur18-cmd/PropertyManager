@@ -9,7 +9,7 @@
  * Optional template IDs (with defaults):
  * - AUTHKEY_WA_BOOKING_CONFIRMATION: Template for booking confirmation (default: 18491)
  * - AUTHKEY_WA_PAYMENT_CONFIRMATION: Template for payment received (default: 18649)
- * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 22462)
+ * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 28733)
  * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout/billing (default: 18667)
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
@@ -218,7 +218,7 @@ export async function sendCheckInNotification(
   checkInDate: string,
   checkOutDate: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "22462";
+  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "28733";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
