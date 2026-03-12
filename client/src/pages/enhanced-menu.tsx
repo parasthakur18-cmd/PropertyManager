@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle, Settings, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, ChevronDown, ChevronUp, Search, FileSpreadsheet, Download, CheckCircle2, AlertCircle, Settings, Copy, ArrowUp, ArrowDown } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -195,6 +195,28 @@ export default function EnhancedMenu() {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
     },
   });
+
+  const reorderItemsMutation = useMutation({
+    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
+      return await apiRequest("/api/menu-items/reorder", "PATCH", updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+    },
+  });
+
+  const handleMoveItem = (items: MenuItem[], itemId: number, direction: 'up' | 'down') => {
+    const sorted = [...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    const idx = sorted.findIndex(i => i.id === itemId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const updates = [
+      { id: sorted[idx].id, displayOrder: sorted[swapIdx].displayOrder ?? swapIdx },
+      { id: sorted[swapIdx].id, displayOrder: sorted[idx].displayOrder ?? idx },
+    ];
+    reorderItemsMutation.mutate(updates);
+  };
 
   // Bulk import functions
   function parseCSVLine(line: string): string[] {
@@ -684,6 +706,8 @@ export default function EnhancedMenu() {
                   setSelectedItem(item);
                   setShowItemForm(true);
                 }}
+                onMoveItem={handleMoveItem}
+                isReordering={reorderItemsMutation.isPending}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
               />
@@ -1161,6 +1185,8 @@ function CategorySection({
   onEditCategory,
   onAddItem,
   onEditItem,
+  onMoveItem,
+  isReordering,
   expandedItems,
   toggleItemExpanded,
 }: {
@@ -1169,6 +1195,8 @@ function CategorySection({
   onEditCategory: (cat: MenuCategory) => void;
   onAddItem: () => void;
   onEditItem: (item: MenuItem) => void;
+  onMoveItem: (items: MenuItem[], itemId: number, direction: 'up' | 'down') => void;
+  isReordering: boolean;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
 }) {
@@ -1250,13 +1278,18 @@ function CategorySection({
 
         {/* Items List */}
         <div className="space-y-2">
-          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item) => (
+          {[...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0)).map((item, index, sortedArr) => (
             <ItemCard
               key={item.id}
               item={item}
               onEdit={() => onEditItem(item)}
               isExpanded={expandedItems.has(item.id)}
               onToggleExpand={() => toggleItemExpanded(item.id)}
+              onMoveUp={() => onMoveItem(items, item.id, 'up')}
+              onMoveDown={() => onMoveItem(items, item.id, 'down')}
+              isFirst={index === 0}
+              isLast={index === sortedArr.length - 1}
+              isReordering={isReordering}
             />
           ))}
         </div>
@@ -1272,11 +1305,21 @@ function ItemCard({
   onEdit,
   isExpanded,
   onToggleExpand,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  isReordering,
 }: {
   item: MenuItem;
   onEdit: () => void;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+  isReordering: boolean;
 }) {
   const { toast } = useToast();
 
@@ -1359,7 +1402,29 @@ function ItemCard({
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              <div className="flex flex-col gap-0.5 mr-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={onMoveUp}
+                  disabled={isFirst || isReordering}
+                  data-testid={`button-move-up-${item.id}`}
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={onMoveDown}
+                  disabled={isLast || isReordering}
+                  data-testid={`button-move-down-${item.id}`}
+                >
+                  <ArrowDown className="h-3.5 w-3.5" />
+                </Button>
+              </div>
               <div className="flex flex-col items-center gap-1">
                 <Switch
                   checked={item.isAvailable}
