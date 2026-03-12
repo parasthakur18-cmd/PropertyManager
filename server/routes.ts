@@ -5465,6 +5465,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const updates: { id: number; displayOrder: number }[] = req.body;
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Updates array is required" });
+      }
+      for (const update of updates) {
+        await storage.updateMenuItem(Number(update.id), { displayOrder: Number(update.displayOrder) });
+      }
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
@@ -5559,26 +5574,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.status(200).json({ success: true });
     } catch (error: any) {
       console.error("[MENU-SWAP] Error:", error.message);
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Reorder multiple menu items (for drag-and-drop)
-  app.patch("/api/menu-items/reorder", isAuthenticated, async (req, res) => {
-    try {
-      const { updates } = req.body;
-      
-      if (!Array.isArray(updates)) {
-        return res.status(400).json({ message: "Updates array is required" });
-      }
-
-      // Update each item's displayOrder
-      for (const update of updates) {
-        await storage.updateMenuItem(Number(update.id), { displayOrder: Number(update.displayOrder) });
-      }
-      
-      res.status(200).json({ success: true });
-    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
