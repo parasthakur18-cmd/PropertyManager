@@ -16581,6 +16581,108 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // Inventory calendar — returns per-date availability + last known rate for each mapped room type
+  app.get("/api/aiosell/inventory-calendar", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+
+      const fromStr = (req.query.from as string) || new Date().toISOString().split("T")[0];
+      const toStr = (req.query.to as string) || (() => { const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().split("T")[0]; })();
+
+      const from = new Date(fromStr); from.setHours(0, 0, 0, 0);
+      const to = new Date(toStr); to.setHours(0, 0, 0, 0);
+      const DAYS = Math.min(Math.round((to.getTime() - from.getTime()) / 86400000) + 1, 90);
+
+      // Build date list
+      const dates: string[] = [];
+      for (let i = 0; i < DAYS; i++) {
+        const d = new Date(from); d.setDate(from.getDate() + i);
+        dates.push(d.toISOString().split("T")[0]);
+      }
+
+      // Fetch mappings, all rooms, bookings in window, rate updates
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+
+      const horizon = new Date(to); horizon.setDate(horizon.getDate() + 1);
+      const activeBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
+      }).from(bookings).where(
+        and(
+          eq(bookings.propertyId, propertyId),
+          inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+          lte(bookings.checkInDate, horizon), gte(bookings.checkOutDate, from),
+        )
+      );
+
+      // Latest rate per room code from aiosellRateUpdates
+      const rateUpdates = await db.select().from(aiosellRateUpdates)
+        .where(eq(aiosellRateUpdates.propertyId, propertyId))
+        .orderBy(desc(aiosellRateUpdates.createdAt));
+      const latestRateByCode: Record<string, number> = {};
+      for (const ru of rateUpdates) {
+        if (!latestRateByCode[ru.roomCode] && ru.rate) {
+          latestRateByCode[ru.roomCode] = Number(ru.rate);
+        }
+      }
+
+      // Build per-mapping availability
+      const roomTypeData = mappings.map(mapping => {
+        const matchingRooms = allRooms.filter(r =>
+          r.type === mapping.hostezeeRoomType || r.name === mapping.hostezeeRoomType
+        );
+        const totalRooms = matchingRooms.length;
+        const roomIds = matchingRooms.map(r => r.id);
+
+        const days = dates.map(dateStr => {
+          const date = new Date(dateStr);
+
+          // Count booked rooms on this date
+          const bookedRoomIds = new Set<number>();
+          for (const b of activeBookings) {
+            const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+            const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+            if (cin <= date && date < cout) {
+              if (b.roomId && roomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+              if (b.roomIds) b.roomIds.forEach((rid: number) => { if (roomIds.includes(rid)) bookedRoomIds.add(rid); });
+            }
+          }
+
+          const blockedRooms = matchingRooms.filter(r =>
+            ["maintenance", "out-of-order", "blocked"].includes(r.status || "")
+          ).length;
+
+          const booked = bookedRoomIds.size;
+          const available = Math.max(0, totalRooms - booked - blockedRooms);
+
+          return { date: dateStr, available, booked, blocked: blockedRooms, total: totalRooms };
+        });
+
+        return {
+          roomCode: mapping.aiosellRoomCode,
+          hostezeeRoomType: mapping.hostezeeRoomType,
+          totalRooms,
+          rate: latestRateByCode[mapping.aiosellRoomCode] || null,
+          days,
+        };
+      });
+
+      res.json({ dates, roomTypes: roomTypeData });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // AIOSELL WEBHOOK - Receive reservations from AioSell (no auth required - external webhook)
   app.post("/api/aiosell/reservation", async (req: any, res) => {
     try {

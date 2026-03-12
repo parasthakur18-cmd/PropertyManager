@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,11 +10,12 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronLeft, ChevronRight, IndianRupee } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
+import { format, addDays, parseISO } from "date-fns";
 
 interface AiosellConfig {
   id: number;
@@ -898,6 +899,193 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+interface InventoryCalendarDay { date: string; available: number; booked: number; blocked: number; total: number; }
+interface InventoryCalendarRoomType { roomCode: string; hostezeeRoomType: string; totalRooms: number; rate: number | null; days: InventoryCalendarDay[]; }
+interface InventoryCalendarResponse { dates: string[]; roomTypes: InventoryCalendarRoomType[]; }
+
+const CELL_W = 60; // px per date column
+const ROW_H = 52;  // px per room-type row
+
+function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const today = new Date().toISOString().split("T")[0];
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().split("T")[0]; });
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const { data, isLoading, refetch } = useQuery<InventoryCalendarResponse>({
+    queryKey: ["/api/aiosell/inventory-calendar", { propertyId, from: fromDate, to: toDate }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/inventory-calendar?propertyId=${propertyId}&from=${fromDate}&to=${toDate}`, { credentials: "include" });
+      if (!res.ok) throw new Error((await res.json()).message);
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/aiosell/push-inventory", "POST", { propertyId, autoSync: true });
+      return res.json();
+    },
+    onSuccess: (d: any) => {
+      toast({ title: d.success ? "Synced to Booking.com" : "Sync failed", description: d.message, variant: d.success ? "default" : "destructive" });
+      refetch();
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const shiftDays = (n: number) => {
+    const f = new Date(fromDate); f.setDate(f.getDate() + n);
+    const t = new Date(toDate); t.setDate(t.getDate() + n);
+    setFromDate(f.toISOString().split("T")[0]);
+    setToDate(t.toISOString().split("T")[0]);
+  };
+
+  const cellColor = (available: number, total: number) => {
+    if (total === 0) return "bg-slate-100 dark:bg-slate-800 text-slate-400";
+    if (available === 0) return "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300";
+    const pct = available / total;
+    if (pct <= 0.3) return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300";
+    return "bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300";
+  };
+
+  if (!data && isLoading) {
+    return (
+      <Card><CardContent className="py-12 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" /><p className="text-muted-foreground">Loading inventory…</p></CardContent></Card>
+    );
+  }
+
+  if (!data || data.roomTypes.length === 0) {
+    return (
+      <Card><CardContent className="py-10 text-center text-muted-foreground">
+        <Calendar className="h-12 w-12 mx-auto mb-3 opacity-30" />
+        <p>No room mappings found. Set up room mappings first.</p>
+      </CardContent></Card>
+    );
+  }
+
+  const dates = data.dates;
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <Card>
+        <CardContent className="pt-4 pb-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">From</Label>
+              <Input type="date" className="w-36 h-8 text-sm" value={fromDate} onChange={e => setFromDate(e.target.value)} data-testid="input-cal-from" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">To</Label>
+              <Input type="date" className="w-36 h-8 text-sm" value={toDate} onChange={e => setToDate(e.target.value)} data-testid="input-cal-to" />
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isLoading} data-testid="button-refresh-cal">
+              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" onClick={() => shiftDays(-7)} title="Previous 7 days" data-testid="button-cal-prev"><ChevronLeft className="h-3.5 w-3.5" /></Button>
+              <Button size="sm" variant="outline" onClick={() => { setFromDate(today); const d = new Date(); d.setDate(d.getDate() + 29); setToDate(d.toISOString().split("T")[0]); }} className="text-xs px-2">Today</Button>
+              <Button size="sm" variant="outline" onClick={() => shiftDays(7)} title="Next 7 days" data-testid="button-cal-next"><ChevronRight className="h-3.5 w-3.5" /></Button>
+            </div>
+            <Button size="sm" onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending} data-testid="button-sync-cal" className="ml-auto">
+              {syncMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+              Sync to Booking.com
+            </Button>
+          </div>
+          {/* Legend */}
+          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-200 dark:bg-green-700 inline-block" /> Available</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-200 dark:bg-amber-700 inline-block" /> Limited (≤30%)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-200 dark:bg-red-700 inline-block" /> Sold out</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Calendar Grid */}
+      <Card>
+        <CardContent className="p-0 overflow-hidden">
+          <div className="flex">
+            {/* Frozen left column — room type labels */}
+            <div className="flex-shrink-0 border-r bg-white dark:bg-card" style={{ width: 160 }}>
+              {/* Header spacer */}
+              <div className="border-b bg-slate-50 dark:bg-muted/20 flex items-center px-3" style={{ height: 44 }}>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Room Type</span>
+              </div>
+              {data.roomTypes.map(rt => (
+                <div key={rt.roomCode} className="border-b px-3 flex flex-col justify-center" style={{ height: ROW_H }}>
+                  <span className="font-semibold text-sm truncate">{rt.hostezeeRoomType}</span>
+                  <span className="text-xs text-muted-foreground">{rt.roomCode} · {rt.totalRooms} room{rt.totalRooms !== 1 ? "s" : ""}</span>
+                  {rt.rate && (
+                    <span className="text-xs text-teal-600 dark:text-teal-400 flex items-center gap-0.5 mt-0.5">
+                      <IndianRupee className="h-2.5 w-2.5" />{rt.rate.toLocaleString("en-IN")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Scrollable date grid */}
+            <div ref={gridRef} className="flex-1 overflow-x-auto">
+              <div style={{ minWidth: dates.length * CELL_W }}>
+                {/* Date header row */}
+                <div className="flex border-b bg-slate-50 dark:bg-muted/20" style={{ height: 44 }}>
+                  {dates.map(dateStr => {
+                    const d = parseISO(dateStr);
+                    const isToday = dateStr === today;
+                    const isSun = d.getDay() === 0;
+                    const isSat = d.getDay() === 6;
+                    return (
+                      <div
+                        key={dateStr}
+                        className={`border-r flex-shrink-0 flex flex-col items-center justify-center text-center ${isToday ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}
+                        style={{ width: CELL_W }}
+                      >
+                        <span className={`text-xs font-medium ${isToday ? "text-blue-600 dark:text-blue-400" : isSun || isSat ? "text-rose-500 dark:text-rose-400" : "text-muted-foreground"}`}>
+                          {format(d, "EEE")}
+                        </span>
+                        <span className={`text-sm font-bold leading-none mt-0.5 ${isToday ? "text-blue-600 dark:text-blue-400" : ""}`}>
+                          {format(d, "d")}
+                        </span>
+                        <span className="text-xs text-muted-foreground leading-none">{format(d, "MMM")}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Room type rows */}
+                {data.roomTypes.map(rt => (
+                  <div key={rt.roomCode} className="flex border-b" style={{ height: ROW_H }}>
+                    {rt.days.map(day => {
+                      const isToday = day.date === today;
+                      return (
+                        <div
+                          key={day.date}
+                          className={`border-r flex-shrink-0 flex flex-col items-center justify-center cursor-default transition-colors ${isToday ? "ring-1 ring-inset ring-blue-300 dark:ring-blue-700" : ""} ${cellColor(day.available, day.total)}`}
+                          style={{ width: CELL_W }}
+                          title={`${rt.hostezeeRoomType} · ${day.date}\nAvailable: ${day.available} / ${day.total}\nBooked: ${day.booked}${day.blocked ? ` · Blocked: ${day.blocked}` : ""}`}
+                          data-testid={`inv-cell-${rt.roomCode}-${day.date}`}
+                        >
+                          <span className="text-lg font-bold leading-none">{day.available}</span>
+                          <span className="text-xs opacity-70 leading-none mt-0.5">/ {day.total}</span>
+                          {day.booked > 0 && (
+                            <span className="text-xs opacity-60 leading-none mt-0.5">{day.booked} booked</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function SyncLogsTab({ propertyId }: { propertyId: number }) {
   const { data: logs = [], isLoading, refetch } = useQuery<SyncLog[]>({
     queryKey: ["/api/aiosell/sync-logs", { propertyId }],
@@ -1028,12 +1216,14 @@ export default function ChannelManager() {
             <TabsTrigger value="settings" data-testid="tab-settings" className="flex-shrink-0">Settings</TabsTrigger>
             <TabsTrigger value="room-mapping" data-testid="tab-room-mapping" className="flex-shrink-0">Room Mapping</TabsTrigger>
             <TabsTrigger value="rate-plans" data-testid="tab-rate-plans" className="flex-shrink-0">Rate Plans</TabsTrigger>
+            <TabsTrigger value="inventory-calendar" data-testid="tab-inventory-calendar" className="flex-shrink-0">Inventory Calendar</TabsTrigger>
             <TabsTrigger value="push" data-testid="tab-push" className="flex-shrink-0">Push Rates & Inventory</TabsTrigger>
             <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="rate-plans"><RatePlansTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="inventory-calendar"><InventoryCalendarTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="push">
             <div className="space-y-6">
               <PushRatesTab propertyId={propertyId} />
