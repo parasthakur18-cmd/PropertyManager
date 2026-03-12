@@ -538,6 +538,41 @@ export default function CalendarView() {
             ref={sidebarRef}
             className="flex-1 overflow-y-auto overflow-x-visible"
           >
+            {/* Unassigned OTA Bookings Section */}
+            {unassignedBookings.length > 0 && (
+              <div>
+                <div
+                  className="flex items-center gap-2 px-3 border-b bg-amber-50 dark:bg-amber-950/30"
+                  style={{ height: TYPE_ROW_HEIGHT }}
+                >
+                  <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                  <span className="font-semibold text-xs text-amber-800 dark:text-amber-300 truncate">
+                    Unassigned ({unassignedBookings.length})
+                  </span>
+                </div>
+                {unassignedBookings.map(b => {
+                  const guest = guests.find(g => g.id === b.guestId);
+                  const guestName = guest?.fullName || "OTA Guest";
+                  const source = b.source || b.externalSource || "OTA";
+                  return (
+                    <div
+                      key={b.id}
+                      className="flex items-center justify-between px-2 border-b hover:bg-amber-50 dark:hover:bg-amber-950/20 cursor-pointer transition-colors"
+                      style={{ height: ROW_HEIGHT }}
+                      onClick={() => navigate(`/bookings/${b.id}`)}
+                      data-testid={`unassigned-sidebar-${b.id}`}
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium text-xs truncate">{guestName}</span>
+                        <span className="text-xs text-muted-foreground truncate italic">{source}</span>
+                      </div>
+                      <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 ml-1" />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
               <div key={type}>
                 {/* Room Type Header */}
@@ -678,6 +713,85 @@ export default function CalendarView() {
                 );
               })}
             </div>
+
+            {/* Unassigned OTA Bookings rows */}
+            {unassignedBookings.length > 0 && (
+              <div>
+                {/* Amber header row — matches sidebar TYPE_ROW_HEIGHT */}
+                <div className="flex border-b bg-amber-50 dark:bg-amber-950/30">
+                  {dates.map(date => (
+                    <div
+                      key={`unassigned-hdr-${format(date, "yyyy-MM-dd")}`}
+                      className="border-r flex-shrink-0"
+                      style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
+                    />
+                  ))}
+                </div>
+
+                {/* One row per unassigned booking */}
+                {unassignedBookings.map(b => {
+                  const checkInDate = startOfDay(new Date(b.checkInDate));
+                  const checkOutDate = startOfDay(new Date(b.checkOutDate));
+                  const rangeStart = startOfDay(startDate);
+
+                  const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                  const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+
+                  const visibleStartIdx = Math.max(0, checkInDaysDiff);
+                  const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
+
+                  let leftPx = visibleStartIdx * CELL_WIDTH;
+                  let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
+
+                  if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) {
+                    leftPx += CELL_WIDTH / 2;
+                    widthPx -= CELL_WIDTH / 2;
+                  }
+                  if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) {
+                    widthPx -= CELL_WIDTH / 2;
+                  }
+
+                  const guestName = guests.find(g => g.id === b.guestId)?.fullName || "OTA Guest";
+                  const statusStyle = STATUS_COLORS[b.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+
+                  return (
+                    <div key={`unassigned-row-${b.id}`} className="relative border-b bg-white dark:bg-card">
+                      {/* Background date cells */}
+                      <div className="flex" style={{ height: ROW_HEIGHT }}>
+                        {dates.map(date => (
+                          <div
+                            key={`unassigned-cell-${b.id}-${format(date, "yyyy-MM-dd")}`}
+                            className="border-r flex-shrink-0 bg-amber-50/40 dark:bg-amber-950/10"
+                            style={{ width: CELL_WIDTH }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Booking bar */}
+                      {widthPx > 0 && checkOutDaysDiff > 0 && checkInDaysDiff < dates.length && (
+                        <div className="absolute inset-0 pointer-events-none py-1.5">
+                          <div
+                            className="absolute pointer-events-auto cursor-pointer group"
+                            style={{ left: `${leftPx}px`, width: `${widthPx}px`, top: '4px', bottom: '4px' }}
+                            onClick={() => navigate(`/bookings/${b.id}`)}
+                            data-testid={`unassigned-bar-${b.id}`}
+                          >
+                            <div
+                              className={`w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm border-2 border-amber-400 transition-all group-hover:shadow-md group-hover:scale-[1.02] ${statusStyle.text}`}
+                              style={{ background: statusStyle.gradient }}
+                              title={`${guestName} — No room assigned yet`}
+                            >
+                              <span className="truncate">{guestName}</span>
+                              <AlertTriangle className="h-3 w-3 flex-shrink-0 ml-1 opacity-80" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Room Type Rows with Price Headers + Room Rows */}
             {Object.entries(roomsByType).map(([type, typeRooms]) => (
