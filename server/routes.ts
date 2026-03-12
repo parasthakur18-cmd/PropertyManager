@@ -5617,6 +5617,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Bulk update display order for menu categories — MUST be before /:id
+  app.patch("/api/menu-categories/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const updates: { id: number; displayOrder: number }[] = req.body;
+      await storage.reorderMenuCategories(updates);
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/menu-categories/:id", isAuthenticated, async (req: any, res) => {
     try {
       const category = await storage.updateMenuCategory(parseInt(req.params.id), req.body);
@@ -5630,17 +5641,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     try {
       await storage.deleteMenuCategory(parseInt(req.params.id));
       res.status(204).send();
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Bulk update display order for menu categories
-  app.patch("/api/menu-categories/reorder", isAuthenticated, async (req, res) => {
-    try {
-      const updates: { id: number; displayOrder: number }[] = req.body;
-      await storage.reorderMenuCategories(updates);
-      res.status(200).json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

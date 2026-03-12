@@ -205,6 +205,19 @@ export default function EnhancedMenu() {
     },
   });
 
+  const handleMoveCategory = (categoryId: number, direction: 'up' | 'down') => {
+    if (!categories) return;
+    const sorted = [...categories].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    const idx = sorted.findIndex(c => c.id === categoryId);
+    if (idx < 0) return;
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sorted.length) return;
+    const newOrder = [...sorted];
+    [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    const updates = newOrder.map((cat, i) => ({ id: cat.id, displayOrder: i }));
+    reorderCategoriesMutation.mutate(updates);
+  };
+
   const handleMoveItem = (items: MenuItem[], itemId: number, direction: 'up' | 'down') => {
     const sorted = [...items].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
     const idx = sorted.findIndex(i => i.id === itemId);
@@ -709,7 +722,11 @@ export default function EnhancedMenu() {
                   setShowItemForm(true);
                 }}
                 onMoveItem={handleMoveItem}
+                onMoveCategory={handleMoveCategory}
                 isReordering={reorderItemsMutation.isPending}
+                isReorderingCategory={reorderCategoriesMutation.isPending}
+                categoryIndex={filteredCategories?.indexOf(category) ?? 0}
+                totalCategories={filteredCategories?.length ?? 0}
                 expandedItems={expandedItems}
                 toggleItemExpanded={toggleItemExpanded}
               />
@@ -1189,7 +1206,11 @@ function CategorySection({
   onAddItem,
   onEditItem,
   onMoveItem,
+  onMoveCategory,
   isReordering,
+  isReorderingCategory,
+  categoryIndex,
+  totalCategories,
   expandedItems,
   toggleItemExpanded,
 }: {
@@ -1200,7 +1221,11 @@ function CategorySection({
   onAddItem: () => void;
   onEditItem: (item: MenuItem) => void;
   onMoveItem: (items: MenuItem[], itemId: number, direction: 'up' | 'down') => void;
+  onMoveCategory: (categoryId: number, direction: 'up' | 'down') => void;
   isReordering: boolean;
+  isReorderingCategory: boolean;
+  categoryIndex: number;
+  totalCategories: number;
   expandedItems: Set<number>;
   toggleItemExpanded: (id: number) => void;
 }) {
@@ -1240,6 +1265,30 @@ function CategorySection({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-0.5">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                disabled={categoryIndex === 0 || isReorderingCategory}
+                onClick={() => onMoveCategory(category.id, 'up')}
+                data-testid={`button-move-category-up-${category.id}`}
+                title="Move category up"
+              >
+                <ArrowUp className="h-3 w-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                disabled={categoryIndex === totalCategories - 1 || isReorderingCategory}
+                onClick={() => onMoveCategory(category.id, 'down')}
+                data-testid={`button-move-category-down-${category.id}`}
+                title="Move category down"
+              >
+                <ArrowDown className="h-3 w-3" />
+              </Button>
+            </div>
             <Button
               size="sm"
               variant="outline"
