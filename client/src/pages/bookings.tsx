@@ -1836,8 +1836,8 @@ export default function Bookings() {
               </div>
             </Card>
           ) : (
-            <div className="border rounded-lg">
-              <Table>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-semibold">Guest</TableHead>
