@@ -56,7 +56,8 @@ import {
   sendAdvancePaymentConfirmation,
   sendPaymentReminder,
   sendSelfCheckinLink,
-  sendTaskReminder
+  sendTaskReminder,
+  sendOtaBookingNotification
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
@@ -3452,9 +3453,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             }
             
             const guestName = guest.fullName || "Guest";
-            const checkInDate = format(new Date(booking.checkInDate), "dd MMM yyyy");
-            const checkOutDate = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-            
+
             // Check if check-in notifications are enabled via template controls
             if (booking.propertyId) {
               const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
@@ -3463,12 +3462,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               const isTemplateEnabled = templateSetting?.isEnabled !== false;
               
               if (isTemplateEnabled) {
-                // Send check-in notification (template: AUTHKEY_WA_CHECKIN_DETAILS, default 28733)
-                // Variables: propertyName, guestName, roomNumbers, checkInDate, checkOutDate
-                await sendCheckInNotification(guest.phone, guestName, propertyName, roomNumbers, checkInDate, checkOutDate);
-                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${process.env.AUTHKEY_WA_CHECKIN_DETAILS || '28733'})`);
+                // Build food-order link for this booking (template 28769: {{3}} = food order link)
+                const baseUrl = process.env.REPLIT_DEV_DOMAIN
+                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+                  : "https://hostezee.in";
+                const foodOrderLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(roomNumbers)}`;
+                // Send check-in notification (template: AUTHKEY_WA_CHECKIN_DETAILS, default 28769)
+                // Variables: propertyName, guestName, foodOrderLink
+                await sendCheckInNotification(guest.phone, guestName, propertyName, foodOrderLink);
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${process.env.AUTHKEY_WA_CHECKIN_DETAILS || '28769'})`);
               } else {
-                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled (template: ${isTemplateEnabled})`);
+                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled`);
               }
             }
           }
@@ -16816,6 +16820,23 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending)`);
         await autoSyncInventoryForProperty(config.propertyId);
+
+        // Send OTA booking notification (template 28770) to property contactPhone
+        try {
+          const property = await storage.getProperty(config.propertyId);
+          const staffPhone = property?.contactPhone?.trim();
+          if (staffPhone) {
+            const propertyName = property?.name || "Your Property";
+            const notifGuestName = `${guest?.firstName || ""} ${guest?.lastName || ""}`.trim() || "OTA Guest";
+            await sendOtaBookingNotification(staffPhone, propertyName, notifGuestName);
+            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification sent (template: ${process.env.AUTHKEY_WA_OTA_BOOKING || "28770"})`);
+          } else {
+            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification skipped (no contactPhone on property)`);
+          }
+        } catch (notifErr: any) {
+          console.error(`[WhatsApp] OTA booking notification failed (non-critical):`, notifErr.message);
+        }
+
         return res.json({ success: true, message: "Reservation Updated Successfully" });
       }
 
@@ -16983,7 +17004,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           const children = r.rooms?.[0]?.occupancy?.children || 0;
           const totalAmount = r.amount?.amountAfterTax?.toString() || "0";
 
-          await db.insert(bookings).values({
+          const [insertedBooking] = await db.insert(bookings).values({
             propertyId: config.propertyId,
             roomId: assignedRoomId || null,
             guestId: guestId || null,
@@ -16997,8 +17018,21 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             externalSource: `aiosell-${r.channel}`,
             specialRequests: r.specialRequests || null,
             metadata: { aiosellBookingId: r.bookingId, cmBookingId: r.cmBookingId, channel: r.channel },
-          });
+          }).returning();
           imported++;
+
+          // Send OTA booking notification to property staff (template 28770)
+          try {
+            const prop = await storage.getProperty(config.propertyId);
+            const staffPhone = prop?.contactPhone?.trim();
+            if (staffPhone && insertedBooking) {
+              const guestFullName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
+              await sendOtaBookingNotification(staffPhone, prop?.name || "Your Property", guestFullName);
+              console.log(`[WhatsApp] Pulled booking #${insertedBooking.id} - OTA notification sent`);
+            }
+          } catch (notifErr: any) {
+            console.error(`[WhatsApp] Pull OTA notification failed (non-critical):`, notifErr.message);
+          }
         } catch (err: any) {
           errors.push(`bookingId=${r.bookingId}: ${err.message}`);
           skipped++;

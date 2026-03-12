@@ -9,7 +9,8 @@
  * Optional template IDs (with defaults):
  * - AUTHKEY_WA_BOOKING_CONFIRMATION: Template for booking confirmation (default: 18491)
  * - AUTHKEY_WA_PAYMENT_CONFIRMATION: Template for payment received (default: 18649)
- * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 28733)
+ * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 28769)
+ * - AUTHKEY_WA_OTA_BOOKING: Template for new OTA booking alert to staff (default: 28770)
  * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout/billing (default: 18667)
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
@@ -213,23 +214,20 @@ export async function sendPaymentConfirmation(
 
 /**
  * Send check-in notification WhatsApp message
- * 
+ * Template: checkinnmsgwoodpecker (WID 28769)
+ *
  * Template variables (in order):
- * 1. Property Name (e.g., "Mountain View")
- * 2. Guest Name (e.g., "Yogita")
- * 3. Room Numbers
- * 4. Check-in Date
- * 5. Check-out Date
+ * 1. Property Name  — "Welcome to 🌿 {{1}}"
+ * 2. Guest Name     — "Dear , {{2}}"
+ * 3. Food Order Link — "👉 {{3}}"
  */
 export async function sendCheckInNotification(
   phoneNumber: string,
   guestName: string,
   propertyName: string,
-  roomNumbers: string,
-  checkInDate: string,
-  checkOutDate: string
+  foodOrderLink: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "28733";
+  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "28769";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -237,7 +235,34 @@ export async function sendCheckInNotification(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [propertyName, guestName, roomNumbers, checkInDate, checkOutDate],
+    variables: [propertyName, guestName, foodOrderLink],
+  });
+}
+
+/**
+ * Send new OTA booking received alert to property staff
+ * Template: notification (WID 28770)
+ *
+ * Template variables (in order):
+ * 1. Property Name  — "A new booking has been received for . {{1}}"
+ * 2. Guest Name     — "Guest Name: {{2}}"
+ *
+ * Recipient: property's contactPhone (staff/manager, not the guest)
+ */
+export async function sendOtaBookingNotification(
+  phoneNumber: string,
+  propertyName: string,
+  guestName: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_OTA_BOOKING || "28770";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [propertyName, guestName],
   });
 }
 
