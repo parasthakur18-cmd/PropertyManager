@@ -2941,10 +2941,27 @@ export class DatabaseStorage implements IStorage {
       .select({ count: sql<number>`count(*)::int` })
       .from(guests);
 
-    const [occupiedRoomsCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(rooms)
-      .where(roomPropertyFilter ? and(eq(rooms.status, "occupied"), roomPropertyFilter) : eq(rooms.status, "occupied"));
+    const occupiedRoomsQuery = propertyId
+      ? sql`
+          SELECT COUNT(DISTINCT rid)::int as count FROM (
+            SELECT room_id AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_id IS NOT NULL AND property_id = ${propertyId}
+            UNION
+            SELECT UNNEST(room_ids) AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL AND property_id = ${propertyId}
+          ) sub
+        `
+      : sql`
+          SELECT COUNT(DISTINCT rid)::int as count FROM (
+            SELECT room_id AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_id IS NOT NULL
+            UNION
+            SELECT UNNEST(room_ids) AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL
+          ) sub
+        `;
+    const occupiedResult = await db.execute(occupiedRoomsQuery);
+    const occupiedRoomsCount = { count: (occupiedResult as any).rows?.[0]?.count ?? (occupiedResult as any)[0]?.count ?? 0 };
 
     const occupancyRate = roomsCount.count > 0
       ? Math.round((occupiedRoomsCount.count / roomsCount.count) * 100)
@@ -3085,13 +3102,27 @@ export class DatabaseStorage implements IStorage {
       : await db.select({ count: sql<number>`count(*)::int` })
           .from(rooms);
 
-    const [occupiedRoomsCount] = propertyId 
-      ? await db.select({ count: sql<number>`count(*)::int` })
-          .from(rooms)
-          .where(and(eq(rooms.status, "occupied"), eq(rooms.propertyId, propertyId)))
-      : await db.select({ count: sql<number>`count(*)::int` })
-          .from(rooms)
-          .where(eq(rooms.status, "occupied"));
+    const occupiedRoomsQuery2 = propertyId
+      ? sql`
+          SELECT COUNT(DISTINCT rid)::int as count FROM (
+            SELECT room_id AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_id IS NOT NULL AND property_id = ${propertyId}
+            UNION
+            SELECT UNNEST(room_ids) AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL AND property_id = ${propertyId}
+          ) sub
+        `
+      : sql`
+          SELECT COUNT(DISTINCT rid)::int as count FROM (
+            SELECT room_id AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_id IS NOT NULL
+            UNION
+            SELECT UNNEST(room_ids) AS rid FROM bookings
+            WHERE status = 'checked-in' AND room_ids IS NOT NULL
+          ) sub
+        `;
+    const occupiedResult2 = await db.execute(occupiedRoomsQuery2);
+    const occupiedRoomsCount = { count: (occupiedResult2 as any).rows?.[0]?.count ?? (occupiedResult2 as any)[0]?.count ?? 0 };
 
     const [propertiesCount] = propertyId 
       ? await db.select({ count: sql<number>`1` })

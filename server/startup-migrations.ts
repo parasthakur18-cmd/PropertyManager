@@ -150,6 +150,48 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
   },
 ];
 
+async function reconcileRoomStatuses(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    const markOccupied = await client.query(`
+      UPDATE rooms SET status = 'occupied'
+      WHERE id IN (
+        SELECT DISTINCT rid FROM (
+          SELECT room_id AS rid FROM bookings
+          WHERE status = 'checked-in' AND room_id IS NOT NULL
+          UNION
+          SELECT UNNEST(room_ids) AS rid FROM bookings
+          WHERE status = 'checked-in' AND room_ids IS NOT NULL
+        ) sub
+      )
+      AND status != 'occupied'
+    `);
+
+    const markAvailable = await client.query(`
+      UPDATE rooms SET status = 'available'
+      WHERE status = 'occupied'
+      AND id NOT IN (
+        SELECT DISTINCT rid FROM (
+          SELECT room_id AS rid FROM bookings
+          WHERE status = 'checked-in' AND room_id IS NOT NULL
+          UNION
+          SELECT UNNEST(room_ids) AS rid FROM bookings
+          WHERE status = 'checked-in' AND room_ids IS NOT NULL
+        ) sub
+      )
+    `);
+
+    const fixed = (markOccupied.rowCount || 0) + (markAvailable.rowCount || 0);
+    if (fixed > 0) {
+      console.log(`[ROOM-SYNC] Reconciled ${markOccupied.rowCount} rooms → occupied, ${markAvailable.rowCount} rooms → available`);
+    } else {
+      console.log(`[ROOM-SYNC] All room statuses are in sync`);
+    }
+  } finally {
+    client.release();
+  }
+}
+
 export async function runStartupMigrations(): Promise<void> {
   console.log("[MIGRATIONS] Running startup migrations...");
   const results: MigrationResult[] = [];
@@ -168,4 +210,10 @@ export async function runStartupMigrations(): Promise<void> {
   const applied = results.filter(r => r.applied).length;
   const errors = results.filter(r => r.error).length;
   console.log(`[MIGRATIONS] Done — ${applied} applied, ${errors} errors`);
+
+  try {
+    await reconcileRoomStatuses();
+  } catch (err: any) {
+    console.warn(`[ROOM-SYNC] Failed to reconcile room statuses: ${err.message}`);
+  }
 }
