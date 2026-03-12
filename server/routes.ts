@@ -2387,6 +2387,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const { status } = req.body;
       const room = await storage.updateRoomStatus(parseInt(req.params.id), status);
       res.json(room);
+
+      // Trigger inventory sync after room status change so OTAs reflect updated availability
+      autoSyncInventoryForProperty(existingRoom.propertyId).catch(err =>
+        console.error(`[AIOSELL] Auto-sync after room status change failed:`, err.message)
+      );
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
         return res.status(error.statusCode).json({ message: error.message });
@@ -16697,19 +16702,17 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           checkOutDate: new Date(checkout),
           numberOfGuests: adults + children,
           totalAmount,
-          status: "confirmed",
+          status: "pending",
           source: `aiosell-${channel}`,
           externalBookingId: bookingId,
           externalSource: `aiosell-${channel}`,
         }).returning();
         storage.invalidateBookingsCache();
 
-        if (assignedRoomId) {
-          await db.update(rooms).set({ status: "occupied" }).where(eq(rooms.id, assignedRoomId));
-          storage.invalidateRoomsCache();
-        }
+        // Do NOT mark room as occupied here — room occupation happens only on check-in.
+        // Inventory availability is calculated from bookings (not room.status) during auto-sync.
 
-        console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel}`);
+        console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending)`);
         await autoSyncInventoryForProperty(config.propertyId);
         return res.json({ success: true, message: "Reservation Updated Successfully" });
       }

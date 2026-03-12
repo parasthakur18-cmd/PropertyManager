@@ -261,6 +261,23 @@ export default function CalendarView() {
     return grouped;
   }, [filteredRooms]);
 
+  // Bookings with no room assigned (e.g. OTA bookings where room mapping wasn't found)
+  // that overlap the currently visible date range
+  const unassignedBookings = useMemo(() => {
+    const rangeStart = format(startDate, "yyyy-MM-dd");
+    const rangeEnd = format(addDays(startDate, 11), "yyyy-MM-dd");
+    return bookings.filter(b => {
+      if (b.status === "cancelled") return false;
+      if (b.roomId != null) return false;
+      if (b.roomIds && b.roomIds.length > 0) return false;
+      if (selectedPropertyId !== "all" && b.propertyId !== selectedPropertyId) return false;
+      // Overlaps visible range: checkIn <= rangeEnd AND checkOut > rangeStart
+      const cin = format(new Date(b.checkInDate), "yyyy-MM-dd");
+      const cout = format(new Date(b.checkOutDate), "yyyy-MM-dd");
+      return cin <= rangeEnd && cout > rangeStart;
+    });
+  }, [bookings, startDate, selectedPropertyId]);
+
   const getBookingForDate = (roomId: number, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.find(b => {
@@ -441,6 +458,45 @@ export default function CalendarView() {
           </Button>
         </div>
       </div>
+
+      {/* Unassigned OTA Bookings Banner */}
+      {unassignedBookings.length > 0 && (
+        <div className="border-b bg-amber-50 dark:bg-amber-950/30 px-4 py-2 flex-shrink-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {unassignedBookings.length} Unassigned OTA Booking{unassignedBookings.length > 1 ? "s" : ""} — room not yet assigned
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {unassignedBookings.map(b => {
+              const guest = guests.find(g => g.id === b.guestId);
+              const guestName = guest?.fullName || "Unknown Guest";
+              const source = b.source || b.externalSource || "OTA";
+              const statusStyle = STATUS_COLORS[b.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+              return (
+                <button
+                  key={b.id}
+                  className="flex items-center gap-2 bg-white dark:bg-card border border-amber-200 dark:border-amber-800 rounded-md px-3 py-1.5 text-xs hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => navigate(`/bookings/${b.id}`)}
+                  data-testid={`unassigned-booking-${b.id}`}
+                >
+                  <span className="font-semibold text-foreground">{guestName}</span>
+                  <span className="text-muted-foreground">
+                    {format(new Date(b.checkInDate), "d MMM")} – {format(new Date(b.checkOutDate), "d MMM")}
+                  </span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}
+                  >
+                    {b.status}
+                  </span>
+                  <span className="text-muted-foreground italic">{source}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Calendar Content */}
       <div className="flex-1 overflow-hidden flex">

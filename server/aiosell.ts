@@ -10,7 +10,8 @@ import {
   type AiosellRoomMapping,
   type AiosellRatePlan,
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray, lte, gte } from "drizzle-orm";
+import { rooms, bookings } from "@shared/schema";
 
 interface AiosellApiResponse {
   success: boolean;
@@ -310,42 +311,135 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     const mappings = await getRoomMappingsForConfig(config.id);
     if (mappings.length === 0) return;
 
-    const { rooms } = await import("@shared/schema");
-    const allRooms = await db
-      .select()
-      .from(rooms)
-      .where(eq(rooms.propertyId, propertyId));
+    // Fetch all rooms for this property
+    const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
 
-    const today = new Date().toISOString().split("T")[0];
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 365);
-    const endDate = futureDate.toISOString().split("T")[0];
+    // Fetch all active bookings (pending/confirmed/checked-in) for this property
+    // that overlap with the next 90 days
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const horizon = new Date(today);
+    horizon.setDate(horizon.getDate() + 90);
 
-    const roomsByType: Record<string, number> = {};
-    for (const room of allRooms) {
-      const roomType = room.type || room.name;
-      if (room.status === "available") {
-        roomsByType[roomType] = (roomsByType[roomType] || 0) + 1;
+    const activeBookings = await db.select({
+      id: bookings.id,
+      roomId: bookings.roomId,
+      roomIds: bookings.roomIds,
+      checkInDate: bookings.checkInDate,
+      checkOutDate: bookings.checkOutDate,
+      status: bookings.status,
+    }).from(bookings).where(
+      and(
+        eq(bookings.propertyId, propertyId),
+        // status must be active
+        inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+        // booking overlaps our window: checkIn < horizon AND checkOut > today
+        lte(bookings.checkInDate, horizon),
+        gte(bookings.checkOutDate, today),
+      )
+    );
+
+    // Group rooms by type (using hostezeeRoomType from mappings)
+    const roomsByType: Record<string, number[]> = {};
+    for (const mapping of mappings) {
+      const matchingRooms = allRooms.filter(r =>
+        r.type === mapping.hostezeeRoomType || r.name === mapping.hostezeeRoomType
+      );
+      if (matchingRooms.length > 0) {
+        roomsByType[mapping.hostezeeRoomType] = matchingRooms.map(r => r.id);
       }
     }
 
-    const roomUpdates: { available: number; roomCode: string }[] = [];
-    for (const mapping of mappings) {
-      const available = roomsByType[mapping.hostezeeRoomType] || 0;
-      roomUpdates.push({
-        available,
-        roomCode: mapping.aiosellRoomCode,
-      });
+    // Compute per-date availability and group into contiguous ranges (90-day window)
+    // We'll compute day-by-day for 90 days and group into ranges
+    const DAYS = 90;
+    const dateAvailability: Record<string, Record<string, number>> = {}; // date → roomCode → count
+
+    for (let d = 0; d < DAYS; d++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + d);
+      const dateStr = date.toISOString().split("T")[0];
+
+      dateAvailability[dateStr] = {};
+
+      for (const mapping of mappings) {
+        const roomIds = roomsByType[mapping.hostezeeRoomType] || [];
+        if (roomIds.length === 0) {
+          dateAvailability[dateStr][mapping.aiosellRoomCode] = 0;
+          continue;
+        }
+
+        // Count rooms of this type that have NO active booking on this date
+        const bookedRoomIds = new Set<number>();
+        for (const booking of activeBookings) {
+          const cin = new Date(booking.checkInDate);
+          const cout = new Date(booking.checkOutDate);
+          cin.setHours(0, 0, 0, 0);
+          cout.setHours(0, 0, 0, 0);
+
+          // Booking occupies a date if: checkIn <= date < checkOut
+          if (cin <= date && date < cout) {
+            if (booking.roomId && roomIds.includes(booking.roomId)) {
+              bookedRoomIds.add(booking.roomId);
+            }
+            if (booking.roomIds) {
+              for (const rid of booking.roomIds) {
+                if (roomIds.includes(rid)) bookedRoomIds.add(rid);
+              }
+            }
+          }
+        }
+
+        // Also exclude rooms in maintenance/out-of-order/blocked status
+        const blockedRoomIds = allRooms
+          .filter(r => roomIds.includes(r.id) && (r.status === "maintenance" || r.status === "out-of-order" || r.status === "blocked"))
+          .map(r => r.id);
+
+        const available = roomIds.filter(id => !bookedRoomIds.has(id) && !blockedRoomIds.includes(id)).length;
+        dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
+      }
     }
 
-    if (roomUpdates.length > 0) {
-      await pushInventory(config, [
-        {
-          startDate: today,
-          endDate,
-          rooms: roomUpdates,
-        },
-      ]);
+    // Group consecutive dates with same availability counts into ranges
+    const dates = Object.keys(dateAvailability).sort();
+    if (dates.length === 0) return;
+
+    // Build ranges: we need one update entry per contiguous block of same availability
+    // Strategy: for each mapping, find ranges, then combine all into one batch
+    // Simpler approach: group all mappings together by date, push one update per date-range segment
+
+    interface DateRange { startDate: string; endDate: string; counts: Record<string, number> }
+    const ranges: DateRange[] = [];
+    let currentRange: DateRange = {
+      startDate: dates[0],
+      endDate: dates[0],
+      counts: { ...dateAvailability[dates[0]] },
+    };
+
+    for (let i = 1; i < dates.length; i++) {
+      const date = dates[i];
+      const prevCounts = currentRange.counts;
+      const currCounts = dateAvailability[date];
+      const isSame = Object.keys(prevCounts).every(code => prevCounts[code] === currCounts[code]);
+      if (isSame) {
+        currentRange.endDate = date;
+      } else {
+        ranges.push(currentRange);
+        currentRange = { startDate: date, endDate: date, counts: { ...currCounts } };
+      }
+    }
+    ranges.push(currentRange);
+
+    // Convert to InventoryUpdate format
+    const inventoryUpdates = ranges.map(range => ({
+      startDate: range.startDate,
+      endDate: range.endDate,
+      rooms: Object.entries(range.counts).map(([roomCode, available]) => ({ roomCode, available })),
+    }));
+
+    if (inventoryUpdates.length > 0) {
+      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date ranges for property ${propertyId}`);
+      await pushInventory(config, inventoryUpdates);
     }
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);
