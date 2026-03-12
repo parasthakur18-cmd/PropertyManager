@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "HIZ8PnL-lqNH2c1XU5VL6"
+uri = "file://client/public/menu_sample_with_variants_addons.csv"
+type = "table"
+title = "Menu Sample CSV with Variants & Add-ons"
