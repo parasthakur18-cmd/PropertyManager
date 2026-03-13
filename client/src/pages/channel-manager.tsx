@@ -1110,19 +1110,14 @@ function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
 }
 
 const KNOWN_TEMPLATES = [
-  { id: "22462", name: "Check-in Notification (to guest)", hint: "Vars: {{1}}=propertyName, {{2}}=guestName, {{3}}=foodOrderLink", varCount: 3 },
-  { id: "28770", name: "OTA Booking Alert (to staff)", hint: "Vars: {{1}}=propertyName, {{2}}=guestName", varCount: 2 },
-  { id: "18491", name: "Booking Confirmation", hint: "Vars: {{1}}=guestName, {{2}}=propertyName, {{3}}=checkIn, {{4}}=checkOut, {{5}}=bookingId", varCount: 5 },
-  { id: "18649", name: "Payment Confirmation", hint: "Vars: {{1}}=guestName, {{2}}=amount, {{3}}=date, {{4}}=bookingRef, {{5}}=propertyName", varCount: 5 },
-  { id: "18667", name: "Checkout Notification", hint: "Vars: {{1}}=guestName, {{2}}=propertyName, {{3}}=checkOutDate", varCount: 3 },
-  { id: "19852", name: "Pre-Bill", hint: "Vars: {{1}}=guestName, {{2}}=propertyName, {{3}}=amount, {{4}}=billLink", varCount: 4 },
-  { id: "23109", name: "Task Reminder (to staff)", hint: "Vars: {{1}}=staffName, {{2}}=taskTitle, {{3}}=dueDate", varCount: 3 },
+  { id: "28769", name: "✅ Check-in Message (to guest)", hint: "Vars: {{1}}=propertyName, {{2}}=guestName, {{3}}=foodOrderLink", varCount: 3 },
+  { id: "28770", name: "✅ OTA Booking Alert (to staff)", hint: "Vars: {{1}}=propertyName, {{2}}=guestName", varCount: 2 },
   { id: "custom", name: "Custom WID…", hint: "Enter any template WID and variables manually", varCount: 0 },
 ];
 
 function WhatsAppTestTab() {
   const { toast } = useToast();
-  const [templateId, setTemplateId] = useState("22462");
+  const [templateId, setTemplateId] = useState("28769");
   const [customWid, setCustomWid] = useState("");
   const [phone, setPhone] = useState("");
   const [variables, setVariables] = useState<string[]>(["", "", "", "", ""]);
