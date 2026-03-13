@@ -94,6 +94,7 @@ const statusColors = {
   "checked-in": "bg-chart-5 text-white",
   "checked-out": "bg-muted text-muted-foreground",
   cancelled: "bg-destructive text-destructive-foreground",
+  no_show: "bg-purple-600 text-white",
 };
 
 export default function Bookings() {
@@ -134,6 +135,12 @@ export default function Bookings() {
   const [cancellationCharges, setCancellationCharges] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
   const [cancellationReason, setCancellationReason] = useState("");
+  // No-show dialog state
+  const [noShowBookingId, setNoShowBookingId] = useState<number | null>(null);
+  const [noShowDialogOpen, setNoShowDialogOpen] = useState(false);
+  const [noShowChargeType, setNoShowChargeType] = useState<"full_charge" | "partial_charge" | "no_charge">("full_charge");
+  const [noShowCharges, setNoShowCharges] = useState("");
+  const [noShowNotes, setNoShowNotes] = useState("");
   const [sameDayWarningOpen, setSameDayWarningOpen] = useState(false);
   const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
   const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
@@ -462,6 +469,17 @@ export default function Bookings() {
       return;
     }
 
+    // If marking as no-show, open no-show dialog
+    if (newStatus === "no_show") {
+      const advanceAmount = parseFloat(booking.advanceAmount || "0");
+      setNoShowBookingId(booking.id);
+      setNoShowChargeType("full_charge");
+      setNoShowCharges(advanceAmount > 0 ? String(advanceAmount) : "0");
+      setNoShowNotes("");
+      setNoShowDialogOpen(true);
+      return;
+    }
+
     // If changing to checked-in, validate guest has ID proof
     if (newStatus === "checked-in") {
       const guest = guests?.find(g => g.id === booking.guestId);
@@ -585,6 +603,36 @@ export default function Bookings() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const noShowMutation = useMutation({
+    mutationFn: async (data: { bookingId: number; chargeType: string; noShowCharges: number; noShowNotes: string }) => {
+      return await apiRequest(`/api/bookings/${data.bookingId}/no-show`, "POST", {
+        chargeType: data.chargeType,
+        noShowCharges: data.noShowCharges,
+        noShowNotes: data.noShowNotes,
+      });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions"] });
+      const s = data?.financialSummary || {};
+      let message = "Booking marked as No Show.";
+      if (s.noShowCharges > 0) message += ` ₹${s.noShowCharges} kept as no-show income.`;
+      if (s.refundBack > 0) message += ` ₹${s.refundBack} advance refunded.`;
+      toast({ title: "No Show Recorded", description: message });
+      setNoShowDialogOpen(false);
+      setNoShowBookingId(null);
+      setNoShowChargeType("full_charge");
+      setNoShowCharges("");
+      setNoShowNotes("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "No Show Failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1025,6 +1073,8 @@ export default function Bookings() {
         tabMatch = booking.status === "checked-out";
       } else if (activeTab === "cancelled") {
         tabMatch = booking.status === "cancelled";
+      } else if (activeTab === "no_show") {
+        tabMatch = booking.status === "no_show";
       }
 
       if (!tabMatch) return false;
@@ -1056,6 +1106,7 @@ export default function Bookings() {
     active: (bookings ?? []).filter(b => b.status === "confirmed" || b.status === "checked-in" || b.status === "pending").length,
     completed: (bookings ?? []).filter(b => b.status === "checked-out").length,
     cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
+    no_show: (bookings ?? []).filter(b => b.status === "no_show").length,
   }), [bookings]);
 
   if (isLoading) {
@@ -1820,6 +1871,9 @@ export default function Bookings() {
           <TabsTrigger value="cancelled" data-testid="tab-cancelled-bookings">
             Cancelled <Badge variant="secondary" className="ml-2">{bookingCounts.cancelled}</Badge>
           </TabsTrigger>
+          <TabsTrigger value="no_show" data-testid="tab-no-show-bookings">
+            No Show {bookingCounts.no_show > 0 && <Badge variant="secondary" className="ml-2">{bookingCounts.no_show}</Badge>}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab} className="mt-0">
@@ -1951,6 +2005,12 @@ export default function Bookings() {
                                 <SelectItem value="confirmed">Confirmed</SelectItem>
                                 <SelectItem value="checked-in">Checked In</SelectItem>
                                 <SelectItem value="cancelled">Cancelled</SelectItem>
+                                {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "pending_advance") && (
+                                  <SelectItem value="no_show">No Show</SelectItem>
+                                )}
+                                {booking.status === "no_show" && (
+                                  <SelectItem value="no_show" disabled>No Show</SelectItem>
+                                )}
                               </SelectContent>
                             </Select>
                             
@@ -2300,6 +2360,138 @@ export default function Bookings() {
               data-testid="button-confirm-cancellation"
             >
               {cancelBookingMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── No Show Dialog ── */}
+      <Dialog open={noShowDialogOpen} onOpenChange={(open) => {
+        setNoShowDialogOpen(open);
+        if (!open) { setNoShowBookingId(null); setNoShowChargeType("full_charge"); setNoShowCharges(""); setNoShowNotes(""); }
+      }}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-no-show">
+          <DialogHeader>
+            <DialogTitle>Mark as No Show</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const booking = bookings?.find(b => b.id === noShowBookingId);
+                const guest = guests?.find(g => g.id === booking?.guestId);
+                const advance = parseFloat(booking?.advanceAmount || "0");
+                return `"${guest?.fullName || "Guest"}" did not arrive. ${advance > 0 ? `Advance paid: ₹${advance}` : "No advance was collected."}`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          {(() => {
+            const booking = bookings?.find(b => b.id === noShowBookingId);
+            const advanceAmount = parseFloat(booking?.advanceAmount || "0");
+            const guest = guests?.find(g => g.id === booking?.guestId);
+
+            return (
+              <div className="space-y-4 py-2">
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{guest?.fullName || "Guest"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Booking #{booking?.id} · Check-in: {booking ? format(new Date(booking.checkInDate), "dd MMM yyyy") : "—"} · Advance: ₹{advanceAmount}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="font-medium">No-Show Charge Policy</Label>
+
+                  <div
+                    className={`p-3 border rounded-lg cursor-pointer transition-all ${noShowChargeType === "full_charge" ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20" : "border-border hover:border-purple-300"}`}
+                    onClick={() => { setNoShowChargeType("full_charge"); setNoShowCharges(String(advanceAmount)); }}
+                    data-testid="option-full-charge"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 ${noShowChargeType === "full_charge" ? "border-purple-600 bg-purple-600" : "border-muted-foreground"}`} />
+                      <span className="font-medium">Full Charge</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 ml-6">Keep entire advance ₹{advanceAmount} — standard Booking.com no-show policy</p>
+                  </div>
+
+                  <div
+                    className={`p-3 border rounded-lg cursor-pointer transition-all ${noShowChargeType === "partial_charge" ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20" : "border-border hover:border-purple-300"}`}
+                    onClick={() => setNoShowChargeType("partial_charge")}
+                    data-testid="option-partial-charge"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 ${noShowChargeType === "partial_charge" ? "border-purple-600 bg-purple-600" : "border-muted-foreground"}`} />
+                      <span className="font-medium">Partial Charge</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 ml-6">Keep part of the advance, refund the rest</p>
+                    {noShowChargeType === "partial_charge" && (
+                      <div className="mt-3 ml-6 space-y-2">
+                        <Label className="text-xs">No-Show Charge Amount (₹)</Label>
+                        <Input
+                          type="number"
+                          value={noShowCharges}
+                          onChange={(e) => setNoShowCharges(e.target.value)}
+                          placeholder={`Max ₹${advanceAmount}`}
+                          className="h-8"
+                          data-testid="input-no-show-charges"
+                        />
+                        {advanceAmount > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            Refund to guest: ₹{Math.max(0, advanceAmount - (parseFloat(noShowCharges) || 0)).toFixed(2)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className={`p-3 border rounded-lg cursor-pointer transition-all ${noShowChargeType === "no_charge" ? "border-purple-500 bg-purple-50 dark:bg-purple-950/20" : "border-border hover:border-purple-300"}`}
+                    onClick={() => { setNoShowChargeType("no_charge"); setNoShowCharges("0"); }}
+                    data-testid="option-no-charge"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-4 h-4 rounded-full border-2 ${noShowChargeType === "no_charge" ? "border-purple-600 bg-purple-600" : "border-muted-foreground"}`} />
+                      <span className="font-medium">No Charge</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 ml-6">Refund full advance ₹{advanceAmount} to guest</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-sm">Notes (optional)</Label>
+                  <Input
+                    value={noShowNotes}
+                    onChange={(e) => setNoShowNotes(e.target.value)}
+                    placeholder="e.g. Guest called to say they're not coming"
+                    data-testid="input-no-show-notes"
+                  />
+                </div>
+
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-800 dark:text-blue-300">
+                  <p className="font-semibold mb-1">Reminder: also report on Booking.com</p>
+                  <p>After saving here, go to your Booking.com extranet → Reservations → find the booking → Mark as No Show, so Booking.com charges the guest and does not penalise your property score.</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setNoShowDialogOpen(false)} data-testid="button-cancel-no-show">
+              Cancel
+            </Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+              onClick={() => {
+                if (!noShowBookingId) return;
+                noShowMutation.mutate({
+                  bookingId: noShowBookingId,
+                  chargeType: noShowChargeType,
+                  noShowCharges: parseFloat(noShowCharges) || 0,
+                  noShowNotes,
+                });
+              }}
+              disabled={noShowMutation.isPending}
+              data-testid="button-confirm-no-show"
+            >
+              {noShowMutation.isPending ? "Recording..." : "Confirm No Show"}
             </Button>
           </DialogFooter>
         </DialogContent>

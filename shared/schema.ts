@@ -255,6 +255,10 @@ export const bookings = pgTable("bookings", {
   refundAmount: decimal("refund_amount", { precision: 10, scale: 2 }).default("0"),
   cancellationReason: text("cancellation_reason"),
   cancelledBy: varchar("cancelled_by", { length: 255 }),
+  // No-Show fields
+  noShowDate: timestamp("no_show_date"),
+  noShowCharges: decimal("no_show_charges", { precision: 10, scale: 2 }).default("0"),
+  noShowNotes: text("no_show_notes"),
   // Actual check-in time (when guest actually checked in, vs scheduled checkInDate)
   actualCheckInTime: timestamp("actual_check_in_time"),
   // Razorpay Payment Link fields for advance payment

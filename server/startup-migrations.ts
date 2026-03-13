@@ -210,6 +210,21 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_bookings_no_show_fields",
+    async run() {
+      if (!(await tableExists("bookings"))) return;
+      if (!(await columnExists("bookings", "no_show_date"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN no_show_date TIMESTAMP`);
+      }
+      if (!(await columnExists("bookings", "no_show_charges"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN no_show_charges DECIMAL(10,2) DEFAULT 0`);
+      }
+      if (!(await columnExists("bookings", "no_show_notes"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN no_show_notes TEXT`);
+      }
+    },
+  },
+  {
     name: "add_extra_services_property_id",
     async run() {
       if (!(await tableExists("extra_services"))) return;

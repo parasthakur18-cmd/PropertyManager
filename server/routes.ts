@@ -3637,6 +3637,113 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.post("/api/bookings/:id/no-show", isAuthenticated, async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const {
+        chargeType,          // 'full_charge', 'partial_charge', 'no_charge'
+        noShowCharges = 0,
+        noShowNotes,
+      } = req.body;
+
+      if (!['full_charge', 'partial_charge', 'no_charge'].includes(chargeType)) {
+        return res.status(400).json({ message: "Invalid chargeType. Use 'full_charge', 'partial_charge', or 'no_charge'" });
+      }
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      if (booking.status === "checked-in") {
+        return res.status(400).json({ message: "Cannot mark as no-show — guest has already checked in" });
+      }
+      if (booking.status === "checked-out") {
+        return res.status(400).json({ message: "Cannot mark as no-show — booking is already checked out" });
+      }
+      if (booking.status === "no_show") {
+        return res.status(400).json({ message: "Booking is already marked as no-show" });
+      }
+      if (booking.status === "cancelled") {
+        return res.status(400).json({ message: "Booking is already cancelled" });
+      }
+
+      const advanceAmount = parseFloat(booking.advanceAmount || "0");
+      const chargesAmount = parseFloat(String(noShowCharges));
+
+      if (chargeType === "full_charge" && Math.abs(chargesAmount - advanceAmount) > 0.01) {
+        return res.status(400).json({ message: `Full charge must equal advance amount (₹${advanceAmount})` });
+      }
+      if (chargeType === "partial_charge" && chargesAmount > advanceAmount) {
+        return res.status(400).json({ message: `No-show charges (₹${chargesAmount}) cannot exceed advance amount (₹${advanceAmount})` });
+      }
+
+      const updatedBooking = await storage.updateBooking(bookingId, {
+        status: "no_show",
+        noShowDate: new Date(),
+        noShowCharges: String(chargesAmount),
+        noShowNotes: noShowNotes || null,
+      });
+      storage.invalidateBookingsCache();
+
+      const propertyId = booking.propertyId;
+      const today = new Date().toISOString().split("T")[0];
+
+      // Record no-show income to wallet if charges apply
+      if (chargesAmount > 0) {
+        await storage.createBankTransaction({
+          propertyId,
+          transactionType: "no_show_income",
+          amount: String(chargesAmount),
+          description: `No-show charges for booking #${bookingId}${noShowNotes ? ` — ${noShowNotes}` : ""}`,
+          transactionDate: today,
+        });
+        console.log(`[NO-SHOW] Booking #${bookingId} — ₹${chargesAmount} no-show income recorded`);
+      }
+
+      // Any remaining advance not charged is a refund expense
+      const refundBack = Math.max(0, advanceAmount - chargesAmount);
+      if (refundBack > 0) {
+        await storage.createPropertyExpense({
+          propertyId,
+          amount: String(refundBack),
+          description: `Advance refund for no-show booking #${bookingId}`,
+          expenseDate: today,
+          paymentMethod: "cash",
+          status: "paid",
+        });
+        console.log(`[NO-SHOW] Booking #${bookingId} — ₹${refundBack} refund recorded`);
+      }
+
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: String(bookingId),
+        action: "no_show",
+        userId: req.user?.id || "unknown",
+        userRole: req.user?.role,
+        changeSet: {
+          before: { status: booking.status, advanceAmount },
+          after: { status: "no_show", chargeType, noShowCharges: chargesAmount, noShowNotes },
+        },
+        metadata: { guestId: booking.guestId, propertyId },
+      });
+
+      // Free up the room inventory
+      if (propertyId) {
+        autoSyncInventoryForProperty(propertyId).catch(err =>
+          console.error(`[AIOSELL] Auto-sync after no-show failed:`, err.message)
+        );
+      }
+
+      res.json({
+        success: true,
+        booking: updatedBooking,
+        financialSummary: { advanceAmount, noShowCharges: chargesAmount, refundBack, chargeType },
+      });
+    } catch (error: any) {
+      console.error("[NO-SHOW] Error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const bookingId = parseInt(req.params.id);
