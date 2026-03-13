@@ -1134,7 +1134,7 @@ function WhatsAppTestTab() {
   const testMutation = useMutation({
     mutationFn: async () => {
       const vars = variables.filter(v => v.trim() !== "");
-      return await apiRequest("POST", "/api/whatsapp/test", {
+      return await apiRequest("/api/whatsapp/test", "POST", {
         phone: phone.trim(),
         templateId: effectiveWid,
         variables: vars,
