@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronLeft, ChevronRight, IndianRupee } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -1109,6 +1109,179 @@ function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+const KNOWN_TEMPLATES = [
+  { id: "28769", name: "Check-in Confirmation", hint: "Variables: [guest_name, property_name, room_number, check_in_date, check_out_date]", varCount: 5 },
+  { id: "28770", name: "OTA Booking Notification", hint: "Variables: [property_name, guest_name, check_in_date, check_out_date, booking_id]", varCount: 5 },
+  { id: "custom", name: "Custom WID…", hint: "Enter any template WID and variables", varCount: 0 },
+];
+
+function WhatsAppTestTab() {
+  const { toast } = useToast();
+  const [templateId, setTemplateId] = useState("28769");
+  const [customWid, setCustomWid] = useState("");
+  const [phone, setPhone] = useState("");
+  const [variables, setVariables] = useState<string[]>(["", "", "", "", ""]);
+  const [result, setResult] = useState<any>(null);
+
+  const selected = KNOWN_TEMPLATES.find(t => t.id === templateId) || KNOWN_TEMPLATES[0];
+  const effectiveWid = templateId === "custom" ? customWid : templateId;
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const vars = variables.filter(v => v.trim() !== "");
+      return await apiRequest("POST", "/api/whatsapp/test", {
+        phone: phone.trim(),
+        templateId: effectiveWid,
+        variables: vars,
+      });
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      setResult(data);
+      if (data.success) {
+        toast({ title: "✅ WhatsApp Sent", description: `Message delivered to ${data.sentTo}` });
+      } else {
+        toast({ title: "❌ Send Failed", description: data.error || data.message, variant: "destructive" });
+      }
+    },
+    onError: (err: any) => {
+      setResult({ success: false, error: err.message });
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateVar = (i: number, val: string) => {
+    const next = [...variables];
+    next[i] = val;
+    setVariables(next);
+  };
+
+  return (
+    <div className="space-y-6 p-2">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageSquare className="h-4 w-4 text-green-600" />
+            WhatsApp Template Tester
+          </CardTitle>
+          <CardDescription>
+            Send a test WhatsApp message using any template WID directly from PMS. Uses your AUTHKEY_API_KEY.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Template</Label>
+              <Select value={templateId} onValueChange={(v) => { setTemplateId(v); setResult(null); }}>
+                <SelectTrigger data-testid="select-template">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {KNOWN_TEMPLATES.map(t => (
+                    <SelectItem key={t.id} value={t.id}>{t.name} {t.id !== "custom" ? `(WID ${t.id})` : ""}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{selected.hint}</p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1"><Phone className="h-3 w-3" /> Phone Number</Label>
+              <Input
+                placeholder="9876543210 (10 digits, India)"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                data-testid="input-phone"
+              />
+              <p className="text-xs text-muted-foreground">Enter without +91 or country code</p>
+            </div>
+          </div>
+
+          {templateId === "custom" && (
+            <div className="space-y-1">
+              <Label>Custom WID (Template ID)</Label>
+              <Input
+                placeholder="e.g. 28769"
+                value={customWid}
+                onChange={e => setCustomWid(e.target.value)}
+                data-testid="input-custom-wid"
+              />
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Variables (leave blank to skip)</Label>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Variable {i + 1} {`{{${i + 1}}}`}</Label>
+                  <Input
+                    placeholder={`Value for {{${i + 1}}}`}
+                    value={variables[i] || ""}
+                    onChange={e => updateVar(i, e.target.value)}
+                    data-testid={`input-var-${i + 1}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Button
+            onClick={() => testMutation.mutate()}
+            disabled={testMutation.isPending || !phone.trim() || !effectiveWid.trim()}
+            className="bg-green-600 hover:bg-green-700 text-white"
+            data-testid="button-send-test"
+          >
+            {testMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+            Send Test Message
+          </Button>
+
+          {result && (
+            <div className={`rounded-lg border p-4 ${result.success ? "border-green-200 bg-green-50 dark:bg-green-950 dark:border-green-800" : "border-red-200 bg-red-50 dark:bg-red-950 dark:border-red-800"}`}>
+              <p className="font-medium text-sm flex items-center gap-2 mb-2">
+                {result.success ? <CheckCircle className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4 text-red-600" />}
+                {result.success ? "Message Sent Successfully" : "Send Failed"}
+              </p>
+              <div className="space-y-1 text-xs font-mono text-muted-foreground">
+                {result.sentTo && <p><span className="font-semibold">To:</span> {result.sentTo}</p>}
+                {result.templateId && <p><span className="font-semibold">WID:</span> {result.templateId}</p>}
+                {result.message && <p><span className="font-semibold">API response:</span> {result.message}</p>}
+                {result.error && <p className="text-red-600"><span className="font-semibold">Error:</span> {result.error}</p>}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Known Templates</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>WID</TableHead>
+                <TableHead>Purpose</TableHead>
+                <TableHead>Variables</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {KNOWN_TEMPLATES.filter(t => t.id !== "custom").map(t => (
+                <TableRow key={t.id}>
+                  <TableCell className="font-mono font-semibold">{t.id}</TableCell>
+                  <TableCell>{t.name}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{t.hint}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function SyncLogsTab({ propertyId }: { propertyId: number }) {
   const { data: logs = [], isLoading, refetch } = useQuery<SyncLog[]>({
     queryKey: ["/api/aiosell/sync-logs", { propertyId }],
@@ -1242,6 +1415,7 @@ export default function ChannelManager() {
             <TabsTrigger value="inventory-calendar" data-testid="tab-inventory-calendar" className="flex-shrink-0">Inventory Calendar</TabsTrigger>
             <TabsTrigger value="push" data-testid="tab-push" className="flex-shrink-0">Push Rates & Inventory</TabsTrigger>
             <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
+            <TabsTrigger value="whatsapp-test" data-testid="tab-whatsapp-test" className="flex-shrink-0 text-green-700 dark:text-green-400">WhatsApp Test</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -1254,6 +1428,7 @@ export default function ChannelManager() {
             </div>
           </TabsContent>
           <TabsContent value="logs"><SyncLogsTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
         </Tabs>
       )}
     </div>

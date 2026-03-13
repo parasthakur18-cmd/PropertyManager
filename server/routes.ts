@@ -15586,6 +15586,39 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     }
   });
 
+  // WhatsApp test sender — lets admins send any template to any number from PMS
+  app.post("/api/whatsapp/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const isAdmin = req.user?.role === "admin" || req.user?.role === "super-admin";
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+
+      const { phone, templateId, variables = [] } = req.body;
+      if (!phone || !templateId) {
+        return res.status(400).json({ message: "phone and templateId are required" });
+      }
+
+      const { sendWhatsAppMessage } = await import("./whatsapp");
+      // cleanIndianPhoneNumber is internal — strip manually here for preview
+      const cleaned = phone.replace(/\D/g, "").replace(/^(0091|91)/, "").replace(/^0/, "");
+      if (cleaned.length !== 10) {
+        return res.status(400).json({ message: `Phone must be 10 digits after cleaning, got ${cleaned.length} digits from "${phone}"` });
+      }
+
+      const result = await sendWhatsAppMessage({
+        countryCode: "91",
+        mobile: cleaned,
+        templateId: String(templateId),
+        variables,
+      });
+
+      console.log(`[WHATSAPP-TEST] Template ${templateId} → +91-${cleaned}: ${result.success ? "✅ sent" : "❌ failed"}`);
+      res.json({ success: result.success, message: result.message, error: result.error, sentTo: `+91-${cleaned}`, templateId });
+    } catch (error: any) {
+      console.error("[WHATSAPP-TEST] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Generate AI-powered expense insights using OpenAI
   app.post("/api/ai/insights", isAuthenticated, async (req: any, res) => {
     try {
