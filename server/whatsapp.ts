@@ -129,14 +129,19 @@ export async function sendWhatsAppMessage(params: WhatsAppMessageParams): Promis
     const data = await response.json();
 
     // Authkey returns HTTP 200 even on failure — must check the response body.
-    // Success: data.type === "success" or data.status === "success"
-    // Failure: data.type === "error" / data.status === "error" with data.message
+    // Actual response: {"status":"Success","LogID":"...","Message":"Submitted Successfully"}
+    // Use case-insensitive checks since the API returns "Success" (capital S)
+    const statusLower = typeof data.status === "string" ? data.status.toLowerCase() : "";
+    const typeLower = typeof data.type === "string" ? data.type.toLowerCase() : "";
+    const messageLower = typeof data.Message === "string" ? data.Message.toLowerCase() : "";
     const isSuccess = response.ok && (
-      data.type === "success" ||
-      data.status === "success" ||
+      statusLower === "success" ||
+      typeLower === "success" ||
       data.status === 200 ||
-      (data.messageId !== undefined) ||
-      (response.ok && data.type === undefined && data.status === undefined) // unknown format — assume ok
+      data.LogID !== undefined ||
+      data.messageId !== undefined ||
+      messageLower.includes("submitted") ||
+      messageLower.includes("success")
     );
 
     if (isSuccess) {
