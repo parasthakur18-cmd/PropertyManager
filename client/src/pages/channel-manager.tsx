@@ -831,6 +831,15 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId,
   });
 
+  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string }[]>({
+    queryKey: ["/api/rooms", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+
   const [inventoryValues, setInventoryValues] = useState<Record<string, string>>({});
 
   const pushInventoryMutation = useMutation({
@@ -889,26 +898,31 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
               <TableRow>
                 <TableHead>Room Type</TableHead>
                 <TableHead>AioSell Code</TableHead>
+                <TableHead>Room Count</TableHead>
                 <TableHead>Available Rooms</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mappings.map(m => (
-                <TableRow key={m.id} data-testid={`row-inventory-${m.id}`}>
-                  <TableCell className="font-medium">{m.hostezeeRoomType}</TableCell>
-                  <TableCell><Badge variant="outline">{m.aiosellRoomCode}</Badge></TableCell>
-                  <TableCell>
-                    <Input
-                      data-testid={`input-inventory-${m.id}`}
-                      type="number"
-                      className="w-28"
-                      placeholder="0"
-                      value={inventoryValues[m.aiosellRoomCode] || ""}
-                      onChange={e => setInventoryValues({ ...inventoryValues, [m.aiosellRoomCode]: e.target.value })}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
+              {mappings.map(m => {
+                const roomCount = allRooms.filter(r => r.roomType === m.hostezeeRoomType).length;
+                return (
+                  <TableRow key={m.id} data-testid={`row-inventory-${m.id}`}>
+                    <TableCell className="font-medium">{m.hostezeeRoomType}</TableCell>
+                    <TableCell><Badge variant="outline">{m.aiosellRoomCode}</Badge></TableCell>
+                    <TableCell><Badge variant="secondary">{roomCount}</Badge></TableCell>
+                    <TableCell>
+                      <Input
+                        data-testid={`input-inventory-${m.id}`}
+                        type="number"
+                        className="w-28"
+                        placeholder="0"
+                        value={inventoryValues[m.aiosellRoomCode] || ""}
+                        onChange={e => setInventoryValues({ ...inventoryValues, [m.aiosellRoomCode]: e.target.value })}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
 
