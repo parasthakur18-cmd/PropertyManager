@@ -891,6 +891,77 @@ export default function Attendance() {
         </DialogContent>
       </Dialog>
 
+      {/* Disable Staff Dialog */}
+      <Dialog open={isDisableDialogOpen} onOpenChange={setIsDisableDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <UserX className="h-5 w-5" />
+              Disable Staff Member
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              You are about to disable <strong>{disablingStaff?.name}</strong>. They will be hidden from the attendance roster and salary calculations.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Exit Type</label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDisableType("temporary")}
+                  className={`flex-1 border rounded-lg p-3 text-sm text-left transition-colors ${disableType === "temporary" ? "border-yellow-400 bg-yellow-50 text-yellow-800" : "border-border hover:bg-muted"}`}
+                  data-testid="button-disable-type-temporary"
+                >
+                  <div className="font-semibold">Temporary</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">On leave / suspended — can be re-enabled later</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisableType("permanent")}
+                  className={`flex-1 border rounded-lg p-3 text-sm text-left transition-colors ${disableType === "permanent" ? "border-red-400 bg-red-50 text-red-800" : "border-border hover:bg-muted"}`}
+                  data-testid="button-disable-type-permanent"
+                >
+                  <div className="font-semibold">Permanent</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Left the company — cannot be re-enabled</div>
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Reason <span className="text-muted-foreground">(optional)</span></label>
+              <Input
+                value={disableReason}
+                onChange={(e) => setDisableReason(e.target.value)}
+                placeholder="e.g. Going on extended leave, Resigned, Terminated..."
+                data-testid="input-disable-reason"
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setIsDisableDialogOpen(false)}
+                data-testid="button-cancel-disable"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                disabled={disableStaffMutation.isPending}
+                onClick={() => {
+                  if (disablingStaff) {
+                    disableStaffMutation.mutate({ staffId: disablingStaff.id, exitType: disableType, exitReason: disableReason });
+                  }
+                }}
+                data-testid="button-confirm-disable"
+              >
+                {disableStaffMutation.isPending ? "Disabling..." : `Disable (${disableType})`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={isAddStaffDialogOpen} onOpenChange={setIsAddStaffDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -1166,6 +1237,51 @@ export default function Attendance() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Disabled Staff Section */}
+      {disabledStaffMembers.length > 0 && (
+        <Card className="border-red-200 dark:border-red-900">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <ShieldAlert className="h-5 w-5" />
+              Disabled / Inactive Staff ({disabledStaffMembers.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {disabledStaffMembers.map((staff: any) => (
+                <div key={staff.id} className="flex items-center justify-between p-3 border rounded-lg bg-muted/40">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{staff.name}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${staff.exitType === "permanent" ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"}`}>
+                        {staff.exitType === "permanent" ? "Left Company" : "Temporarily Disabled"}
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground mt-0.5">{staff.jobTitle}</div>
+                    {staff.exitReason && (
+                      <div className="text-xs text-muted-foreground mt-1 italic">Reason: {staff.exitReason}</div>
+                    )}
+                  </div>
+                  {staff.exitType !== "permanent" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-green-300 text-green-700 hover:bg-green-50"
+                      disabled={enableStaffMutation.isPending}
+                      onClick={() => enableStaffMutation.mutate(staff.id)}
+                      data-testid={`button-enable-staff-${staff.id}`}
+                    >
+                      <UserCheck className="h-4 w-4 mr-1" />
+                      Re-enable
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
