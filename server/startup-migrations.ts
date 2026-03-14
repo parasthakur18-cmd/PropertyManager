@@ -281,6 +281,18 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       await runRaw(`ALTER TABLE extra_services ADD COLUMN commission numeric(10,2)`);
     },
   },
+  {
+    name: "add_staff_exit_fields",
+    async run() {
+      if (!(await tableExists("staff_members"))) return;
+      if (!(await columnExists("staff_members", "exit_type"))) {
+        await runRaw(`ALTER TABLE staff_members ADD COLUMN exit_type varchar(20)`);
+      }
+      if (!(await columnExists("staff_members", "exit_reason"))) {
+        await runRaw(`ALTER TABLE staff_members ADD COLUMN exit_reason text`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

@@ -15,7 +15,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend } from "date-fns";
-import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus, Edit2 } from "lucide-react";
+import { CalendarDays, CheckCircle, XCircle, AlertCircle, TrendingDown, Plus, Edit2, UserX, UserCheck, ShieldAlert } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -66,6 +66,11 @@ export default function Attendance() {
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const [rosterDate, setRosterDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  // Disable/Exit dialog state
+  const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
+  const [disablingStaff, setDisablingStaff] = useState<any>(null);
+  const [disableType, setDisableType] = useState<"temporary" | "permanent">("temporary");
+  const [disableReason, setDisableReason] = useState("");
 
   const { data: properties = [] } = useQuery<any[]>({
     queryKey: ["/api/properties"],
@@ -85,9 +90,12 @@ export default function Attendance() {
 
   // Filter staff members based on selected property
   const filteredStaffMembers = useMemo(() => {
-    if (selectedPropertyId === null) return staffMembers;
-    return staffMembers.filter((staff: any) => staff.propertyId === selectedPropertyId);
+    const byProp = selectedPropertyId === null ? staffMembers : staffMembers.filter((staff: any) => staff.propertyId === selectedPropertyId);
+    return byProp;
   }, [staffMembers, selectedPropertyId]);
+
+  const activeStaffMembers = useMemo(() => filteredStaffMembers.filter((s: any) => s.isActive !== false), [filteredStaffMembers]);
+  const disabledStaffMembers = useMemo(() => filteredStaffMembers.filter((s: any) => s.isActive === false), [filteredStaffMembers]);
 
   const monthString = selectedMonth.toISOString().slice(0, 7);
   const rosterMonthString = rosterDate.slice(0, 7); // YYYY-MM from roster date
@@ -272,6 +280,39 @@ export default function Attendance() {
     },
   });
 
+  const disableStaffMutation = useMutation({
+    mutationFn: async ({ staffId, exitType, exitReason }: { staffId: number; exitType: string; exitReason: string }) => {
+      return await apiRequest(`/api/staff-members/${staffId}/disable`, "POST", { exitType, exitReason });
+    },
+    onSuccess: () => {
+      refetchStaff();
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-members"] });
+      setIsDisableDialogOpen(false);
+      setDisablingStaff(null);
+      setDisableReason("");
+      setDisableType("temporary");
+      toast({ title: "Staff Disabled", description: `${disablingStaff?.name} has been marked as ${disableType === "temporary" ? "temporarily disabled" : "permanently left"}.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to disable staff", variant: "destructive" });
+    },
+  });
+
+  const enableStaffMutation = useMutation({
+    mutationFn: async (staffId: number) => {
+      return await apiRequest(`/api/staff-members/${staffId}/enable`, "POST", {});
+    },
+    onSuccess: (_, staffId) => {
+      refetchStaff();
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-members"] });
+      const staff = staffMembers.find((s: any) => s.id === staffId);
+      toast({ title: "Staff Re-enabled", description: `${staff?.name || "Staff member"} is now active again.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to re-enable staff", variant: "destructive" });
+    },
+  });
+
   const handleSubmit = (data: z.infer<typeof attendanceFormSchema>) => {
     createAttendanceMutation.mutate(data);
   };
@@ -413,9 +454,9 @@ export default function Attendance() {
                 />
               </div>
 
-              {filteredStaffMembers.length === 0 ? (
+              {activeStaffMembers.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <p>{selectedPropertyId ? "No staff members at this property." : "No staff members added yet. Click \"Add Staff\" to add your first staff member."}</p>
+                  <p>{selectedPropertyId ? "No active staff members at this property." : "No staff members added yet. Click \"Add Staff\" to add your first staff member."}</p>
                 </div>
               ) : (
                 <div className="border rounded-lg overflow-x-auto">
@@ -430,7 +471,7 @@ export default function Attendance() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredStaffMembers.map((staff) => {
+                      {activeStaffMembers.map((staff) => {
                         const dayAttendance = getAttendanceForDate(staff.id, new Date(rosterDate));
                         const currentStatus = dayAttendance?.status;
                         // If no record exists, staff is considered Present by default
@@ -995,27 +1036,44 @@ export default function Attendance() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6 overflow-x-auto">
-            {filteredStaffMembers.map((staff) => (
+            {activeStaffMembers.map((staff) => (
               <div key={staff.id} className="border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                   <h3 className="font-semibold">{staff.name} - {staff.jobTitle}</h3>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setEditingStaffId(staff.id);
-                      editStaffForm.reset({ 
-                        baseSalary: staff.baseSalary || 0,
-                        joiningDate: staff?.joiningDate ? new Date(staff.joiningDate).toISOString().split('T')[0] : '',
-                        leavingDate: staff?.leavingDate ? new Date(staff.leavingDate).toISOString().split('T')[0] : '',
-                      });
-                      setIsEditStaffDialogOpen(true);
-                    }}
-                    data-testid={`button-edit-salary-${staff.id}`}
-                  >
-                    <Edit2 className="h-4 w-4 mr-1" />
-                    Edit Staff
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingStaffId(staff.id);
+                        editStaffForm.reset({ 
+                          baseSalary: staff.baseSalary || 0,
+                          joiningDate: staff?.joiningDate ? new Date(staff.joiningDate).toISOString().split('T')[0] : '',
+                          leavingDate: staff?.leavingDate ? new Date(staff.leavingDate).toISOString().split('T')[0] : '',
+                        });
+                        setIsEditStaffDialogOpen(true);
+                      }}
+                      data-testid={`button-edit-salary-${staff.id}`}
+                    >
+                      <Edit2 className="h-4 w-4 mr-1" />
+                      Edit Staff
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-300 text-red-600 hover:bg-red-50"
+                      onClick={() => {
+                        setDisablingStaff(staff);
+                        setDisableType("temporary");
+                        setDisableReason("");
+                        setIsDisableDialogOpen(true);
+                      }}
+                      data-testid={`button-disable-staff-${staff.id}`}
+                    >
+                      <UserX className="h-4 w-4 mr-1" />
+                      Disable
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-7 gap-2">
                   {daysInMonth.map((day) => {

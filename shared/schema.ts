@@ -750,6 +750,8 @@ export const staffMembers = pgTable("staff_members", {
   joiningDate: timestamp("joining_date"),
   leavingDate: timestamp("leaving_date"),
   isActive: boolean("is_active").default(true),
+  exitType: varchar("exit_type", { length: 20 }), // null = active, "temporary" = on leave/suspended, "permanent" = left company
+  exitReason: text("exit_reason"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

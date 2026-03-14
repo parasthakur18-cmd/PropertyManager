@@ -9212,6 +9212,64 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Disable a staff member (temporary = on leave/suspended, permanent = left company)
+  app.post("/api/staff-members/:id/disable", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isAdmin = user.role === "admin" || user.role === "super-admin" || user.role === "manager";
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+
+      const member = await storage.getStaffMember(parseInt(req.params.id));
+      if (!member) return res.status(404).json({ message: "Staff member not found" });
+
+      const { exitType, exitReason } = req.body;
+      if (!exitType || !["temporary", "permanent"].includes(exitType)) {
+        return res.status(400).json({ message: "exitType must be 'temporary' or 'permanent'" });
+      }
+
+      const updated = await storage.updateStaffMember(parseInt(req.params.id), {
+        isActive: false,
+        exitType,
+        exitReason: exitReason || null,
+        leavingDate: new Date(),
+      });
+
+      const label = exitType === "temporary" ? "Temporary (On Leave/Suspended)" : "Permanently Left Company";
+      console.log(`[STAFF] ${member.name} disabled — ${label}${exitReason ? `: ${exitReason}` : ""}`);
+      res.json({ success: true, member: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Re-enable a temporarily disabled staff member
+  app.post("/api/staff-members/:id/enable", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isAdmin = user.role === "admin" || user.role === "super-admin" || user.role === "manager";
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+
+      const member = await storage.getStaffMember(parseInt(req.params.id));
+      if (!member) return res.status(404).json({ message: "Staff member not found" });
+
+      if (member.exitType === "permanent") {
+        return res.status(400).json({ message: "Cannot re-enable a permanently disabled staff member" });
+      }
+
+      const updated = await storage.updateStaffMember(parseInt(req.params.id), {
+        isActive: true,
+        exitType: null,
+        exitReason: null,
+        leavingDate: null,
+      });
+
+      console.log(`[STAFF] ${member.name} re-enabled`);
+      res.json({ success: true, member: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/staff-members/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
