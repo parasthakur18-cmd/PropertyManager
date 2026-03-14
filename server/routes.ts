@@ -1997,6 +1997,72 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Disable a property (temporary or permanent archive)
+  app.post("/api/properties/:id/disable", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(403).json({ message: "User not found" });
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) return res.status(403).json({ message: "Only Super Admin can disable properties" });
+
+      const propertyId = parseInt(req.params.id);
+      const { disableType, disableReason } = req.body as { disableType: "temporary" | "permanent"; disableReason?: string };
+      if (!["temporary", "permanent"].includes(disableType)) {
+        return res.status(400).json({ message: "Invalid disableType" });
+      }
+
+      await db.update(properties)
+        .set({
+          isActive: false,
+          disableType,
+          disableReason: disableReason || null,
+          closedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(properties.id, propertyId));
+
+      const label = disableType === "permanent" ? "permanently closed" : "temporarily disabled";
+      console.log(`[PROPERTY] Property #${propertyId} ${label}${disableReason ? `: ${disableReason}` : ""}`);
+      res.json({ message: `Property ${label}` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Re-enable a temporarily disabled property
+  app.post("/api/properties/:id/enable", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(403).json({ message: "User not found" });
+      const tenant = getTenantContext(currentUser);
+      if (!tenant.isSuperAdmin) return res.status(403).json({ message: "Only Super Admin can enable properties" });
+
+      const propertyId = parseInt(req.params.id);
+      const prop = await storage.getProperty(propertyId);
+      if (!prop) return res.status(404).json({ message: "Property not found" });
+      if (prop.disableType === "permanent") {
+        return res.status(400).json({ message: "Cannot re-enable a permanently closed property" });
+      }
+
+      await db.update(properties)
+        .set({
+          isActive: true,
+          disableType: null,
+          disableReason: null,
+          closedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(properties.id, propertyId));
+
+      console.log(`[PROPERTY] Property #${propertyId} re-enabled`);
+      res.json({ message: "Property re-enabled" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Rooms
   app.get("/api/rooms", isAuthenticated, async (req: any, res) => {
     try {

@@ -59,6 +59,17 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Services Revenue Report**: `/services-report` page — summary cards, monthly bar chart (collected vs pending), service type breakdown with progress bars, day-wise table; API: `GET /api/extra-services/revenue?propertyId&year&month`
 - **Monthly Income Report**: `/monthly-report` page — unified view of rooms + food + services + expenses + net profit for any month; API: `GET /api/monthly-income?propertyId&month=YYYY-MM`
 
+### Staff Disable / Exit Management
+- **Schema**: `staffMembers` table has `isActive` (bool), `exitType` (varchar: "temporary"|"permanent"), `exitReason` (text)
+- **Backend**: `POST /api/staff-members/:id/disable` (sets isActive=false, exitType, exitReason), `POST /api/staff-members/:id/enable` (re-enables, only if exitType="temporary")
+- **Frontend**: Attendance page calendar — each active staff card has red "Disable" button; dialog asks for exit type + reason; Disabled Staff card at bottom shows inactive staff; "Re-enable" button for temporary only
+
+### Property Disable / Closure Management
+- **Schema**: `properties` table has `isActive` (bool, existing), `disableType` (varchar: "temporary"|"permanent"), `disableReason` (text), `closedAt` (timestamp)
+- **Backend**: `POST /api/properties/:id/disable` (marks inactive, sets disableType/reason/closedAt — Super Admin only), `POST /api/properties/:id/enable` (re-enables if temporary — Super Admin only)
+- **Frontend**: Properties page split into Active Properties + Disabled/Closed Properties sections; PowerOff button on each active card opens disable dialog with two-step choice (temporary/permanent → archive/delete); Disabled cards show Re-enable button for temporary only; permanently closed cards show historical data export only
+- **Rules**: Temporary = under maintenance/construction, can re-enable; Permanent + archive = historical records kept; Permanent + delete = removes all data
+
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.
 - **Insert schemas**: Zod schemas for request validation.

@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, MapPin, Phone, Mail, Edit, Trash2, Download } from "lucide-react";
+import { Plus, MapPin, Phone, Mail, Edit, Trash2, Download, PowerOff, Power, ShieldAlert, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,11 +18,19 @@ import { Badge } from "@/components/ui/badge";
 export default function Properties() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [isDisableDialogOpen, setIsDisableDialogOpen] = useState(false);
+  const [disablingProperty, setDisablingProperty] = useState<Property | null>(null);
+  const [disableType, setDisableType] = useState<"temporary" | "permanent">("temporary");
+  const [disableReason, setDisableReason] = useState("");
+  const [permanentAction, setPermanentAction] = useState<"archive" | "delete">("archive");
   const { toast } = useToast();
 
-  const { data: properties, isLoading } = useQuery<Property[]>({
+  const { data: allProperties, isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  const activeProperties = useMemo(() => (allProperties || []).filter((p: any) => p.isActive !== false), [allProperties]);
+  const disabledProperties = useMemo(() => (allProperties || []).filter((p: any) => p.isActive === false), [allProperties]);
 
   const form = useForm<InsertProperty>({
     resolver: zodResolver(insertPropertySchema),
@@ -70,6 +77,48 @@ export default function Properties() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/properties/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      toast({ title: "Success", description: "Property permanently deleted" });
+      setIsDisableDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const disableMutation = useMutation({
+    mutationFn: async ({ id, disableType, disableReason }: { id: number; disableType: string; disableReason?: string }) => {
+      return await apiRequest(`/api/properties/${id}/disable`, "POST", { disableType, disableReason });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      const label = disableType === "permanent" ? "permanently closed" : "temporarily disabled";
+      toast({ title: "Property Disabled", description: `${disablingProperty?.name} has been ${label}.` });
+      setIsDisableDialogOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const enableMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/properties/${id}/enable`, "POST", {});
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      toast({ title: "Property Re-enabled", description: "The property is now active again." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleEdit = (property: Property) => {
     setEditingProperty(property);
     form.reset({
@@ -85,25 +134,22 @@ export default function Properties() {
     setIsDialogOpen(true);
   };
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      return await apiRequest(`/api/properties/${id}`, "DELETE");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
-      toast({
-        title: "Success",
-        description: "Property deleted successfully",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const openDisableDialog = (property: Property) => {
+    setDisablingProperty(property);
+    setDisableType("temporary");
+    setDisableReason("");
+    setPermanentAction("archive");
+    setIsDisableDialogOpen(true);
+  };
+
+  const handleConfirmDisable = () => {
+    if (!disablingProperty) return;
+    if (disableType === "permanent" && permanentAction === "delete") {
+      deleteMutation.mutate(disablingProperty.id);
+    } else {
+      disableMutation.mutate({ id: disablingProperty.id, disableType, disableReason });
+    }
+  };
 
   const onSubmit = (data: InsertProperty) => {
     if (editingProperty) {
@@ -117,14 +163,9 @@ export default function Properties() {
     try {
       const response = await fetch(`/api/properties/${propertyId}/export`);
       if (!response.ok) {
-        toast({
-          title: "Export Failed",
-          description: "Failed to export property data",
-          variant: "destructive",
-        });
+        toast({ title: "Export Failed", description: "Failed to export property data", variant: "destructive" });
         return;
       }
-
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -132,17 +173,9 @@ export default function Properties() {
       link.download = `${propertyName.replace(/\s+/g, "-")}-export-${new Date().toISOString().split("T")[0]}.csv`;
       link.click();
       URL.revokeObjectURL(url);
-
-      toast({
-        title: "Export Successful",
-        description: `All data for "${propertyName}" has been downloaded`,
-      });
+      toast({ title: "Export Successful", description: `All data for "${propertyName}" has been downloaded` });
     } catch (error: any) {
-      toast({
-        title: "Export Error",
-        description: error.message || "Failed to export data",
-        variant: "destructive",
-      });
+      toast({ title: "Export Error", description: error.message || "Failed to export data", variant: "destructive" });
     }
   };
 
@@ -163,8 +196,9 @@ export default function Properties() {
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 md:p-8 space-y-8">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold font-serif">Properties</h1>
           <p className="text-muted-foreground mt-1">Manage your resort properties</p>
@@ -309,7 +343,8 @@ export default function Properties() {
         </Dialog>
       </div>
 
-      {!properties || properties.length === 0 ? (
+      {/* Active Properties */}
+      {activeProperties.length === 0 && disabledProperties.length === 0 ? (
         <Card className="p-12 text-center">
           <div className="flex flex-col items-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -322,76 +357,274 @@ export default function Properties() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((property) => (
-            <Card key={property.id} className="hover-elevate" data-testid={`card-property-${property.id}`}>
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <CardTitle className="flex items-center gap-2">
-                      <span data-testid={`text-property-name-${property.id}`}>{property.name}</span>
-                      {property.isActive && (
-                        <Badge variant="default" className="text-xs">Active</Badge>
+        <>
+          {activeProperties.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="h-5 w-5 text-muted-foreground" />
+                <h2 className="text-lg font-semibold">Active Properties ({activeProperties.length})</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {activeProperties.map((property: any) => (
+                  <Card key={property.id} className="hover-elevate" data-testid={`card-property-${property.id}`}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2">
+                            <span data-testid={`text-property-name-${property.id}`}>{property.name}</span>
+                            <Badge variant="default" className="text-xs">Active</Badge>
+                          </CardTitle>
+                          <CardDescription className="flex items-center gap-1 mt-2">
+                            <MapPin className="h-3 w-3" />
+                            <span data-testid={`text-property-location-${property.id}`}>{property.location || "No location"}</span>
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleEdit(property)}
+                            title="Edit property"
+                            data-testid={`button-edit-property-${property.id}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleExportProperty(property.id, property.name)}
+                            title="Download all property data"
+                            data-testid={`button-export-property-${property.id}`}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => openDisableDialog(property)}
+                            title="Disable or close property"
+                            data-testid={`button-disable-property-${property.id}`}
+                          >
+                            <PowerOff className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                        {property.description || "No description"}
+                      </p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="h-4 w-4" />
+                          <span data-testid={`text-property-phone-${property.id}`}>{property.contactPhone || "No phone"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-4 w-4" />
+                          <span data-testid={`text-property-email-${property.id}`}>{property.contactEmail || "No email"}</span>
+                        </div>
+                        <div className="text-lg font-semibold font-mono mt-4" data-testid={`text-property-rooms-${property.id}`}>
+                          {property.totalRooms} Rooms
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Disabled / Closed Properties */}
+          {disabledProperties.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <ShieldAlert className="h-5 w-5 text-red-500" />
+                <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Disabled / Closed Properties ({disabledProperties.length})</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {disabledProperties.map((property: any) => (
+                  <Card key={property.id} className="border-red-200 dark:border-red-900 opacity-80" data-testid={`card-property-disabled-${property.id}`}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="flex items-center gap-2 flex-wrap">
+                            <span>{property.name}</span>
+                            <Badge
+                              variant="outline"
+                              className={property.disableType === "permanent"
+                                ? "border-red-400 text-red-600 text-xs"
+                                : "border-yellow-400 text-yellow-700 text-xs"}
+                            >
+                              {property.disableType === "permanent" ? "Permanently Closed" : "Under Maintenance"}
+                            </Badge>
+                          </CardTitle>
+                          <CardDescription className="flex items-center gap-1 mt-2">
+                            <MapPin className="h-3 w-3" />
+                            {property.location || "No location"}
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => handleExportProperty(property.id, property.name)}
+                            title="Download historical data"
+                            data-testid={`button-export-disabled-property-${property.id}`}
+                          >
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {property.disableReason && (
+                        <p className="text-sm text-muted-foreground italic mb-3">
+                          Reason: {property.disableReason}
+                        </p>
                       )}
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-1 mt-2">
-                      <MapPin className="h-3 w-3" />
-                      <span data-testid={`text-property-location-${property.id}`}>{property.location || "No location"}</span>
-                    </CardDescription>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleEdit(property)}
-                      title="Edit property"
-                      data-testid={`button-edit-property-${property.id}`}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => handleExportProperty(property.id, property.name)}
-                      title="Download all property data (rooms, bookings, bills)"
-                      data-testid={`button-export-property-${property.id}`}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => deleteMutation.mutate(property.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-property-${property.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                  {property.description || "No description"}
-                </p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    <span data-testid={`text-property-phone-${property.id}`}>{property.contactPhone || "No phone"}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    <span data-testid={`text-property-email-${property.id}`}>{property.contactEmail || "No email"}</span>
-                  </div>
-                  <div className="text-lg font-semibold font-mono mt-4" data-testid={`text-property-rooms-${property.id}`}>
-                    {property.totalRooms} Rooms
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                      {property.closedAt && (
+                        <p className="text-xs text-muted-foreground mb-3">
+                          Closed on: {new Date(property.closedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </p>
+                      )}
+                      <div className="text-sm text-muted-foreground mb-4">{property.totalRooms} Rooms</div>
+                      {property.disableType !== "permanent" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full border-green-300 text-green-700 hover:bg-green-50"
+                          disabled={enableMutation.isPending}
+                          onClick={() => enableMutation.mutate(property.id)}
+                          data-testid={`button-enable-property-${property.id}`}
+                        >
+                          <Power className="h-4 w-4 mr-2" />
+                          Re-enable Property
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
+
+      {/* Disable Property Dialog */}
+      <Dialog open={isDisableDialogOpen} onOpenChange={setIsDisableDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <PowerOff className="h-5 w-5" />
+              Disable Property
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              You are about to disable <strong>{disablingProperty?.name}</strong>. Choose the type of closure:
+            </p>
+
+            {/* Disable type selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Closure Type</label>
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDisableType("temporary")}
+                  className={`border rounded-lg p-3 text-sm text-left transition-colors ${disableType === "temporary" ? "border-yellow-400 bg-yellow-50 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-200" : "border-border hover:bg-muted"}`}
+                  data-testid="button-property-disable-type-temporary"
+                >
+                  <div className="font-semibold flex items-center gap-2">
+                    🔧 Temporary — Under Maintenance / Construction
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Property stays in system. No new bookings allowed. Operations paused. Can be re-enabled later.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisableType("permanent")}
+                  className={`border rounded-lg p-3 text-sm text-left transition-colors ${disableType === "permanent" ? "border-red-400 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200" : "border-border hover:bg-muted"}`}
+                  data-testid="button-property-disable-type-permanent"
+                >
+                  <div className="font-semibold flex items-center gap-2">
+                    🔒 Permanent — Property Closed / Sold
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Property is permanently removed from operations. Cannot be re-enabled.
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Permanent action choice */}
+            {disableType === "permanent" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">What to do with the data?</label>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPermanentAction("archive")}
+                    className={`border rounded-lg p-3 text-sm text-left transition-colors ${permanentAction === "archive" ? "border-orange-400 bg-orange-50 text-orange-800 dark:bg-orange-950" : "border-border hover:bg-muted"}`}
+                    data-testid="button-permanent-action-archive"
+                  >
+                    <div className="font-semibold">📦 Keep Records (Recommended)</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Booking history, revenue, and reports are preserved for reference</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermanentAction("delete")}
+                    className={`border rounded-lg p-3 text-sm text-left transition-colors ${permanentAction === "delete" ? "border-red-500 bg-red-50 text-red-800 dark:bg-red-950" : "border-border hover:bg-muted"}`}
+                    data-testid="button-permanent-action-delete"
+                  >
+                    <div className="font-semibold">🗑️ Delete Everything</div>
+                    <div className="text-xs text-red-600 mt-0.5">⚠️ Permanently deletes all rooms, bookings, and data. Cannot be undone.</div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Reason */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Reason <span className="text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                value={disableReason}
+                onChange={(e) => setDisableReason(e.target.value)}
+                placeholder="e.g. Renovation underway, Property sold, Seasonal closure..."
+                data-testid="input-property-disable-reason"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setIsDisableDialogOpen(false)}
+                data-testid="button-cancel-property-disable"
+              >
+                Cancel
+              </Button>
+              <Button
+                className={`flex-1 text-white ${disableType === "permanent" && permanentAction === "delete" ? "bg-red-700 hover:bg-red-800" : "bg-red-600 hover:bg-red-700"}`}
+                disabled={disableMutation.isPending || deleteMutation.isPending}
+                onClick={handleConfirmDisable}
+                data-testid="button-confirm-property-disable"
+              >
+                {disableMutation.isPending || deleteMutation.isPending
+                  ? "Processing..."
+                  : disableType === "permanent" && permanentAction === "delete"
+                    ? "Delete Property"
+                    : disableType === "permanent"
+                      ? "Close Permanently"
+                      : "Disable Temporarily"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

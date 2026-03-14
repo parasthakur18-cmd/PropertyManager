@@ -293,6 +293,21 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_property_disable_fields",
+    async run() {
+      if (!(await tableExists("properties"))) return;
+      if (!(await columnExists("properties", "disable_type"))) {
+        await runRaw(`ALTER TABLE properties ADD COLUMN disable_type varchar(50)`);
+      }
+      if (!(await columnExists("properties", "disable_reason"))) {
+        await runRaw(`ALTER TABLE properties ADD COLUMN disable_reason text`);
+      }
+      if (!(await columnExists("properties", "closed_at"))) {
+        await runRaw(`ALTER TABLE properties ADD COLUMN closed_at timestamptz`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
