@@ -95,9 +95,7 @@ export const SERVICE_TYPES = [
 
 export const PAYMENT_METHODS = [
   { value: "cash", label: "Cash" },
-  { value: "upi", label: "UPI / PhonePe / GPay" },
-  { value: "bank", label: "Bank Transfer / NEFT" },
-  { value: "card", label: "Card" },
+  { value: "upi", label: "UPI" },
 ];
 
 export default function AddOnServices() {

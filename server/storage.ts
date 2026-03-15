@@ -4695,22 +4695,17 @@ export class DatabaseStorage implements IStorage {
     let walletType: string;
     const method = (paymentMethod || '').toLowerCase();
     
+    // Simplified: cash → cash wallet, everything else → upi wallet
     if (method.includes('cash')) {
       walletType = 'cash';
-    } else if (method.includes('upi') || method.includes('phonepe') || method.includes('gpay') || method.includes('paytm')) {
-      walletType = 'upi';
-    } else if (method.includes('bank') || method.includes('neft') || method.includes('rtgs') || method.includes('imps') || method.includes('cheque') || method.includes('card') || method.includes('razorpay') || method === 'online') {
-      // "online" payments go to bank wallet by default
-      walletType = 'bank';
     } else {
-      // Default to cash if unknown
-      walletType = 'cash';
+      // UPI covers: upi, bank_transfer, card, razorpay, online, phonepe, gpay, paytm, etc.
+      walletType = 'upi';
     }
     
-    // Find matching wallet, prefer default; for bank/online fallback to upi
+    // Find matching wallet, prefer default; fallback to any wallet
     const matchingWallet = propertyWallets.find(w => w.type === walletType && w.isDefault) 
       || propertyWallets.find(w => w.type === walletType)
-      || (walletType === 'bank' ? propertyWallets.find(w => w.type === 'upi' && w.isDefault) || propertyWallets.find(w => w.type === 'upi') : null)
       || propertyWallets.find(w => w.isDefault)
       || propertyWallets[0];
     

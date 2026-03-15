@@ -822,8 +822,8 @@ export default function Billing() {
                         <span className="text-green-600 flex items-center gap-1">
                           Advance Received
                           {(billDetails as any).booking?.advancePaymentMethod && (
-                            <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded capitalize">
-                              {(billDetails as any).booking.advancePaymentMethod === "bank_transfer" ? "Bank" : (billDetails as any).booking.advancePaymentMethod.toUpperCase()}
+                            <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded">
+                              {(billDetails as any).booking.advancePaymentMethod === "upi" ? "UPI" : "Cash"}
                             </span>
                           )}
                         </span>

@@ -1728,9 +1728,6 @@ export default function Bookings() {
                             <SelectContent>
                               <SelectItem value="cash">Cash</SelectItem>
                               <SelectItem value="upi">UPI</SelectItem>
-                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                              <SelectItem value="card">Card</SelectItem>
-                              <SelectItem value="online">Online (Razorpay)</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -2008,8 +2005,8 @@ export default function Bookings() {
                             <span className="flex items-center gap-1">
                               <span className="font-mono text-green-600">₹{booking.advanceAmount}</span>
                               {(booking as any).advancePaymentMethod && (
-                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded capitalize">
-                                  {(booking as any).advancePaymentMethod === "bank_transfer" ? "Bank" : (booking as any).advancePaymentMethod.toUpperCase()}
+                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded">
+                                  {(booking as any).advancePaymentMethod === "upi" ? "UPI" : "Cash"}
                                 </span>
                               )}
                             </span>
@@ -3154,9 +3151,6 @@ export default function Bookings() {
                             <SelectContent>
                               <SelectItem value="cash">Cash</SelectItem>
                               <SelectItem value="upi">UPI</SelectItem>
-                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                              <SelectItem value="card">Card</SelectItem>
-                              <SelectItem value="online">Online (Razorpay)</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -3857,7 +3851,7 @@ function CheckoutBillSummary({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="upi">UPI / Online</SelectItem>
+                <SelectItem value="upi">UPI</SelectItem>
                 <SelectItem value="split">Split (Cash + UPI)</SelectItem>
               </SelectContent>
             </Select>
