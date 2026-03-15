@@ -89,7 +89,7 @@ const WHATSAPP_TEMPLATES = [
   { type: 'payment_reminder', name: 'Payment Reminder', description: 'Auto-reminders for pending payments (18489)', icon: '⏰' },
   { type: 'payment_confirmation', name: 'Payment Confirmation', description: 'Send when payment is received (18649)', icon: '✅' },
   { type: 'checkin_message', name: 'Check-in Message', description: 'Send when guest checks in (18712)', icon: '🏨' },
-  { type: 'checkout_message', name: 'Checkout Message', description: 'Send checkout bill details (18667)', icon: '👋' },
+  { type: 'checkout_message', name: 'Checkout Message', description: 'Send checkout thank-you to guest (28968)', icon: '👋' },
   { type: 'prebill_message', name: 'Pre-bill Verification', description: 'Send bill verification before checkout (19852)', icon: '📋' },
   { type: 'split_payment', name: 'Split Payment', description: 'Send split payment links (19892)', icon: '💰' },
   { type: 'welcome_menu', name: 'Welcome Menu', description: 'Send QR food ordering link (21932)', icon: '🍽️' },
