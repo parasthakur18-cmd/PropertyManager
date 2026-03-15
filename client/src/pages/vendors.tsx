@@ -618,18 +618,20 @@ export default function Vendors() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Category</FormLabel>
-                          <Select value={field.value || ""} onValueChange={field.onChange}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-vendor-category">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {vendorCategories.map((cat) => (
-                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <FormControl>
+                            <Input
+                              {...field}
+                              value={field.value || ""}
+                              list="vendor-category-suggestions"
+                              placeholder="Type or pick a category"
+                              data-testid="input-vendor-category"
+                            />
+                          </FormControl>
+                          <datalist id="vendor-category-suggestions">
+                            {vendorCategories.map((cat) => (
+                              <option key={cat} value={cat} />
+                            ))}
+                          </datalist>
                           <FormMessage />
                         </FormItem>
                       )}
