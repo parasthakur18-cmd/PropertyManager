@@ -238,6 +238,7 @@ export default function Bookings() {
       travelAgentId: null,
       mealPlan: "EP",
       advanceAmount: "",
+      advancePaymentMethod: "cash",
       bedsBooked: null as number | null,
     },
   });
@@ -257,6 +258,7 @@ export default function Bookings() {
       travelAgentId: undefined as number | undefined,
       mealPlan: "EP",
       advanceAmount: "",
+      advancePaymentMethod: "cash",
       bedsBooked: null as number | null,
       guestName: "",
       guestPhone: "",
@@ -946,6 +948,7 @@ export default function Bookings() {
       numberOfGuests: booking.numberOfGuests,
       customPrice: booking.customPrice ? parseFloat(booking.customPrice) : null,
       advanceAmount: booking.advanceAmount ? parseFloat(booking.advanceAmount) : 0,
+      advancePaymentMethod: (booking as any).advancePaymentMethod || "cash",
       specialRequests: booking.specialRequests || "",
       source: normalizeSource(booking.source),
       travelAgentId: booking.travelAgentId || undefined,
@@ -1688,30 +1691,53 @@ export default function Bookings() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="advanceAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Advance Payment (₹)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="Enter amount"
-                            value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value || "")}
-                            data-testid="input-booking-advance"
-                          />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Amount received in advance (leave empty for ₹0)
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="space-y-2">
+                    <FormField
+                      control={form.control}
+                      name="advanceAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Advance Payment (₹)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="Enter amount"
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value || "")}
+                              data-testid="input-booking-advance"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="advancePaymentMethod"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Advance Payment Method</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || "cash"}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-advance-method">
+                                <SelectValue placeholder="Payment method" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="card">Card</SelectItem>
+                              <SelectItem value="online">Online (Razorpay)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -1977,8 +2003,17 @@ export default function Bookings() {
                         <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
                           {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
                         </TableCell>
-                        <TableCell className="font-mono py-2 text-sm text-green-600" data-testid={`text-advance-${booking.id}`}>
-                          {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? `₹${booking.advanceAmount}` : "-"}
+                        <TableCell className="py-2 text-sm" data-testid={`text-advance-${booking.id}`}>
+                          {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? (
+                            <span className="flex items-center gap-1">
+                              <span className="font-mono text-green-600">₹{booking.advanceAmount}</span>
+                              {(booking as any).advancePaymentMethod && (
+                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded capitalize">
+                                  {(booking as any).advancePaymentMethod === "bank_transfer" ? "Bank" : (booking as any).advancePaymentMethod.toUpperCase()}
+                                </span>
+                              )}
+                            </span>
+                          ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
                         <TableCell className="py-2 text-sm" data-testid={`text-source-${booking.id}`}>
                           <Badge variant="outline" className="text-xs">
@@ -3073,39 +3108,62 @@ export default function Bookings() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={editForm.control}
-                    name="advanceAmount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Advance Payment</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={field.value ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                                field.onChange(val);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              if (e.target.value === "") {
-                                field.onChange("0");
-                              }
-                            }}
-                            data-testid="input-edit-booking-advance"
-                          />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Amount received in advance
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="space-y-2">
+                    <FormField
+                      control={editForm.control}
+                      name="advanceAmount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Advance Payment (₹)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="0"
+                              value={field.value ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                  field.onChange(val);
+                                }
+                              }}
+                              onBlur={(e) => {
+                                if (e.target.value === "") {
+                                  field.onChange("0");
+                                }
+                              }}
+                              data-testid="input-edit-booking-advance"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={editForm.control}
+                      name="advancePaymentMethod"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Advance Payment Method</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || "cash"}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-edit-advance-method">
+                                <SelectValue placeholder="Payment method" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="cash">Cash</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
+                              <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                              <SelectItem value="card">Card</SelectItem>
+                              <SelectItem value="online">Online (Razorpay)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
               <div className="space-y-2 border rounded-lg p-4 bg-muted/30">

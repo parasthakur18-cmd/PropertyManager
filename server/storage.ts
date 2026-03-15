@@ -449,6 +449,7 @@ export interface IStorage {
   
   // Wallet integration helpers
   getWalletByPaymentMethod(propertyId: number, paymentMethod: string): Promise<Wallet | null>;
+  recordAdvancePaymentToWallet(propertyId: number, bookingId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordBillPaymentToWallet(propertyId: number, billId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordFoodOrderPaymentToWallet(propertyId: number, orderId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordExpenseToWallet(propertyId: number, expenseId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
@@ -4714,6 +4715,32 @@ export class DatabaseStorage implements IStorage {
       || propertyWallets[0];
     
     return matchingWallet || null;
+  }
+
+  async recordAdvancePaymentToWallet(
+    propertyId: number,
+    bookingId: number,
+    amount: number,
+    paymentMethod: string,
+    description: string,
+    userId: string | null
+  ): Promise<WalletTransaction | null> {
+    const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
+    if (!wallet) {
+      console.log(`[Wallet] No wallet found for property ${propertyId} method ${paymentMethod}, skipping advance wallet update`);
+      return null;
+    }
+    return this.recordPaymentToWallet(
+      propertyId,
+      wallet.id,
+      amount,
+      'advance_payment',
+      bookingId,
+      description,
+      null,
+      new Date(),
+      userId
+    );
   }
 
   async recordBillPaymentToWallet(

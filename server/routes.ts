@@ -3139,6 +3139,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const bgUserId = bgUser?.claims?.sub || bgUser?.id || (req.session as any)?.userId;
       
       setImmediate(async () => {
+        // Record advance payment to wallet if any
+        const advAmt = parseFloat(booking.advanceAmount || "0");
+        if (advAmt > 0 && booking.propertyId) {
+          try {
+            const advGuest = await storage.getGuest(booking.guestId);
+            const advMethod = (bookingData as any).advancePaymentMethod || "cash";
+            await storage.recordAdvancePaymentToWallet(
+              booking.propertyId,
+              booking.id,
+              advAmt,
+              advMethod,
+              `Advance - ${advGuest?.fullName || 'Guest'} (Booking #${booking.id})`,
+              bgUserId || null
+            );
+            console.log(`[Wallet] Advance ₹${advAmt} via ${advMethod} recorded for booking #${booking.id}`);
+          } catch (walletErr) {
+            console.error(`[Wallet] Failed to record advance for booking #${booking.id}:`, walletErr);
+          }
+        }
+
         // Create notification for admins
         try {
           const allUsers = await storage.getAllUsers();
@@ -3295,6 +3315,34 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
       
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
+
+      // If advance amount was added/increased, record the delta to wallet
+      if (validatedData.advanceAmount !== undefined) {
+        const newAdv = parseFloat(String(validatedData.advanceAmount || "0"));
+        const oldAdv = parseFloat(String(existingBooking.advanceAmount || "0"));
+        const delta = newAdv - oldAdv;
+        if (delta > 0 && booking && booking.propertyId) {
+          setImmediate(async () => {
+            try {
+              const updUser = req.user as any;
+              const updUserId = updUser?.claims?.sub || updUser?.id || (req.session as any)?.userId;
+              const advGuest = await storage.getGuest(booking.guestId);
+              const advMethod = (validatedData as any).advancePaymentMethod || booking.advancePaymentMethod || "cash";
+              await storage.recordAdvancePaymentToWallet(
+                booking.propertyId,
+                booking.id,
+                delta,
+                advMethod,
+                `Advance - ${advGuest?.fullName || 'Guest'} (Booking #${booking.id})`,
+                updUserId || null
+              );
+              console.log(`[Wallet] Advance delta ₹${delta} via ${advMethod} recorded for booking #${booking.id}`);
+            } catch (wErr) {
+              console.error(`[Wallet] Failed advance wallet update for booking #${booking.id}:`, wErr);
+            }
+          });
+        }
+      }
       
       // Audit log for booking update with proper before/after structure
       const changedFields: Record<string, any> = {};

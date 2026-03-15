@@ -308,6 +308,15 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_booking_advance_payment_method",
+    async run() {
+      if (!(await tableExists("bookings"))) return;
+      if (!(await columnExists("bookings", "advance_payment_method"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN advance_payment_method varchar(20) DEFAULT 'cash'`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

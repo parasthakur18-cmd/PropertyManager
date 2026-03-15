@@ -818,8 +818,15 @@ export default function Billing() {
 
                   {parseFloat(billDetails.advancePaid || "0") > 0 && (
                     <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Advance Paid</span>
+                      <div className="flex justify-between text-sm items-center">
+                        <span className="text-green-600 flex items-center gap-1">
+                          Advance Received
+                          {(billDetails as any).booking?.advancePaymentMethod && (
+                            <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded capitalize">
+                              {(billDetails as any).booking.advancePaymentMethod === "bank_transfer" ? "Bank" : (billDetails as any).booking.advancePaymentMethod.toUpperCase()}
+                            </span>
+                          )}
+                        </span>
                         <span className="font-mono text-green-600">-₹{billDetails.advancePaid}</span>
                       </div>
                       <div className="flex justify-between text-lg font-bold text-destructive">
