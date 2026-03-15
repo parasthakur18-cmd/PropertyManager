@@ -3532,7 +3532,9 @@ export class DatabaseStorage implements IStorage {
 
   // Get detailed staff salaries with attendance deductions and carry-forward
   async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]> {
-    const staffList = await db.select().from(staffMembers).where(eq(staffMembers.propertyId, propertyId));
+    const staffList = await db.select().from(staffMembers).where(
+      and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true))
+    );
     
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
@@ -3560,7 +3562,9 @@ export class DatabaseStorage implements IStorage {
 
         // Calculate deductions: absent = full day deduction, half-day = 0.5 day, leave = no deduction (paid leave)
         const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
-        const dailyRate = baseSalaryNum / 30; // Assuming 30 days in a month
+        // Use actual days in the selected month for daily rate calculation
+        const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+        const dailyRate = baseSalaryNum / daysInMonth;
         const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
 
         // Get all advances for this staff member in current period

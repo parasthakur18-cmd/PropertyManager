@@ -53,6 +53,14 @@ export default function SalariesPage() {
     queryKey: ["/api/auth/user"],
   });
 
+  // Fetch all properties for the property selector
+  const { data: allProperties = [] } = useQuery<Array<{ id: number; name: string; isActive: boolean }>>({
+    queryKey: ["/api/properties"],
+  });
+
+  // Filter to only active properties
+  const activeProperties = allProperties.filter((p: any) => p.isActive !== false);
+
   // Set default property - ensure it's a number and wait for user data
   // Note: currentUser may be { user: {...}, verificationStatus: "..." } structure
   const userData = (currentUser as any)?.user || currentUser;
@@ -581,8 +589,25 @@ export default function SalariesPage() {
         </div>
 
         {/* Month & Property Selection */}
-        <div className="flex gap-4 items-end">
-          <div className="flex-1 max-w-xs">
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="flex-1 min-w-[180px] max-w-xs">
+            <Label htmlFor="property-select">Select Property</Label>
+            <Select
+              value={selectedPropertyId ? String(selectedPropertyId) : (firstPropertyId ? String(firstPropertyId) : "")}
+              onValueChange={(val) => setSelectedPropertyId(parseInt(val))}
+            >
+              <SelectTrigger id="property-select" data-testid="select-salary-property">
+                <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectValue placeholder="Select property" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeProperties.map((p: any) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1 min-w-[160px] max-w-xs">
             <Label htmlFor="month-select">Select Month</Label>
             <Input
               id="month-select"
@@ -591,9 +616,6 @@ export default function SalariesPage() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               data-testid="input-month-select"
             />
-          </div>
-          <div className="text-sm text-muted-foreground">
-            <span className="font-semibold">{format(startDate, "MMMM yyyy")}</span>
           </div>
         </div>
       </div>
