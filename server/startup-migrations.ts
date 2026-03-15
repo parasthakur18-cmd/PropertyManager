@@ -317,6 +317,15 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_vendor_id_to_property_expenses",
+    async run() {
+      if (!(await tableExists("property_expenses"))) return;
+      if (!(await columnExists("property_expenses", "vendor_id"))) {
+        await runRaw(`ALTER TABLE property_expenses ADD COLUMN vendor_id integer REFERENCES vendors(id) ON DELETE SET NULL`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

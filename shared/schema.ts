@@ -691,6 +691,7 @@ export const propertyExpenses = pgTable("property_expenses", {
   expenseDate: timestamp("expense_date").notNull(),
   description: text("description"),
   vendorName: varchar("vendor_name", { length: 255 }),
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: 'set null' }),
   paymentMethod: varchar("payment_method", { length: 50 }),
   receiptNumber: varchar("receipt_number", { length: 100 }),
   isRecurring: boolean("is_recurring").notNull().default(false),

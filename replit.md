@@ -70,6 +70,15 @@ The `bookingGuests` table stores multiple guest ID proofs per booking with front
 - **Frontend**: Properties page split into Active Properties + Disabled/Closed Properties sections; PowerOff button on each active card opens disable dialog with two-step choice (temporary/permanent → archive/delete); Disabled cards show Re-enable button for temporary only; permanently closed cards show historical data export only
 - **Rules**: Temporary = under maintenance/construction, can re-enable; Permanent + archive = historical records kept; Permanent + delete = removes all data
 
+### Vendor / Expense Design (Option A)
+- **Expenses are the master** — every expense record goes to `property_expenses` table; wallet is debited immediately on creation
+- **Vendors maintain their own payment records** — `vendors` + `vendorTransactions` track credit purchases and payments independently
+- **Link**: `property_expenses.vendorId` (FK to `vendors.id`, nullable, ON DELETE SET NULL) — added via migration #18
+- **Expense form**: has optional Vendor selector dropdown (fetches vendors for the selected property); when a vendor is chosen, `vendorId` + `vendorName` are both saved to the expense record
+- **Expense list**: shows vendor name as a grey badge next to the category badge when linked
+- **Vendor payments**: `paymentMethod` simplified to Cash / UPI only; payment transactions still debit the correct wallet
+- **No double-counting**: vendor credit purchase does NOT create an expense record; the two systems are independent
+
 ### Key Design Patterns
 - **Shared schema**: Single source of truth for DB schema.
 - **Insert schemas**: Zod schemas for request validation.

@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory } from "@shared/schema";
+import { insertPropertyExpenseSchema, insertExpenseCategorySchema, type PropertyExpense, type Property, type ExpenseCategory, type Vendor } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
 import { Plus, Receipt, Settings, Trash2, Pencil, BarChart3, Lightbulb, Target, Zap, TrendingUp, AlertTriangle, Award, Banknote, Building2, CreditCard, Wallet, AlertCircle } from "lucide-react";
@@ -35,6 +35,7 @@ const expenseFormSchema = insertPropertyExpenseSchema.extend({
   expenseDate: z.string().min(1, "Date is required"),
   categoryId: z.number().min(1, "Category is required"),
   paymentMethod: z.string().optional(),
+  vendorId: z.number().nullable().optional(),
 });
 
 const categoryFormSchema = z.object({
@@ -120,7 +121,21 @@ export default function Expenses() {
       expenseDate: new Date().toISOString().split("T")[0],
       description: "",
       paymentMethod: "cash",
+      vendorId: null as number | null,
     },
+  });
+
+  const watchedPropertyId = expenseForm.watch("propertyId");
+
+  const { data: vendorsForForm = [] } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors", watchedPropertyId],
+    queryFn: async () => {
+      if (!watchedPropertyId || watchedPropertyId === 0) return [];
+      const response = await fetch(`/api/vendors?propertyId=${watchedPropertyId}`, { credentials: "include" });
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!watchedPropertyId && watchedPropertyId !== 0,
   });
 
   const categoryForm = useForm({
@@ -136,6 +151,7 @@ export default function Expenses() {
 
   const createExpenseMutation = useMutation({
     mutationFn: async (data: z.infer<typeof expenseFormSchema>) => {
+      const selectedVendor = data.vendorId ? vendorsForForm.find(v => v.id === data.vendorId) : null;
       const response = await apiRequest("/api/expenses", "POST", {
         propertyId: data.propertyId,
         categoryId: data.categoryId,
@@ -144,6 +160,8 @@ export default function Expenses() {
         description: data.description || null,
         paymentMethod: data.paymentMethod || 'cash',
         isRecurring: false,
+        vendorId: data.vendorId || null,
+        vendorName: selectedVendor?.name || null,
       });
       return response.json();
     },
@@ -162,6 +180,7 @@ export default function Expenses() {
         expenseDate: new Date().toISOString().split("T")[0],
         description: "",
         paymentMethod: "cash",
+        vendorId: null,
       });
       toast({
         title: "Expense recorded",
@@ -580,6 +599,35 @@ export default function Expenses() {
 
                     <FormField
                       control={expenseForm.control}
+                      name="vendorId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Vendor (Optional)</FormLabel>
+                          <Select
+                            value={field.value?.toString() || "none"}
+                            onValueChange={(value) => field.onChange(value === "none" ? null : parseInt(value))}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-vendor">
+                                <SelectValue placeholder="Select vendor (optional)" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="none">No vendor</SelectItem>
+                              {vendorsForForm.map((vendor) => (
+                                <SelectItem key={vendor.id} value={vendor.id.toString()}>
+                                  {vendor.name}{vendor.category ? ` (${vendor.category})` : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
                       name="amount"
                       render={({ field }) => (
                         <FormItem>
@@ -799,6 +847,11 @@ export default function Expenses() {
                               <Badge variant="outline" className="text-xs">
                                 {getPropertyName(expense.propertyId)}
                               </Badge>
+                              {expense.vendorName && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {expense.vendorName}
+                                </Badge>
+                              )}
                             </div>
                             <p className="text-sm text-muted-foreground mt-1">
                               {expense.description || "No description"}
