@@ -14,7 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVendorSchema, insertVendorTransactionSchema, type Vendor, type VendorTransaction, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye, Banknote, AlertCircle } from "lucide-react";
+import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye, Banknote, AlertCircle, PlusCircle, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,6 +55,8 @@ export default function Vendors() {
   const [selectedVendor, setSelectedVendor] = useState<VendorWithBalance | null>(null);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [transactionType, setTransactionType] = useState<"credit" | "payment">("credit");
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -136,6 +138,23 @@ export default function Vendors() {
       referenceNumber: "",
       expenseCategoryId: undefined,
       propertyId: selectedProperty || 0,
+    },
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await apiRequest("/api/expense-categories", "POST", { name, isDefault: false, propertyId: null });
+      return response.json();
+    },
+    onSuccess: (newCat: ExpenseCategory) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expense-categories"] });
+      vendorForm.setValue("category", newCat.name);
+      setIsAddingCategory(false);
+      setNewCategoryName("");
+      toast({ title: "Category created", description: `"${newCat.name}" added to expense categories.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create category", variant: "destructive" });
     },
   });
 
@@ -313,7 +332,6 @@ export default function Vendors() {
   const totalCredit = vendors.reduce((sum, v) => sum + v.totalCredit, 0);
   const totalPayments = vendors.reduce((sum, v) => sum + v.totalPayment, 0);
 
-  const vendorCategories = ["Grocery", "Supplies", "Maintenance", "Laundry", "Kitchen", "Beverages", "Other"];
   const paymentMethods = ["Cash", "Bank Transfer", "UPI", "Cheque", "Other"];
 
   return (
@@ -562,7 +580,7 @@ export default function Vendors() {
         </>
       )}
 
-      <Dialog open={isVendorDialogOpen} onOpenChange={setIsVendorDialogOpen}>
+      <Dialog open={isVendorDialogOpen} onOpenChange={(open) => { setIsVendorDialogOpen(open); if (!open) { setIsAddingCategory(false); setNewCategoryName(""); } }}>
         <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingVendor ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
@@ -618,20 +636,71 @@ export default function Vendors() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Category</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              value={field.value || ""}
-                              list="vendor-category-suggestions"
-                              placeholder="Type or pick a category"
-                              data-testid="input-vendor-category"
-                            />
-                          </FormControl>
-                          <datalist id="vendor-category-suggestions">
-                            {vendorCategories.map((cat) => (
-                              <option key={cat} value={cat} />
-                            ))}
-                          </datalist>
+                          <Select value={field.value || ""} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-vendor-category">
+                                <SelectValue placeholder="Select category" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {categories.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {!isAddingCategory ? (
+                            <button
+                              type="button"
+                              onClick={() => setIsAddingCategory(true)}
+                              className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                              data-testid="button-add-new-category"
+                            >
+                              <PlusCircle className="h-3 w-3" />
+                              Add new category
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-2 mt-1">
+                              <Input
+                                value={newCategoryName}
+                                onChange={(e) => setNewCategoryName(e.target.value)}
+                                placeholder="Category name"
+                                className="h-7 text-xs"
+                                autoFocus
+                                data-testid="input-new-category-name"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    if (newCategoryName.trim()) createCategoryMutation.mutate(newCategoryName.trim());
+                                  }
+                                  if (e.key === "Escape") {
+                                    setIsAddingCategory(false);
+                                    setNewCategoryName("");
+                                  }
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 shrink-0"
+                                disabled={!newCategoryName.trim() || createCategoryMutation.isPending}
+                                onClick={() => { if (newCategoryName.trim()) createCategoryMutation.mutate(newCategoryName.trim()); }}
+                                data-testid="button-save-new-category"
+                              >
+                                <Check className="h-3 w-3 text-green-600" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 shrink-0"
+                                onClick={() => { setIsAddingCategory(false); setNewCategoryName(""); }}
+                                data-testid="button-cancel-new-category"
+                              >
+                                <X className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </div>
+                          )}
                           <FormMessage />
                         </FormItem>
                       )}
