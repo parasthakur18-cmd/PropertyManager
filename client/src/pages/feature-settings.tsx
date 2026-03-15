@@ -7,13 +7,14 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare
+  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 interface FeatureSettings {
   id: number;
@@ -157,6 +158,58 @@ export default function FeatureSettings() {
       toast({ title: "Error", description: error.message || "Failed to update", variant: "destructive" });
     },
   });
+
+  // Food order WhatsApp notification numbers
+  const [newPhoneNumber, setNewPhoneNumber] = useState("");
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: foodOrderWa, isLoading: foodOrderWaLoading } = useQuery<{ enabled: boolean; phoneNumbers: string[] }>({
+    queryKey: ["/api/food-order-whatsapp-settings", propertyId],
+    enabled: !!propertyId,
+    queryFn: async () => {
+      const res = await fetch(`/api/food-order-whatsapp-settings/${propertyId}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const saveFoodOrderWaMutation = useMutation({
+    mutationFn: async (data: { enabled: boolean; phoneNumbers: string[] }) => {
+      return await apiRequest(`/api/food-order-whatsapp-settings/${propertyId}`, "PUT", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/food-order-whatsapp-settings", propertyId] });
+      toast({ title: "Saved", description: "Order notification settings updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Save failed", variant: "destructive" });
+    },
+  });
+
+  const handleToggleFoodOrderWa = (enabled: boolean) => {
+    saveFoodOrderWaMutation.mutate({ enabled, phoneNumbers: foodOrderWa?.phoneNumbers ?? [] });
+  };
+
+  const handleAddPhone = () => {
+    const raw = newPhoneNumber.trim().replace(/\D/g, "");
+    if (raw.length < 10) {
+      toast({ title: "Invalid number", description: "Enter a valid 10-digit phone number", variant: "destructive" });
+      return;
+    }
+    const current = foodOrderWa?.phoneNumbers ?? [];
+    if (current.includes(raw)) {
+      toast({ title: "Already added", description: "This number is already in the list" });
+      return;
+    }
+    saveFoodOrderWaMutation.mutate({ enabled: foodOrderWa?.enabled ?? true, phoneNumbers: [...current, raw] });
+    setNewPhoneNumber("");
+    phoneInputRef.current?.focus();
+  };
+
+  const handleRemovePhone = (phone: string) => {
+    const updated = (foodOrderWa?.phoneNumbers ?? []).filter((p) => p !== phone);
+    saveFoodOrderWaMutation.mutate({ enabled: foodOrderWa?.enabled ?? true, phoneNumbers: updated });
+  };
 
   const handleToggle = async (key: string, value: boolean) => {
     await updateMutation.mutateAsync({ [key]: value } as any);
@@ -342,6 +395,94 @@ export default function FeatureSettings() {
           );
         })}
       </div>
+
+      {/* Food Order WhatsApp Notification Numbers */}
+      <Card className="overflow-hidden border-orange-200 dark:border-orange-800">
+        <CardHeader className="bg-orange-50 dark:bg-orange-950 border-b pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-orange-600" />
+              <div>
+                <CardTitle className="text-lg">Food Order Notification Numbers</CardTitle>
+                <CardDescription>WhatsApp numbers that receive alerts when a guest places a food order</CardDescription>
+              </div>
+            </div>
+            <Switch
+              checked={foodOrderWa?.enabled ?? false}
+              onCheckedChange={handleToggleFoodOrderWa}
+              disabled={saveFoodOrderWaMutation.isPending || foodOrderWaLoading}
+              data-testid="toggle-food-order-wa"
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="pt-5 space-y-4">
+          {foodOrderWaLoading ? (
+            <div className="flex gap-2 flex-wrap">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-8 w-32 rounded-full" />)}
+            </div>
+          ) : (
+            <>
+              {/* Existing numbers */}
+              {(foodOrderWa?.phoneNumbers ?? []).length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {(foodOrderWa?.phoneNumbers ?? []).map((phone) => (
+                    <Badge
+                      key={phone}
+                      variant="secondary"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-100 border border-orange-200 dark:border-orange-700"
+                      data-testid={`badge-phone-${phone}`}
+                    >
+                      <Phone className="h-3 w-3" />
+                      {phone}
+                      <button
+                        onClick={() => handleRemovePhone(phone)}
+                        disabled={saveFoodOrderWaMutation.isPending}
+                        className="ml-1 hover:text-red-500 transition-colors"
+                        data-testid={`remove-phone-${phone}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic">No numbers added yet. Add at least one number to receive order alerts.</p>
+              )}
+
+              {/* Add new number */}
+              <div className="flex gap-2 items-center">
+                <div className="relative flex-1 max-w-xs">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    ref={phoneInputRef}
+                    type="tel"
+                    placeholder="10-digit mobile number"
+                    value={newPhoneNumber}
+                    onChange={(e) => setNewPhoneNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddPhone(); }}
+                    className="pl-9"
+                    maxLength={10}
+                    data-testid="input-new-phone"
+                  />
+                </div>
+                <Button
+                  onClick={handleAddPhone}
+                  disabled={saveFoodOrderWaMutation.isPending || newPhoneNumber.length < 10}
+                  size="sm"
+                  data-testid="button-add-phone"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Enter 10-digit Indian mobile numbers (without +91). All numbers will receive WhatsApp alerts the moment a guest places a food order.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="overflow-hidden border-green-200 dark:border-green-800">
         <CardHeader className="bg-green-50 dark:bg-green-950 border-b pb-3">
