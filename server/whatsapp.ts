@@ -11,7 +11,8 @@
  * - AUTHKEY_WA_PAYMENT_CONFIRMATION: Template for payment received (default: 18649)
  * - AUTHKEY_WA_CHECKIN_DETAILS: Template for check-in notification (default: 28769)
  * - AUTHKEY_WA_OTA_BOOKING: Template for new OTA booking alert to staff (default: 28770)
- * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout/billing (default: 18667)
+ * - AUTHKEY_WA_CHECKOUT_DETAILS: Template for checkout thank-you (default: 28968)
+ * - AUTHKEY_WA_FOOD_ORDER_RECEIVED: Template for food order confirmation to guest (default: 28983)
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
  * - AUTHKEY_WA_PREBILL: Template for pre-bill verification (default: 19852)
@@ -272,24 +273,32 @@ export async function sendOtaBookingNotification(
 }
 
 /**
- * Send checkout/billing notification WhatsApp message
- * 
+ * Send checkout thank-you WhatsApp message to guest
+ * Template: WID 28968
+ *
+ * Template text:
+ * "Dear {{1}} ,
+ * We hope you had a wonderful stay with us. 😊
+ * Your check-out has been successfully completed. Thank you for choosing * {{2}} *.
+ * We truly appreciate your visit and look forward to welcoming you again soon in the beautiful Himalayas. 🌄
+ * Safe travels! 🙏"
+ *
  * Template variables (in order):
  * 1. Guest Name
  * 2. Property Name
- * 3. Total Amount
- * 4. Checkout Date
- * 5. Room Numbers
+ *
+ * Note: older parameters (totalAmount, checkoutDate, roomNumbers) are kept in the
+ * function signature for backward compatibility but are not passed to the template.
  */
 export async function sendCheckoutNotification(
   phoneNumber: string,
   guestName: string,
   propertyName: string,
-  totalAmount: string,
-  checkoutDate: string,
-  roomNumbers: string
+  totalAmount?: string,
+  checkoutDate?: string,
+  roomNumbers?: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_CHECKOUT_DETAILS || "18667";
+  const templateId = process.env.AUTHKEY_WA_CHECKOUT_DETAILS || "28968";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -297,7 +306,41 @@ export async function sendCheckoutNotification(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, propertyName, totalAmount, checkoutDate, roomNumbers],
+    variables: [guestName, propertyName],
+  });
+}
+
+/**
+ * Send food order received confirmation WhatsApp message to guest
+ * Template: WID 28983
+ *
+ * Template text:
+ * "🍽️ *Order Received*
+ * Dear {{1}},
+ * Your food order has been successfully received and sent to the kitchen. 👨‍🍳
+ * ⏳ *Preparation Time:* 20–30 minutes
+ * Your meal is now being freshly prepared and will be served shortly.
+ * 🌿 *While you wait*, you can explore our range of *Himalayan organic products*, sourced directly from the mountains.
+ * 🙏 *Thank you for ordering with us.*
+ * Visit our website to explore more.
+ * 👉 www.thepahadicompany.in"
+ *
+ * Template variables (in order):
+ * 1. Guest Name (or customer name for restaurant orders)
+ */
+export async function sendFoodOrderReceived(
+  phoneNumber: string,
+  guestName: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_RECEIVED || "28983";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  const countryCode = "91";
+
+  return sendWhatsAppMessage({
+    countryCode,
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName],
   });
 }
 

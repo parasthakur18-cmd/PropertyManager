@@ -57,7 +57,8 @@ import {
   sendPaymentReminder,
   sendSelfCheckinLink,
   sendTaskReminder,
-  sendOtaBookingNotification
+  sendOtaBookingNotification,
+  sendFoodOrderReceived
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
@@ -798,6 +799,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const order = await storage.createOrder(orderData);
+
+      // Send WhatsApp confirmation to guest (WID 28983)
+      try {
+        if (orderType === "room" && orderData.guestId) {
+          const guest = await storage.getGuest(orderData.guestId);
+          if (guest?.phone) {
+            await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
+            console.log(`[WhatsApp] Food order confirmation sent to guest ${guest.fullName} (room order #${order.id})`);
+          }
+        } else if (orderType === "restaurant" && customerPhone && customerName) {
+          await sendFoodOrderReceived(customerPhone, customerName);
+          console.log(`[WhatsApp] Food order confirmation sent to ${customerName} (restaurant order #${order.id})`);
+        }
+      } catch (waErr: any) {
+        console.warn(`[WhatsApp] Food order confirmation failed (non-critical):`, waErr.message);
+      }
+
       res.status(201).json(order);
     } catch (error: any) {
       console.error("Public order error:", error);
@@ -6411,6 +6429,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             }
           } catch (foodWaErr: any) {
             console.warn(`[WhatsApp] Food order settings fetch failed:`, foodWaErr.message);
+          }
+        }
+
+        // Send WhatsApp order confirmation to the guest (WID 28983)
+        if (guest?.phone) {
+          try {
+            await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
+            console.log(`[WhatsApp] Food order confirmation (WID 28983) sent to guest ${guest.fullName} (order #${order.id})`);
+          } catch (guestWaErr: any) {
+            console.warn(`[WhatsApp] Guest food order confirmation failed:`, guestWaErr.message);
           }
         }
       } catch (notifError: any) {
