@@ -974,35 +974,6 @@ export default function Vendors() {
                 )}
               />
 
-              {transactionType === "credit" && (
-                <FormField
-                  control={transactionForm.control}
-                  name="expenseCategoryId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Expense Category</FormLabel>
-                      <Select
-                        value={field.value?.toString() || ""}
-                        onValueChange={(value) => field.onChange(parseInt(value))}
-                      >
-                        <FormControl>
-                          <SelectTrigger data-testid="select-expense-category">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {categories.map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id.toString()}>
-                              {cat.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
 
               <FormField
                 control={transactionForm.control}
