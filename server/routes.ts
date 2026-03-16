@@ -2022,9 +2022,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const currentUser = await storage.getUser(userId);
       if (!currentUser) return res.status(403).json({ message: "User not found" });
       const tenant = getTenantContext(currentUser);
-      if (!tenant.isSuperAdmin) return res.status(403).json({ message: "Only Super Admin can disable properties" });
+      const isAdmin = tenant.isSuperAdmin || tenant.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only property owners can disable properties" });
+      }
 
       const propertyId = parseInt(req.params.id);
+
+      // Admins can only manage their own assigned properties (super-admin can manage all)
+      if (!tenant.isSuperAdmin) {
+        const assigned = tenant.assignedPropertyIds || [];
+        if (!assigned.includes(propertyId)) {
+          return res.status(403).json({ message: "You can only disable your own properties" });
+        }
+      }
       const { disableType, disableReason } = req.body as { disableType: "temporary" | "permanent"; disableReason?: string };
       if (!["temporary", "permanent"].includes(disableType)) {
         return res.status(400).json({ message: "Invalid disableType" });
@@ -2055,9 +2066,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const currentUser = await storage.getUser(userId);
       if (!currentUser) return res.status(403).json({ message: "User not found" });
       const tenant = getTenantContext(currentUser);
-      if (!tenant.isSuperAdmin) return res.status(403).json({ message: "Only Super Admin can enable properties" });
+      const isAdmin = tenant.isSuperAdmin || tenant.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).json({ message: "Only property owners can enable properties" });
+      }
 
       const propertyId = parseInt(req.params.id);
+
+      // Admins can only manage their own assigned properties (super-admin can manage all)
+      if (!tenant.isSuperAdmin) {
+        const assigned = tenant.assignedPropertyIds || [];
+        if (!assigned.includes(propertyId)) {
+          return res.status(403).json({ message: "You can only enable your own properties" });
+        }
+      }
       const prop = await storage.getProperty(propertyId);
       if (!prop) return res.status(404).json({ message: "Property not found" });
       if (prop.disableType === "permanent") {
