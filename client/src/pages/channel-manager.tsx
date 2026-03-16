@@ -715,10 +715,11 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
           };
         });
       if (rates.length === 0) throw new Error("Set at least one rate");
-      return apiRequest("/api/aiosell/push-rates", "POST", {
+      const res = await apiRequest("/api/aiosell/push-rates", "POST", {
         propertyId,
         updates: [{ startDate, endDate, rates }],
       });
+      return res.json();
     },
     onSuccess: (data: any) => {
       setLastPushResult({ success: data.success, message: data.message });
@@ -865,10 +866,11 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
           available: parseInt(inventoryValues[m.aiosellRoomCode] || "0"),
         }));
       if (rooms.length === 0) throw new Error("Set at least one inventory count");
-      return apiRequest("/api/aiosell/push-inventory", "POST", {
+      const res = await apiRequest("/api/aiosell/push-inventory", "POST", {
         propertyId,
         updates: [{ startDate, endDate, rooms }],
       });
+      return res.json();
     },
     onSuccess: (data: any) => {
       setLastPushResult({ success: data.success, message: data.message });
