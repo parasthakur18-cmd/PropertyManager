@@ -10,7 +10,7 @@ import { useLocation } from "wouter";
 import { useState, useRef } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X
+  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X, Store
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +35,8 @@ interface FeatureSettings {
   paymentReminderEnabled: boolean;
   paymentReminderHours: number;
   maxPaymentReminders: number;
+  vendorReminderEnabled: boolean;
+  vendorReminderDaysBefore: number;
 }
 
 interface TemplateSetting {
@@ -712,6 +714,64 @@ export default function FeatureSettings() {
             <p><strong>How it works:</strong> After a guest creates a booking with pending advance payment, 
             the system will automatically send WhatsApp reminders at the configured interval until 
             the payment is received or the maximum number of reminders is reached.</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Vendor Bill Reminders */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Store className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-lg">Vendor Bill Reminders</CardTitle>
+              <CardDescription>Get notified before vendor credit bills are due</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-6">
+          <div className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
+            <div className="flex-1">
+              <p className="font-medium">Enable Due Date Reminders</p>
+              <p className="text-sm text-muted-foreground">
+                Receive in-app notifications when vendor credit bills are approaching their due date
+              </p>
+            </div>
+            <Switch
+              checked={settings.vendorReminderEnabled !== false}
+              onCheckedChange={(value) => {
+                updateMutation.mutate({ vendorReminderEnabled: value } as any);
+              }}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-vendorReminderEnabled"
+            />
+          </div>
+
+          {settings.vendorReminderEnabled !== false && (
+            <div className="grid gap-4 md:grid-cols-2 p-3 rounded-lg bg-muted/30">
+              <div className="space-y-2">
+                <Label htmlFor="vendorReminderDaysBefore">Notify Days Before Due</Label>
+                <Input
+                  id="vendorReminderDaysBefore"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={settings.vendorReminderDaysBefore ?? 2}
+                  onChange={(e) => {
+                    updateMutation.mutate({ vendorReminderDaysBefore: parseInt(e.target.value) || 2 } as any);
+                  }}
+                  disabled={updateMutation.isPending}
+                  data-testid="input-vendorReminderDaysBefore"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Send reminder this many days before the bill is due
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg">
+            <p><strong>How it works:</strong> When a credit bill has a due date set, the system will automatically create an in-app notification for admin and manager users when the due date is approaching. Overdue bills also trigger a reminder.</p>
           </div>
         </CardContent>
       </Card>

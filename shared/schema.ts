@@ -889,6 +889,8 @@ export const vendorTransactions = pgTable("vendor_transactions", {
   expenseCategoryId: integer("expense_category_id").references(() => expenseCategories.id),
   createdBy: varchar("created_by", { length: 255 }),
   notes: text("notes"),
+  dueDate: timestamp("due_date"),
+  dueReminderSent: boolean("due_reminder_sent").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -941,6 +943,9 @@ export const featureSettings = pgTable("feature_settings", {
   paymentReminderEnabled: boolean("payment_reminder_enabled").notNull().default(true),
   paymentReminderHours: integer("payment_reminder_hours").default(6),
   maxPaymentReminders: integer("max_payment_reminders").default(3),
+  // Vendor Bill Due Date Reminder Settings
+  vendorReminderEnabled: boolean("vendor_reminder_enabled").default(true),
+  vendorReminderDaysBefore: integer("vendor_reminder_days_before").default(2),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

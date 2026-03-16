@@ -326,6 +326,30 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_vendor_transaction_due_date",
+    async run() {
+      if (!(await tableExists("vendor_transactions"))) return;
+      if (!(await columnExists("vendor_transactions", "due_date"))) {
+        await runRaw(`ALTER TABLE vendor_transactions ADD COLUMN due_date timestamp`);
+      }
+      if (!(await columnExists("vendor_transactions", "due_reminder_sent"))) {
+        await runRaw(`ALTER TABLE vendor_transactions ADD COLUMN due_reminder_sent boolean DEFAULT false`);
+      }
+    },
+  },
+  {
+    name: "add_vendor_reminder_settings",
+    async run() {
+      if (!(await tableExists("feature_settings"))) return;
+      if (!(await columnExists("feature_settings", "vendor_reminder_enabled"))) {
+        await runRaw(`ALTER TABLE feature_settings ADD COLUMN vendor_reminder_enabled boolean DEFAULT true`);
+      }
+      if (!(await columnExists("feature_settings", "vendor_reminder_days_before"))) {
+        await runRaw(`ALTER TABLE feature_settings ADD COLUMN vendor_reminder_days_before integer DEFAULT 2`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

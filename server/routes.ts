@@ -32,10 +32,11 @@ import {
   employeePerformanceMetrics,
   taskNotificationLogs,
   otpTokens,
+  vendorTransactions,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
-import { desc, sql, eq, and, isNull, not, or, gt, gte, lt, lte, param, inArray } from "drizzle-orm";
+import { desc, sql, eq, and, isNull, isNotNull, not, or, gt, gte, lt, lte, param, inArray } from "drizzle-orm";
 import { format } from "date-fns";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
@@ -10770,13 +10771,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(403).json({ message: "Unauthorized" });
       }
       const id = parseInt(req.params.id);
-      const { amount, transactionDate, invoiceNumber, description, expenseCategoryId } = req.body;
+      const { amount, transactionDate, invoiceNumber, description, expenseCategoryId, dueDate } = req.body;
       const updateData: any = {};
       if (amount !== undefined) updateData.amount = amount.toString();
       if (transactionDate !== undefined) updateData.transactionDate = new Date(transactionDate).toISOString();
       if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
       if (description !== undefined) updateData.description = description;
       if (expenseCategoryId !== undefined) updateData.expenseCategoryId = expenseCategoryId;
+      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
       const updated = await storage.updateVendorTransaction(id, updateData);
       res.json(updated);
     } catch (error: any) {
@@ -16493,6 +16495,86 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   }, 15 * 60 * 1000); // Every 15 minutes
   
   console.log("[AUTO-CLOSE] Auto-close day job started - checks every 15 minutes, runs at midnight");
+
+  // ==========================================
+  // BACKGROUND JOB: Vendor Bill Due Date Reminders
+  // - Checks for credit transactions with upcoming due dates
+  // - Creates in-app notifications for admins when due date is near
+  // ==========================================
+  async function processVendorDueReminders() {
+    try {
+      const now = new Date();
+      const pendingTx = await db
+        .select()
+        .from(vendorTransactions)
+        .where(
+          and(
+            eq(vendorTransactions.transactionType, "credit"),
+            isNotNull(vendorTransactions.dueDate),
+            eq(vendorTransactions.dueReminderSent, false)
+          )
+        );
+
+      let sentCount = 0;
+      for (const tx of pendingTx) {
+        if (!tx.dueDate) continue;
+        const dueDate = new Date(tx.dueDate);
+        if (isNaN(dueDate.getTime())) continue;
+
+        // Get reminder settings for the property
+        const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, tx.propertyId)).limit(1);
+        const settings = settingsResult[0];
+        const reminderEnabled = settings?.vendorReminderEnabled !== false;
+        if (!reminderEnabled) continue;
+
+        const daysBefore = settings?.vendorReminderDaysBefore ?? 2;
+        const msBeforeDue = dueDate.getTime() - now.getTime();
+        const daysUntilDue = msBeforeDue / (1000 * 60 * 60 * 24);
+
+        if (daysUntilDue <= daysBefore && daysUntilDue >= -1) {
+          // Get admin users for this property
+          const adminUsers = await db.select().from(users).where(
+            or(
+              eq(users.role, "admin"),
+              eq(users.role, "manager"),
+              eq(users.role, "super_admin"),
+              eq(users.role, "super-admin")
+            )
+          );
+
+          const dueDateFormatted = dueDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+          const amount = parseFloat(tx.amount.toString()).toLocaleString("en-IN", { style: "currency", currency: "INR" });
+          const overdue = daysUntilDue < 0;
+          const title = overdue ? `Vendor Bill Overdue` : `Vendor Bill Due ${daysUntilDue < 1 ? "Today" : `in ${Math.ceil(daysUntilDue)} day(s)`}`;
+          const message = `${amount} credit bill${tx.invoiceNumber ? ` (Inv: ${tx.invoiceNumber})` : ""} is ${overdue ? "overdue" : `due on ${dueDateFormatted}`}. Vendor ID: ${tx.vendorId}.`;
+
+          for (const admin of adminUsers) {
+            await db.insert(notifications).values({
+              userId: admin.id,
+              type: "vendor_due",
+              title,
+              message,
+              soundType: "alert",
+              relatedId: tx.id,
+              relatedType: "vendor_transaction",
+            });
+          }
+
+          // Mark reminder sent
+          await db.update(vendorTransactions).set({ dueReminderSent: true }).where(eq(vendorTransactions.id, tx.id));
+          sentCount++;
+          console.log(`[VENDOR-REMINDER] Sent due reminder for vendor transaction #${tx.id}`);
+        }
+      }
+      if (sentCount > 0) console.log(`[VENDOR-REMINDER] Sent ${sentCount} vendor due date reminders`);
+    } catch (error: any) {
+      console.error("[VENDOR-REMINDER] Error:", error.message);
+    }
+  }
+
+  setTimeout(() => { processVendorDueReminders(); }, 15000);
+  setInterval(() => { processVendorDueReminders(); }, 15 * 60 * 1000);
+  console.log("[VENDOR-REMINDER] Vendor due date reminder job started");
 
   // ==================== ERROR REPORTS ====================
   app.post("/api/error-reports", isAuthenticated, async (req: any, res) => {

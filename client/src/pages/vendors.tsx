@@ -31,6 +31,7 @@ const transactionFormSchema = z.object({
   transactionType: z.enum(["credit", "payment"]),
   amount: z.string().min(1, "Amount is required"),
   transactionDate: z.string().min(1, "Date is required"),
+  dueDate: z.string().optional(),
   description: z.string().optional(),
   invoiceNumber: z.string().optional(),
   paymentMethod: z.string().optional(),
@@ -50,6 +51,7 @@ const paymentFormSchema = z.object({
 const editTransactionFormSchema = z.object({
   amount: z.string().min(1, "Amount is required"),
   transactionDate: z.string().min(1, "Date is required"),
+  dueDate: z.string().optional(),
   invoiceNumber: z.string().optional(),
   description: z.string().optional(),
   expenseCategoryId: z.number().optional(),
@@ -152,6 +154,7 @@ export default function Vendors() {
       transactionType: "credit" as const,
       amount: "",
       transactionDate: new Date().toISOString().split("T")[0],
+      dueDate: "",
       description: "",
       invoiceNumber: "",
       paymentMethod: "",
@@ -177,6 +180,7 @@ export default function Vendors() {
     defaultValues: {
       amount: "",
       transactionDate: new Date().toISOString().split("T")[0],
+      dueDate: "",
       invoiceNumber: "",
       description: "",
       expenseCategoryId: undefined,
@@ -274,6 +278,7 @@ export default function Vendors() {
         ...data,
         amount: data.amount,
         transactionDate: new Date(data.transactionDate).toISOString(),
+        dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
         propertyId: selectedProperty,
         vendorName: selectedVendor.name,
       });
@@ -371,8 +376,11 @@ export default function Vendors() {
 
   const updateTransactionMutation = useMutation({
     mutationFn: async (data: z.infer<typeof editTransactionFormSchema> & { id: number }) => {
-      const { id, ...rest } = data;
-      const response = await apiRequest(`/api/vendor-transactions/${id}`, "PATCH", rest);
+      const { id, dueDate, ...rest } = data;
+      const response = await apiRequest(`/api/vendor-transactions/${id}`, "PATCH", {
+        ...rest,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
+      });
       return response.json();
     },
     onSuccess: () => {
@@ -411,6 +419,7 @@ export default function Vendors() {
         transactionType: "credit",
         amount: "",
         transactionDate: new Date().toISOString().split("T")[0],
+        dueDate: "",
         description: "",
         invoiceNumber: "",
         paymentMethod: undefined,
@@ -436,6 +445,7 @@ export default function Vendors() {
     editTransactionForm.reset({
       amount: transaction.amount.toString(),
       transactionDate: new Date(transaction.transactionDate).toISOString().split("T")[0],
+      dueDate: transaction.dueDate ? new Date(transaction.dueDate).toISOString().split("T")[0] : "",
       invoiceNumber: transaction.invoiceNumber || "",
       description: transaction.description || "",
       expenseCategoryId: transaction.expenseCategoryId || undefined,
@@ -974,6 +984,24 @@ export default function Vendors() {
                 )}
               />
 
+              {transactionType === "credit" && (
+                <FormField
+                  control={transactionForm.control}
+                  name="dueDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1">
+                        Due Date
+                        <span className="text-xs text-muted-foreground font-normal">(optional — for payment reminder)</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} data-testid="input-due-date" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={transactionForm.control}
@@ -1164,6 +1192,7 @@ export default function Vendors() {
                           <TableHead>Date</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead>Description</TableHead>
+                          <TableHead>Due Date</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
                           <TableHead className="w-20"></TableHead>
                         </TableRow>
@@ -1181,6 +1210,24 @@ export default function Vendors() {
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                               {transaction.description || transaction.invoiceNumber || "-"}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {transaction.transactionType === "credit" && transaction.dueDate ? (
+                                (() => {
+                                  const due = new Date(transaction.dueDate);
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  const overdue = due < today;
+                                  return (
+                                    <span className={overdue ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                                      {format(due, "dd MMM yyyy")}
+                                      {overdue && <span className="ml-1 text-xs">(overdue)</span>}
+                                    </span>
+                                  );
+                                })()
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell className={`text-right font-mono ${
                               transaction.transactionType === "credit" ? "text-orange-600" : "text-green-600"
