@@ -10763,6 +10763,27 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   });
 
   // DELETE /api/vendor-transactions/:id - Delete a transaction
+  app.patch("/api/vendor-transactions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!['admin', 'manager', 'super_admin', 'super-admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      const id = parseInt(req.params.id);
+      const { amount, transactionDate, invoiceNumber, description, expenseCategoryId } = req.body;
+      const updateData: any = {};
+      if (amount !== undefined) updateData.amount = amount.toString();
+      if (transactionDate !== undefined) updateData.transactionDate = new Date(transactionDate).toISOString();
+      if (invoiceNumber !== undefined) updateData.invoiceNumber = invoiceNumber;
+      if (description !== undefined) updateData.description = description;
+      if (expenseCategoryId !== undefined) updateData.expenseCategoryId = expenseCategoryId;
+      const updated = await storage.updateVendorTransaction(id, updateData);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/vendor-transactions/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;

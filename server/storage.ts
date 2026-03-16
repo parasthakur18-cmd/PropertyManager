@@ -4148,6 +4148,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async updateVendorTransaction(id: number, data: Partial<InsertVendorTransaction>): Promise<VendorTransaction> {
+    const [updated] = await db.update(vendorTransactions).set(data).where(eq(vendorTransactions.id, id)).returning();
+    eventBus.emit('vendor-transaction:updated', updated);
+    return updated;
+  }
+
   async deleteVendorTransaction(id: number): Promise<void> {
     await db.delete(vendorTransactions).where(eq(vendorTransactions.id, id));
     eventBus.emit('vendor-transaction:deleted', { id });

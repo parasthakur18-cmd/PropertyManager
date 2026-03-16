@@ -14,7 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertVendorSchema, insertVendorTransactionSchema, type Vendor, type VendorTransaction, type Property, type ExpenseCategory } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye, Banknote, AlertCircle, PlusCircle, Check, X } from "lucide-react";
+import { Plus, Store, IndianRupee, CreditCard, Wallet, Phone, Mail, MapPin, Trash2, Pencil, Building2, ArrowUpCircle, ArrowDownCircle, History, Eye, Banknote, AlertCircle, PlusCircle, Check, X, CheckSquare, Square, Receipt } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,6 +39,22 @@ const transactionFormSchema = z.object({
   propertyId: z.number(),
 });
 
+const paymentFormSchema = z.object({
+  amount: z.string().min(1, "Amount is required"),
+  transactionDate: z.string().min(1, "Date is required"),
+  paymentMethod: z.string().min(1, "Payment method is required"),
+  referenceNumber: z.string().optional(),
+  description: z.string().optional(),
+});
+
+const editTransactionFormSchema = z.object({
+  amount: z.string().min(1, "Amount is required"),
+  transactionDate: z.string().min(1, "Date is required"),
+  invoiceNumber: z.string().optional(),
+  description: z.string().optional(),
+  expenseCategoryId: z.number().optional(),
+});
+
 type VendorWithBalance = Vendor & {
   totalCredit: number;
   totalPayment: number;
@@ -51,6 +67,10 @@ export default function Vendors() {
   const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
   const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isEditTransactionDialogOpen, setIsEditTransactionDialogOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<VendorTransaction | null>(null);
+  const [selectedBillIds, setSelectedBillIds] = useState<number[]>([]);
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<VendorWithBalance | null>(null);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
@@ -138,6 +158,28 @@ export default function Vendors() {
       referenceNumber: "",
       expenseCategoryId: undefined,
       propertyId: selectedProperty || 0,
+    },
+  });
+
+  const paymentForm = useForm({
+    resolver: zodResolver(paymentFormSchema),
+    defaultValues: {
+      amount: "",
+      transactionDate: new Date().toISOString().split("T")[0],
+      paymentMethod: "",
+      referenceNumber: "",
+      description: "",
+    },
+  });
+
+  const editTransactionForm = useForm({
+    resolver: zodResolver(editTransactionFormSchema),
+    defaultValues: {
+      amount: "",
+      transactionDate: new Date().toISOString().split("T")[0],
+      invoiceNumber: "",
+      description: "",
+      expenseCategoryId: undefined,
     },
   });
 
@@ -291,6 +333,60 @@ export default function Vendors() {
     },
   });
 
+  const makePaymentMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof paymentFormSchema>) => {
+      if (!selectedVendor) throw new Error("No vendor selected");
+      const response = await apiRequest(`/api/vendors/${selectedVendor.id}/transactions`, "POST", {
+        transactionType: "payment",
+        amount: data.amount,
+        transactionDate: new Date(data.transactionDate).toISOString(),
+        paymentMethod: data.paymentMethod,
+        referenceNumber: data.referenceNumber,
+        description: data.description,
+        propertyId: selectedProperty,
+        vendorName: selectedVendor.name,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendor?.id, "transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
+      setIsPaymentDialogOpen(false);
+      setSelectedBillIds([]);
+      paymentForm.reset({
+        amount: "",
+        transactionDate: new Date().toISOString().split("T")[0],
+        paymentMethod: "",
+        referenceNumber: "",
+        description: "",
+      });
+      toast({ title: "Payment recorded", description: "Payment has been recorded and wallet updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to record payment", variant: "destructive" });
+    },
+  });
+
+  const updateTransactionMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof editTransactionFormSchema> & { id: number }) => {
+      const { id, ...rest } = data;
+      const response = await apiRequest(`/api/vendor-transactions/${id}`, "PATCH", rest);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendor?.id, "transactions"] });
+      setIsEditTransactionDialogOpen(false);
+      setEditingTransaction(null);
+      toast({ title: "Bill updated", description: "Credit entry has been updated." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update bill", variant: "destructive" });
+    },
+  });
+
   const handleEditVendor = (vendor: Vendor) => {
     setEditingVendor(vendor);
     vendorForm.reset({
@@ -309,18 +405,53 @@ export default function Vendors() {
 
   const handleAddTransaction = (vendor: VendorWithBalance, type: "credit" | "payment") => {
     setSelectedVendor(vendor);
-    setTransactionType(type);
-    transactionForm.reset({
-      transactionType: type,
-      amount: "",
-      transactionDate: new Date().toISOString().split("T")[0],
-      description: "",
-      invoiceNumber: "",
-      paymentMethod: type === "payment" ? "" : undefined,
-      referenceNumber: "",
-      propertyId: selectedProperty || 0,
+    if (type === "credit") {
+      setTransactionType("credit");
+      transactionForm.reset({
+        transactionType: "credit",
+        amount: "",
+        transactionDate: new Date().toISOString().split("T")[0],
+        description: "",
+        invoiceNumber: "",
+        paymentMethod: undefined,
+        referenceNumber: "",
+        propertyId: selectedProperty || 0,
+      });
+      setIsTransactionDialogOpen(true);
+    } else {
+      setSelectedBillIds([]);
+      paymentForm.reset({
+        amount: "",
+        transactionDate: new Date().toISOString().split("T")[0],
+        paymentMethod: "",
+        referenceNumber: "",
+        description: "",
+      });
+      setIsPaymentDialogOpen(true);
+    }
+  };
+
+  const handleEditTransaction = (transaction: VendorTransaction) => {
+    setEditingTransaction(transaction);
+    editTransactionForm.reset({
+      amount: transaction.amount.toString(),
+      transactionDate: new Date(transaction.transactionDate).toISOString().split("T")[0],
+      invoiceNumber: transaction.invoiceNumber || "",
+      description: transaction.description || "",
+      expenseCategoryId: transaction.expenseCategoryId || undefined,
     });
-    setIsTransactionDialogOpen(true);
+    setIsEditTransactionDialogOpen(true);
+  };
+
+  const handleToggleBill = (billId: number, billAmount: number) => {
+    setSelectedBillIds(prev => {
+      const next = prev.includes(billId) ? prev.filter(id => id !== billId) : [...prev, billId];
+      const total = vendorTransactions
+        .filter(t => t.transactionType === "credit" && next.includes(t.id))
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+      paymentForm.setValue("amount", total > 0 ? total.toFixed(2) : "");
+      return next;
+    });
   };
 
   const handleViewDetails = (vendor: VendorWithBalance) => {
@@ -331,8 +462,6 @@ export default function Vendors() {
   const totalOutstanding = vendors.reduce((sum, v) => sum + v.outstandingBalance, 0);
   const totalCredit = vendors.reduce((sum, v) => sum + v.totalCredit, 0);
   const totalPayments = vendors.reduce((sum, v) => sum + v.totalPayment, 0);
-
-  const paymentMethods = ["Cash", "Bank Transfer", "UPI", "Cheque", "Other"];
 
   return (
     <div className="flex-1 p-4 md:p-6 space-y-6 overflow-auto">
@@ -1065,7 +1194,7 @@ export default function Vendors() {
                           <TableHead>Type</TableHead>
                           <TableHead>Description</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="w-10"></TableHead>
+                          <TableHead className="w-20"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1089,14 +1218,26 @@ export default function Vendors() {
                               {parseFloat(transaction.amount.toString()).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
                             </TableCell>
                             <TableCell>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => deleteTransactionMutation.mutate(transaction.id)}
-                                data-testid={`button-delete-transaction-${transaction.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-1">
+                                {transaction.transactionType === "credit" && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleEditTransaction(transaction)}
+                                    data-testid={`button-edit-transaction-${transaction.id}`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => deleteTransactionMutation.mutate(transaction.id)}
+                                  data-testid={`button-delete-transaction-${transaction.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -1107,6 +1248,353 @@ export default function Vendors() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Dialog — shows credit bills for selection, then payment details */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => { setIsPaymentDialogOpen(open); if (!open) setSelectedBillIds([]); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownCircle className="h-5 w-5 text-green-500" />
+              Pay {selectedVendor?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Select bills to pay, then fill in payment details
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4">
+            {/* Bill Selection */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Receipt className="h-4 w-4" />
+                Pending Bills
+              </h4>
+              {transactionsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                </div>
+              ) : vendorTransactions.filter(t => t.transactionType === "credit").length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-muted/30">
+                  No credit bills found for this vendor
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {vendorTransactions.filter(t => t.transactionType === "credit").map(bill => {
+                    const isSelected = selectedBillIds.includes(bill.id);
+                    return (
+                      <div
+                        key={bill.id}
+                        onClick={() => handleToggleBill(bill.id, parseFloat(bill.amount.toString()))}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/5"
+                            : "border-border hover:border-primary/50 hover:bg-muted/30"
+                        }`}
+                        data-testid={`bill-select-${bill.id}`}
+                      >
+                        <div className="flex-shrink-0">
+                          {isSelected
+                            ? <CheckSquare className="h-5 w-5 text-primary" />
+                            : <Square className="h-5 w-5 text-muted-foreground" />
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              {bill.invoiceNumber || bill.description || "Credit entry"}
+                            </span>
+                            <span className="text-sm font-mono font-semibold text-orange-600">
+                              ₹{parseFloat(bill.amount.toString()).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {format(new Date(bill.transactionDate), "dd MMM yyyy")}
+                            {bill.description && bill.invoiceNumber ? ` · ${bill.description}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedBillIds.length > 0 && (
+                <div className="mt-3 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md flex justify-between text-sm">
+                  <span className="text-green-700 dark:text-green-400 font-medium">
+                    {selectedBillIds.length} bill{selectedBillIds.length > 1 ? "s" : ""} selected
+                  </span>
+                  <span className="text-green-700 dark:text-green-400 font-mono font-semibold">
+                    ₹{vendorTransactions
+                      .filter(t => t.transactionType === "credit" && selectedBillIds.includes(t.id))
+                      .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0)
+                      .toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Payment Details Form */}
+            <Form {...paymentForm}>
+              <form
+                id="payment-form"
+                onSubmit={paymentForm.handleSubmit(data => makePaymentMutation.mutate(data))}
+                className="space-y-4"
+              >
+                <FormField
+                  control={paymentForm.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount to Pay *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Enter amount"
+                          {...field}
+                          data-testid="input-payment-amount"
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">Auto-filled from selected bills — you can adjust for advance/partial payment</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="transactionDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Date *</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} data-testid="input-payment-date" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="paymentMethod"
+                  render={({ field }) => {
+                    const paymentAmount = parseFloat(paymentForm.watch("amount") || "0");
+                    const selectedBalance = getWalletBalance(field.value || "cash");
+                    const isInsufficient = paymentAmount > selectedBalance && paymentAmount > 0;
+                    return (
+                      <FormItem>
+                        <FormLabel>Payment Method *</FormLabel>
+                        <Select value={field.value || ""} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-payment-method-new">
+                              <SelectValue placeholder="Select method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Cash">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2"><Banknote className="h-4 w-4" /><span>Cash</span></div>
+                                <span className={`text-xs ${getWalletBalance('cash') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('cash').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="UPI">
+                              <div className="flex items-center justify-between w-full gap-4">
+                                <div className="flex items-center gap-2"><CreditCard className="h-4 w-4" /><span>UPI</span></div>
+                                <span className={`text-xs ${getWalletBalance('upi') < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                  ₹{getWalletBalance('upi').toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {isInsufficient && (
+                          <div className="mt-1 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                                Insufficient balance — Available: ₹{selectedBalance.toLocaleString('en-IN')}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="referenceNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Receipt / Reference No.</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Optional" {...field} data-testid="input-payment-reference" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={paymentForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Textarea placeholder="Optional notes" {...field} data-testid="input-payment-notes" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </form>
+            </Form>
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t mt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setIsPaymentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="payment-form"
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+              disabled={makePaymentMutation.isPending}
+              data-testid="button-confirm-payment"
+            >
+              {makePaymentMutation.isPending ? "Recording..." : "Record Payment"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Transaction Dialog */}
+      <Dialog open={isEditTransactionDialogOpen} onOpenChange={(open) => { setIsEditTransactionDialogOpen(open); if (!open) setEditingTransaction(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Edit Credit Bill
+            </DialogTitle>
+            <DialogDescription>
+              Update the details of this credit entry for {selectedVendor?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editTransactionForm}>
+            <form
+              onSubmit={editTransactionForm.handleSubmit(data => {
+                if (!editingTransaction) return;
+                updateTransactionMutation.mutate({ id: editingTransaction.id, ...data });
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                control={editTransactionForm.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Amount *</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="Enter amount" {...field} data-testid="input-edit-amount" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editTransactionForm.control}
+                name="transactionDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Date *</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-edit-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editTransactionForm.control}
+                name="invoiceNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Invoice Number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Optional" {...field} data-testid="input-edit-invoice" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editTransactionForm.control}
+                name="expenseCategoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Expense Category</FormLabel>
+                    <Select
+                      value={field.value?.toString() || ""}
+                      onValueChange={(value) => field.onChange(parseInt(value))}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-category">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editTransactionForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Add details" {...field} data-testid="input-edit-description" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex gap-2 pt-2">
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setIsEditTransactionDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={updateTransactionMutation.isPending}
+                  data-testid="button-save-edit-transaction"
+                >
+                  {updateTransactionMutation.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              </div>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>
