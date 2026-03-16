@@ -661,6 +661,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
   const endDefault = new Date();
   endDefault.setDate(endDefault.getDate() + 30);
   const [endDate, setEndDate] = useState(endDefault.toISOString().split("T")[0]);
+  const [lastPushResult, setLastPushResult] = useState<{ success: boolean; message?: string } | null>(null);
 
   const { data: config } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -720,10 +721,14 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
       });
     },
     onSuccess: (data: any) => {
+      setLastPushResult({ success: data.success, message: data.message });
       toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      setLastPushResult({ success: false, message: e.message });
+      toast({ title: "Push Error", description: e.message, variant: "destructive" });
+    },
   });
 
   if (!config) {
@@ -805,10 +810,18 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
             </TableBody>
           </Table>
 
-          <Button data-testid="button-push-rates" onClick={() => pushRatesMutation.mutate()} disabled={pushRatesMutation.isPending}>
-            {pushRatesMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            Push Rates to All OTAs
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button data-testid="button-push-rates" onClick={() => { setLastPushResult(null); pushRatesMutation.mutate(); }} disabled={pushRatesMutation.isPending}>
+              {pushRatesMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Push Rates to All OTAs
+            </Button>
+            {lastPushResult && (
+              <div className={`flex items-center gap-2 text-sm font-medium ${lastPushResult.success ? "text-green-600" : "text-red-600"}`} data-testid="text-push-rates-result">
+                {lastPushResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                <span>{lastPushResult.success ? "Rates pushed successfully" : `Push failed: ${lastPushResult.message || "Unknown error"}`}</span>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -821,6 +834,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
   const endDefault = new Date();
   endDefault.setDate(endDefault.getDate() + 30);
   const [endDate, setEndDate] = useState(endDefault.toISOString().split("T")[0]);
+  const [lastPushResult, setLastPushResult] = useState<{ success: boolean; message?: string } | null>(null);
 
   const { data: mappings = [] } = useQuery<RoomMapping[]>({
     queryKey: ["/api/aiosell/room-mappings", { propertyId }],
@@ -857,10 +871,14 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
       });
     },
     onSuccess: (data: any) => {
+      setLastPushResult({ success: data.success, message: data.message });
       toast({ title: data.success ? "Inventory pushed" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      setLastPushResult({ success: false, message: e.message });
+      toast({ title: "Push Error", description: e.message, variant: "destructive" });
+    },
   });
 
   if (mappings.length === 0) {
@@ -926,10 +944,18 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
             </TableBody>
           </Table>
 
-          <Button data-testid="button-push-inventory" onClick={() => pushInventoryMutation.mutate()} disabled={pushInventoryMutation.isPending}>
-            {pushInventoryMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            Push Inventory to All OTAs
-          </Button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button data-testid="button-push-inventory" onClick={() => { setLastPushResult(null); pushInventoryMutation.mutate(); }} disabled={pushInventoryMutation.isPending}>
+              {pushInventoryMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Push Inventory to All OTAs
+            </Button>
+            {lastPushResult && (
+              <div className={`flex items-center gap-2 text-sm font-medium ${lastPushResult.success ? "text-green-600" : "text-red-600"}`} data-testid="text-push-inventory-result">
+                {lastPushResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                <span>{lastPushResult.success ? "Inventory pushed successfully" : `Push failed: ${lastPushResult.message || "Unknown error"}`}</span>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -1348,6 +1374,9 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg text-sm text-blue-800 dark:text-blue-200">
+            <strong>Note:</strong> Auto-Sync logs are created automatically whenever a booking is created, updated, or cancelled. Manual Push logs appear when you use the Push Rates or Push Inventory tabs. These are separate entries — a "Success" auto-sync log does not mean your manual push succeeded.
+          </div>
           {logs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <Activity className="h-12 w-12 mx-auto mb-3 opacity-30" />
@@ -1427,7 +1456,8 @@ export default function ChannelManager() {
             <TabsTrigger value="room-mapping" data-testid="tab-room-mapping" className="flex-shrink-0">Room Mapping</TabsTrigger>
             <TabsTrigger value="rate-plans" data-testid="tab-rate-plans" className="flex-shrink-0">Rate Plans</TabsTrigger>
             <TabsTrigger value="inventory-calendar" data-testid="tab-inventory-calendar" className="flex-shrink-0">Inventory Calendar</TabsTrigger>
-            <TabsTrigger value="push" data-testid="tab-push" className="flex-shrink-0">Push Rates & Inventory</TabsTrigger>
+            <TabsTrigger value="push-rates" data-testid="tab-push-rates" className="flex-shrink-0">Push Rates</TabsTrigger>
+            <TabsTrigger value="push-inventory" data-testid="tab-push-inventory" className="flex-shrink-0">Push Inventory</TabsTrigger>
             <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
             <TabsTrigger value="whatsapp-test" data-testid="tab-whatsapp-test" className="flex-shrink-0 text-green-700 dark:text-green-400">WhatsApp Test</TabsTrigger>
           </TabsList>
@@ -1435,12 +1465,8 @@ export default function ChannelManager() {
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="rate-plans"><RatePlansTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="inventory-calendar"><InventoryCalendarTab propertyId={propertyId} /></TabsContent>
-          <TabsContent value="push">
-            <div className="space-y-6">
-              <PushRatesTab propertyId={propertyId} />
-              <InventoryTab propertyId={propertyId} />
-            </div>
-          </TabsContent>
+          <TabsContent value="push-rates"><PushRatesTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="push-inventory"><InventoryTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="logs"><SyncLogsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
         </Tabs>

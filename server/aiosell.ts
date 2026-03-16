@@ -410,7 +410,7 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     const roomsByType: Record<string, number[]> = {};
     for (const mapping of mappings) {
       const matchingRooms = allRooms.filter(r =>
-        r.type === mapping.hostezeeRoomType || r.name === mapping.hostezeeRoomType
+        r.roomType === mapping.hostezeeRoomType
       );
       if (matchingRooms.length > 0) {
         roomsByType[mapping.hostezeeRoomType] = matchingRooms.map(r => r.id);
