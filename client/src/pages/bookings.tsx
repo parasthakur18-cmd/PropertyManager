@@ -906,10 +906,22 @@ export default function Bookings() {
       setEditBookingType("group");
       setEditSelectedRoomIds(booking.roomIds);
     } else {
-      // Check if this is a dormitory booking
-      const room = rooms?.find(r => r.id === booking.roomId);
-      if (room?.roomCategory === "dormitory") {
+      const assignedRoom = rooms?.find(r => r.id === booking.roomId);
+      if (assignedRoom?.roomCategory === "dormitory") {
         setEditBookingType("dormitory");
+      } else if (!booking.roomId) {
+        // TBA booking – no room assigned yet. Auto-detect the right tab based on
+        // what kinds of rooms the property actually has, so the user doesn't see
+        // an empty list. Prefer dormitory if the property has no single rooms.
+        const propId = booking.propertyId;
+        const propRooms = rooms?.filter(r => r.propertyId === propId) || [];
+        const hasSingleRooms = propRooms.some(r => r.roomCategory !== "dormitory");
+        const hasDormRooms = propRooms.some(r => r.roomCategory === "dormitory");
+        if (!hasSingleRooms && hasDormRooms) {
+          setEditBookingType("dormitory");
+        } else {
+          setEditBookingType("single");
+        }
       } else {
         setEditBookingType("single");
       }
@@ -2712,6 +2724,21 @@ export default function Bookings() {
                               const roomsToShow = currentRoom && !availableRooms.find(r => r.id === currentRoom.id)
                                 ? [currentRoom, ...availableRooms]
                                 : availableRooms;
+                              if (roomsToShow.length === 0) {
+                                const dormRoomsExist = editSelectedPropertyId
+                                  ? rooms?.some(r => r.propertyId === editSelectedPropertyId && r.roomCategory === "dormitory")
+                                  : false;
+                                return (
+                                  <div className="px-3 py-6 text-center text-sm text-muted-foreground space-y-2">
+                                    <p>No single rooms available for this property.</p>
+                                    {dormRoomsExist && (
+                                      <p className="font-medium text-primary cursor-pointer" onClick={() => setEditBookingType("dormitory")}>
+                                        → Switch to Dormitory tab
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              }
                               return roomsToShow.map((room) => {
                                 const property = properties?.find(p => p.id === room.propertyId);
                                 const isCurrentRoom = editingBooking?.roomId === room.id;
@@ -2757,16 +2784,34 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {getRoomsForBookingType("dormitory", { isEditMode: true, propertyId: editSelectedPropertyId }).map((room) => {
-                              const property = properties?.find(p => p.id === room.propertyId);
-                              const isCurrentRoom = editingBooking?.roomId === room.id;
-                              return (
-                                <SelectItem key={room.id} value={room.id.toString()}>
-                                  {property?.name} - Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
-                                  {isCurrentRoom && " (Current)"}
-                                </SelectItem>
-                              );
-                            })}
+                            {(() => {
+                              const dormRooms = getRoomsForBookingType("dormitory", { isEditMode: true, propertyId: editSelectedPropertyId });
+                              if (dormRooms.length === 0) {
+                                const singleRoomsExist = editSelectedPropertyId
+                                  ? rooms?.some(r => r.propertyId === editSelectedPropertyId && r.roomCategory !== "dormitory")
+                                  : false;
+                                return (
+                                  <div className="px-3 py-6 text-center text-sm text-muted-foreground space-y-2">
+                                    <p>No dormitory rooms available for this property.</p>
+                                    {singleRoomsExist && (
+                                      <p className="font-medium text-primary cursor-pointer" onClick={() => setEditBookingType("single")}>
+                                        → Switch to Single Room tab
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              return dormRooms.map((room) => {
+                                const property = properties?.find(p => p.id === room.propertyId);
+                                const isCurrentRoom = editingBooking?.roomId === room.id;
+                                return (
+                                  <SelectItem key={room.id} value={room.id.toString()}>
+                                    {property?.name} - Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
+                                    {isCurrentRoom && " (Current)"}
+                                  </SelectItem>
+                                );
+                              });
+                            })()}
                           </SelectContent>
                         </Select>
                         <FormMessage />
@@ -2868,7 +2913,7 @@ export default function Bookings() {
 
               {/* No Rooms Available Warning */}
               {(() => {
-                const availableRooms = getRoomsForBookingType(editBookingType, { isEditMode: true });
+                const availableRooms = getRoomsForBookingType(editBookingType, { isEditMode: true, propertyId: editSelectedPropertyId });
                 const hasNoRooms = availableRooms.length === 0 && editRoomAvailability;
                 const isCurrentRoomUnavailable = editingBooking?.roomId && 
                   !availableRooms.find(r => r.id === editingBooking.roomId) &&
