@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from "@/hooks/useAuth";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { Smartphone } from "lucide-react";
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -45,6 +47,7 @@ export default function Kitchen() {
   } = useNotificationSound();
   const previousOrderCountRef = useRef<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications(true);
   const [activeTab, setActiveTab] = useState("active");
   const [editDialog, setEditDialog] = useState<{ open: boolean; order: any | null }>({
     open: false,
@@ -380,7 +383,34 @@ export default function Kitchen() {
           </h1>
           <p className="text-muted-foreground mt-1">Manage incoming orders and preparation</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {/* Push Notification toggle (mobile push - works even when app is closed) */}
+          {pushStatus !== "unsupported" && (
+            <Button
+              variant={pushStatus === "subscribed" ? "default" : "outline"}
+              size="sm"
+              onClick={pushStatus === "subscribed" ? pushUnsubscribe : pushSubscribe}
+              disabled={pushStatus === "loading" || pushStatus === "denied"}
+              data-testid="button-push-notifications"
+              title={
+                pushStatus === "subscribed"
+                  ? "Mobile push ON — click to disable"
+                  : pushStatus === "denied"
+                  ? "Notifications blocked in browser settings"
+                  : "Enable mobile push notifications (works even when app is closed)"
+              }
+              className="gap-1.5"
+            >
+              <Smartphone className="h-4 w-4" />
+              {pushStatus === "subscribed"
+                ? "Push ON"
+                : pushStatus === "denied"
+                ? "Blocked"
+                : pushStatus === "loading"
+                ? "..."
+                : "Enable Push"}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="icon"

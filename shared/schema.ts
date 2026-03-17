@@ -1799,3 +1799,17 @@ export const aiosellInventoryRestrictions = pgTable("aiosell_inventory_restricti
 });
 
 export type AiosellInventoryRestriction = typeof aiosellInventoryRestrictions.$inferSelect;
+
+// Push notification subscriptions (for PWA push notifications)
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;

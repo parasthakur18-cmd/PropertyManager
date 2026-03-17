@@ -11,6 +11,7 @@ import { ReportIssueButton } from "@/components/report-issue";
 import { useAuth } from "@/hooks/useAuth";
 import { connectToEventStream } from "@/lib/eventHandlers";
 import { useEffect, useRef, useState } from "react";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
@@ -211,6 +212,10 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const [, setForceUpdate] = useState(0);
   const [, setLocation] = useLocation();
+
+  // Register service worker and re-subscribe to push if already subscribed.
+  // This runs once on login and keeps subscriptions alive across sessions.
+  usePushNotifications(isAuthenticated);
 
   // Development: Auto-login disabled - use normal login flow
   // To enable, uncomment and the app will auto-login in dev mode

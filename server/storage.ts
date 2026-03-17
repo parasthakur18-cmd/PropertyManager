@@ -127,6 +127,7 @@ import {
   leaseYearOverrides,
   type LeaseYearOverride,
   type InsertLeaseYearOverride,
+  pushSubscriptions,
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
@@ -420,6 +421,11 @@ export interface IStorage {
   deactivateSession(sessionToken: string): Promise<void>;
   deactivateAllUserSessions(userId: string): Promise<void>;
   cleanupExpiredSessions(): Promise<number>;
+
+  // Push Subscription operations
+  savePushSubscription(sub: { userId: string; endpoint: string; p256dh: string; auth: string; userAgent?: string }): Promise<void>;
+  getPushSubscriptionsByUserIds(userIds: string[]): Promise<import("@shared/schema").PushSubscription[]>;
+  deletePushSubscription(endpoint: string): Promise<void>;
 
   // Wallet operations
   getWalletsByProperty(propertyId: number): Promise<Wallet[]>;
@@ -4507,6 +4513,31 @@ export class DatabaseStorage implements IStorage {
       )
       .returning();
     return result.length;
+  }
+
+  // ===== PUSH SUBSCRIPTION OPERATIONS =====
+
+  async savePushSubscription(sub: { userId: string; endpoint: string; p256dh: string; auth: string; userAgent?: string }): Promise<void> {
+    await db.insert(pushSubscriptions).values({
+      userId: sub.userId,
+      endpoint: sub.endpoint,
+      p256dh: sub.p256dh,
+      auth: sub.auth,
+      userAgent: sub.userAgent || null,
+    }).onConflictDoUpdate({
+      target: pushSubscriptions.endpoint,
+      set: { userId: sub.userId, p256dh: sub.p256dh, auth: sub.auth, userAgent: sub.userAgent || null },
+    });
+  }
+
+  async getPushSubscriptionsByUserIds(userIds: string[]): Promise<import("@shared/schema").PushSubscription[]> {
+    if (userIds.length === 0) return [];
+    return await db.select().from(pushSubscriptions)
+      .where(inArray(pushSubscriptions.userId, userIds));
+  }
+
+  async deletePushSubscription(endpoint: string): Promise<void> {
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
   }
 
   // ===== WALLET OPERATIONS =====

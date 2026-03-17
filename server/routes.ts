@@ -62,6 +62,7 @@ import {
   sendFoodOrderReceived
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
+import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
@@ -142,6 +143,37 @@ async function updateUserLocationFromIp(userId: string, ipAddress: string) {
     }
   } catch (error) {
     console.log(`[GEO] Failed to update location for user ${userId}:`, error);
+  }
+}
+
+// Configure VAPID for web push
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || "mailto:admin@hostezee.com",
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
+
+// Helper: send web push to all subscriptions for a list of user IDs
+async function sendPushToUsers(userIds: string[], payload: object) {
+  if (!process.env.VAPID_PUBLIC_KEY) return;
+  const subs = await storage.getPushSubscriptionsByUserIds(userIds);
+  const message = JSON.stringify(payload);
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        message
+      );
+    } catch (err: any) {
+      // 410 Gone = subscription expired/revoked — clean it up
+      if (err.statusCode === 410 || err.statusCode === 404) {
+        await storage.deletePushSubscription(sub.endpoint);
+      } else {
+        console.warn("[Push] Failed to send to", sub.endpoint, err.message);
+      }
+    }
   }
 }
 
@@ -817,6 +849,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn(`[WhatsApp] Food order confirmation failed (non-critical):`, waErr.message);
       }
 
+      // Send PWA push notification to admin/kitchen staff for this property
+      try {
+        const allUsers = await storage.getAllUsers();
+        const relevantUsers = allUsers.filter(u =>
+          (u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen') &&
+          (orderData.propertyId
+            ? !u.assignedPropertyIds || u.assignedPropertyIds.length === 0 || u.assignedPropertyIds.includes(String(orderData.propertyId))
+            : true)
+        );
+        const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+        const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+        const pushPayload = {
+          type: "new_order",
+          title: "🍽️ New Food Order!",
+          body: `Order #${order.id}${roomInfo ? ` — Room ${roomInfo.roomNumber}` : ""}${property ? ` @ ${property.name}` : ""}`,
+          url: "/restaurant",
+          orderId: order.id,
+        };
+        await sendPushToUsers(relevantUsers.map(u => u.id), pushPayload);
+      } catch (pushErr: any) {
+        console.warn("[Push] Public order push failed:", pushErr.message);
+      }
+
       res.status(201).json(order);
     } catch (error: any) {
       console.error("Public order error:", error);
@@ -999,6 +1054,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       unsubscribe();
       res.end();
     });
+  });
+
+  // === PUSH NOTIFICATION SUBSCRIPTION ROUTES ===
+
+  // Return VAPID public key (needed by browser to subscribe)
+  app.get("/api/push/vapid-public-key", isAuthenticated, (req, res) => {
+    res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || "" });
+  });
+
+  // Save a push subscription for the current user
+  app.post("/api/push/subscribe", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "Invalid subscription object" });
+      }
+      await storage.savePushSubscription({
+        userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        userAgent: req.headers["user-agent"],
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Push] Subscribe error:", err);
+      res.status(500).json({ message: "Failed to save subscription" });
+    }
+  });
+
+  // Remove a push subscription
+  app.post("/api/push/unsubscribe", isAuthenticated, async (req: any, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (endpoint) await storage.deletePushSubscription(endpoint);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to remove subscription" });
+    }
   });
 
   // Dashboard stats
@@ -6425,6 +6521,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           }
         }
         console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
+
+        // Send PWA push notification to all subscribed admin/kitchen devices
+        try {
+          const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+          const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+          const pushPayload = {
+            type: "new_order",
+            title: "🍽️ New Food Order!",
+            body: `Order #${order.id}${roomInfo ? ` — Room ${roomInfo.roomNumber}` : ""}${property ? ` @ ${property.name}` : ""}. Amount: ₹${orderData.totalAmount || 0}`,
+            url: "/restaurant",
+            orderId: order.id,
+          };
+          const adminUserIds = adminUsers.map(u => u.id);
+          await sendPushToUsers(adminUserIds, pushPayload);
+          console.log(`[Push] Order push sent to ${adminUserIds.length} users`);
+        } catch (pushErr: any) {
+          console.warn("[Push] Failed to send order push:", pushErr.message);
+        }
         
         // Send to configured food order WhatsApp numbers
         if (orderData.propertyId) {
