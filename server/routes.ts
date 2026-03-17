@@ -9813,17 +9813,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.get("/api/staff-salaries/detailed", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const { propertyId, startDate, endDate } = req.query;
+      const { propertyId, month, startDate, endDate } = req.query;
 
-      if (!propertyId || !startDate || !endDate) {
-        return res.status(400).json({ message: "propertyId, startDate, and endDate are required" });
+      if (!propertyId || (!month && (!startDate || !endDate))) {
+        return res.status(400).json({ message: "propertyId and month are required" });
       }
 
       const propId = parseInt(propertyId as string);
-      const start = new Date(startDate as string);
-      const end = new Date(endDate as string);
+      let start: Date, end: Date;
+      if (month) {
+        // Parse month as "YYYY-MM" on the server to avoid timezone issues
+        const [yearNum, monthNum] = (month as string).split('-').map(Number);
+        start = new Date(yearNum, monthNum - 1, 1);
+        end = new Date(yearNum, monthNum, 0, 23, 59, 59);
+      } else {
+        start = new Date(startDate as string);
+        end = new Date(endDate as string);
+      }
 
-      console.log(`[SALARY DEBUG] Fetching salaries for propertyId: ${propId}, start: ${start.toISOString()}, end: ${end.toISOString()}`);
+      console.log(`[SALARY DEBUG] Fetching salaries for propertyId: ${propId}, month: ${month || 'n/a'}, start: ${start.toISOString()}, end: ${end.toISOString()}`);
 
       // Check user access to property
       if (user.role === 'manager') {

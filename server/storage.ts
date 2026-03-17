@@ -3669,18 +3669,36 @@ export class DatabaseStorage implements IStorage {
             )
           );
 
-        // Count attendance by status
-        const presentDays = attendanceList.filter(a => a.status === 'present').length;
+        // Count exceptions only (attendance is exception-based — only absences/leaves/half-days are recorded)
         const absentDays = attendanceList.filter(a => a.status === 'absent').length;
         const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
         const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
-        const totalWorkingDays = attendanceList.length;
+
+        // Calculate working days in month (excluding Sundays), matching the attendance tab logic
+        let workingDaysInMonth = 0;
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+          if (d.getDay() !== 0) workingDaysInMonth++; // 0 = Sunday
+        }
+        // Adjust for joining date if staff joined mid-month
+        if (staff.joiningDate) {
+          const joinDate = new Date(staff.joiningDate);
+          const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+          if (joinDate > monthStart && joinDate <= endDate) {
+            workingDaysInMonth = 0;
+            for (let d = new Date(joinDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+              if (d.getDay() !== 0) workingDaysInMonth++;
+            }
+          }
+        }
+        const totalWorkingDays = workingDaysInMonth;
+
+        // Present = total working days - absents - half-days (leave = paid, not deducted from present count)
+        const presentDays = Math.max(0, workingDaysInMonth - absentDays - (halfDays * 0.5));
 
         // Calculate deductions: absent = full day deduction, half-day = 0.5 day, leave = no deduction (paid leave)
         const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
-        // Use actual days in the selected month for daily rate calculation
-        const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
-        const dailyRate = baseSalaryNum / daysInMonth;
+        // Use working days (not calendar days) for daily rate — matches attendance tab
+        const dailyRate = workingDaysInMonth > 0 ? baseSalaryNum / workingDaysInMonth : 0;
         const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
 
         // Get all advances for this staff member in current period

@@ -70,11 +70,11 @@ export default function SalariesPage() {
 
   // Fetch detailed staff salaries - only when we have a valid property ID
   const { data: salaries = [], isLoading, error } = useQuery({
-    queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, startDate.toISOString(), endDate.toISOString()],
+    queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, selectedMonth],
     queryFn: async () => {
       if (!effectivePropertyId) return [];
       const response = await fetch(
-        `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
+        `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&month=${selectedMonth}`,
         { credentials: "include" }
       );
       if (!response.ok) {
