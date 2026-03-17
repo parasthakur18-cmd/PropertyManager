@@ -17227,14 +17227,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           const roomCode = roomsData[0].roomCode;
           const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
           if (mapping) {
-            const availableRooms = await db.select().from(rooms)
+            const mappedRoom = await db.select().from(rooms)
               .where(and(
-                eq(rooms.propertyId, config.propertyId),
-                eq(rooms.type, mapping.hostezeeRoomType),
+                eq(rooms.id, mapping.hostezeeRoomId),
                 eq(rooms.status, "available"),
               ));
-            if (availableRooms.length > 0) {
-              assignedRoomId = availableRooms[0].id;
+            if (mappedRoom.length > 0) {
+              assignedRoomId = mappedRoom[0].id;
             }
           }
         }

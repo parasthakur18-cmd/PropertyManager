@@ -117,6 +117,7 @@ export default function Bookings() {
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
   const [editBookingType, setEditBookingType] = useState<"single" | "group" | "dormitory">("single");
   const [editSelectedRoomIds, setEditSelectedRoomIds] = useState<number[]>([]);
+  const [editSelectedPropertyId, setEditSelectedPropertyId] = useState<number | undefined>(undefined);
   const [checkinBookingId, setCheckinBookingId] = useState<number | null>(null);
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
@@ -898,6 +899,7 @@ export default function Bookings() {
 
   const handleEditBooking = (booking: Booking) => {
     setEditingBooking(booking);
+    setEditSelectedPropertyId(booking.propertyId || undefined);
     
     // Initialize booking type and room selection based on booking characteristics
     if (booking.roomIds && booking.roomIds.length > 0) {
@@ -930,9 +932,16 @@ export default function Bookings() {
       }
     };
 
-    // Return source value as-is (matching create form values)
+    // Normalize source to match the select options (handles OTA/aiosell channel sources)
     const normalizeSource = (source: string | null | undefined): string => {
       if (!source) return "Walk-in";
+      if (source.startsWith("aiosell-")) {
+        const channel = source.replace("aiosell-", "").toLowerCase();
+        if (channel.includes("booking")) return "Booking.com";
+        if (channel.includes("mmt") || channel.includes("makemytrip")) return "MMT";
+        if (channel.includes("airbnb")) return "Airbnb";
+        return "OTA";
+      }
       return source;
     };
 
@@ -2629,6 +2638,7 @@ export default function Bookings() {
             editForm.reset();
             setEditBookingType("single");
             setEditSelectedRoomIds([]);
+            setEditSelectedPropertyId(undefined);
           }
         }}
       >
@@ -2638,7 +2648,32 @@ export default function Bookings() {
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 pb-4">
-              
+
+              {/* Property selector for room allocation */}
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Property</label>
+                <Select
+                  value={editSelectedPropertyId?.toString() || ""}
+                  onValueChange={(val) => {
+                    const propId = parseInt(val);
+                    setEditSelectedPropertyId(propId);
+                    editForm.setValue("propertyId", propId);
+                    editForm.setValue("roomId", undefined);
+                  }}
+                >
+                  <SelectTrigger data-testid="select-edit-property">
+                    <SelectValue placeholder="Select property" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {properties?.map((p) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <Tabs value={editBookingType} onValueChange={(value) => setEditBookingType(value as "single" | "group" | "dormitory")} className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="single" data-testid="tab-edit-single-room">Single Room</TabsTrigger>
@@ -2659,19 +2694,20 @@ export default function Bookings() {
                             const selectedRoom = rooms?.find(r => r.id === roomId);
                             if (selectedRoom) {
                               editForm.setValue("propertyId", selectedRoom.propertyId);
+                              setEditSelectedPropertyId(selectedRoom.propertyId);
                             }
                           }}
                           value={field.value ? field.value.toString() : undefined}
                         >
                           <FormControl>
                             <SelectTrigger data-testid="select-edit-booking-room">
-                              <SelectValue placeholder="Select room" />
+                              <SelectValue placeholder={editSelectedPropertyId ? "Select room" : "Select a property first"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {/* Show available non-dormitory rooms from the same property plus the currently selected room */}
                             {(() => {
-                              const availableRooms = getRoomsForBookingType("single", { isEditMode: true, propertyId: editingBooking?.propertyId });
+                              const availableRooms = getRoomsForBookingType("single", { isEditMode: true, propertyId: editSelectedPropertyId });
                               const currentRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
                               const roomsToShow = currentRoom && !availableRooms.find(r => r.id === currentRoom.id)
                                 ? [currentRoom, ...availableRooms]
@@ -2721,7 +2757,7 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {getRoomsForBookingType("dormitory", { isEditMode: true, propertyId: editingBooking?.propertyId }).map((room) => {
+                            {getRoomsForBookingType("dormitory", { isEditMode: true, propertyId: editSelectedPropertyId }).map((room) => {
                               const property = properties?.find(p => p.id === room.propertyId);
                               const isCurrentRoom = editingBooking?.roomId === room.id;
                               return (
@@ -2755,10 +2791,10 @@ export default function Bookings() {
                             <th className="p-2 text-left text-xs font-medium">
                               <input
                                 type="checkbox"
-                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).length > 0}
+                                checked={editSelectedRoomIds.length === getRoomsForBookingType("group", { isEditMode: true, propertyId: editSelectedPropertyId, includeRoomIds: editingBooking?.roomIds || [] }).length && getRoomsForBookingType("group", { isEditMode: true, propertyId: editSelectedPropertyId, includeRoomIds: editingBooking?.roomIds || [] }).length > 0}
                                 onChange={(e) => {
                                   if (e.target.checked) {
-                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).map(r => r.id));
+                                    setEditSelectedRoomIds(getRoomsForBookingType("group", { isEditMode: true, propertyId: editSelectedPropertyId, includeRoomIds: editingBooking?.roomIds || [] }).map(r => r.id));
                                   } else {
                                     setEditSelectedRoomIds([]);
                                   }
@@ -2773,7 +2809,7 @@ export default function Bookings() {
                           </tr>
                         </thead>
                         <tbody>
-                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editingBooking?.propertyId, includeRoomIds: editingBooking?.roomIds || [] }).map((room) => {
+                          {getRoomsForBookingType("group", { isEditMode: true, propertyId: editSelectedPropertyId, includeRoomIds: editingBooking?.roomIds || [] }).map((room) => {
                             const property = properties?.find(p => p.id === room.propertyId);
                             const isSelected = editSelectedRoomIds.includes(room.id);
                             const roomDescription = room.roomType || "Standard";
