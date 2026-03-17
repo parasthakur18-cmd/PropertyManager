@@ -893,6 +893,9 @@ export default function Leases() {
               const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
               const carryForward = parseFloat(lease.carryForwardAmount || "0");
 
+              const isExpiredCard = lease.isExpiredLease || (lease.endDate && new Date(lease.endDate) < new Date());
+              const pendingBalance = lease.pendingBalance || 0;
+
               return (
                 <Card key={lease.id} className="hover-elevate" data-testid={`card-lease-${lease.id}`}>
                   <CardHeader>
@@ -902,8 +905,8 @@ export default function Leases() {
                         <p className="text-sm text-muted-foreground mt-1">{lease.landlordName || "No landlord"}</p>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <Badge variant="outline" data-testid={`badge-lease-status-${lease.id}`}>
-                          {lease.endDate && new Date(lease.endDate) < new Date() ? "Expired" : "Active"}
+                        <Badge variant="outline" className={isExpiredCard ? "border-red-300 text-red-600 dark:text-red-400" : "border-green-300 text-green-600 dark:text-green-400"} data-testid={`badge-lease-status-${lease.id}`}>
+                          {isExpiredCard ? "Expired" : "Active"}
                         </Badge>
                         {lease.isOverridden && (
                           <Badge variant="secondary" className="text-xs" data-testid={`badge-overridden-${lease.id}`}>
@@ -917,12 +920,34 @@ export default function Leases() {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Lease Period</span>
+                        <span className="text-sm font-medium">
+                          {lease.startDate ? format(new Date(lease.startDate), "MMM d, yyyy") : "N/A"} – {lease.endDate ? format(new Date(lease.endDate), "MMM d, yyyy") : "Ongoing"}
+                        </span>
+                      </div>
+                      {(lease.leaseDurationYears != null && lease.leaseDurationYears > 0) && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Duration</span>
+                          <span className="font-medium">{lease.leaseDurationYears} years</span>
+                        </div>
+                      )}
+                      {lease.currentYearNumber != null && lease.currentYearStart && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            {isExpiredCard ? "Last Year" : "Current Year"}
+                          </span>
+                          <span className="font-medium text-blue-600 dark:text-blue-400">
+                            Year {lease.currentYearNumber} ({lease.currentYearStart ? format(new Date(lease.currentYearStart), "MMM d, yy") : "–"} – {lease.currentYearEnd ? format(new Date(lease.currentYearEnd), "MMM d, yy") : "–"})
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Base Yearly Amount</span>
                         <span className="font-mono font-semibold" data-testid={`text-base-amount-${lease.id}`}>
                           ₹{baseAmount.toLocaleString()}
                         </span>
                       </div>
-                      {lease.yearlyIncrementValue && (
+                      {lease.yearlyIncrementValue && parseFloat(lease.yearlyIncrementValue) > 0 && (
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground flex items-center">
                             <TrendingUp className="h-3 w-3 mr-1" />
@@ -942,9 +967,9 @@ export default function Leases() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm font-semibold">
-                        <span className="text-muted-foreground">Pending Balance</span>
-                        <span className="font-mono text-orange-600 dark:text-orange-400" data-testid={`text-balance-${lease.id}`}>
-                          ₹{calculateBalance(lease).toLocaleString()}
+                        <span className="text-muted-foreground">{isExpiredCard ? "Outstanding Balance" : "Pending Balance"}</span>
+                        <span className={`font-mono ${pendingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`} data-testid={`text-balance-${lease.id}`}>
+                          {pendingBalance > 0 ? `₹${pendingBalance.toLocaleString()}` : "Fully Paid"}
                         </span>
                       </div>
                       {carryForward > 0 && (
@@ -953,18 +978,6 @@ export default function Leases() {
                           <span className="font-mono text-red-600 dark:text-red-400" data-testid={`text-carry-forward-${lease.id}`}>
                             ₹{carryForward.toLocaleString()}
                           </span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Period</span>
-                        <span className="text-sm font-medium">
-                          {lease.startDate ? format(new Date(lease.startDate), "MMM d, yyyy") : "N/A"} - {lease.endDate ? format(new Date(lease.endDate), "MMM d, yyyy") : "Ongoing"}
-                        </span>
-                      </div>
-                      {lease.leaseDurationYears && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Duration</span>
-                          <span className="font-medium">{lease.leaseDurationYears} years</span>
                         </div>
                       )}
                     </div>
