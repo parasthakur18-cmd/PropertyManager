@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2 } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2, Trash2 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -185,6 +185,21 @@ export default function SalariesPage() {
       paymentMode: advancePaymentMode,
     });
   };
+
+  // Mutation to delete a salary payment
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (paymentId: number) => {
+      return await apiRequest(`/api/salaries/payments/${paymentId}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/salary-payments"] });
+      toast({ title: "Deleted", description: "Payment record removed successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete payment", variant: "destructive" });
+    },
+  });
 
   // Mutation to record salary payment
   const recordPaymentMutation = useMutation({
@@ -920,9 +935,26 @@ export default function SalariesPage() {
                                     <p className="text-xs text-muted-foreground mt-1">{payment.notes}</p>
                                   )}
                                 </div>
-                                <Badge variant="outline" className="bg-green-50 text-green-600">
-                                  Paid
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="bg-green-50 text-green-600">
+                                    Paid
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                    data-testid={`button-delete-payment-${payment.id}`}
+                                    title="Delete this payment record"
+                                    onClick={() => {
+                                      if (window.confirm(`Delete payment of ₹${parseFloat(payment.amount).toLocaleString('en-IN')}? This cannot be undone.`)) {
+                                        deletePaymentMutation.mutate(payment.id);
+                                      }
+                                    }}
+                                    disabled={deletePaymentMutation.isPending}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                               </div>
                             ))
                           )}

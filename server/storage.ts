@@ -3922,6 +3922,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteSalaryPayment(id: number): Promise<void> {
+    // Reverse wallet transaction before deleting the payment record
+    try {
+      const [txn] = await db
+        .select()
+        .from(walletTransactions)
+        .where(and(eq(walletTransactions.source, 'salary_payment'), eq(walletTransactions.sourceId, id)))
+        .limit(1);
+      if (txn) {
+        const wallet = await db.select().from(wallets).where(eq(wallets.id, txn.walletId)).limit(1);
+        if (wallet[0]) {
+          const reversedBalance = parseFloat(wallet[0].currentBalance?.toString() || '0') + parseFloat(txn.amount.toString());
+          await db.update(wallets).set({ currentBalance: reversedBalance.toString() }).where(eq(wallets.id, txn.walletId));
+        }
+        await db.delete(walletTransactions).where(eq(walletTransactions.id, txn.id));
+      }
+    } catch (e) {
+      console.log('[deleteSalaryPayment] Wallet reversal skipped:', e);
+    }
     await db.delete(salaryPayments).where(eq(salaryPayments.id, id));
     eventBus.emit('salary-payment:deleted', { id });
   }
