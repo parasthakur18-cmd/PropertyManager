@@ -3371,6 +3371,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         } catch (logErr) {
           console.error('[ACTIVITY] Error logging booking creation:', logErr);
         }
+
+        // Sync inventory to AioSell / OTAs (e.g. Booking.com, MMT) so the room is blocked
+        if (booking.propertyId) {
+          autoSyncInventoryForProperty(booking.propertyId).catch(err =>
+            console.error(`[AIOSELL] Inventory sync failed after booking #${booking.id} creation:`, err.message)
+          );
+        }
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
