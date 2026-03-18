@@ -16877,6 +16877,26 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  app.post("/api/aiosell/force-sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
+      const mappings = await getRoomMappingsForConfig(config.id);
+      if (mappings.length === 0) return res.status(400).json({ message: "No room mappings configured. Add room mappings first." });
+      await autoSyncInventoryForProperty(propertyId);
+      res.json({ success: true, message: `Inventory sync triggered for ${mappings.length} room type(s). Check sync logs for results.` });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/aiosell/room-mappings", isAuthenticated, async (req: any, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
