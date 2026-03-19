@@ -17474,10 +17474,28 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         // Do NOT mark room as occupied here — room occupation happens only on check-in.
         // Inventory availability is calculated from bookings (not room.status) during auto-sync.
 
-        console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending)`);
+        const channelLower = (channel || "").toLowerCase();
+        const isAutoConfirmChannel =
+          channelLower.includes("goibibo") ||
+          channelLower.includes("mmt") ||
+          channelLower.includes("makemytrip");
+
+        // Goibibo / MMT: auto-confirm immediately (they collect payment upfront)
+        if (isAutoConfirmChannel) {
+          await db.update(bookings)
+            .set({ status: "confirmed", updatedAt: new Date() })
+            .where(eq(bookings.id, newBooking.id));
+          storage.invalidateBookingsCache();
+          console.log(`[AIOSELL-WEBHOOK] Auto-confirmed booking ${newBooking.id} from ${channel} (payment collected by OTA)`);
+        } else {
+          console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending — advance payment required)`);
+        }
+
         await autoSyncInventoryForProperty(config.propertyId);
 
-        const notifGuestName = `${guest?.firstName || ""} ${guest?.lastName || ""}`.trim() || "OTA Guest";
+        const notifGuestName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
+        const property = await storage.getProperty(config.propertyId);
+        const propertyName = property?.name || "Your Property";
 
         // In-app PMS notification to all admins and property-assigned staff
         try {
@@ -17502,10 +17520,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           console.error(`[NOTIFICATIONS] Failed to send in-app notification:`, notifErr.message);
         }
 
-        // WhatsApp OTA notification (template 28770) to property contactPhone
+        // WhatsApp OTA notification (template 28770) to property contactPhone (staff alert)
         try {
-          const property = await storage.getProperty(config.propertyId);
-          const propertyName = property?.name || "Your Property";
           const staffPhone = property?.contactPhone?.trim();
           if (staffPhone) {
             await sendOtaBookingNotification(staffPhone, propertyName, notifGuestName);
@@ -17515,6 +17531,39 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
         } catch (notifErr: any) {
           console.error(`[WhatsApp] OTA booking notification failed:`, notifErr.message);
+        }
+
+        // WhatsApp to GUEST based on channel type
+        const guestPhone = guestData?.phone;
+        if (guestPhone && guestId) {
+          const fetchedGuest = await storage.getGuest(guestId);
+          const guestFullName = fetchedGuest?.fullName || notifGuestName;
+          const checkInFmt = format(new Date(checkin), "dd MMM yyyy");
+          const checkOutFmt = format(new Date(checkout), "dd MMM yyyy");
+
+          if (isAutoConfirmChannel) {
+            // Goibibo / MMT: send booking confirmed message (template 29294)
+            try {
+              await sendBookingConfirmedNotification(guestPhone, guestFullName, propertyName, checkInFmt, checkOutFmt);
+              console.log(`[WhatsApp] Booking #${newBooking.id} - Booking confirmed notification sent to guest ${guestFullName} (${channel})`);
+            } catch (waErr: any) {
+              console.error(`[WhatsApp] Booking confirmed notification failed for #${newBooking.id}:`, waErr.message);
+            }
+          } else {
+            // Booking.com & others: create Razorpay link + send advance payment request (template 22226)
+            try {
+              const advanceAmount = parseFloat(totalAmount) || 0;
+              const guestEmail = guestData?.email || `guest${newBooking.id}@hostezee.com`;
+              const paymentLink = await createPaymentLink(newBooking.id, advanceAmount, guestFullName, guestEmail, guestPhone);
+              const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
+              await sendAdvancePaymentRequest(guestPhone, guestFullName, checkInFmt, checkOutFmt, propertyName, `₹${advanceAmount.toFixed(0)}`, paymentLinkUrl);
+              console.log(`[WhatsApp] Booking #${newBooking.id} - Advance payment request sent to guest ${guestFullName} (${channel}), link: ${paymentLinkUrl}`);
+            } catch (waErr: any) {
+              console.error(`[WhatsApp] Advance payment request failed for booking #${newBooking.id}:`, waErr.message);
+            }
+          }
+        } else {
+          console.warn(`[WhatsApp] Booking #${newBooking.id} - Guest WhatsApp skipped: no phone number`);
         }
 
         return res.json({ success: true, message: "Reservation Updated Successfully" });
