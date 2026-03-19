@@ -2349,7 +2349,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.get("/api/rooms/checked-in-guests", isAuthenticated, async (req, res) => {
     try {
-      const roomsWithGuests = await storage.getRoomsWithCheckedInGuests();
+      const auth = await getAuthenticatedTenant(req);
+      // Filter to only the properties this user is allowed to see
+      const propertyIds = auth && !auth.tenant.hasUnlimitedAccess && auth.tenant.assignedPropertyIds.length > 0
+        ? auth.tenant.assignedPropertyIds
+        : undefined;
+      const roomsWithGuests = await storage.getRoomsWithCheckedInGuests(propertyIds);
       res.json(roomsWithGuests);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -17422,10 +17427,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             const mappedRoom = await db.select().from(rooms)
               .where(and(
                 eq(rooms.id, mapping.hostezeeRoomId),
+                eq(rooms.propertyId, config.propertyId), // CRITICAL: must belong to same property
                 eq(rooms.status, "available"),
               ));
             if (mappedRoom.length > 0) {
               assignedRoomId = mappedRoom[0].id;
+            } else {
+              console.warn(`[AIOSELL-WEBHOOK] Room mapping for code "${roomCode}" does not match property ${config.propertyId} or is not available — booking will be created without room assignment`);
             }
           }
         }
