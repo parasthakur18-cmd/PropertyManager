@@ -220,7 +220,8 @@ export async function sendPaymentConfirmation(
 
 /**
  * Send check-in notification WhatsApp message
- * Template: checkinnmsgwoodpecker (WID 28769)
+ * Template: checkinnmsgwoodpecker (WID 28769) — Woodpecker Inn only
+ * Template: WID 29292 — all other properties
  *
  * Template variables (in order):
  * 1. Property Name  — "Welcome to 🌿 {{1}}"
@@ -231,9 +232,16 @@ export async function sendCheckInNotification(
   phoneNumber: string,
   guestName: string,
   propertyName: string,
-  foodOrderLink: string
+  foodOrderLink: string,
+  templateIdOverride?: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || "28769";
+  // Use override if provided, otherwise pick template by property name:
+  // 28769 → Woodpecker Inn only | 29292 → all other properties
+  const isWoodpecker = propertyName.toLowerCase().includes("woodpecker");
+  const templateId = templateIdOverride
+    || process.env.AUTHKEY_WA_CHECKIN_DETAILS
+    || (isWoodpecker ? "28769" : "29292");
+
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
