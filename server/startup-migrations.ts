@@ -350,6 +350,33 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "fix_aiosell_config_property_mapping_woodpecker_jibhi",
+    async run() {
+      if (!(await tableExists("aiosell_configurations"))) return;
+      if (!(await tableExists("properties"))) return;
+      // Fix: hotel_code 15253615 (The Woodpecker Inn Jibhi) was incorrectly linked
+      // to "Woodpecker Inn & Cafe - 2". Re-link it to the correct property by name.
+      await runRaw(`
+        UPDATE aiosell_configurations
+        SET property_id = (
+          SELECT id FROM properties
+          WHERE name ILIKE '%Woodpecker%Jibhi%'
+             OR name ILIKE '%Woodpecker Inn Jibhi%'
+          ORDER BY id
+          LIMIT 1
+        )
+        WHERE hotel_code = '15253615'
+          AND property_id = (
+            SELECT id FROM properties
+            WHERE name ILIKE '%Woodpecker%2%'
+               OR name ILIKE '%Woodpecker%Cafe%2%'
+            ORDER BY id
+            LIMIT 1
+          )
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
