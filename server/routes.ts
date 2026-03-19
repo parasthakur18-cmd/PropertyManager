@@ -59,7 +59,8 @@ import {
   sendSelfCheckinLink,
   sendTaskReminder,
   sendOtaBookingNotification,
-  sendFoodOrderReceived
+  sendFoodOrderReceived,
+  sendBookingConfirmedNotification
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
 import webpush from "web-push";
@@ -3741,6 +3742,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      // Send WhatsApp booking confirmation when status changes to "confirmed"
+      if (status === "confirmed") {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          if (guest && guest.phone) {
+            let propertyName = "Your Property";
+            if (booking.propertyId) {
+              const property = await storage.getProperty(booking.propertyId);
+              propertyName = property?.name || propertyName;
+            }
+            const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
+            const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+            await sendBookingConfirmedNotification(guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
+            console.log(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification sent to ${guest.fullName} (template: 29294)`);
+          }
+        } catch (waErr: any) {
+          console.error(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification failed (non-critical):`, waErr.message);
+        }
+      }
+
       if (booking.propertyId && (status === "checked-in" || status === "checked-out" || status === "cancelled")) {
         autoSyncInventoryForProperty(booking.propertyId).catch(err =>
           console.error(`[AIOSELL] Auto-sync after booking status change failed:`, err.message)
@@ -4932,6 +4953,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       storage.invalidateBookingsCache();
       
       console.log(`[BOOKING] Booking #${bookingId} manually confirmed`);
+
+      // Send booking confirmed WhatsApp notification (template 29294) — non-blocking
+      setImmediate(async () => {
+        try {
+          const guest = await storage.getGuest(booking.guestId);
+          if (guest && guest.phone) {
+            let propertyName = "Your Property";
+            if (booking.propertyId) {
+              const property = await storage.getProperty(booking.propertyId);
+              propertyName = property?.name || propertyName;
+            }
+            const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
+            const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+            await sendBookingConfirmedNotification(guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
+            console.log(`[WhatsApp] Booking #${bookingId} - Booking confirmed notification sent to ${guest.fullName} (template: 29294)`);
+          }
+        } catch (waErr: any) {
+          console.error(`[WhatsApp] Booking #${bookingId} - Booking confirmed notification failed (non-critical):`, waErr.message);
+        }
+      });
       
       res.json({
         success: true,

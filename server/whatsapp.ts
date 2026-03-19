@@ -281,6 +281,34 @@ export async function sendOtaBookingNotification(
 }
 
 /**
+ * Send booking confirmation WhatsApp message to guest
+ * Template: WID 29294 — sent when booking status changes to "confirmed"
+ *
+ * Template variables (in order):
+ * 1. Property Name  — "🌿 *Booking Confirmed!* 🌿 {{1}}"
+ * 2. Guest Name     — "Dear , {{2}}"
+ * 3. Check-in Date  — "📅 *Check-in Date:* {{3}}"
+ * 4. Check-out Date — "📅 *Check-out Date:* {{4}}"
+ */
+export async function sendBookingConfirmedNotification(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  checkInDate: string,
+  checkOutDate: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_BOOKING_CONFIRMED || "29294";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+
+  return sendWhatsAppMessage({
+    countryCode: "91",
+    mobile: cleanedPhone,
+    templateId,
+    variables: [propertyName, guestName, checkInDate, checkOutDate],
+  });
+}
+
+/**
  * Send checkout thank-you WhatsApp message to guest
  * Template: WID 28968
  *
