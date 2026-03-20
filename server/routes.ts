@@ -4648,7 +4648,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
           const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
 
-          // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+          // Template 29412 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
           const roomChargesFormatted = preBill.roomCharges ? `₹${parseFloat(preBill.roomCharges.toString()).toFixed(2)}` : "₹0.00";
           const foodChargesFormatted = preBill.foodCharges ? `₹${parseFloat(preBill.foodCharges.toString()).toFixed(2)}` : "₹0.00";
           const advancePaidFormatted = preBill.advancePayment ? `₹${parseFloat(preBill.advancePayment.toString()).toFixed(2)}` : "₹0.00";
@@ -4656,7 +4656,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           
           await sendCustomWhatsAppMessage(
             preBill.guestPhone || guest.phone,
-            process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+            process.env.AUTHKEY_WA_SPLIT_PAYMENT || "29412",
             [preBill.guestName || guest.fullName, roomChargesFormatted, foodChargesFormatted, advancePaidFormatted, balanceFormatted, paymentLinkUrl]
           );
 
@@ -4706,7 +4706,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
       
-      // Template 19892 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
+      // Template 29412 expects: guestName, roomCharges, foodCharges, cashReceived, balanceAmount, paymentLink
       const roomChargesFormatted = roomCharges ? `₹${parseFloat(roomCharges).toFixed(2)}` : "₹0.00";
       const foodChargesFormatted = foodCharges ? `₹${parseFloat(foodCharges).toFixed(2)}` : "₹0.00";
       const cashReceivedFormatted = cashReceived ? `₹${parseFloat(cashReceived).toFixed(2)}` : "₹0.00";
@@ -4714,7 +4714,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const result = await sendCustomWhatsAppMessage(
         guestPhone,
-        process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892",
+        process.env.AUTHKEY_WA_SPLIT_PAYMENT || "29412",
         [guestName, roomChargesFormatted, foodChargesFormatted, cashReceivedFormatted, balanceFormatted, paymentLinkUrl]
       );
 
@@ -5491,8 +5491,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       let variables: string[];
       
       if (advancePaid > 0) {
-        // Use new split payment template when cash is received (19892)
-        templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+        // Use new split payment template when cash is received (29412)
+        templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "29412";
         variables = [
           guest.fullName || "Guest",
           roomCharges,
@@ -7608,7 +7608,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       console.log(`[Enquiry Payment] Payment link created: ${paymentLinkUrl}`);
 
       // Send via WhatsApp using Authkey
-      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "19892";
+      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "29412";
       const result = await sendCustomWhatsAppMessage(
         enquiry.guestPhone,
         templateId,

@@ -16,7 +16,9 @@
  * - AUTHKEY_WA_PENDING_PAYMENT: Template for payment reminders (default: 18649)
  * - AUTHKEY_WA_ENQUIRY_CONFIRMATION: Template for enquiry confirmation (default: 18491)
  * - AUTHKEY_WA_PREBILL: Template for pre-bill verification (default: 19852)
- * - AUTHKEY_WA_SPLIT_PAYMENT: Template for split/advance payments (default: 19892)
+ * - AUTHKEY_WA_SPLIT_PAYMENT: Template for balance payment link (default: 29412)
+ * - AUTHKEY_WA_ADVANCE_PAYMENT: Template for advance payment request (default: 29410)
+ * - AUTHKEY_WA_ADVANCE_CONFIRMATION: Template for payment received confirmation (default: 29409)
  * 
  * Template variables are passed in order: var1, var2, var3, etc.
  * Ensure your authkey templates match the variable order!
@@ -519,13 +521,16 @@ export async function sendWelcomeWithMenuLink(
 
 /**
  * Send advance payment request WhatsApp message
- * Template ID: 22226 (pending_payment)
+ * Template ID: 29410
+ * 
+ * Template: Dear {{1}}, Greetings from {{2}}! Thank you for choosing us
+ * from {{3}} to {{4}}. Advance: ₹{{5}}. Payment link: {{6}}
  * 
  * Template variables (in order):
  * 1. Guest Name
- * 2. Check-in Date
- * 3. Check-out Date
- * 4. Property Name
+ * 2. Property Name
+ * 3. Check-in Date
+ * 4. Check-out Date
  * 5. Advance Amount
  * 6. Payment Link
  */
@@ -538,7 +543,7 @@ export async function sendAdvancePaymentRequest(
   advanceAmount: string,
   paymentLink: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_ADVANCE_PAYMENT || "22226";
+  const templateId = process.env.AUTHKEY_WA_ADVANCE_PAYMENT || "29410";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -546,26 +551,28 @@ export async function sendAdvancePaymentRequest(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, checkInDate, checkOutDate, propertyName, advanceAmount, paymentLink],
+    variables: [guestName, propertyName, checkInDate, checkOutDate, advanceAmount, paymentLink],
   });
 }
 
 /**
  * Send advance payment confirmation WhatsApp message
- * Template ID: 18649 (payment_confirmation)
+ * Template ID: 29409
+ * 
+ * Template: Dear {{1}}, we have received your payment of ₹{{2}}.
+ * Your booking is now confirmed. Thank you for booking with us!
  * 
  * Template variables (in order):
  * 1. Guest Name
  * 2. Amount Paid
- * 3. Property Name
  */
 export async function sendAdvancePaymentConfirmation(
   phoneNumber: string,
   guestName: string,
   amountPaid: string,
-  propertyName: string
+  propertyName?: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_ADVANCE_CONFIRMATION || "18649";
+  const templateId = process.env.AUTHKEY_WA_ADVANCE_CONFIRMATION || "29409";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -573,7 +580,7 @@ export async function sendAdvancePaymentConfirmation(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, amountPaid, propertyName],
+    variables: [guestName, amountPaid],
   });
 }
 
