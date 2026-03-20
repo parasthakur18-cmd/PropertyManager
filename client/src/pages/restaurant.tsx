@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2 } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,34 @@ export default function Kitchen() {
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  // Auto-prompt push subscription when the kitchen page loads
+  useEffect(() => {
+    if (pushStatus === "unsubscribed") {
+      // Small delay so the UI settles before asking for permission
+      const t = setTimeout(() => {
+        if (Notification.permission !== "denied") {
+          pushSubscribe();
+        }
+      }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, [pushStatus]);
+
+  // Build a WhatsApp share message for an order
+  const shareOrderOnWhatsApp = (order: any) => {
+    const items = (order.items as any[]) || [];
+    const itemLines = items.map((i: any) => `  • ${i.quantity}x ${i.name} — ₹${i.price}`).join("\n");
+    const location = order.roomNumber ? `Room ${order.roomNumber}` : order.customerName || "Restaurant";
+    const msg =
+      `🍽️ *New Order #${order.id}*\n` +
+      `📍 ${location}\n` +
+      `⏱ ${new Date(order.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}\n\n` +
+      `*Items:*\n${itemLines}\n\n` +
+      `💰 *Total: ₹${order.totalAmount}*` +
+      (order.specialInstructions ? `\n\n📝 _${order.specialInstructions}_` : "");
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  };
 
   const { data: orders, isLoading } = useQuery<any[]>({
     queryKey: ["/api/orders"],
@@ -323,6 +351,16 @@ export default function Kitchen() {
               >
                 <Edit className="h-4 w-4" />
               </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => shareOrderOnWhatsApp(order)}
+                data-testid={`button-share-order-${order.id}`}
+                title="Share on WhatsApp"
+                className="text-green-600 border-green-200 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:border-green-800 dark:hover:bg-green-950"
+              >
+                <Share2 className="h-4 w-4" />
+              </Button>
               {order.status === "pending" && (
                 <>
                   <Button
@@ -440,6 +478,27 @@ export default function Kitchen() {
             selectedPropertyId={selectedPropertyId}
             onPropertyChange={setSelectedPropertyId}
           />
+        </div>
+      )}
+
+      {/* Push notification warning banner — shown when not subscribed */}
+      {pushStatus === "unsubscribed" && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-300">
+            <Bell className="h-4 w-4 shrink-0" />
+            <span><strong>Push notifications are off.</strong> Enable them so you receive order alerts even when this app is closed.</span>
+          </div>
+          <Button size="sm" onClick={pushSubscribe} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white border-0" data-testid="button-enable-push-banner">
+            Enable Now
+          </Button>
+        </div>
+      )}
+      {pushStatus === "denied" && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-700 px-4 py-3">
+          <Bell className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+          <span className="text-sm text-red-700 dark:text-red-300">
+            <strong>Notifications are blocked.</strong> Go to your browser settings → Site settings → Notifications → Allow for this site, then refresh.
+          </span>
         </div>
       )}
 
