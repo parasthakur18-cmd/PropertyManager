@@ -66,7 +66,7 @@ import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegration
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
-import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature } from "./razorpay";
+import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
 import { 
   fetchBeds24Bookings, 
   getBeds24Properties, 
@@ -17549,7 +17549,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           const checkInFmt = format(new Date(checkin), "dd MMM yyyy");
           const checkOutFmt = format(new Date(checkout), "dd MMM yyyy");
 
-          if (isAutoConfirmChannel) {
+          if (!isRealPhone(guestPhone)) {
+            // No real phone — skip all WhatsApp silently
+            console.warn(`[WhatsApp] Booking #${newBooking.id} - Guest WhatsApp skipped: no valid phone number for ${guestFullName}`);
+          } else if (isAutoConfirmChannel) {
             // Goibibo / MMT: send booking confirmed message (template 29294)
             try {
               await sendBookingConfirmedNotification(guestPhone, guestFullName, propertyName, checkInFmt, checkOutFmt);
@@ -17558,10 +17561,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               console.error(`[WhatsApp] Booking confirmed notification failed for #${newBooking.id}:`, waErr.message);
             }
           } else {
-            // Booking.com & others: create Razorpay link + send advance payment request (template 22226)
+            // Booking.com & others: create Razorpay link + send advance payment request via WhatsApp only (template 29410)
             try {
               const advanceAmount = parseFloat(totalAmount) || 0;
-              const guestEmail = guestData?.email || `guest${newBooking.id}@hostezee.com`;
+              const guestEmail = guestData?.email || "";
               const paymentLink = await createPaymentLink(newBooking.id, advanceAmount, guestFullName, guestEmail, guestPhone);
               const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
               await sendAdvancePaymentRequest(guestPhone, guestFullName, checkInFmt, checkOutFmt, propertyName, `₹${advanceAmount.toFixed(0)}`, paymentLinkUrl);
