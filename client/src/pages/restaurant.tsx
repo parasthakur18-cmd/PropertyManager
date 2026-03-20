@@ -76,15 +76,25 @@ export default function Kitchen() {
   // Build a WhatsApp share message for an order
   const shareOrderOnWhatsApp = (order: any) => {
     const items = (order.items as any[]) || [];
-    const itemLines = items.map((i: any) => `  • ${i.quantity}x ${i.name} — ₹${i.price}`).join("\n");
-    const location = order.roomNumber ? `Room ${order.roomNumber}` : order.customerName || "Restaurant";
-    const msg =
-      `🍽️ *New Order #${order.id}*\n` +
-      `📍 ${location}\n` +
-      `⏱ ${new Date(order.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}\n\n` +
-      `*Items:*\n${itemLines}\n\n` +
-      `💰 *Total: ₹${order.totalAmount}*` +
-      (order.specialInstructions ? `\n\n📝 _${order.specialInstructions}_` : "");
+    const itemLines = items
+      .map((i: any, idx: number) => {
+        const lineTotal = (Number(i.quantity) * Number(i.price)).toFixed(0);
+        return `${idx + 1}) ${i.name}: ${i.quantity} QTY x ₹${i.price} = ₹${lineTotal}`;
+      })
+      .join("\n");
+
+    const location = order.roomNumber ? `ROOM ${order.roomNumber}` : (order.customerName || "Restaurant");
+    const paymentStatus = order.paymentStatus === "paid" ? "Paid" : "Unpaid";
+
+    let msg =
+      `Order for ${order.customerName || "Guest"}\n` +
+      (order.customerPhone ? `Phone Number: ${order.customerPhone}\n` : "") +
+      `${location}\n\n` +
+      `Order\n${itemLines}\n\n` +
+      (order.specialInstructions ? `Customer Instruction: ${order.specialInstructions}\n\n` : "") +
+      `Total Bill: ₹${order.totalAmount}\n\n` +
+      `Payment Status: ${paymentStatus}`;
+
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   };
 
