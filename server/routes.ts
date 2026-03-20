@@ -17357,7 +17357,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       console.log(`[AIOSELL-WEBHOOK] Received ${action} reservation from ${channel} - bookingId: ${bookingId}`);
 
       const [config] = await db.select().from(aiosellConfigurations)
-        .where(eq(aiosellConfigurations.hotelCode, hotelCode));
+        .where(and(
+          eq(aiosellConfigurations.hotelCode, hotelCode),
+          eq(aiosellConfigurations.isActive, true)
+        ))
+        .orderBy(aiosellConfigurations.id);
 
       if (!config) {
         console.error(`[AIOSELL-WEBHOOK] No config found for hotelCode: ${hotelCode}`);
