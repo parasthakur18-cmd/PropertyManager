@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, ShoppingCart, X, Plus, Minus, ChevronRight } from "lucide-react";
+import { Search, ShoppingCart, X, Plus, Minus, ChevronRight, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +43,17 @@ export default function CustomerMenu() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
   const { toast } = useToast();
+
+  // Kitchen hours: 8:00 AM – 10:00 PM
+  const KITCHEN_OPEN_HOUR = 8;
+  const KITCHEN_CLOSE_HOUR = 22;
+  const isKitchenOpen = useMemo(() => {
+    const now = new Date();
+    const h = now.getHours();
+    return h >= KITCHEN_OPEN_HOUR && h < KITCHEN_CLOSE_HOUR;
+  }, []);
 
   // Selected item configuration
   const [selectedVariant, setSelectedVariant] = useState<MenuItemVariant | null>(null);
@@ -226,6 +237,12 @@ export default function CustomerMenu() {
   const cartTotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
 
   const handlePlaceOrder = () => {
+    // Block order if kitchen is closed
+    if (!isKitchenOpen) {
+      setShowKitchenClosedDialog(true);
+      return;
+    }
+
     // Validate inputs
     if (!customerName || !customerPhone) {
       toast({
@@ -312,8 +329,44 @@ export default function CustomerMenu() {
               data-testid="input-search"
             />
           </div>
+
+          {/* Kitchen timing pill */}
+          <div className="mt-3 flex items-center justify-center">
+            <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ${
+              isKitchenOpen
+                ? "bg-green-500/20 text-green-100 border border-green-400/40"
+                : "bg-red-500/20 text-red-200 border border-red-400/40"
+            }`} data-testid="badge-kitchen-status">
+              <Clock className="h-3.5 w-3.5" />
+              {isKitchenOpen
+                ? "Kitchen Open · 8:00 AM – 10:00 PM"
+                : "Kitchen Closed · Opens at 8:00 AM"}
+              <span className={`h-2 w-2 rounded-full ${isKitchenOpen ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Kitchen closed dialog */}
+      <Dialog open={showKitchenClosedDialog} onOpenChange={setShowKitchenClosedDialog}>
+        <DialogContent className="max-w-sm text-center" data-testid="dialog-kitchen-closed">
+          <DialogHeader>
+            <div className="flex justify-center mb-2">
+              <div className="h-16 w-16 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
+                <Clock className="h-8 w-8 text-red-500" />
+              </div>
+            </div>
+            <DialogTitle className="text-center text-xl">Kitchen is Closed</DialogTitle>
+            <DialogDescription className="text-center text-base pt-1">
+              The kitchen is currently closed. You can place your order between{" "}
+              <span className="font-semibold text-foreground">8:00 AM and 10:00 PM</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setShowKitchenClosedDialog(false)} className="mt-2 w-full" data-testid="button-close-kitchen-dialog">
+            Got it
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {/* Category Filter Tabs - Only tabs scroll */}
       {categories && categories.length > 0 && (
@@ -705,14 +758,20 @@ export default function CustomerMenu() {
                   <span>₹{cartTotal.toFixed(2)}</span>
                 </div>
                 
+                {!isKitchenOpen && (
+                  <p className="text-center text-sm text-red-500 font-medium flex items-center justify-center gap-1">
+                    <Clock className="h-4 w-4" />
+                    Kitchen closed · Opens at 8:00 AM
+                  </p>
+                )}
                 <Button 
-                  className="w-full" 
+                  className={`w-full ${!isKitchenOpen ? "bg-muted text-muted-foreground cursor-not-allowed hover:bg-muted" : ""}`}
                   size="lg" 
                   onClick={handlePlaceOrder}
                   disabled={orderMutation.isPending}
                   data-testid="button-place-order"
                 >
-                  {orderMutation.isPending ? "Placing Order..." : "Place Order"}
+                  {orderMutation.isPending ? "Placing Order..." : isKitchenOpen ? "Place Order" : "Kitchen Closed"}
                 </Button>
               </div>
             </SheetFooter>
