@@ -60,6 +60,7 @@ import {
   sendTaskReminder,
   sendOtaBookingNotification,
   sendFoodOrderReceived,
+  sendFoodOrderStaffAlert,
   sendBookingConfirmedNotification
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
@@ -871,6 +872,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sendPushToUsers(relevantUsers.map(u => u.id), pushPayload);
       } catch (pushErr: any) {
         console.warn("[Push] Public order push failed:", pushErr.message);
+      }
+
+      // Send WhatsApp staff alert (WID 29652) to property contactPhone
+      try {
+        const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+        const staffPhone = property?.contactPhone;
+        if (staffPhone && isRealPhone(staffPhone)) {
+          const items = (order.items as any[]) || [];
+          const orderDetails = items
+            .map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`)
+            .join("\n");
+          const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+          const roomLabel = roomInfo
+            ? `Room ${roomInfo.roomNumber}`
+            : order.customerName
+              ? "Restaurant / Walk-in"
+              : "Restaurant";
+          const guestLabel = order.customerName || "Guest";
+          await sendFoodOrderStaffAlert(
+            staffPhone,
+            guestLabel,
+            roomLabel,
+            orderDetails,
+            String(order.totalAmount)
+          );
+          console.log(`[WhatsApp] Food order staff alert (WID 29652) sent to ${staffPhone} for order #${order.id}`);
+        }
+      } catch (waStaffErr: any) {
+        console.warn(`[WhatsApp] Food order staff alert failed (non-critical):`, waStaffErr.message);
       }
 
       res.status(201).json(order);
