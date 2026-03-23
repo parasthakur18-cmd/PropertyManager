@@ -862,10 +862,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
         const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+        const roomLabel = roomInfo ? ` — Room ${roomInfo.roomNumber}` : "";
+        const propLabel = property ? ` @ ${property.name}` : "";
+        const custLabel = order.customerName ? order.customerName : "Customer";
+
+        // DB notification for Notification Center
+        for (const u of relevantUsers) {
+          await db.insert(notifications).values({
+            userId: u.id,
+            type: "new_order",
+            title: "New Food Order",
+            message: `Order #${order.id} from ${custLabel}${roomLabel}${propLabel}. Amount: ₹${order.totalAmount}`,
+            soundType: "info",
+            relatedId: order.id,
+            relatedType: "order",
+          });
+        }
+
+        // PWA push notification
         const pushPayload = {
           type: "new_order",
           title: "🍽️ New Food Order!",
-          body: `Order #${order.id}${roomInfo ? ` — Room ${roomInfo.roomNumber}` : ""}${property ? ` @ ${property.name}` : ""}`,
+          body: `Order #${order.id}${roomLabel}${propLabel}`,
           url: "/restaurant",
           orderId: order.id,
         };
