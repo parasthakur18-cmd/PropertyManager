@@ -109,6 +109,12 @@ import {
   whatsappTemplateSettings,
   type WhatsappTemplateSetting,
   type InsertWhatsappTemplateSetting,
+  whatsappAlertConfigs,
+  type WhatsappAlertConfig,
+  type InsertWhatsappAlertConfig,
+  whatsappAlertRules,
+  type WhatsappAlertRule,
+  type InsertWhatsappAlertRule,
   passwordResetOtps,
   type PasswordResetOtp,
   type InsertPasswordResetOtp,
@@ -398,6 +404,15 @@ export interface IStorage {
   getWhatsappTemplateSetting(propertyId: number, templateType: string): Promise<WhatsappTemplateSetting | undefined>;
   upsertWhatsappTemplateSetting(setting: InsertWhatsappTemplateSetting): Promise<WhatsappTemplateSetting>;
   initializePropertyWhatsappSettings(propertyId: number): Promise<void>;
+
+  // WhatsApp Alert Routing System
+  getAllWhatsappAlertConfigs(): Promise<WhatsappAlertConfig[]>;
+  getWhatsappAlertConfig(templateKey: string): Promise<WhatsappAlertConfig | undefined>;
+  upsertWhatsappAlertConfig(data: InsertWhatsappAlertConfig): Promise<WhatsappAlertConfig>;
+  getWhatsappAlertRulesForProperty(propertyId: number): Promise<WhatsappAlertRule[]>;
+  getWhatsappAlertRule(templateKey: string, propertyId: number): Promise<WhatsappAlertRule | undefined>;
+  upsertWhatsappAlertRule(data: InsertWhatsappAlertRule): Promise<WhatsappAlertRule>;
+  resolveAlertRecipients(templateKey: string, propertyId: number): Promise<string[]>;
 
   // Activity Logs operations
   createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
@@ -4419,6 +4434,97 @@ export class DatabaseStorage implements IStorage {
         });
       }
     }
+  }
+
+  // ===== WhatsApp Alert Routing =====
+
+  async getAllWhatsappAlertConfigs(): Promise<WhatsappAlertConfig[]> {
+    return db.select().from(whatsappAlertConfigs).orderBy(whatsappAlertConfigs.templateKey);
+  }
+
+  async getWhatsappAlertConfig(templateKey: string): Promise<WhatsappAlertConfig | undefined> {
+    const [row] = await db.select().from(whatsappAlertConfigs).where(eq(whatsappAlertConfigs.templateKey, templateKey));
+    return row;
+  }
+
+  async upsertWhatsappAlertConfig(data: InsertWhatsappAlertConfig): Promise<WhatsappAlertConfig> {
+    const existing = await this.getWhatsappAlertConfig(data.templateKey);
+    if (existing) {
+      const [updated] = await db.update(whatsappAlertConfigs)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(whatsappAlertConfigs.templateKey, data.templateKey))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(whatsappAlertConfigs).values(data).returning();
+    return created;
+  }
+
+  async getWhatsappAlertRulesForProperty(propertyId: number): Promise<WhatsappAlertRule[]> {
+    return db.select().from(whatsappAlertRules).where(eq(whatsappAlertRules.propertyId, propertyId));
+  }
+
+  async getWhatsappAlertRule(templateKey: string, propertyId: number): Promise<WhatsappAlertRule | undefined> {
+    const [row] = await db.select().from(whatsappAlertRules).where(
+      and(eq(whatsappAlertRules.templateKey, templateKey), eq(whatsappAlertRules.propertyId, propertyId))
+    );
+    return row;
+  }
+
+  async upsertWhatsappAlertRule(data: InsertWhatsappAlertRule): Promise<WhatsappAlertRule> {
+    const existing = await this.getWhatsappAlertRule(data.templateKey, data.propertyId);
+    if (existing) {
+      const [updated] = await db.update(whatsappAlertRules)
+        .set({ ...data, updatedAt: new Date() })
+        .where(and(eq(whatsappAlertRules.templateKey, data.templateKey), eq(whatsappAlertRules.propertyId, data.propertyId)))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(whatsappAlertRules).values(data).returning();
+    return created;
+  }
+
+  async resolveAlertRecipients(templateKey: string, propertyId: number): Promise<string[]> {
+    // 1. Check global toggle
+    const config = await this.getWhatsappAlertConfig(templateKey);
+    if (!config || !config.isGloballyEnabled) return [];
+
+    // 2. Get property-level rule
+    const rule = await this.getWhatsappAlertRule(templateKey, propertyId);
+    if (!rule || !rule.isEnabled) return [];
+
+    const mode = rule.recipientMode;
+
+    if (mode === "property_contact") {
+      const property = await this.getProperty(propertyId);
+      return property?.contactPhone ? [property.contactPhone] : [];
+    }
+
+    if (mode === "all_staff") {
+      const staff = await db.select().from(staffMembers)
+        .where(and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true)));
+      return staff.map(s => s.phone).filter(Boolean) as string[];
+    }
+
+    if (mode === "selected_staff") {
+      if (!rule.recipientStaffIds || rule.recipientStaffIds.length === 0) return [];
+      const staff = await db.select().from(staffMembers)
+        .where(and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true)));
+      return staff
+        .filter(s => rule.recipientStaffIds!.includes(s.id) && s.phone)
+        .map(s => s.phone) as string[];
+    }
+
+    if (mode === "by_role") {
+      if (!rule.recipientRoles || rule.recipientRoles.length === 0) return [];
+      const staff = await db.select().from(staffMembers)
+        .where(and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true)));
+      return staff
+        .filter(s => s.role && rule.recipientRoles!.includes(s.role) && s.phone)
+        .map(s => s.phone) as string[];
+    }
+
+    return [];
   }
 
   // Activity Logs operations

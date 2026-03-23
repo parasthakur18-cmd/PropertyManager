@@ -1250,6 +1250,49 @@ export type WhatsappTemplateType =
   | 'addon_service'
   | 'checkout_message';
 
+// ===== WHATSAPP ALERT ROUTING SYSTEM =====
+
+// Global template registry — one row per staff-facing WhatsApp template
+export const whatsappAlertConfigs = pgTable("whatsapp_alert_configs", {
+  id: serial("id").primaryKey(),
+  templateKey: varchar("template_key", { length: 100 }).notNull().unique(),
+  templateName: varchar("template_name", { length: 255 }).notNull(),
+  templateWid: varchar("template_wid", { length: 50 }).notNull(),
+  description: text("description"),
+  isGloballyEnabled: boolean("is_globally_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WhatsappAlertConfig = typeof whatsappAlertConfigs.$inferSelect;
+export const insertWhatsappAlertConfigSchema = createInsertSchema(whatsappAlertConfigs).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertWhatsappAlertConfig = z.infer<typeof insertWhatsappAlertConfigSchema>;
+
+// Per-property recipient rules for each template
+export const whatsappAlertRules = pgTable("whatsapp_alert_rules", {
+  id: serial("id").primaryKey(),
+  templateKey: varchar("template_key", { length: 100 }).notNull(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  // property_contact = use property.contactPhone (default)
+  // all_staff        = all active staff with a phone on this property
+  // selected_staff   = only the staff IDs in recipientStaffIds
+  // by_role          = all active staff whose role is in recipientRoles
+  recipientMode: varchar("recipient_mode", { length: 30 }).notNull().default("property_contact"),
+  recipientStaffIds: integer("recipient_staff_ids").array(),
+  recipientRoles: text("recipient_roles").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type WhatsappAlertRule = typeof whatsappAlertRules.$inferSelect;
+export const insertWhatsappAlertRuleSchema = createInsertSchema(whatsappAlertRules).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertWhatsappAlertRule = z.infer<typeof insertWhatsappAlertRuleSchema>;
+
 // ===== SUBSCRIPTION & BILLING SYSTEM =====
 
 // Subscription Plans table - defines available tiers

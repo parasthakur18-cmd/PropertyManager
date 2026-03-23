@@ -24,6 +24,7 @@ import Kitchen from "@/pages/restaurant";
 import Billing from "@/pages/billing";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import WhatsappAlerts from "@/pages/whatsapp-alerts";
 import Menu from "@/pages/menu";
 import QuickOrder from "@/pages/quick-order";
 import NewEnquiry from "@/pages/new-enquiry";
@@ -172,6 +173,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/audit-logs" component={AuditLogs} />
           <Route path="/tasks" component={Tasks} />
           <Route path="/users" component={UsersManagement} />
+          <Route path="/whatsapp-alerts" component={WhatsappAlerts} />
           <Route path="/settings" component={Settings} />
           <Route path="/feature-settings" component={FeatureSettings} />
         </>

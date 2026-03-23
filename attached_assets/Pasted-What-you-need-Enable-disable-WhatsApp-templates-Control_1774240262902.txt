@@ -1,0 +1,109 @@
+What you need:
+Enable/disable WhatsApp templates
+Control per property
+Control per role / specific staff
+Flexible targeting like:
+Woodpecker Inn → send New Order alert to ALL staff
+Forest Pinnacle → send New Order alert to ONLY 2 selected staff members
+🧠 How This Should Work (Ideal System Design)
+🔘 Feature: WhatsApp Template Controls
+
+Add a section:
+
+Settings → WhatsApp → Template Controls
+⚙️ Each Template Should Have 3 Controls
+1. ✅ Global Toggle
+ON / OFF
+👉 Enables or disables template completely
+2. 🏨 Property-Level Control
+
+Multi-select properties:
+
+Example:
+
+Template: New Order Alert
+
+☑ Woodpecker Inn  
+☑ Forest Pinnacle  
+☑ Tree House  
+☐ Blue Mont  
+☐ Other Property
+
+👉 Template only works for selected properties
+
+3. 👥 Recipient Control (Most Important)
+
+Option to choose:
+
+🔹 Mode A: Send to ALL staff
+(•) All Staff
+( ) Selected Members
+( ) By Role
+🔹 Mode B: Selected Members
+Select Staff:
+☑ Ravi (Kitchen)
+☑ Aman (Manager)
+☐ Suresh
+☐ Pooja
+🔹 Mode C: By Role
+☑ Kitchen Staff
+☑ Manager
+☐ Reception
+🔥 Your Exact Use Case (Solved)
+🏨 Woodpecker Inn
+Template: New Order Alert
+Property: Woodpecker
+Mode: All Staff
+
+👉 Result: Everyone gets order alert
+
+🏨 Forest Pinnacle
+Template: New Order Alert
+Property: Forest Pinnacle
+Mode: Selected Members
+Selected:
+Person 1
+Person 2
+
+👉 Result: Only 2 people get alert
+
+🚀 Final Logic (System Flow)
+Order placed →
+Check Template Enabled? →
+Check Property Match? →
+Check Recipient Rule →
+Send WhatsApp
+⚠️ Important Note (Current System Reality)
+
+👉 Right now, Hostezee likely:
+
+Sends templates globally
+Doesn’t have property + role-based control
+💡 What Needs to Be Built (Action for Dev)
+
+You need:
+
+🔧 Backend Changes:
+Template mapping with:
+property_id[]
+role_id[]
+user_id[]
+🎛️ UI Changes:
+Toggle switch
+Property selector
+Role / user selector
+✍️ Simple Version You Can Send to Developer
+We need WhatsApp template controls with:
+
+1. Enable/Disable toggle per template
+2. Property-level selection (multi-property support)
+3. Recipient control:
+   - All staff
+   - Selected users
+   - By role
+
+Example:
+Woodpecker → send new order alert to all staff  
+Forest Pinnacle → send only to 2 selected users
+
+Template should trigger based on property + recipient mapping.

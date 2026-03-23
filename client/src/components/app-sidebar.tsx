@@ -42,6 +42,7 @@ import {
   Wallet,
   ArrowUpDown,
   Package,
+  BellRing,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -104,6 +105,7 @@ const adminAdminItems = [
   { title: "Channel Manager", url: "/channel-manager", icon: ArrowUpDown },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Audit Trail", url: "/audit-logs", icon: Shield },
+  { title: "WhatsApp Alerts", url: "/whatsapp-alerts", icon: BellRing },
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
 ];

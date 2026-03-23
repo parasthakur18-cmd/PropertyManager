@@ -874,33 +874,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("[Push] Public order push failed:", pushErr.message);
       }
 
-      // Send WhatsApp staff alert (WID 29652) to property contactPhone
-      try {
-        const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
-        const staffPhone = property?.contactPhone;
-        if (staffPhone && isRealPhone(staffPhone)) {
-          const items = (order.items as any[]) || [];
-          const orderDetails = items
-            .map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`)
-            .join("\n");
-          const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-          const roomLabel = roomInfo
-            ? `Room ${roomInfo.roomNumber}`
-            : order.customerName
-              ? "Restaurant / Walk-in"
-              : "Restaurant";
-          const guestLabel = order.customerName || "Guest";
-          await sendFoodOrderStaffAlert(
-            staffPhone,
-            guestLabel,
-            roomLabel,
-            orderDetails,
-            String(order.totalAmount)
-          );
-          console.log(`[WhatsApp] Food order staff alert (WID 29652) sent to ${staffPhone} for order #${order.id}`);
+      // Send WhatsApp staff alert (WID 29652) via alert routing system
+      if (orderData.propertyId) {
+        try {
+          const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", orderData.propertyId);
+          if (recipients.length > 0) {
+            const items = (order.items as any[]) || [];
+            const orderDetails = items
+              .map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`)
+              .join("\n");
+            const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+            const roomLabel = roomInfo
+              ? `Room ${roomInfo.roomNumber}`
+              : order.customerName
+                ? "Restaurant / Walk-in"
+                : "Restaurant";
+            const guestLabel = order.customerName || "Guest";
+            for (const phone of recipients) {
+              if (!isRealPhone(phone)) continue;
+              await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, String(order.totalAmount));
+              console.log(`[WhatsApp] Food order alert sent to ${phone} for order #${order.id}`);
+            }
+          }
+        } catch (waStaffErr: any) {
+          console.warn(`[WhatsApp] Food order staff alert failed (non-critical):`, waStaffErr.message);
         }
-      } catch (waStaffErr: any) {
-        console.warn(`[WhatsApp] Food order staff alert failed (non-critical):`, waStaffErr.message);
       }
 
       res.status(201).json(order);
@@ -16889,6 +16887,90 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       res.json(reports);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ========================
+  // WHATSAPP ALERT ROUTING ROUTES
+  // ========================
+
+  // GET all template configs (global list)
+  app.get("/api/whatsapp-alerts/configs", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const configs = await storage.getAllWhatsappAlertConfigs();
+      res.json(configs);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // PUT update global toggle for a template
+  app.put("/api/whatsapp-alerts/configs/:key", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { key } = req.params;
+      const { isGloballyEnabled } = req.body;
+      const existing = await storage.getWhatsappAlertConfig(key);
+      if (!existing) return res.status(404).json({ message: "Template not found" });
+      const updated = await storage.upsertWhatsappAlertConfig({
+        ...existing,
+        isGloballyEnabled: Boolean(isGloballyEnabled),
+      });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET rules for a specific property
+  app.get("/api/whatsapp-alerts/rules", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId) return res.status(400).json({ message: "propertyId required" });
+      const rules = await storage.getWhatsappAlertRulesForProperty(propertyId);
+      res.json(rules);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // PUT upsert rule for a (templateKey, propertyId) pair
+  app.put("/api/whatsapp-alerts/rules/:key/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { key, propertyId: propIdStr } = req.params;
+      const propertyId = parseInt(propIdStr);
+      const { isEnabled, recipientMode, recipientStaffIds, recipientRoles } = req.body;
+      const rule = await storage.upsertWhatsappAlertRule({
+        templateKey: key,
+        propertyId,
+        isEnabled: Boolean(isEnabled),
+        recipientMode: recipientMode || "property_contact",
+        recipientStaffIds: recipientStaffIds || null,
+        recipientRoles: recipientRoles || null,
+      });
+      res.json(rule);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET staff for a property (for recipient selector)
+  app.get("/api/whatsapp-alerts/staff/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const propertyId = parseInt(req.params.propertyId);
+      const staff = await storage.getStaffMembersByProperty(propertyId);
+      res.json(staff.filter((s: any) => s.isActive));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 
