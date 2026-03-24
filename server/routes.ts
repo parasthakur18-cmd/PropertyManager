@@ -16369,6 +16369,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!auth) return res.status(401).json({ message: "Not authenticated" });
 
       const now = new Date();
+      const isPreview = req.query.preview === "1"; // skip 8h filter for testing
       const cutoffTime = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 8h ago
 
       const overdueBookings = await db.select().from(bookings)
@@ -16381,7 +16382,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0 &&
             !tenant.assignedPropertyIds.includes(String(b.propertyId))) continue;
         const createdAt = b.createdAt ? new Date(b.createdAt) : now;
-        if (createdAt > cutoffTime) continue; // Less than 8h old
+        if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
 
         const guest = await storage.getGuest(b.guestId);
         const property = await storage.getProperty(b.propertyId);

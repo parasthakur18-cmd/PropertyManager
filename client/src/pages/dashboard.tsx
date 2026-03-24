@@ -100,22 +100,26 @@ interface OverdueBooking {
   totalAmount: string;
 }
 
-function PendingOverdueAlert() {
+function PendingOverdueAlert({ testMode = false, onClose }: { testMode?: boolean; onClose?: () => void }) {
   const { toast } = useToast();
   const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(testMode);
 
-  const { data: overdueList = [] } = useQuery<OverdueBooking[]>({
-    queryKey: ["/api/bookings/pending-overdue"],
-    refetchInterval: 5 * 60 * 1000,
-    staleTime: 4 * 60 * 1000,
+  const url = testMode
+    ? "/api/bookings/pending-overdue?preview=1"
+    : "/api/bookings/pending-overdue";
+
+  const { data: overdueList = [], isLoading } = useQuery<OverdueBooking[]>({
+    queryKey: [url],
+    refetchInterval: testMode ? false : 5 * 60 * 1000,
+    staleTime: testMode ? 0 : 4 * 60 * 1000,
   });
 
   const visible = overdueList.filter(b => !dismissedIds.has(b.id));
 
   useEffect(() => {
-    if (visible.length > 0) setOpen(true);
-  }, [visible.length]);
+    if (!testMode && visible.length > 0) setOpen(true);
+  }, [visible.length, testMode]);
 
   const cancelMutation = useMutation({
     mutationFn: (bookingId: number) =>
@@ -123,7 +127,7 @@ function PendingOverdueAlert() {
     onSuccess: (_data, bookingId) => {
       setDismissedIds(prev => new Set([...prev, bookingId]));
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings/pending-overdue"] });
+      queryClient.invalidateQueries({ queryKey: [url] });
       toast({ title: "Booking cancelled" });
     },
     onError: () => toast({ title: "Failed to cancel booking", variant: "destructive" }),
@@ -131,22 +135,37 @@ function PendingOverdueAlert() {
 
   const dismiss = (id: number) => setDismissedIds(prev => new Set([...prev, id]));
 
-  if (visible.length === 0) return null;
+  const handleClose = () => {
+    setOpen(false);
+    onClose?.();
+  };
+
+  if (!testMode && visible.length === 0) return null;
+  if (testMode && !open) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-amber-600">
             <AlertTriangle className="h-5 w-5" />
             Pending Advance — Overdue ({visible.length})
+            {testMode && <Badge variant="outline" className="text-xs ml-1">Test Mode</Badge>}
           </DialogTitle>
           <DialogDescription>
-            These bookings have been waiting for advance payment for 8+ hours. Take action now.
+            {testMode
+              ? "Test preview — showing all pending_advance bookings regardless of age."
+              : "These bookings have been waiting for advance payment for 8+ hours. Take action now."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {isLoading && <p className="text-sm text-center text-muted-foreground py-4">Loading...</p>}
+          {!isLoading && visible.length === 0 && (
+            <p className="text-sm text-center text-muted-foreground py-4">
+              No pending_advance bookings found.
+            </p>
+          )}
           {visible.map(booking => (
             <div
               key={booking.id}
@@ -205,7 +224,7 @@ function PendingOverdueAlert() {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} data-testid="btn-close-overdue-alert">
+          <Button variant="outline" onClick={handleClose} data-testid="btn-close-overdue-alert">
             Close
           </Button>
         </DialogFooter>
@@ -238,6 +257,9 @@ export default function Dashboard() {
   const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
   const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
   
+  // Test: overdue alert preview
+  const [testOverdueOpen, setTestOverdueOpen] = useState(false);
+
   // Quick expense dialog
   const [quickExpenseOpen, setQuickExpenseOpen] = useState(false);
   const [quickBookingOpen, setQuickBookingOpen] = useState(false);
@@ -1397,6 +1419,17 @@ export default function Dashboard() {
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline ml-1">Booking</span>
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setTestOverdueOpen(true)}
+              className="h-8 border-amber-400 text-amber-600 hover:bg-amber-50"
+              data-testid="btn-test-overdue-alert"
+              title="Preview the overdue payment alert popup"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">Test Alert</span>
+            </Button>
           </div>
         </div>
 
@@ -2340,6 +2373,9 @@ export default function Dashboard() {
       </Dialog>
 
       <PendingOverdueAlert />
+      {testOverdueOpen && (
+        <PendingOverdueAlert testMode onClose={() => setTestOverdueOpen(false)} />
+      )}
 
       <OnboardingWizard
         isOpen={showOnboarding}
