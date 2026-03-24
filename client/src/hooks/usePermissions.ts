@@ -62,7 +62,15 @@ export function usePermissions() {
     };
   }
 
-  const effectivePermissions = permissions || { userId: user?.id || "", ...defaultPermissions };
+  // Manager role always gets menu management access regardless of DB setting
+  const managerOverrides = user?.role === "manager"
+    ? { menuManagement: "edit" as const }
+    : {};
+
+  const effectivePermissions = {
+    ...(permissions || { userId: user?.id || "", ...defaultPermissions }),
+    ...managerOverrides,
+  };
 
   const hasAccess = (module: keyof Omit<UserPermissions, "userId">) => {
     return effectivePermissions[module] !== "none";
