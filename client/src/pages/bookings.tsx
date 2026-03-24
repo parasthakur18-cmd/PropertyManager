@@ -19,7 +19,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room, type TravelAgent, type Bill, type Order } from "@shared/schema";
+import { insertBookingSchema, type InsertBooking, type Booking, type Property, type Guest, type Room, type TravelAgent, type Bill, type Order, type BookingRoomStay } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -201,6 +201,13 @@ export default function Bookings() {
   const { data: rooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
     staleTime: 2 * 60 * 1000,
+  });
+
+  // Room stays for the booking being edited (shown only for OTA/multi-room bookings)
+  const { data: editingBookingRoomStays } = useQuery<BookingRoomStay[]>({
+    queryKey: ["/api/bookings", editingBooking?.id, "room-stays"],
+    enabled: !!editingBooking?.id && editingBooking?.source?.startsWith("aiosell-"),
+    staleTime: 30 * 1000,
   });
 
   const { data: orders } = useQuery<Order[]>({
@@ -2658,6 +2665,49 @@ export default function Bookings() {
           <DialogHeader>
             <DialogTitle>Edit Booking</DialogTitle>
           </DialogHeader>
+
+          {/* Room Stays — shown only for OTA / multi-room AioSell bookings */}
+          {editingBooking?.source?.startsWith("aiosell-") && editingBookingRoomStays && editingBookingRoomStays.length > 0 && (
+            <div className="border rounded-lg p-3 bg-amber-50 dark:bg-amber-950/20 space-y-2">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                OTA Room Stays ({editingBookingRoomStays.length} room{editingBookingRoomStays.length !== 1 ? "s" : ""})
+              </p>
+              <div className="space-y-1">
+                {editingBookingRoomStays.map((stay, idx) => (
+                  <div key={stay.id} className="flex items-center justify-between text-xs bg-white dark:bg-background rounded px-2 py-1.5 border" data-testid={`room-stay-${stay.id}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-muted-foreground">#{idx + 1}</span>
+                      <span>{stay.roomType || stay.aiosellRoomCode || "Room"}</span>
+                      {stay.mealPlan && stay.mealPlan !== "none" && (
+                        <span className="text-muted-foreground">· {stay.mealPlan}</span>
+                      )}
+                      {stay.adults !== null && (
+                        <span className="text-muted-foreground">· {stay.adults}A{stay.children ? `+${stay.children}C` : ""}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {stay.amount && (
+                        <span className="font-medium">₹{parseFloat(stay.amount).toLocaleString("en-IN")}</span>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className={stay.status === "confirmed"
+                          ? "border-green-500 text-green-700 dark:text-green-400 text-[10px] px-1.5 py-0"
+                          : "border-amber-500 text-amber-700 dark:text-amber-400 text-[10px] px-1.5 py-0"
+                        }
+                      >
+                        {stay.status === "confirmed"
+                          ? (stay.roomId ? (rooms?.find(r => r.id === stay.roomId)?.roomNumber ?? "Assigned") : "Assigned")
+                          : "TBS"}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4 pb-4">
 

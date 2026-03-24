@@ -45,6 +45,8 @@ The schema covers comprehensive PMS functionalities including `users`, `properti
 
 The `bookingGuests` table stores multiple guest ID proofs per booking with front/back images. It has: `bookingId`, `guestName`, `phone`, `email`, `idProofType`, `idProofNumber`, `idProofFront`, `idProofBack`, `isPrimary`.
 
+The `bookingRoomStays` table stores one record per room for multi-room OTA bookings (e.g. AioSell). Fields: `bookingId`, `roomId` (nullable — null means TBS/To Be Assigned), `aiosellRoomCode`, `roomType`, `mealPlan`, `status` (confirmed/tbs), `amount` (per-room), `adults`, `children`. Webhook creates ONE booking + N room_stays. Inventory sync counts TBS stays (roomId=null) to reduce availability without double-counting assigned rooms.
+
 ### Extra Services (Add-ons)
 - **Table**: `extra_services` — `bookingId`, `serviceType`, `serviceName`, `amount`, `serviceDate`, `description`, `isPaid`, `paymentMethod`, `propertyId`
 - **Collect Now**: When `isPaid=true` on creation, server auto-records `extra_service_payment` wallet transaction; `paymentMethod` maps to the correct wallet (cash/upi/bank)

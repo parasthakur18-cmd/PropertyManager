@@ -312,6 +312,30 @@ export const insertBookingGuestSchema = createInsertSchema(bookingGuests).omit({
 export type InsertBookingGuest = z.infer<typeof insertBookingGuestSchema>;
 export type BookingGuest = typeof bookingGuests.$inferSelect;
 
+// Room Stays — one record per room for multi-room OTA bookings
+export const bookingRoomStays = pgTable("booking_room_stays", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull().references(() => bookings.id, { onDelete: "cascade" }),
+  roomId: integer("room_id").references(() => rooms.id),
+  aiosellRoomCode: varchar("aiosell_room_code", { length: 50 }),
+  roomType: varchar("room_type", { length: 100 }),
+  mealPlan: varchar("meal_plan", { length: 50 }),
+  status: varchar("status", { length: 20 }).notNull().default("tbs"), // "confirmed" | "tbs"
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  adults: integer("adults").default(1),
+  children: integer("children").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBookingRoomStaySchema = createInsertSchema(bookingRoomStays).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBookingRoomStay = z.infer<typeof insertBookingRoomStaySchema>;
+export type BookingRoomStay = typeof bookingRoomStays.$inferSelect;
+
 // Menu Categories table
 export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),

@@ -10,8 +10,8 @@ import {
   type AiosellRoomMapping,
   type AiosellRatePlan,
 } from "@shared/schema";
-import { eq, and, desc, inArray, lte, gte } from "drizzle-orm";
-import { rooms, bookings } from "@shared/schema";
+import { eq, and, desc, inArray, lte, gte, isNull } from "drizzle-orm";
+import { rooms, bookings, bookingRoomStays } from "@shared/schema";
 
 interface AiosellApiResponse {
   success: boolean;
@@ -406,6 +406,31 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       )
     );
 
+    // Also fetch TBS room stays (no assigned roomId) to correctly reduce inventory
+    // These represent rooms that are sold but not yet physically assigned
+    const activeBookingIds = activeBookings.map(b => b.id);
+    const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+    if (activeBookingIds.length > 0) {
+      const tbsStays = await db.select({
+        bookingId: bookingRoomStays.bookingId,
+        aiosellRoomCode: bookingRoomStays.aiosellRoomCode,
+      }).from(bookingRoomStays)
+        .where(
+          and(
+            inArray(bookingRoomStays.bookingId, activeBookingIds),
+            isNull(bookingRoomStays.roomId), // Only TBS stays — confirmed stays already counted via booking.roomId
+          )
+        );
+      for (const stay of tbsStays) {
+        if (stay.aiosellRoomCode && !tbsStaysByBookingId.has(stay.bookingId)) {
+          tbsStaysByBookingId.set(stay.bookingId, []);
+        }
+        if (stay.aiosellRoomCode) {
+          tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
+        }
+      }
+    }
+
     // Group rooms by type (using hostezeeRoomType from mappings)
     const roomsByType: Record<string, number[]> = {};
     for (const mapping of mappings) {
@@ -438,6 +463,7 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
 
         // Count rooms of this type that have NO active booking on this date
         const bookedRoomIds = new Set<number>();
+        let tbsCount = 0; // TBS stays reduce available count without a specific room
         for (const booking of activeBookings) {
           const cin = new Date(booking.checkInDate);
           const cout = new Date(booking.checkOutDate);
@@ -454,6 +480,13 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
                 if (roomIds.includes(rid)) bookedRoomIds.add(rid);
               }
             }
+            // Count TBS stays (sold but no specific room assigned) for this room code
+            const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
+            for (const stay of tbsForBooking) {
+              if (stay.aiosellRoomCode === mapping.aiosellRoomCode) {
+                tbsCount++;
+              }
+            }
           }
         }
 
@@ -462,7 +495,8 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
           .filter(r => roomIds.includes(r.id) && (r.status === "maintenance" || r.status === "out-of-order" || r.status === "blocked"))
           .map(r => r.id);
 
-        const available = roomIds.filter(id => !bookedRoomIds.has(id) && !blockedRoomIds.includes(id)).length;
+        const physicallyAvailable = roomIds.filter(id => !bookedRoomIds.has(id) && !blockedRoomIds.includes(id)).length;
+        const available = Math.max(0, physicallyAvailable - tbsCount);
         dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
       }
     }

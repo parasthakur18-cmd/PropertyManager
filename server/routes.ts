@@ -63,7 +63,7 @@ import {
   sendFoodOrderStaffAlert,
   sendBookingConfirmedNotification
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays } from "@shared/schema";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -4120,6 +4120,39 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         .where(eq(bookingGuests.bookingId, bookingId))
         .orderBy(bookingGuests.id);
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Room stays for a booking (multi-room OTA bookings)
+  app.get("/api/bookings/:id/room-stays", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const result = await db
+        .select()
+        .from(bookingRoomStays)
+        .where(eq(bookingRoomStays.bookingId, bookingId))
+        .orderBy(bookingRoomStays.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/bookings/:bookingId/room-stays/:stayId", isAuthenticated, async (req: any, res) => {
+    try {
+      const stayId = parseInt(req.params.stayId);
+      const { roomId, status } = req.body;
+      const [updated] = await db.update(bookingRoomStays)
+        .set({
+          ...(roomId !== undefined ? { roomId: roomId || null } : {}),
+          ...(status ? { status } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(bookingRoomStays.id, stayId))
+        .returning();
+      res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -17508,21 +17541,24 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       });
 
       if (action === "cancel") {
+        // Use externalBookingId for accurate lookup
         const existingBookings = await db.select().from(bookings)
           .where(and(
             eq(bookings.propertyId, config.propertyId),
             eq(bookings.source, `aiosell-${channel}`),
           ));
-        const booking = existingBookings.find(b => {
-          const meta = b.metadata as any;
-          return meta?.aiosellBookingId === bookingId || meta?.cmBookingId === cmBookingId;
-        });
+        const booking = existingBookings.find(b =>
+          b.externalBookingId === bookingId ||
+          b.externalBookingId === cmBookingId
+        );
         if (booking) {
           await db.update(bookings)
             .set({ status: "cancelled", updatedAt: new Date() })
             .where(eq(bookings.id, booking.id));
           storage.invalidateBookingsCache();
           console.log(`[AIOSELL-WEBHOOK] Cancelled booking ${booking.id}`);
+        } else {
+          console.warn(`[AIOSELL-WEBHOOK] Cancel: no booking found for bookingId=${bookingId} cmBookingId=${cmBookingId}`);
         }
         await autoSyncInventoryForProperty(config.propertyId);
         return res.json({ success: true, message: "Reservation Cancelled Successfully" });
@@ -17552,59 +17588,118 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
         }
 
+        // Fetch room mappings once for all rooms
         const mappings = await getRoomMappingsForConfig(config.id);
-        let assignedRoomId: number | undefined;
-        if (roomsData && roomsData.length > 0) {
-          const roomCode = roomsData[0].roomCode;
+
+        // Resolve room assignments for ALL rooms in the booking
+        interface ResolvedRoom {
+          roomId: number | null;
+          aiosellRoomCode: string;
+          roomType: string;
+          mealPlan: string;
+          status: "confirmed" | "tbs";
+          adults: number;
+          children: number;
+          amount: number;
+        }
+        const resolvedRooms: ResolvedRoom[] = [];
+        const rooms_ = Array.isArray(roomsData) ? roomsData : [];
+        const amountPerRoom = rooms_.length > 0
+          ? (parseFloat(amount?.amountAfterTax?.toString() || "0") / rooms_.length)
+          : parseFloat(amount?.amountAfterTax?.toString() || "0");
+
+        for (const rd of rooms_) {
+          const roomCode = rd.roomCode || "";
           const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
+          let assignedRoomId: number | null = null;
+          let stayStatus: "confirmed" | "tbs" = "tbs";
           if (mapping) {
-            const mappedRoom = await db.select().from(rooms)
+            const mappedRoomRows = await db.select().from(rooms)
               .where(and(
                 eq(rooms.id, mapping.hostezeeRoomId),
-                eq(rooms.propertyId, config.propertyId), // CRITICAL: must belong to same property
+                eq(rooms.propertyId, config.propertyId),
                 eq(rooms.status, "available"),
               ));
-            if (mappedRoom.length > 0) {
-              assignedRoomId = mappedRoom[0].id;
+            if (mappedRoomRows.length > 0) {
+              assignedRoomId = mappedRoomRows[0].id;
+              stayStatus = "confirmed";
             } else {
-              console.warn(`[AIOSELL-WEBHOOK] Room mapping for code "${roomCode}" does not match property ${config.propertyId} or is not available — booking will be created without room assignment`);
+              console.warn(`[AIOSELL-WEBHOOK] Room code "${roomCode}" not available for property ${config.propertyId} → TBS`);
             }
+          } else {
+            console.warn(`[AIOSELL-WEBHOOK] No mapping for room code "${roomCode}" in config ${config.id} → TBS`);
           }
+          resolvedRooms.push({
+            roomId: assignedRoomId,
+            aiosellRoomCode: roomCode,
+            roomType: rd.roomTypeName || rd.roomCode || "",
+            mealPlan: rd.mealPlan || "none",
+            status: stayStatus,
+            adults: rd.occupancy?.adults || 1,
+            children: rd.occupancy?.children || 0,
+            amount: amountPerRoom,
+          });
         }
+
+        const primaryAssignedRoomId = resolvedRooms.find(r => r.roomId !== null)?.roomId ?? null;
+        const totalAdults = resolvedRooms.reduce((s, r) => s + r.adults, 0) || 1;
+        const totalChildren = resolvedRooms.reduce((s, r) => s + r.children, 0) || 0;
 
         if (action === "modify") {
           const existingBookings = await db.select().from(bookings)
-            .where(eq(bookings.propertyId, config.propertyId));
-          const existingBooking = existingBookings.find(b => {
-            const meta = b.metadata as any;
-            return meta?.aiosellBookingId === bookingId || meta?.cmBookingId === cmBookingId;
-          });
+            .where(and(
+              eq(bookings.propertyId, config.propertyId),
+              eq(bookings.source, `aiosell-${channel}`),
+            ));
+          const existingBooking = existingBookings.find(b =>
+            b.externalBookingId === bookingId ||
+            b.externalBookingId === cmBookingId
+          );
           if (existingBooking) {
             await db.update(bookings).set({
               checkInDate: new Date(checkin),
               checkOutDate: new Date(checkout),
               totalAmount: amount?.amountAfterTax?.toString() || "0",
-              specialRequests: specialRequests || null,
+              numberOfGuests: totalAdults + totalChildren,
+              ...(primaryAssignedRoomId ? { roomId: primaryAssignedRoomId } : {}),
               updatedAt: new Date(),
             }).where(eq(bookings.id, existingBooking.id));
+            // Update room stays: delete old ones and re-insert
+            await db.delete(bookingRoomStays)
+              .where(eq(bookingRoomStays.bookingId, existingBooking.id));
+            if (resolvedRooms.length > 0) {
+              await db.insert(bookingRoomStays).values(
+                resolvedRooms.map(r => ({
+                  bookingId: existingBooking.id,
+                  roomId: r.roomId,
+                  aiosellRoomCode: r.aiosellRoomCode,
+                  roomType: r.roomType,
+                  mealPlan: r.mealPlan,
+                  status: r.status,
+                  amount: r.amount.toFixed(2),
+                  adults: r.adults,
+                  children: r.children,
+                }))
+              );
+            }
             storage.invalidateBookingsCache();
-            console.log(`[AIOSELL-WEBHOOK] Modified booking ${existingBooking.id}`);
+            console.log(`[AIOSELL-WEBHOOK] Modified booking ${existingBooking.id} with ${resolvedRooms.length} room stay(s)`);
             await autoSyncInventoryForProperty(config.propertyId);
             return res.json({ success: true, message: "Reservation Modified Successfully" });
           }
+          // If modify but not found, fall through to create new booking
+          console.warn(`[AIOSELL-WEBHOOK] Modify action but no existing booking found for bookingId=${bookingId} — creating new`);
         }
 
         const totalAmount = amount?.amountAfterTax?.toString() || "0";
-        const adults = roomsData?.[0]?.occupancy?.adults || 1;
-        const children = roomsData?.[0]?.occupancy?.children || 0;
 
         const [newBooking] = await db.insert(bookings).values({
           propertyId: config.propertyId,
-          roomId: assignedRoomId || null,
+          roomId: primaryAssignedRoomId,
           guestId: guestId || null,
           checkInDate: new Date(checkin),
           checkOutDate: new Date(checkout),
-          numberOfGuests: adults + children,
+          numberOfGuests: totalAdults + totalChildren,
           totalAmount,
           status: "pending",
           source: `aiosell-${channel}`,
@@ -17612,6 +17707,24 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           externalSource: `aiosell-${channel}`,
         }).returning();
         storage.invalidateBookingsCache();
+
+        // Insert one room_stay per room (the PMS industry-standard multi-room structure)
+        if (resolvedRooms.length > 0) {
+          await db.insert(bookingRoomStays).values(
+            resolvedRooms.map(r => ({
+              bookingId: newBooking.id,
+              roomId: r.roomId,
+              aiosellRoomCode: r.aiosellRoomCode,
+              roomType: r.roomType,
+              mealPlan: r.mealPlan,
+              status: r.status,
+              amount: r.amount.toFixed(2),
+              adults: r.adults,
+              children: r.children,
+            }))
+          );
+          console.log(`[AIOSELL-WEBHOOK] Created ${resolvedRooms.length} room stay(s) for booking ${newBooking.id}`);
+        }
 
         // Do NOT mark room as occupied here — room occupation happens only on check-in.
         // Inventory availability is calculated from bookings (not room.status) during auto-sync.

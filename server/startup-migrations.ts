@@ -351,6 +351,27 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_booking_room_stays",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS booking_room_stays (
+          id SERIAL PRIMARY KEY,
+          booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+          room_id INTEGER REFERENCES rooms(id),
+          aiosell_room_code VARCHAR(50),
+          room_type VARCHAR(100),
+          meal_plan VARCHAR(50),
+          status VARCHAR(20) NOT NULL DEFAULT 'tbs',
+          amount DECIMAL(10, 2),
+          adults INTEGER DEFAULT 1,
+          children INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+    },
+  },
+  {
     name: "fix_aiosell_config_property_mapping_woodpecker_jibhi",
     async run() {
       if (!(await tableExists("aiosell_configurations"))) return;
