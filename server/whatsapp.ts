@@ -657,6 +657,100 @@ export async function sendPaymentReminder(
 }
 
 /**
+ * Send initial booking payment request — WID 29779
+ * Sent immediately when advance payment link is generated.
+ *
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Property Name
+ * 3. Advance Amount (₹XXXX)
+ * 4. Payment Link
+ */
+export async function sendInitialPaymentRequest(
+  phoneNumber: string,
+  guestName: string,
+  propertyName: string,
+  advanceAmount: string,
+  paymentLink: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_INITIAL_PAYMENT || "29779";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  return sendWhatsAppMessage({
+    countryCode: "91",
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, propertyName, advanceAmount, paymentLink],
+  });
+}
+
+/**
+ * Send payment reminder 1 — WID 29780
+ * Sent automatically +1 hour after the initial payment request.
+ *
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Payment Link
+ */
+export async function sendPaymentReminder1(
+  phoneNumber: string,
+  guestName: string,
+  paymentLink: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_REMINDER1 || "29780";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  return sendWhatsAppMessage({
+    countryCode: "91",
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, paymentLink],
+  });
+}
+
+/**
+ * Send final payment reminder — WID 29781
+ * Sent automatically +3 hours after the initial payment request.
+ *
+ * Template variables (in order):
+ * 1. Guest Name
+ * 2. Payment Link
+ */
+export async function sendFinalPaymentReminder(
+  phoneNumber: string,
+  guestName: string,
+  paymentLink: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_FINAL_REMINDER || "29781";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  return sendWhatsAppMessage({
+    countryCode: "91",
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName, paymentLink],
+  });
+}
+
+/**
+ * Send booking expired/room released notice — WID 29782
+ * MANUAL USE ONLY — send after admin manually cancels the booking.
+ *
+ * Template variables (in order):
+ * 1. Guest Name
+ */
+export async function sendBookingExpiredNotice(
+  phoneNumber: string,
+  guestName: string
+): Promise<WhatsAppResponse> {
+  const templateId = process.env.AUTHKEY_WA_BOOKING_EXPIRED || "29782";
+  const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
+  return sendWhatsAppMessage({
+    countryCode: "91",
+    mobile: cleanedPhone,
+    templateId,
+    variables: [guestName],
+  });
+}
+
+/**
  * Send task reminder WhatsApp message
  * Template ID: configurable via AUTHKEY_WA_TASK_REMINDER
  * 

@@ -145,6 +145,14 @@ The `bookingRoomStays` table stores one record per room for multi-room OTA booki
 - **date-fns**
 - **Uppy**
 
+### Payment Reminder Flow (4-WID)
+- **WID 29779** (`sendInitialPaymentRequest`): Sent when advance payment link is first shared (replaced old WID 29410)
+- **WID 29780** (`sendPaymentReminder1`): Auto-sent at +1h if still pending_advance (reminderCount 0→1)
+- **WID 29781** (`sendFinalPaymentReminder`): Auto-sent at +3h if still pending_advance (reminderCount 1→2)
+- **WID 29782** (`sendBookingExpiredNotice`): Manual "room released" notice via `POST /api/bookings/:id/send-expired-notice`
+- **Background job**: Checks every 15 min; at 8h+ pending, creates in-app notification once (tracked by `pendingAlertSent` boolean on bookings)
+- **Dashboard popup**: `PendingOverdueAlert` component in dashboard.tsx — queries `GET /api/bookings/pending-overdue`, shows Dialog with overdue bookings, buttons: Call / Keep Pending / Cancel Booking
+
 ### WhatsApp Template WIDs (Authkey.io)
 All WIDs are set as env var fallbacks in `server/whatsapp.ts`. Add `AUTHKEY_WA_*` env vars to override.
 - **Check-in** (WID 29292 all properties / 28769 Woodpecker Inn only) — `AUTHKEY_WA_CHECKIN_DETAILS` or isWoodpecker check

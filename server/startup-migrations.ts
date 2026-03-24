@@ -372,6 +372,14 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_booking_pending_alert_sent",
+    run: async () => {
+      if (!(await columnExists("bookings", "pending_alert_sent"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN pending_alert_sent boolean DEFAULT false`);
+      }
+    },
+  },
+  {
     name: "fix_aiosell_config_property_mapping_woodpecker_jibhi",
     async run() {
       if (!(await tableExists("aiosell_configurations"))) return;

@@ -90,6 +90,130 @@ interface CheckoutReminder {
 
 type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
 
+interface OverdueBooking {
+  id: number;
+  guestName: string;
+  phone: string | null;
+  propertyName: string;
+  roomDisplay: string;
+  hoursOverdue: number;
+  totalAmount: string;
+}
+
+function PendingOverdueAlert() {
+  const { toast } = useToast();
+  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const [open, setOpen] = useState(false);
+
+  const { data: overdueList = [] } = useQuery<OverdueBooking[]>({
+    queryKey: ["/api/bookings/pending-overdue"],
+    refetchInterval: 5 * 60 * 1000,
+    staleTime: 4 * 60 * 1000,
+  });
+
+  const visible = overdueList.filter(b => !dismissedIds.has(b.id));
+
+  useEffect(() => {
+    if (visible.length > 0) setOpen(true);
+  }, [visible.length]);
+
+  const cancelMutation = useMutation({
+    mutationFn: (bookingId: number) =>
+      apiRequest(`/api/bookings/${bookingId}/status`, "PATCH", { status: "cancelled" }),
+    onSuccess: (_data, bookingId) => {
+      setDismissedIds(prev => new Set([...prev, bookingId]));
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/pending-overdue"] });
+      toast({ title: "Booking cancelled" });
+    },
+    onError: () => toast({ title: "Failed to cancel booking", variant: "destructive" }),
+  });
+
+  const dismiss = (id: number) => setDismissedIds(prev => new Set([...prev, id]));
+
+  if (visible.length === 0) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-600">
+            <AlertTriangle className="h-5 w-5" />
+            Pending Advance — Overdue ({visible.length})
+          </DialogTitle>
+          <DialogDescription>
+            These bookings have been waiting for advance payment for 8+ hours. Take action now.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          {visible.map(booking => (
+            <div
+              key={booking.id}
+              className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4"
+              data-testid={`overdue-booking-${booking.id}`}
+            >
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div>
+                  <p className="font-semibold text-sm">{booking.guestName}</p>
+                  <p className="text-xs text-muted-foreground">{booking.propertyName} · {booking.roomDisplay}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <Badge className="bg-amber-500 text-white text-xs">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {booking.hoursOverdue}h overdue
+                  </Badge>
+                  <p className="text-xs font-mono font-bold mt-1">₹{parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 flex-wrap">
+                {booking.phone && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs"
+                    onClick={() => window.open(`tel:${booking.phone}`, "_self")}
+                    data-testid={`btn-call-overdue-${booking.id}`}
+                  >
+                    <Phone className="h-3 w-3 mr-1" />
+                    Call
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs"
+                  onClick={() => dismiss(booking.id)}
+                  data-testid={`btn-keep-pending-${booking.id}`}
+                >
+                  Keep Pending
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 text-xs"
+                  onClick={() => cancelMutation.mutate(booking.id)}
+                  disabled={cancelMutation.isPending}
+                  data-testid={`btn-cancel-overdue-${booking.id}`}
+                >
+                  Cancel Booking
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} data-testid="btn-close-overdue-alert">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { selectedPropertyId, setSelectedPropertyId, availableProperties, showPropertySwitcher, isSuperAdmin, properties } = usePropertyFilter();
@@ -2214,6 +2338,8 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PendingOverdueAlert />
 
       <OnboardingWizard
         isOpen={showOnboarding}

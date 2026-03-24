@@ -56,6 +56,10 @@ import {
   sendAdvancePaymentRequest,
   sendAdvancePaymentConfirmation,
   sendPaymentReminder,
+  sendInitialPaymentRequest,
+  sendPaymentReminder1,
+  sendFinalPaymentReminder,
+  sendBookingExpiredNotice,
   sendSelfCheckinLink,
   sendTaskReminder,
   sendOtaBookingNotification,
@@ -4901,33 +4905,28 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }).where(eq(bookings.id, bookingId));
       storage.invalidateBookingsCache();
       
-      // Send WhatsApp message with payment link using pending_payment template (22226)
+      // Send initial WhatsApp message (WID 29779) — starts the reminder flow
       const property = await storage.getProperty(booking.propertyId);
       
       // Check if pending_payment template is enabled
       const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'pending_payment');
       const isTemplateEnabled = templateSetting?.isEnabled !== false;
       
-      if (isTemplateEnabled) {
+      if (isTemplateEnabled && guest.phone && isRealPhone(guest.phone)) {
         try {
-          const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
-          const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-          
-          console.log(`[WhatsApp] Attempting to send advance payment request for booking #${bookingId} to ${guest.phone}`);
-          const waResult = await sendAdvancePaymentRequest(
+          console.log(`[WhatsApp] Sending initial payment request (WID 29779) for booking #${bookingId} to ${guest.phone}`);
+          const waResult = await sendInitialPaymentRequest(
             guest.phone,
             guest.fullName || "Guest",
-            checkInFormatted,
-            checkOutFormatted,
             property?.name || "Property",
             `₹${advanceAmount.toLocaleString('en-IN')}`,
             paymentLink.shortUrl
           );
           console.log(`[WhatsApp] Result for booking #${bookingId}:`, waResult);
         } catch (waError: any) {
-          console.error("[WhatsApp] Error sending advance payment request:", waError.message);
+          console.error("[WhatsApp] Error sending initial payment request:", waError.message);
         }
-      } else {
+      } else if (!isTemplateEnabled) {
         console.log(`[WhatsApp] pending_payment template disabled for property ${booking.propertyId}, skipping message`);
       }
       
@@ -16362,163 +16361,195 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // GET /api/bookings/pending-overdue
+  // Returns all pending_advance bookings that are 8+ hours old (for dashboard popup)
+  app.get("/api/bookings/pending-overdue", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+
+      const now = new Date();
+      const cutoffTime = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 8h ago
+
+      const overdueBookings = await db.select().from(bookings)
+        .where(eq(bookings.status, "pending_advance"));
+
+      const { tenant } = auth;
+      const result = [];
+      for (const b of overdueBookings) {
+        // Tenant access check
+        if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0 &&
+            !tenant.assignedPropertyIds.includes(String(b.propertyId))) continue;
+        const createdAt = b.createdAt ? new Date(b.createdAt) : now;
+        if (createdAt > cutoffTime) continue; // Less than 8h old
+
+        const guest = await storage.getGuest(b.guestId);
+        const property = await storage.getProperty(b.propertyId);
+        // Build a room display string
+        let roomDisplay = "TBD";
+        if (b.roomId) {
+          const room = await storage.getRoom(b.roomId);
+          roomDisplay = room ? `Room ${room.roomNumber}` : `Room #${b.roomId}`;
+        }
+        result.push({
+          id: b.id,
+          guestName: guest?.fullName || "Unknown Guest",
+          phone: guest?.phone || null,
+          propertyName: property?.name || "Unknown Property",
+          roomDisplay,
+          totalAmount: b.totalAmount,
+          hoursOverdue: Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)),
+        });
+      }
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/bookings/:id/send-expired-notice
+  // Manually sends WID 29782 (room released notice) — use after cancelling booking
+  app.post("/api/bookings/:id/send-expired-notice", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+
+      const bookingId = parseInt(req.params.id);
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest?.phone) return res.status(400).json({ message: "Guest has no phone number" });
+      if (!isRealPhone(guest.phone)) return res.status(400).json({ message: "Guest has no valid phone number" });
+
+      const result = await sendBookingExpiredNotice(guest.phone, guest.fullName || "Guest");
+      console.log(`[WhatsApp] Booking expired notice (WID 29782) sent for booking #${bookingId}`);
+      res.json({ success: true, result });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // ==========================================
-  // BACKGROUND JOB: Payment Reminders & Auto-Cancellation
-  // - Reminder intervals: Configurable per property (default 6 hours)
-  // - Max reminders: Configurable per property (default 3)
-  // - Auto-cancel: After payment link expiry hours (from advance payment settings)
+  // BACKGROUND JOB: Payment Reminders (Fixed Timing)
+  // Flow per pending_advance booking (relative to createdAt):
+  //   +1h  → WID 29780  (Reminder 1)    — reminderCount 0 → 1
+  //   +3h  → WID 29781  (Final Reminder) — reminderCount 1 → 2
+  //   +8h  → In-app notification + popup (no auto-cancel, no WA send)
   // ==========================================
   const PAYMENT_CHECK_INTERVAL = 15 * 60 * 1000; // 15 minutes
-  const DEFAULT_REMINDER_HOURS = 6; // Default hours between reminders
-  const DEFAULT_MAX_REMINDERS = 3; // Default max number of reminders
-  const DEFAULT_AUTO_CANCEL_HOURS = 48; // Default auto-cancel after 48 hours
-  
+
   async function processPaymentRemindersAndCancellations() {
     try {
       const now = new Date();
-      console.log(`[PAYMENT-JOB] Processing pending_advance bookings at ${now.toISOString()}`);
-      
+
       // Get all bookings with pending_advance status
       const pendingBookings = await db.select().from(bookings).where(eq(bookings.status, "pending_advance"));
-      
+      if (pendingBookings.length === 0) return;
+
       let remindersCount = 0;
-      let cancelledCount = 0;
-      let skippedCount = 0;
-      
+      let alertsCount = 0;
+
       for (const booking of pendingBookings) {
-        // Get feature settings for this property (includes reminder settings)
+        // Check if reminders are enabled for this property
         const settingsResult = await db.select().from(featureSettings).where(eq(featureSettings.propertyId, booking.propertyId)).limit(1);
         const settings = settingsResult[0];
-        
-        // Check if payment reminders are enabled (use paymentReminderEnabled if available, fallback to paymentReminders)
         const isReminderEnabled = settings?.paymentReminderEnabled !== false && settings?.paymentReminders !== false;
-        if (!isReminderEnabled) {
-          skippedCount++;
-          continue; // Skip reminders if disabled for this property
-        }
-        
-        // Get configurable values from settings or use defaults
-        const reminderHours = settings?.paymentReminderHours || DEFAULT_REMINDER_HOURS;
-        const maxReminders = settings?.maxPaymentReminders || DEFAULT_MAX_REMINDERS;
-        const autoCancelHours = (settings?.advancePaymentExpiryHours || DEFAULT_AUTO_CANCEL_HOURS) * 2; // Double expiry hours for auto-cancel
-        
+        if (!isReminderEnabled) continue;
+
         const createdAt = booking.createdAt ? new Date(booking.createdAt) : now;
         const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
         const reminderCount = booking.reminderCount || 0;
-        
-        // Check time since last reminder
-        const lastReminderAt = booking.lastReminderAt ? new Date(booking.lastReminderAt) : null;
-        const hoursSinceLastReminder = lastReminderAt 
-          ? (now.getTime() - lastReminderAt.getTime()) / (1000 * 60 * 60)
-          : hoursSinceCreation; // If no reminder sent, use hours since creation
-        
-        // Get guest and property info for WhatsApp messages
+
+        // Get guest & property (only if we might need them)
+        const needsReminder = (reminderCount === 0 && hoursSinceCreation >= 1) ||
+                              (reminderCount === 1 && hoursSinceCreation >= 3);
+        const needs8hAlert = hoursSinceCreation >= 8 && !booking.pendingAlertSent;
+
+        if (!needsReminder && !needs8hAlert) continue;
+
         const guest = await storage.getGuest(booking.guestId);
         const property = await storage.getProperty(booking.propertyId);
-        
-        if (!guest || !property) {
-          console.log(`[PAYMENT-JOB] Skipping booking #${booking.id} - missing guest or property data`);
+        if (!guest || !property) continue;
+
+        const paymentUrl = booking.paymentLinkUrl || "";
+
+        // ── Reminder 1: WID 29780 (+1h) ──────────────────────────────
+        if (reminderCount === 0 && hoursSinceCreation >= 1 && hoursSinceCreation < 8) {
+          if (guest.phone && isRealPhone(guest.phone) && paymentUrl) {
+            try {
+              await sendPaymentReminder1(guest.phone, guest.fullName || "Guest", paymentUrl);
+              await db.update(bookings).set({ reminderCount: 1, lastReminderAt: now, updatedAt: now })
+                .where(eq(bookings.id, booking.id));
+              storage.invalidateBookingsCache();
+              remindersCount++;
+              console.log(`[PAYMENT-JOB] Reminder 1 (WID 29780) sent for booking #${booking.id}`);
+            } catch (e: any) {
+              console.error(`[PAYMENT-JOB] Reminder 1 failed for #${booking.id}:`, e.message);
+            }
+          }
+          continue; // Don't also send final reminder on same tick
+        }
+
+        // ── Final Reminder: WID 29781 (+3h) ──────────────────────────
+        if (reminderCount === 1 && hoursSinceCreation >= 3 && hoursSinceCreation < 8) {
+          if (guest.phone && isRealPhone(guest.phone) && paymentUrl) {
+            try {
+              await sendFinalPaymentReminder(guest.phone, guest.fullName || "Guest", paymentUrl);
+              await db.update(bookings).set({ reminderCount: 2, lastReminderAt: now, updatedAt: now })
+                .where(eq(bookings.id, booking.id));
+              storage.invalidateBookingsCache();
+              remindersCount++;
+              console.log(`[PAYMENT-JOB] Final reminder (WID 29781) sent for booking #${booking.id}`);
+            } catch (e: any) {
+              console.error(`[PAYMENT-JOB] Final reminder failed for #${booking.id}:`, e.message);
+            }
+          }
           continue;
         }
-        
-        // Calculate advance amount
-        const totalAmount = parseFloat(booking.totalAmount?.toString() || "0");
-        const advanceAmount = parseFloat(booking.advanceAmount?.toString() || "0") || 
-                              totalAmount * 0.3; // Default 30%
-        
-        // Auto-cancellation is currently DISABLED
-        // Previously: Auto-cancel after configured hours if payment not received
-        // Reason: Admin requested to stop auto-cancellation
-        // To re-enable: uncomment the block below
-        /*
-        if (hoursSinceCreation >= autoCancelHours) {
-          await db.update(bookings).set({
-            status: "cancelled",
-            advancePaymentStatus: "cancelled",
-            cancellationReason: `Auto-cancelled: Advance payment not received within ${autoCancelHours} hours`,
-            cancellationDate: now,
-            updatedAt: now,
-          }).where(eq(bookings.id, booking.id));
-          
-          cancelledCount++;
-          console.log(`[PAYMENT-JOB] Booking #${booking.id} auto-cancelled after ${autoCancelHours} hours`);
-          
-          // Notify admins about cancellation
+
+        // ── 8h Alert: in-app notification (once only) ─────────────────
+        if (needs8hAlert) {
           try {
             const allUsers = await storage.getAllUsers();
-            const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
-            
-            for (const admin of adminUsers) {
+            const alertUsers = allUsers.filter((u: any) =>
+              u.role === "admin" || u.role === "super-admin" || u.role === "manager"
+            );
+            for (const u of alertUsers) {
               await db.insert(notifications).values({
-                userId: admin.id,
-                type: "booking_cancelled",
-                title: "Booking Auto-Cancelled",
-                message: `Booking #${booking.id} for ${guest.fullName} was auto-cancelled - advance payment not received within ${autoCancelHours} hours`,
+                userId: u.id,
+                type: "pending_payment_overdue",
+                title: "⚠️ Pending Booking — 8h No Payment",
+                message: `Booking #${booking.id} for ${guest.fullName} has been pending payment for over 8 hours. Action required.`,
                 soundType: "warning",
                 relatedId: booking.id,
                 relatedType: "booking",
               });
             }
-          } catch (notifError: any) {
-            console.error(`[PAYMENT-JOB] Failed to create cancellation notification:`, notifError.message);
-          }
-          continue;
-        }
-        */
-        
-        // Check if we can send another reminder
-        // Conditions: not exceeded max reminders AND enough time has passed since last reminder
-        const canSendReminder = reminderCount < maxReminders && hoursSinceLastReminder >= reminderHours;
-        
-        // Check if payment_reminder template is enabled
-        const reminderTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'payment_reminder');
-        const isReminderTemplateEnabled = reminderTemplateSetting?.isEnabled !== false;
-        
-        if (canSendReminder && isReminderTemplateEnabled) {
-          try {
-            await sendPaymentReminder(
-              guest.phone || "",
-              guest.fullName || "Guest",
-              `₹${advanceAmount.toLocaleString('en-IN')}`,
-              property.name,
-              format(new Date(booking.checkInDate), "dd MMM yyyy"),
-              format(new Date(booking.checkOutDate), "dd MMM yyyy")
-            );
-            
-            await db.update(bookings).set({
-              reminderCount: reminderCount + 1,
-              lastReminderAt: now,
-              updatedAt: now,
-            }).where(eq(bookings.id, booking.id));
+            await db.update(bookings)
+              .set({ pendingAlertSent: true, updatedAt: now })
+              .where(eq(bookings.id, booking.id));
             storage.invalidateBookingsCache();
-            
-            remindersCount++;
-            console.log(`[PAYMENT-JOB] Sent reminder #${reminderCount + 1} for booking #${booking.id} (interval: ${reminderHours}h, max: ${maxReminders})`);
-          } catch (reminderError: any) {
-            console.error(`[PAYMENT-JOB] Failed to send reminder:`, reminderError.message);
+            alertsCount++;
+            console.log(`[PAYMENT-JOB] 8h overdue alert created for booking #${booking.id}`);
+          } catch (e: any) {
+            console.error(`[PAYMENT-JOB] 8h alert failed for #${booking.id}:`, e.message);
           }
-        } else if (canSendReminder && !isReminderTemplateEnabled) {
-          console.log(`[PAYMENT-JOB] payment_reminder template disabled for property ${booking.propertyId}, skipping reminder`);
         }
       }
-      
-      if (remindersCount > 0 || cancelledCount > 0) {
-        console.log(`[PAYMENT-JOB] Sent ${remindersCount} reminders, cancelled ${cancelledCount} bookings`);
+
+      if (remindersCount > 0 || alertsCount > 0) {
+        console.log(`[PAYMENT-JOB] Sent ${remindersCount} reminders, created ${alertsCount} overdue alerts`);
       }
     } catch (error: any) {
       console.error("[PAYMENT-JOB] Error:", error.message);
     }
   }
-  
-  // Run payment check on startup and then every 15 minutes
-  setTimeout(() => {
-    processPaymentRemindersAndCancellations();
-  }, 5000);
-  
-  setInterval(() => {
-    processPaymentRemindersAndCancellations();
-  }, PAYMENT_CHECK_INTERVAL);
-  
+
+  // Run payment check on startup (after 10s) and then every 15 minutes
+  setTimeout(() => { processPaymentRemindersAndCancellations(); }, 10000);
+  setInterval(() => { processPaymentRemindersAndCancellations(); }, PAYMENT_CHECK_INTERVAL);
+
   console.log(`[PAYMENT-JOB] Background job started - checking every ${PAYMENT_CHECK_INTERVAL / 60000} minutes`);
 
   // =====================================
