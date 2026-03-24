@@ -42,7 +42,7 @@ export default function ServicesReport() {
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
 
-  const { data: properties = [] } = useQuery<Property[]>({ queryKey: ["/api/properties"] });
+  const { data: properties = [] } = useQuery<Property[]>({ queryKey: ["/api/properties?includeDisabled=true"] });
 
   const availableProperties = properties.filter((p) => {
     if (user?.role === "admin") return true;

@@ -44,7 +44,7 @@ export default function BookingAnalytics() {
   });
 
   const { data: properties } = useQuery<any[]>({
-    queryKey: ["/api/properties"],
+    queryKey: ["/api/properties?includeDisabled=true"],
   });
 
   // Calculate date range

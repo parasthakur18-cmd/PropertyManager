@@ -56,7 +56,7 @@ export default function Analytics() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
 
   const { data: properties } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+    queryKey: ["/api/properties?includeDisabled=true"],
   });
 
   const { data: analytics, isLoading } = useQuery<AnalyticsResponse>({

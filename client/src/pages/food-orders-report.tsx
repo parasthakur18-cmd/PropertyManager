@@ -70,7 +70,7 @@ export default function FoodOrdersReport() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
 
   const { data: properties } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+    queryKey: ["/api/properties?includeDisabled=true"],
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({

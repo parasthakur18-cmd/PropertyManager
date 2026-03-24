@@ -18,7 +18,7 @@ export default function Financials() {
   const { toast } = useToast();
 
   const { data: properties = [] } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+    queryKey: ["/api/properties?includeDisabled=true"],
   });
 
   // Fetch all data needed for export

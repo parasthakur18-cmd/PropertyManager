@@ -2038,9 +2038,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const allProperties = await storage.getAllProperties();
       
       // Apply tenant-based property filtering
-      const properties = filterPropertiesByAccess(tenant, allProperties);
+      let filteredProperties = filterPropertiesByAccess(tenant, allProperties);
+
+      // By default, exclude disabled properties from operational screens.
+      // Pass ?includeDisabled=true to get all (for admin management and reports).
+      if (req.query.includeDisabled !== "true") {
+        filteredProperties = filteredProperties.filter((p: any) => p.isActive !== false);
+      }
       
-      res.json(properties);
+      res.json(filteredProperties);
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
         return res.status(error.statusCode).json({ message: error.message });

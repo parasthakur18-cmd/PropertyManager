@@ -26,7 +26,7 @@ export default function Properties() {
   const { toast } = useToast();
 
   const { data: allProperties, isLoading } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
+    queryKey: ["/api/properties?includeDisabled=true"],
   });
 
   const activeProperties = useMemo(() => (allProperties || []).filter((p: any) => p.isActive !== false), [allProperties]);
@@ -46,12 +46,17 @@ export default function Properties() {
     },
   });
 
+  const invalidateProperties = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/properties?includeDisabled=true"] });
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: InsertProperty) => {
       return await apiRequest("/api/properties", "POST", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      invalidateProperties();
       toast({ title: "Success", description: "Property created successfully" });
       setIsDialogOpen(false);
       form.reset();
@@ -66,7 +71,7 @@ export default function Properties() {
       return await apiRequest(`/api/properties/${id}`, "PATCH", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      invalidateProperties();
       toast({ title: "Success", description: "Property updated successfully" });
       setIsDialogOpen(false);
       setEditingProperty(null);
@@ -82,7 +87,7 @@ export default function Properties() {
       return await apiRequest(`/api/properties/${id}`, "DELETE");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      invalidateProperties();
       toast({ title: "Success", description: "Property permanently deleted" });
       setIsDisableDialogOpen(false);
     },
@@ -96,7 +101,7 @@ export default function Properties() {
       return await apiRequest(`/api/properties/${id}/disable`, "POST", { disableType, disableReason });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      invalidateProperties();
       const label = disableType === "permanent" ? "permanently closed" : "temporarily disabled";
       toast({ title: "Property Disabled", description: `${disablingProperty?.name} has been ${label}.` });
       setIsDisableDialogOpen(false);
@@ -110,8 +115,8 @@ export default function Properties() {
     mutationFn: async (id: number) => {
       return await apiRequest(`/api/properties/${id}/enable`, "POST", {});
     },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+    onSuccess: () => {
+      invalidateProperties();
       toast({ title: "Property Re-enabled", description: "The property is now active again." });
     },
     onError: (error: Error) => {
