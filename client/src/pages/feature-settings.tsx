@@ -7,11 +7,15 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X, Store
+  Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X, Store,
+  BellRing, Loader2, CheckCircle2, User,
 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +88,201 @@ const features = [
     ]
   },
 ];
+
+// ── WhatsApp Alert Controls (embedded from whatsapp-alerts) ──────────────────
+
+interface AlertConfig {
+  id: number;
+  templateKey: string;
+  templateName: string;
+  templateWid: string;
+  description: string | null;
+  isGloballyEnabled: boolean;
+}
+
+interface AlertRule {
+  id?: number;
+  templateKey: string;
+  propertyId: number;
+  isEnabled: boolean;
+  recipientMode: string;
+  recipientStaffIds: number[] | null;
+  recipientRoles: string[] | null;
+}
+
+interface AlertStaffMember {
+  id: number;
+  name: string;
+  phone: string | null;
+  role: string | null;
+  isActive: boolean;
+}
+
+const ROLE_OPTIONS = [
+  { value: "manager", label: "Manager" },
+  { value: "staff", label: "Staff" },
+  { value: "kitchen", label: "Kitchen" },
+  { value: "reception", label: "Reception" },
+  { value: "housekeeping", label: "Housekeeping" },
+  { value: "security", label: "Security" },
+];
+
+const RECIPIENT_MODES = [
+  { value: "property_contact", label: "Property contact number", description: "Send to the main contact phone set on the property" },
+  { value: "all_staff", label: "All active staff", description: "Send to every staff member with a phone number" },
+  { value: "selected_staff", label: "Selected staff members", description: "Pick specific people who get the alert" },
+  { value: "by_role", label: "By role", description: "All active staff with the selected roles" },
+];
+
+function PropertyRuleEditor({
+  config,
+  propertyId,
+  staff,
+}: {
+  config: AlertConfig;
+  propertyId: number;
+  staff: AlertStaffMember[];
+}) {
+  const { toast } = useToast();
+  const { data: rules = [], isLoading: rulesLoading } = useQuery<AlertRule[]>({
+    queryKey: ["/api/whatsapp-alerts/rules", propertyId],
+    queryFn: () =>
+      fetch(`/api/whatsapp-alerts/rules?propertyId=${propertyId}`).then(r => r.json()),
+    enabled: !!propertyId,
+  });
+  const existingRule = rules.find(r => r.templateKey === config.templateKey);
+  const [isEnabled, setIsEnabled] = useState(false);
+  const [recipientMode, setRecipientMode] = useState("property_contact");
+  const [selectedStaffIds, setSelectedStaffIds] = useState<number[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (!rulesLoading && !initialized) {
+      setIsEnabled(existingRule?.isEnabled ?? false);
+      setRecipientMode(existingRule?.recipientMode ?? "property_contact");
+      setSelectedStaffIds(existingRule?.recipientStaffIds ?? []);
+      setSelectedRoles(existingRule?.recipientRoles ?? []);
+      setInitialized(true);
+    }
+  }, [rulesLoading, existingRule, initialized]);
+
+  const isDirty =
+    isEnabled !== (existingRule?.isEnabled ?? false) ||
+    recipientMode !== (existingRule?.recipientMode ?? "property_contact") ||
+    JSON.stringify(selectedStaffIds.slice().sort()) !== JSON.stringify((existingRule?.recipientStaffIds ?? []).slice().sort()) ||
+    JSON.stringify(selectedRoles.slice().sort()) !== JSON.stringify((existingRule?.recipientRoles ?? []).slice().sort());
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiRequest(`/api/whatsapp-alerts/rules/${config.templateKey}/${propertyId}`, "PUT", {
+        isEnabled,
+        recipientMode,
+        recipientStaffIds: recipientMode === "selected_staff" ? selectedStaffIds : null,
+        recipientRoles: recipientMode === "by_role" ? selectedRoles : null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-alerts/rules", propertyId] });
+      toast({ title: "Saved", description: "Recipient rule updated." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  if (rulesLoading)
+    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
+
+  const toggleStaff = (id: number) =>
+    setSelectedStaffIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleRole = (role: string) =>
+    setSelectedRoles(prev => prev.includes(role) ? prev.filter(x => x !== role) : [...prev, role]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Switch
+          checked={isEnabled}
+          onCheckedChange={setIsEnabled}
+          data-testid={`toggle-enabled-${config.templateKey}-${propertyId}`}
+        />
+        <Label className="font-medium">{isEnabled ? "Enabled for this property" : "Disabled for this property"}</Label>
+      </div>
+
+      {isEnabled && (
+        <div className="space-y-3 pl-1">
+          <p className="text-sm font-medium">Who should receive this alert?</p>
+          <RadioGroup value={recipientMode} onValueChange={setRecipientMode}>
+            {RECIPIENT_MODES.map(mode => (
+              <div key={mode.value} className="flex items-start gap-3 py-1.5">
+                <RadioGroupItem value={mode.value} id={`${config.templateKey}-${propertyId}-${mode.value}`} className="mt-0.5" />
+                <div>
+                  <label htmlFor={`${config.templateKey}-${propertyId}-${mode.value}`} className="text-sm font-medium cursor-pointer">
+                    {mode.label}
+                  </label>
+                  <p className="text-xs text-muted-foreground">{mode.description}</p>
+                </div>
+              </div>
+            ))}
+          </RadioGroup>
+
+          {recipientMode === "selected_staff" && (
+            <div className="ml-1 pl-4 border-l-2 border-muted space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select staff</p>
+              {staff.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No staff members found for this property.</p>
+              ) : (
+                <div className="space-y-2">
+                  {staff.map(s => (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <Checkbox id={`staff-${s.id}`} checked={selectedStaffIds.includes(s.id)} onCheckedChange={() => toggleStaff(s.id)} />
+                      <label htmlFor={`staff-${s.id}`} className="text-sm cursor-pointer flex items-center gap-2">
+                        {s.name}
+                        {s.role && <Badge variant="outline" className="text-xs">{s.role}</Badge>}
+                        {s.phone ? (
+                          <span className="text-xs text-muted-foreground">{s.phone}</span>
+                        ) : (
+                          <span className="text-xs text-destructive">No phone</span>
+                        )}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {recipientMode === "by_role" && (
+            <div className="ml-1 pl-4 border-l-2 border-muted space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Select roles</p>
+              <div className="grid grid-cols-2 gap-2">
+                {ROLE_OPTIONS.map(r => (
+                  <div key={r.value} className="flex items-center gap-2">
+                    <Checkbox id={`role-${r.value}`} checked={selectedRoles.includes(r.value)} onCheckedChange={() => toggleRole(r.value)} />
+                    <label htmlFor={`role-${r.value}`} className="text-sm cursor-pointer">{r.label}</label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Button
+        size="sm"
+        disabled={!isDirty || saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+        data-testid={`btn-save-rule-${config.templateKey}-${propertyId}`}
+      >
+        {saveMutation.isPending ? (
+          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
+        ) : (
+          <><CheckCircle2 className="h-4 w-4 mr-2" />Save Changes</>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const WHATSAPP_TEMPLATES = [
   { type: 'booking_confirmation', name: 'Booking Confirmation', description: 'Send when booking is created (18491)', icon: '📅' },
@@ -250,6 +449,30 @@ export default function FeatureSettings() {
       delayHours
     });
   };
+
+  // WhatsApp Alert Controls state
+  const [alertSelectedPropertyIds, setAlertSelectedPropertyIds] = useState<Record<string, number | null>>({});
+  const [staffCache, setStaffCache] = useState<Record<number, AlertStaffMember[]>>({});
+
+  const { data: alertConfigs = [], isLoading: alertConfigsLoading } = useQuery<AlertConfig[]>({
+    queryKey: ["/api/whatsapp-alerts/configs"],
+  });
+
+  const fetchAlertStaff = async (pid: number) => {
+    if (staffCache[pid]) return;
+    const res = await fetch(`/api/whatsapp-alerts/staff/${pid}`);
+    const data = await res.json();
+    setStaffCache(prev => ({ ...prev, [pid]: data }));
+  };
+
+  const globalToggleMutation = useMutation({
+    mutationFn: ({ key, isGloballyEnabled }: { key: string; isGloballyEnabled: boolean }) =>
+      apiRequest(`/api/whatsapp-alerts/configs/${key}`, "PUT", { isGloballyEnabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/whatsapp-alerts/configs"] }),
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const activeProperties = (properties as any[]).filter((p: any) => p.isActive !== false);
 
   if (!selectedProperty && !user?.assignedPropertyIds?.[0]) {
     return (
@@ -773,6 +996,102 @@ export default function FeatureSettings() {
           <div className="text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg">
             <p><strong>How it works:</strong> When a credit bill has a due date set, the system will automatically create an in-app notification for admin and manager users when the due date is approaching. Overdue bills also trigger a reminder.</p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* WhatsApp Alert Controls */}
+      <Card className="overflow-hidden border-green-200 dark:border-green-800">
+        <CardHeader className="bg-green-50 dark:bg-green-950 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <BellRing className="h-5 w-5 text-green-600 dark:text-green-400" />
+            <div>
+              <CardTitle className="text-lg">WhatsApp Alert Controls</CardTitle>
+              <CardDescription>Control who receives staff WhatsApp alerts, per property and per template</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4">
+          {alertConfigsLoading ? (
+            <div className="flex items-center gap-2 text-muted-foreground py-8">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading templates…
+            </div>
+          ) : alertConfigs.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4">No alert templates configured yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {alertConfigs.map(config => (
+                <div key={config.templateKey} className="border rounded-lg overflow-hidden">
+                  <div className="flex items-start justify-between gap-4 p-4 bg-muted/30">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{config.templateName}</p>
+                        <Badge variant="outline" className="text-xs font-mono">WID {config.templateWid}</Badge>
+                      </div>
+                      {config.description && (
+                        <p className="text-xs text-muted-foreground">{config.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Label className="text-xs text-muted-foreground">
+                        {config.isGloballyEnabled ? "Globally ON" : "Globally OFF"}
+                      </Label>
+                      <Switch
+                        checked={config.isGloballyEnabled}
+                        onCheckedChange={enabled =>
+                          globalToggleMutation.mutate({ key: config.templateKey, isGloballyEnabled: enabled })
+                        }
+                        data-testid={`toggle-global-${config.templateKey}`}
+                      />
+                    </div>
+                  </div>
+
+                  {config.isGloballyEnabled && (
+                    <>
+                      <Separator />
+                      <div className="p-4 space-y-4">
+                        <div className="space-y-1">
+                          <Label className="text-sm font-semibold">Property</Label>
+                          <p className="text-xs text-muted-foreground">Select a property to configure who gets this alert there.</p>
+                          <Select
+                            value={alertSelectedPropertyIds[config.templateKey] ? String(alertSelectedPropertyIds[config.templateKey]) : ""}
+                            onValueChange={v => {
+                              const pid = Number(v);
+                              setAlertSelectedPropertyIds(prev => ({ ...prev, [config.templateKey]: pid }));
+                              fetchAlertStaff(pid);
+                            }}
+                          >
+                            <SelectTrigger className="w-full max-w-xs" data-testid={`select-alert-property-${config.templateKey}`}>
+                              <SelectValue placeholder="Select a property…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeProperties.map((p: any) => (
+                                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {alertSelectedPropertyIds[config.templateKey] && (
+                          <div className="pt-1">
+                            <PropertyRuleEditor
+                              config={config}
+                              propertyId={alertSelectedPropertyIds[config.templateKey]!}
+                              staff={staffCache[alertSelectedPropertyIds[config.templateKey]!] || []}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground p-3 bg-muted/20 rounded-lg">
+                <strong>How it works:</strong> If globally OFF, no message is sent. If globally ON, the system checks
+                the property rule. Use "Property contact number" to send to the number set under Properties → Edit → Contact Phone.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
