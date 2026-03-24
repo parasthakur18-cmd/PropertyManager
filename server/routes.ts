@@ -10990,6 +10990,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         createdBy: user.firstName || user.email || user.id,
         amount: req.body.amount?.toString() || '0',
         transactionDate: req.body.transactionDate ? new Date(req.body.transactionDate) : new Date(),
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
       };
       
       console.log('[VendorTx] Data to validate:', JSON.stringify(dataToValidate, null, 2));

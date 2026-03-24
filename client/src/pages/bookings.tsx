@@ -1990,6 +1990,12 @@ export default function Bookings() {
                             <div className="text-sm">
                               {guest?.fullName || "Unknown Guest"}
                               <div className="text-xs text-muted-foreground">{guest?.phone}</div>
+                              {booking.specialRequests && (
+                                <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1" title={booking.specialRequests} data-testid={`text-special-req-${booking.id}`}>
+                                  <span>★</span>
+                                  <span className="truncate max-w-[140px]">{booking.specialRequests}</span>
+                                </div>
+                              )}
                             </div>
                             {guest?.phone && (
                               <a 

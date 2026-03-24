@@ -215,6 +215,7 @@ export function AppSidebar() {
     const financeItems = hasAccess("payments")
       ? [
           { title: "Billing", url: "/billing", icon: Receipt },
+          ...(user?.role === "manager" ? [{ title: "Vendors", url: "/vendors", icon: Store }] : []),
           ...(hasAccess("reports")
             ? [
                 { title: "Monthly Income Report", url: "/monthly-report", icon: CalendarDays },
@@ -223,6 +224,10 @@ export function AppSidebar() {
               ]
             : []),
         ]
+      : [];
+
+    const staffItems = user?.role === "manager"
+      ? [{ title: "Attendance", url: "/attendance", icon: Clock }]
       : [];
 
     const adminItems = [
@@ -237,7 +242,7 @@ export function AppSidebar() {
       guestItems,
       restaurantItems,
       financeItems,
-      staffItems: [],
+      staffItems,
       analyticsItems: [],
       adminItems,
     };

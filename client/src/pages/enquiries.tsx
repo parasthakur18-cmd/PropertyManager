@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -100,6 +100,8 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
     enquiry.roomId ? rooms.find(r => r.id === enquiry.roomId) || null : null
   );
 
+  const isInitialMount = useRef(true);
+
   const form = useForm<EditEnquiryFormData>({
     resolver: zodResolver(editEnquirySchema),
     defaultValues: {
@@ -107,16 +109,20 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
       guestPhone: enquiry.guestPhone,
       guestEmail: enquiry.guestEmail || "",
       roomId: enquiry.roomId || undefined,
-      numberOfGuests: enquiry.numberOfGuests,
+      numberOfGuests: Number(enquiry.numberOfGuests) || 1,
       mealPlan: (enquiry.mealPlan as "EP" | "CP" | "MAP" | "AP") || "EP",
-      priceQuoted: enquiry.priceQuoted ? Number(enquiry.priceQuoted) : undefined,
-      advanceAmount: enquiry.advanceAmount ? Number(enquiry.advanceAmount) : undefined,
+      priceQuoted: enquiry.priceQuoted != null ? Number(enquiry.priceQuoted) : undefined,
+      advanceAmount: enquiry.advanceAmount != null ? Number(enquiry.advanceAmount) : undefined,
       specialRequests: enquiry.specialRequests || "",
     },
   });
 
-  // Auto-populate price quoted when room is selected
+  // Auto-populate price quoted when user selects a different room (not on initial mount)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (selectedRoom?.pricePerNight) {
       const roomPrice = parseFloat(selectedRoom.pricePerNight.toString());
       form.setValue("priceQuoted", roomPrice, { shouldValidate: true, shouldDirty: true, shouldTouch: true });
