@@ -470,4 +470,50 @@ export async function runStartupMigrations(): Promise<void> {
   } catch (err: any) {
     console.warn(`[ROOM-SYNC] Failed to reconcile room statuses: ${err.message}`);
   }
+
+  try {
+    await seedWhatsappAlertConfigs();
+  } catch (err: any) {
+    console.warn(`[WA-SEED] Failed to seed WhatsApp alert configs: ${err.message}`);
+  }
+}
+
+// ── Default WhatsApp Alert Configs ──────────────────────────────────────────
+// Add new staff-alert templates here. They will be auto-inserted on next
+// server start (ON CONFLICT DO NOTHING keeps existing enable/disable state).
+const DEFAULT_WA_ALERT_CONFIGS: Array<{
+  template_key: string;
+  template_name: string;
+  template_wid: string;
+  description: string;
+}> = [
+  {
+    template_key: "ota_booking_alert",
+    template_name: "OTA Booking Alert",
+    template_wid: "28770",
+    description: "Sends a WhatsApp alert to staff when a new OTA booking (Booking.com / MMT) arrives",
+  },
+  {
+    template_key: "food_order_staff_alert",
+    template_name: "New Food Order Alert",
+    template_wid: "29652",
+    description: "Sends an alert to staff when a customer places a food order via QR menu",
+  },
+];
+
+async function seedWhatsappAlertConfigs(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    for (const cfg of DEFAULT_WA_ALERT_CONFIGS) {
+      await client.query(
+        `INSERT INTO whatsapp_alert_configs (template_key, template_name, template_wid, description, is_globally_enabled)
+         VALUES ($1, $2, $3, $4, true)
+         ON CONFLICT (template_key) DO NOTHING`,
+        [cfg.template_key, cfg.template_name, cfg.template_wid, cfg.description]
+      );
+    }
+    console.log(`[WA-SEED] WhatsApp alert configs seeded (${DEFAULT_WA_ALERT_CONFIGS.length} templates)`);
+  } finally {
+    client.release();
+  }
 }

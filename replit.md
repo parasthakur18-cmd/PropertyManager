@@ -145,6 +145,19 @@ The `bookingRoomStays` table stores one record per room for multi-room OTA booki
 - **date-fns**
 - **Uppy**
 
+### WhatsApp Template WIDs (Authkey.io)
+All WIDs are set as env var fallbacks in `server/whatsapp.ts`. Add `AUTHKEY_WA_*` env vars to override.
+- **Check-in** (WID 29292 all properties / 28769 Woodpecker Inn only) — `AUTHKEY_WA_CHECKIN_DETAILS` or isWoodpecker check
+- **OTA Booking Alert to staff** (WID 28770) — `sendOtaBookingNotification`, routed via WhatsApp Alert Controls (resolveAlertRecipients)
+- **Checkout** (WID 28968) — `AUTHKEY_WA_CHECKOUT_DETAILS`, controlled via WhatsApp Message Templates per property
+- **Food order to guest** (WID 28983) — `AUTHKEY_WA_FOOD_ORDER_RECEIVED`
+- **Booking confirmed** (WID 29294) — `AUTHKEY_WA_BOOKING_CONFIRMED`
+- **Advance payment request** (WID 29410) — `AUTHKEY_WA_ADVANCE_PAYMENT`
+- **Balance payment link** (WID 29412) — `AUTHKEY_WA_SPLIT_PAYMENT`
+- **Food order staff alert** (WID 29652) — `AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT`, routed via WhatsApp Alert Controls
+
+**WhatsApp Alert Controls (staff alerts)**: Managed via `whatsapp_alert_configs` DB table. To add a new staff alert template, add it to `DEFAULT_WA_ALERT_CONFIGS` in `server/startup-migrations.ts` — it will auto-seed on next restart and appear in Feature Settings.
+
 ### Deployment
 - **GitHub Actions**
 - **esbuild**

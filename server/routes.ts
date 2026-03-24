@@ -17782,14 +17782,17 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           console.error(`[NOTIFICATIONS] Failed to send in-app notification:`, notifErr.message);
         }
 
-        // WhatsApp OTA notification (template 28770) to property contactPhone (staff alert)
+        // WhatsApp OTA notification (template 28770) via alert routing system
         try {
-          const staffPhone = property?.contactPhone?.trim();
-          if (staffPhone) {
-            await sendOtaBookingNotification(staffPhone, propertyName, notifGuestName);
-            console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification sent to staff (${staffPhone})`);
+          const otaRecipients = await storage.resolveAlertRecipients("ota_booking_alert", property!.id);
+          if (otaRecipients.length > 0) {
+            for (const phone of otaRecipients) {
+              if (!isRealPhone(phone)) continue;
+              await sendOtaBookingNotification(phone, propertyName, notifGuestName);
+              console.log(`[WhatsApp] Booking #${newBooking.id} - OTA notification sent to staff (${phone})`);
+            }
           } else {
-            console.warn(`[WhatsApp] Booking #${newBooking.id} - OTA notification skipped: property "${propertyName}" has no contactPhone set`);
+            console.warn(`[WhatsApp] Booking #${newBooking.id} - OTA notification skipped: globally disabled or no recipients configured`);
           }
         } catch (notifErr: any) {
           console.error(`[WhatsApp] OTA booking notification failed:`, notifErr.message);
@@ -18038,16 +18041,21 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             console.error(`[NOTIFICATIONS] Pull booking in-app notification failed:`, notifErr.message);
           }
 
-          // Send OTA booking notification to property staff (template 28770)
+          // Send OTA booking notification to property staff (template 28770) via alert routing
           try {
-            const prop = await storage.getProperty(config.propertyId);
-            const staffPhone = prop?.contactPhone?.trim();
-            if (staffPhone && insertedBooking) {
+            if (insertedBooking) {
+              const prop = await storage.getProperty(config.propertyId);
               const guestFullName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
-              await sendOtaBookingNotification(staffPhone, prop?.name || "Your Property", guestFullName);
-              console.log(`[WhatsApp] Pulled booking #${insertedBooking.id} - OTA notification sent`);
-            } else if (!staffPhone) {
-              console.warn(`[WhatsApp] Pulled booking #${insertedBooking.id} - skipped: no contactPhone on property`);
+              const otaRecipients = await storage.resolveAlertRecipients("ota_booking_alert", config.propertyId);
+              if (otaRecipients.length > 0) {
+                for (const phone of otaRecipients) {
+                  if (!isRealPhone(phone)) continue;
+                  await sendOtaBookingNotification(phone, prop?.name || "Your Property", guestFullName);
+                  console.log(`[WhatsApp] Pulled booking #${insertedBooking.id} - OTA notification sent to ${phone}`);
+                }
+              } else {
+                console.warn(`[WhatsApp] Pulled booking #${insertedBooking.id} - OTA alert skipped: globally disabled or no recipients configured`);
+              }
             }
           } catch (notifErr: any) {
             console.error(`[WhatsApp] Pull OTA notification failed (non-critical):`, notifErr.message);
