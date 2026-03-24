@@ -1,0 +1,175 @@
+✅ YOUR FINAL SYSTEM (SIMPLE + FAST)
+⏱ Reminder Timing (Fixed)
+0 hour (instant) → Initial Message
++1 hour → Reminder 1
++3 hours → Final Reminder
++8 hours → ❗ NO auto cancel → only popup + notification
+📲 🔥 COMPLETE TEMPLATES (WITH YOUR WIDs)
+🟢 1. INITIAL MESSAGE
+
+WID: 29779
+
+Message
+
+Hi {{guest_name}},
+
+Thank you for choosing {{property_name}} 😊
+
+Your room is reserved for a limited time.
+Please complete the advance payment of ₹{{amount}} using the link below to confirm your booking:
+
+{{payment_link}}
+
+Rooms are subject to availability.
+
+For any assistance, call/WhatsApp us at +91 8580844573.
+
+🟡 2. REMINDER 1 (After 1 Hour)
+
+WID: 29780
+
+Message
+
+Hi {{guest_name}},
+
+Just a quick reminder regarding your booking 🙂
+
+Your selected room is currently on hold.
+You can confirm it by completing the payment here:
+
+{{payment_link}}
+
+Let me know once done, I’ll confirm it right away for you.
+
+For help, call/WhatsApp +91 8580844573.
+
+🔴 3. FINAL REMINDER (After 3 Hours)
+
+WID: 29781
+
+Message
+
+Hi {{guest_name}},
+
+This is a final reminder 😊
+
+Your booking is still pending confirmation.
+Rooms may get booked anytime due to high demand.
+
+To confirm your stay, please complete the payment now:
+
+{{payment_link}}
+
+For assistance, call us at +91 8580844573.
+
+🚫 4. AFTER 8 HOURS (NO AUTO SEND – ONLY MANUAL IF NEEDED)
+
+WID: 29782
+
+👉 Use this ONLY if you manually cancel:
+
+Message
+
+Hi {{guest_name}},
+
+Since we did not receive the confirmation, the room has now been released.
+
+However, you can still check availability and book again if rooms are available 🙂
+
+Call/WhatsApp: +91 8580844573
+
+🔔 ⚠️ POPUP + NOTIFICATION (MOST IMPORTANT PART)
+⏱ After 8 Hours from Booking Creation
+
+👉 System should NOT cancel
+👉 Only show popup + notification
+
+💻 POPUP (ON SCREEN)
+⚠️ Booking Pending for 8+ Hours
+
+Customer has not completed the payment even after reminders.
+
+What would you like to do?
+
+[Cancel Booking & Release Room] (Recommended)
+[Keep as Pending]
+[Call Customer]
+🔔 NOTIFICATION (TOP BAR / ALERT)
+🔔 Pending Booking Alert
+
+Booking ID: {{booking_id}}
+Guest: {{guest_name}}
+
+No payment received after final reminder.
+
+👉 Action required: Cancel booking or follow up.
+⚙️ 🔥 REPLIT PROMPT (FINAL – NO AUTO SYSTEM)
+Build a simple booking reminder system with manual control and minimal automation.
+
+IMPORTANT:
+- Do NOT use cron jobs
+- Do NOT auto cancel bookings
+- Do NOT create heavy background processes
+
+--------------------------------------------------
+
+1. WHATSAPP TEMPLATE WIDs
+
+- Initial → 29779
+- Reminder 1 → 29780
+- Final Reminder → 29781
+- After Expiry → 29782 (manual use only)
+
+--------------------------------------------------
+
+2. FLOW
+
+On booking creation:
+
+→ Immediately send WID 29779
+
+--------------------------------------------------
+
+After 1 hour:
+→ Allow sending WID 29780 (manual trigger or lightweight scheduler)
+
+--------------------------------------------------
+
+After 3 hours:
+→ Allow sending WID 29781 (manual trigger or lightweight scheduler)
+
+--------------------------------------------------
+
+After 8 hours:
+
+→ DO NOT auto cancel
+
+→ Show popup in dashboard:
+
+"Booking pending for more than 8 hours.
+No payment received.
+Do you want to cancel and release the room?"
+
+Buttons:
+- Cancel Booking
+- Keep Pending
+- Call Customer
+
+→ Also show notification in dashboard list
+
+--------------------------------------------------
+
+3. MANUAL ACTIONS
+
+- Cancel booking → release inventory
+- Send WID 29782 manually after cancel
+- Mark as confirmed if payment received
+
+--------------------------------------------------
+
+4. GOAL
+
+- Keep system lightweight and fast
+- Avoid unnecessary automation
+- Give full control to admin
+- Ensure inventory is released only manually
