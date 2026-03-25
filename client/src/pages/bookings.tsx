@@ -1944,21 +1944,25 @@ export default function Bookings() {
               </div>
             </Card>
           ) : (
-            <div className="relative group">
-              <button
-                onClick={() => bookingTableRef.current?.scrollBy({ left: -300, behavior: "smooth" })}
-                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 hidden group-hover:flex items-center justify-center w-8 h-12 bg-white dark:bg-card border rounded-r-lg shadow-md text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Scroll left"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                onClick={() => bookingTableRef.current?.scrollBy({ left: 300, behavior: "smooth" })}
-                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 hidden group-hover:flex items-center justify-center w-8 h-12 bg-white dark:bg-card border rounded-l-lg shadow-md text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Scroll right"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
+            <div>
+              <div className="flex justify-end gap-1 mb-1">
+                <button
+                  onClick={() => bookingTableRef.current?.scrollBy({ left: -300, behavior: "smooth" })}
+                  className="flex items-center justify-center w-8 h-8 rounded border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Scroll left"
+                  data-testid="btn-table-scroll-left"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => bookingTableRef.current?.scrollBy({ left: 300, behavior: "smooth" })}
+                  className="flex items-center justify-center w-8 h-8 rounded border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  aria-label="Scroll right"
+                  data-testid="btn-table-scroll-right"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
             <div ref={bookingTableRef} className="border rounded-lg overflow-x-auto">
               <Table className="min-w-[900px]">
                 <TableHeader>
