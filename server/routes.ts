@@ -3218,8 +3218,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const result = [];
       for (const b of overdueBookings) {
         // Tenant access check
-        if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0 &&
-            !tenant.assignedPropertyIds.includes(String(b.propertyId))) continue;
+        if (!canAccessProperty(tenant, b.propertyId)) continue;
         const createdAt = b.createdAt ? new Date(b.createdAt) : now;
         if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
 
