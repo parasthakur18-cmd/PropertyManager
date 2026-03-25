@@ -35,6 +35,7 @@ const addStaffSchema = z.object({
 });
 
 const editStaffSchema = z.object({
+  propertyId: z.string().min(1, "Property is required"),
   baseSalary: z.coerce.number().nonnegative("Base salary must be non-negative"),
   joiningDate: z.string().optional(),
   leavingDate: z.string().optional(),
@@ -179,6 +180,7 @@ export default function Attendance() {
   const editStaffForm = useForm<z.infer<typeof editStaffSchema>>({
     resolver: zodResolver(editStaffSchema),
     defaultValues: {
+      propertyId: "",
       baseSalary: 0,
       joiningDate: "",
       leavingDate: "",
@@ -251,6 +253,7 @@ export default function Attendance() {
     mutationFn: async (data: z.infer<typeof editStaffSchema>) => {
       const updateData: any = {
         baseSalary: String(data.baseSalary),
+        propertyId: parseInt(data.propertyId),
       };
       if (data.joiningDate) {
         updateData.joiningDate = data.joiningDate;
@@ -560,7 +563,10 @@ export default function Attendance() {
 
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => setIsAddStaffDialogOpen(true)} 
+                  onClick={() => {
+                    if (selectedPropertyId) addStaffForm.setValue("propertyId", String(selectedPropertyId));
+                    setIsAddStaffDialogOpen(true);
+                  }} 
                   variant="outline"
                   data-testid="button-add-staff-roster"
                 >
@@ -617,7 +623,10 @@ export default function Attendance() {
                           size="icon" 
                           variant="outline" 
                           data-testid="button-add-staff"
-                          onClick={() => setIsAddStaffDialogOpen(true)}
+                          onClick={() => {
+                            if (selectedPropertyId) addStaffForm.setValue("propertyId", String(selectedPropertyId));
+                            setIsAddStaffDialogOpen(true);
+                          }}
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
@@ -709,6 +718,30 @@ export default function Attendance() {
           </DialogHeader>
           <Form {...editStaffForm}>
             <form onSubmit={editStaffForm.handleSubmit((data) => editStaffMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={editStaffForm.control}
+                name="propertyId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Property</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-property">
+                          <SelectValue placeholder="Select property" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {properties.map((property: any) => (
+                          <SelectItem key={property.id} value={String(property.id)}>
+                            {property.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={editStaffForm.control}
                 name="baseSalary"
@@ -984,6 +1017,7 @@ export default function Attendance() {
                       onClick={() => {
                         setEditingStaffId(staff.id);
                         editStaffForm.reset({ 
+                          propertyId: staff.propertyId ? String(staff.propertyId) : "",
                           baseSalary: staff.baseSalary || 0,
                           joiningDate: staff?.joiningDate ? new Date(staff.joiningDate).toISOString().split('T')[0] : '',
                           leavingDate: staff?.leavingDate ? new Date(staff.leavingDate).toISOString().split('T')[0] : '',

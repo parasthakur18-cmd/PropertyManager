@@ -3695,32 +3695,43 @@ export class DatabaseStorage implements IStorage {
         const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
         const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
 
-        // Calculate working days in month (excluding Sundays), matching the attendance tab logic
-        let workingDaysInMonth = 0;
+        // Calculate total working days in the FULL month (always used for daily rate)
+        let totalWorkingDaysFullMonth = 0;
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          if (d.getDay() !== 0) workingDaysInMonth++; // 0 = Sunday
+          if (d.getDay() !== 0) totalWorkingDaysFullMonth++; // 0 = Sunday
         }
-        // Adjust for joining date if staff joined mid-month
+
+        // Determine applicable working days (prorated if staff joined mid-month)
+        let applicableWorkingDays = totalWorkingDaysFullMonth;
+        let isJoiningMonth = false;
         if (staff.joiningDate) {
           const joinDate = new Date(staff.joiningDate);
+          // Normalize to date only (ignore time) for comparison
+          joinDate.setHours(0, 0, 0, 0);
           const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
           if (joinDate > monthStart && joinDate <= endDate) {
-            workingDaysInMonth = 0;
+            isJoiningMonth = true;
+            applicableWorkingDays = 0;
             for (let d = new Date(joinDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-              if (d.getDay() !== 0) workingDaysInMonth++;
+              if (d.getDay() !== 0) applicableWorkingDays++;
             }
           }
         }
-        const totalWorkingDays = workingDaysInMonth;
+        const totalWorkingDays = applicableWorkingDays;
 
-        // Present = total working days - absents - half-days (leave = paid, not deducted from present count)
-        const presentDays = Math.max(0, workingDaysInMonth - absentDays - (halfDays * 0.5));
-
-        // Calculate deductions: absent = full day deduction, half-day = 0.5 day, leave = no deduction (paid leave)
+        // Daily rate is ALWAYS based on the full month (not prorated days)
+        // so that deductions per absent day are consistent regardless of joining date
         const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
-        // Use working days (not calendar days) for daily rate — matches attendance tab
-        const dailyRate = workingDaysInMonth > 0 ? baseSalaryNum / workingDaysInMonth : 0;
+        const dailyRate = totalWorkingDaysFullMonth > 0 ? baseSalaryNum / totalWorkingDaysFullMonth : 0;
+
+        // Prorated base: for joining month, only earn for days from joining date onward
+        const proratedBase = isJoiningMonth ? applicableWorkingDays * dailyRate : baseSalaryNum;
+
+        // Deductions: absent = full day, half-day = 0.5 day, leave = paid (no deduction)
         const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
+
+        // Present = applicable working days - absents - half-days
+        const presentDays = Math.max(0, applicableWorkingDays - absentDays - (halfDays * 0.5));
 
         // Get all advances for this staff member in current period
         const currentAdvances = await db
@@ -3796,8 +3807,8 @@ export class DatabaseStorage implements IStorage {
         // Previous pending = what was owed - what was paid - advances already taken
         const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
 
-        // Current month calculation
-        const currentMonthGross = baseSalaryNum - attendanceDeductions;
+        // Current month gross: prorated if joining mid-month, else full base minus deductions
+        const currentMonthGross = proratedBase - attendanceDeductions;
         const currentMonthNet = currentMonthGross - totalAdvances;
         
         // Total payable = previous pending + current month net - payments already made this month
