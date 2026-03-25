@@ -3857,17 +3857,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Send WhatsApp booking confirmation when status changes to "confirmed"
       if (status === "confirmed") {
         try {
-          const guest = await storage.getGuest(booking.guestId);
-          if (guest && guest.phone) {
-            let propertyName = "Your Property";
-            if (booking.propertyId) {
-              const property = await storage.getProperty(booking.propertyId);
-              propertyName = property?.name || propertyName;
+          const bcSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'booking_confirmation');
+          const isBcEnabled = bcSetting?.isEnabled !== false;
+          if (!isBcEnabled) {
+            console.log(`[WhatsApp] Booking #${booking.id} - booking_confirmation template disabled, skipping`);
+          } else {
+            const guest = await storage.getGuest(booking.guestId);
+            if (guest && guest.phone) {
+              let propertyName = "Your Property";
+              if (booking.propertyId) {
+                const property = await storage.getProperty(booking.propertyId);
+                propertyName = property?.name || propertyName;
+              }
+              const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
+              const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+              await sendBookingConfirmedNotification(guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
+              console.log(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification sent to ${guest.fullName} (template: 29294)`);
             }
-            const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
-            const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-            await sendBookingConfirmedNotification(guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
-            console.log(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification sent to ${guest.fullName} (template: 29294)`);
           }
         } catch (waErr: any) {
           console.error(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification failed (non-critical):`, waErr.message);
@@ -5097,6 +5103,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Send booking confirmed WhatsApp notification (template 29294) — non-blocking
       setImmediate(async () => {
         try {
+          const bcSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'booking_confirmation');
+          const isBcEnabled = bcSetting?.isEnabled !== false;
+          if (!isBcEnabled) {
+            console.log(`[WhatsApp] Booking #${bookingId} - booking_confirmation template disabled, skipping`);
+            return;
+          }
           const guest = await storage.getGuest(booking.guestId);
           if (guest && guest.phone) {
             let propertyName = "Your Property";
@@ -17848,8 +17860,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           } else if (isAutoConfirmChannel) {
             // Goibibo / MMT: send booking confirmed message (template 29294)
             try {
-              await sendBookingConfirmedNotification(guestPhone, guestFullName, propertyName, checkInFmt, checkOutFmt);
-              console.log(`[WhatsApp] Booking #${newBooking.id} - Booking confirmed notification sent to guest ${guestFullName} (${channel})`);
+              const bcSetting = await storage.getWhatsappTemplateSetting(newBooking.propertyId, 'booking_confirmation');
+              const isBcEnabled = bcSetting?.isEnabled !== false;
+              if (!isBcEnabled) {
+                console.log(`[WhatsApp] Booking #${newBooking.id} - booking_confirmation template disabled, skipping`);
+              } else {
+                await sendBookingConfirmedNotification(guestPhone, guestFullName, propertyName, checkInFmt, checkOutFmt);
+                console.log(`[WhatsApp] Booking #${newBooking.id} - Booking confirmed notification sent to guest ${guestFullName} (${channel})`);
+              }
             } catch (waErr: any) {
               console.error(`[WhatsApp] Booking confirmed notification failed for #${newBooking.id}:`, waErr.message);
             }
