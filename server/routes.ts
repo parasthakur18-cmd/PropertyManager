@@ -3199,6 +3199,58 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // GET /api/bookings/pending-overdue
+  // Returns all pending_advance bookings that are 8+ hours old (for dashboard popup)
+  // MUST be before /api/bookings/:id to prevent Express matching "pending-overdue" as an ID
+  app.get("/api/bookings/pending-overdue", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+
+      const now = new Date();
+      const isPreview = req.query.preview === "1"; // skip 8h filter for testing
+      const cutoffTime = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 8h ago
+
+      const overdueBookings = await db.select().from(bookings)
+        .where(eq(bookings.status, "pending_advance"));
+
+      const { tenant } = auth;
+      const result = [];
+      for (const b of overdueBookings) {
+        // Tenant access check
+        if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0 &&
+            !tenant.assignedPropertyIds.includes(String(b.propertyId))) continue;
+        const createdAt = b.createdAt ? new Date(b.createdAt) : now;
+        if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
+
+        // Guard all IDs against NaN, null, undefined before DB calls
+        const safeGuestId = Number.isFinite(b.guestId) ? (b.guestId as number) : null;
+        const safePropertyId = Number.isFinite(b.propertyId) ? (b.propertyId as number) : null;
+        const safeRoomId = Number.isFinite(b.roomId) ? (b.roomId as number) : null;
+
+        const guest = safeGuestId ? await storage.getGuest(safeGuestId) : null;
+        const property = safePropertyId ? await storage.getProperty(safePropertyId) : null;
+        let roomDisplay = "TBD";
+        if (safeRoomId) {
+          const room = await storage.getRoom(safeRoomId);
+          roomDisplay = room ? `Room ${room.roomNumber}` : `Room #${safeRoomId}`;
+        }
+        result.push({
+          id: b.id,
+          guestName: guest?.fullName || "Unknown Guest",
+          phone: guest?.phone || null,
+          propertyName: property?.name || "Unknown Property",
+          roomDisplay,
+          totalAmount: b.totalAmount,
+          hoursOverdue: Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)),
+        });
+      }
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
     try {
       const booking = await storage.getBooking(parseInt(req.params.id));
@@ -16358,53 +16410,6 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       console.error("[AUDIT] Stack:", error.stack);
       // Return empty array on error instead of 500 to prevent frontend crashes
       res.json([]);
-    }
-  });
-
-  // GET /api/bookings/pending-overdue
-  // Returns all pending_advance bookings that are 8+ hours old (for dashboard popup)
-  app.get("/api/bookings/pending-overdue", isAuthenticated, async (req: any, res) => {
-    try {
-      const auth = await getAuthenticatedTenant(req);
-      if (!auth) return res.status(401).json({ message: "Not authenticated" });
-
-      const now = new Date();
-      const isPreview = req.query.preview === "1"; // skip 8h filter for testing
-      const cutoffTime = new Date(now.getTime() - 8 * 60 * 60 * 1000); // 8h ago
-
-      const overdueBookings = await db.select().from(bookings)
-        .where(eq(bookings.status, "pending_advance"));
-
-      const { tenant } = auth;
-      const result = [];
-      for (const b of overdueBookings) {
-        // Tenant access check
-        if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0 &&
-            !tenant.assignedPropertyIds.includes(String(b.propertyId))) continue;
-        const createdAt = b.createdAt ? new Date(b.createdAt) : now;
-        if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
-
-        const guest = b.guestId ? await storage.getGuest(b.guestId) : null;
-        const property = b.propertyId ? await storage.getProperty(b.propertyId) : null;
-        // Build a room display string
-        let roomDisplay = "TBD";
-        if (b.roomId) {
-          const room = await storage.getRoom(b.roomId);
-          roomDisplay = room ? `Room ${room.roomNumber}` : `Room #${b.roomId}`;
-        }
-        result.push({
-          id: b.id,
-          guestName: guest?.fullName || "Unknown Guest",
-          phone: guest?.phone || null,
-          propertyName: property?.name || "Unknown Property",
-          roomDisplay,
-          totalAmount: b.totalAmount,
-          hoursOverdue: Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)),
-        });
-      }
-      res.json(result);
-    } catch (e: any) {
-      res.status(500).json({ message: e.message });
     }
   });
 
