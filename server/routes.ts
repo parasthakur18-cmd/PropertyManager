@@ -16384,8 +16384,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const createdAt = b.createdAt ? new Date(b.createdAt) : now;
         if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
 
-        const guest = await storage.getGuest(b.guestId);
-        const property = await storage.getProperty(b.propertyId);
+        const guest = b.guestId ? await storage.getGuest(b.guestId) : null;
+        const property = b.propertyId ? await storage.getProperty(b.propertyId) : null;
         // Build a room display string
         let roomDisplay = "TBD";
         if (b.roomId) {

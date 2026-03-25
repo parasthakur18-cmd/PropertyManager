@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -104,6 +104,7 @@ export default function Bookings() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const guestDataRef = useRef({ fullName: "", phone: "", email: "", idProofImage: "" });
   const guestInputResetKey = useRef(0);
+  const bookingTableRef = useRef<HTMLDivElement>(null);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -1943,7 +1944,22 @@ export default function Bookings() {
               </div>
             </Card>
           ) : (
-            <div className="border rounded-lg overflow-x-auto">
+            <div className="relative group">
+              <button
+                onClick={() => bookingTableRef.current?.scrollBy({ left: -300, behavior: "smooth" })}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 hidden group-hover:flex items-center justify-center w-8 h-12 bg-white dark:bg-card border rounded-r-lg shadow-md text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => bookingTableRef.current?.scrollBy({ left: 300, behavior: "smooth" })}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 hidden group-hover:flex items-center justify-center w-8 h-12 bg-white dark:bg-card border rounded-l-lg shadow-md text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            <div ref={bookingTableRef} className="border rounded-lg overflow-x-auto">
               <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
@@ -2173,6 +2189,7 @@ export default function Bookings() {
                   })}
                 </TableBody>
               </Table>
+            </div>
             </div>
           )}
         </TabsContent>
