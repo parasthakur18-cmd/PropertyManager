@@ -94,6 +94,7 @@ const adminRestaurantItems = [
 
 const adminFinanceItems = [
   { title: "Billing", url: "/billing", icon: Receipt },
+  { title: "Leases", url: "/leases", icon: ClipboardCheck },
   { title: "Expenses", url: "/expenses", icon: FileText },
   { title: "Vendors", url: "/vendors", icon: Store },
   { title: "Wallets", url: "/wallets", icon: Wallet },
