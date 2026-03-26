@@ -8613,7 +8613,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           leaseId,
           changeType: 'year_override',
           fieldChanged: `year${yearNumber}ManualMode`,
-          oldValue: existingOverride.isLocked ? 'locked' : 'auto',
+          oldValue: existingOverride?.isLocked ? 'locked' : 'auto',
           newValue: isLocked ? 'locked' : 'auto',
           changedBy: changedByName,
           changeReason: isLocked ? `Manual mode enabled for year ${yearNumber}` : `Manual mode disabled for year ${yearNumber}`,
