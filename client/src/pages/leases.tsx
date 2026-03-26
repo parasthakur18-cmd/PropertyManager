@@ -1168,7 +1168,7 @@ export default function Leases() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="cash">Cash</SelectItem>
-                          <SelectItem value="bank">Bank</SelectItem>
+                          <SelectItem value="upi">UPI</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

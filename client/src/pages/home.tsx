@@ -430,7 +430,7 @@ export default function Home() {
                   <div className="flex justify-between text-white text-sm"><span>GST @ 12%</span><span>₹934</span></div>
                   <div className="border-t border-white/30 pt-2 flex justify-between text-white font-bold"><span>Total</span><span>₹8,784</span></div>
                   <div className="flex gap-2">
-                    <div className="flex-1 bg-white/30 rounded-lg py-1.5 text-center text-white text-xs font-bold">Bank</div>
+                    <div className="flex-1 bg-white/30 rounded-lg py-1.5 text-center text-white text-xs font-bold">UPI</div>
                     <div className="flex-1 bg-white text-emerald-700 rounded-lg py-1.5 text-center text-xs font-bold">Cash</div>
                     <div className="flex-1 bg-white/30 rounded-lg py-1.5 text-center text-white text-xs font-bold">Card</div>
                   </div>

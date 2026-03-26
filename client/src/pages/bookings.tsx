@@ -1758,7 +1758,7 @@ export default function Bookings() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="cash">Cash</SelectItem>
-                              <SelectItem value="bank">Bank</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -2062,7 +2062,7 @@ export default function Bookings() {
                               <span className="font-mono text-green-600">₹{booking.advanceAmount}</span>
                               {(booking as any).advancePaymentMethod && (
                                 <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded">
-                                  {(booking as any).advancePaymentMethod === "cash" ? "Cash" : "Bank"}
+                                  {(booking as any).advancePaymentMethod === "cash" ? "Cash" : "UPI"}
                                 </span>
                               )}
                             </span>
@@ -3310,7 +3310,7 @@ export default function Bookings() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="cash">Cash</SelectItem>
-                              <SelectItem value="bank">Bank</SelectItem>
+                              <SelectItem value="upi">UPI</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -4011,8 +4011,8 @@ function CheckoutBillSummary({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="bank">Bank</SelectItem>
-                <SelectItem value="split">Split (Cash + Bank)</SelectItem>
+                <SelectItem value="upi">UPI</SelectItem>
+                <SelectItem value="split">Split (Cash + UPI)</SelectItem>
               </SelectContent>
             </Select>
           </div>
