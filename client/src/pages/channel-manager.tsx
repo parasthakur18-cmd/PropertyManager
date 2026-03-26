@@ -37,6 +37,7 @@ interface RoomMapping {
   propertyId: number;
   hostezeeRoomType: string;
   aiosellRoomCode: string;
+  aiosellRoomId: string | null;
   createdAt: string;
 }
 
@@ -423,7 +424,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
 function RoomMappingTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
-  const [newMappings, setNewMappings] = useState<{ hostezeeRoomType: string; aiosellRoomCode: string }[]>([]);
+  const [newMappings, setNewMappings] = useState<{ hostezeeRoomType: string; aiosellRoomCode: string; aiosellRoomId: string }[]>([]);
 
   const { data: config } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -454,7 +455,7 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
   });
 
   const saveMappings = useMutation({
-    mutationFn: async (allMappings: { hostezeeRoomType: string; aiosellRoomCode: string }[]) => {
+    mutationFn: async (allMappings: { hostezeeRoomType: string; aiosellRoomCode: string; aiosellRoomId?: string }[]) => {
       return apiRequest("/api/aiosell/room-mappings", "POST", { propertyId, mappings: allMappings });
     },
     onSuccess: () => {
@@ -476,10 +477,10 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
     );
   }
 
-  const existingMappingData = mappings.map(m => ({ hostezeeRoomType: m.hostezeeRoomType, aiosellRoomCode: m.aiosellRoomCode }));
+  const existingMappingData = mappings.map(m => ({ hostezeeRoomType: m.hostezeeRoomType, aiosellRoomCode: m.aiosellRoomCode, aiosellRoomId: m.aiosellRoomId || "" }));
   const allMappings = [...existingMappingData, ...newMappings];
 
-  const addMapping = () => setNewMappings([...newMappings, { hostezeeRoomType: "", aiosellRoomCode: "" }]);
+  const addMapping = () => setNewMappings([...newMappings, { hostezeeRoomType: "", aiosellRoomCode: "", aiosellRoomId: "" }]);
 
   const updateMapping = (index: number, field: string, value: string) => {
     const isExisting = index < existingMappingData.length;
@@ -529,28 +530,37 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
           ) : (
             <div className="space-y-3">
               {allMappings.map((mapping, index) => (
-                <div key={index} className="flex items-center gap-3 p-3 border rounded-lg" data-testid={`row-room-mapping-${index}`}>
-                  <div className="flex-1">
-                    <Label className="text-xs text-muted-foreground">Hostezee Room Type</Label>
-                    {roomTypes.length > 0 ? (
-                      <Select value={mapping.hostezeeRoomType} onValueChange={v => updateMapping(index, "hostezeeRoomType", v)}>
-                        <SelectTrigger data-testid={`select-room-type-${index}`}><SelectValue placeholder="Select room type" /></SelectTrigger>
-                        <SelectContent>
-                          {roomTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Input value={mapping.hostezeeRoomType} onChange={e => updateMapping(index, "hostezeeRoomType", e.target.value)} placeholder="Room type name" />
-                    )}
+                <div key={index} className="p-3 border rounded-lg space-y-3" data-testid={`row-room-mapping-${index}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Hostezee Room Type</Label>
+                      {roomTypes.length > 0 ? (
+                        <Select value={mapping.hostezeeRoomType} onValueChange={v => updateMapping(index, "hostezeeRoomType", v)}>
+                          <SelectTrigger data-testid={`select-room-type-${index}`}><SelectValue placeholder="Select room type" /></SelectTrigger>
+                          <SelectContent>
+                            {roomTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input value={mapping.hostezeeRoomType} onChange={e => updateMapping(index, "hostezeeRoomType", e.target.value)} placeholder="Room type name" />
+                      )}
+                    </div>
+                    <ArrowUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-5" />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">AioSell Room Code <span className="text-muted-foreground">(string)</span></Label>
+                      <Input data-testid={`input-aiosell-code-${index}`} value={mapping.aiosellRoomCode} onChange={e => updateMapping(index, "aiosellRoomCode", e.target.value)} placeholder="e.g. SUITE, EXECUTIVE" />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">AioSell Room ID <span className="text-muted-foreground">(numeric, optional)</span></Label>
+                      <Input data-testid={`input-aiosell-room-id-${index}`} value={(mapping as any).aiosellRoomId || ""} onChange={e => updateMapping(index, "aiosellRoomId", e.target.value)} placeholder="e.g. 12345" />
+                    </div>
+                    <Button variant="ghost" size="icon" className="mt-5" onClick={() => removeMapping(index)} data-testid={`button-remove-mapping-${index}`}>
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </div>
-                  <ArrowUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-5" />
-                  <div className="flex-1">
-                    <Label className="text-xs text-muted-foreground">AioSell Room Code</Label>
-                    <Input data-testid={`input-aiosell-code-${index}`} value={mapping.aiosellRoomCode} onChange={e => updateMapping(index, "aiosellRoomCode", e.target.value)} placeholder="e.g. SUITE, EXECUTIVE" />
-                  </div>
-                  <Button variant="ghost" size="icon" className="mt-5" onClick={() => removeMapping(index)} data-testid={`button-remove-mapping-${index}`}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  {((mapping as any).aiosellRoomId) && (
+                    <p className="text-xs text-muted-foreground pl-1">Webhook will match by Room ID first, then fall back to Room Code.</p>
+                  )}
                 </div>
               ))}
               {newMappings.length > 0 && (

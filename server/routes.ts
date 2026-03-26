@@ -17348,18 +17348,23 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
       }
 
-      // Detect duplicate aiosellRoomCode values (would cause silent wrong assignments)
+      // ── Strict duplicate validation ──────────────────────────────────────
       const roomCodes = mappings.map((m: any) => m.aiosellRoomCode);
       const duplicateCodes = roomCodes.filter((code: string, i: number) => roomCodes.indexOf(code) !== i);
       if (duplicateCodes.length > 0) {
-        return res.status(400).json({ message: `Duplicate AioSell room codes found: ${[...new Set(duplicateCodes)].join(", ")}. Each room code must be unique.` });
+        return res.status(400).json({ message: `Duplicate AioSell Room Mapping Detected: room code(s) [${[...new Set(duplicateCodes)].join(", ")}] appear more than once.` });
       }
 
-      // Detect duplicate hostezeeRoomType values (one Hostezee type cannot map to two AioSell codes)
+      const roomIds = mappings.map((m: any) => m.aiosellRoomId).filter(Boolean);
+      const duplicateRoomIds = roomIds.filter((id: string, i: number) => roomIds.indexOf(id) !== i);
+      if (duplicateRoomIds.length > 0) {
+        return res.status(400).json({ message: `Duplicate AioSell Room Mapping Detected: room ID(s) [${[...new Set(duplicateRoomIds)].join(", ")}] appear more than once.` });
+      }
+
       const roomTypes = mappings.map((m: any) => m.hostezeeRoomType);
       const duplicateTypes = roomTypes.filter((t: string, i: number) => roomTypes.indexOf(t) !== i);
       if (duplicateTypes.length > 0) {
-        return res.status(400).json({ message: `Duplicate Hostezee room types found: ${[...new Set(duplicateTypes)].join(", ")}. Each room type must appear only once.` });
+        return res.status(400).json({ message: `Duplicate AioSell Room Mapping Detected: Hostezee room type(s) [${[...new Set(duplicateTypes)].join(", ")}] appear more than once.` });
       }
 
       // Resolve room IDs before deleting/inserting to fail early if any room is not found
@@ -17386,6 +17391,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           hostezeeRoomId: m.hostezeeRoomId,
           hostezeeRoomType: m.hostezeeRoomType,
           aiosellRoomCode: m.aiosellRoomCode,
+          aiosellRoomId: m.aiosellRoomId ? String(m.aiosellRoomId).trim() : null,
         }).returning();
         created.push(mapping);
       }
@@ -17826,35 +17832,85 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           : parseFloat(amount?.amountAfterTax?.toString() || "0");
 
         for (const rd of rooms_) {
-          const roomCode = rd.roomCode || "";
-          console.log(`[AIOSELL-WEBHOOK] Incoming room code: "${roomCode}" (booking ${bookingId})`);
-          const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
+          const incomingRoomId = rd.roomId != null ? String(rd.roomId).trim() : null;
+          const incomingRoomCode = rd.roomCode ? String(rd.roomCode).trim() : "";
+
+          // ── Production logging ───────────────────────────────────────────
+          console.log("[AIOSELL] Incoming:", {
+            roomId: incomingRoomId,
+            roomCode: incomingRoomCode,
+            bookingId,
+          });
+
+          // ── Dual-format mapping lookup ───────────────────────────────────
+          // Priority 1: match by numeric AioSell roomId (stored as aiosellRoomId)
+          // Priority 2: fall back to roomCode string
+          let mapping = incomingRoomId
+            ? mappings.find(m => m.aiosellRoomId && m.aiosellRoomId === incomingRoomId)
+            : undefined;
+
+          if (!mapping && incomingRoomCode) {
+            mapping = mappings.find(m => m.aiosellRoomCode === incomingRoomCode);
+          }
+
+          console.log("[AIOSELL] Mapping Found:", mapping ?? null);
+
+          if (!mapping) {
+            // Hard stop — no mapping means we cannot create a valid booking for this room
+            console.error("[AIOSELL ERROR] No mapping found", {
+              incomingRoomId,
+              incomingRoomCode,
+              bookingId,
+              configId: config.id,
+              availableRoomIds: mappings.map(m => m.aiosellRoomId).filter(Boolean),
+              availableRoomCodes: mappings.map(m => m.aiosellRoomCode),
+            });
+            // Push TBS placeholder so the rest of the booking still records the attempt
+            resolvedRooms.push({
+              roomId: null,
+              aiosellRoomCode: incomingRoomCode,
+              roomType: rd.roomTypeName || incomingRoomCode || "",
+              mealPlan: rd.mealPlan || "none",
+              status: "tbs",
+              adults: rd.occupancy?.adults || 1,
+              children: rd.occupancy?.children || 0,
+              amount: amountPerRoom,
+            });
+            continue;
+          }
+
+          // ── Safety check: find ALL available rooms of the mapped type ────
+          const matchedByField = incomingRoomId && mapping.aiosellRoomId === incomingRoomId
+            ? `roomId=${incomingRoomId}` : `roomCode=${incomingRoomCode}`;
+          console.log(`[AIOSELL] Mapped via ${matchedByField} → Hostezee type "${mapping.hostezeeRoomType}" (configId ${config.id})`);
+
+          const mappedRoomRows = await db.select().from(rooms)
+            .where(and(
+              eq(rooms.propertyId, config.propertyId),
+              eq(rooms.roomType, mapping.hostezeeRoomType),
+              eq(rooms.status, "available"),
+            ));
+
           let assignedRoomId: number | null = null;
           let stayStatus: "confirmed" | "tbs" = "tbs";
-          if (mapping) {
-            console.log(`[AIOSELL-WEBHOOK] Mapped room code "${roomCode}" → Hostezee type "${mapping.hostezeeRoomType}" (configId ${config.id})`);
-            // Find ANY available room of the mapped type (not just the single stored hostezeeRoomId)
-            // This handles properties with multiple rooms of the same type correctly
-            const mappedRoomRows = await db.select().from(rooms)
-              .where(and(
-                eq(rooms.propertyId, config.propertyId),
-                eq(rooms.roomType, mapping.hostezeeRoomType),
-                eq(rooms.status, "available"),
-              ));
-            if (mappedRoomRows.length > 0) {
-              assignedRoomId = mappedRoomRows[0].id;
-              stayStatus = "confirmed";
-              console.log(`[AIOSELL-WEBHOOK] Assigned room #${assignedRoomId} ("${mappedRoomRows[0].roomNumber}") for code "${roomCode}"`);
-            } else {
-              console.warn(`[AIOSELL-WEBHOOK] Room code "${roomCode}" (type "${mapping.hostezeeRoomType}") has no available rooms for property ${config.propertyId} → TBS`);
-            }
+
+          if (mappedRoomRows.length > 0) {
+            assignedRoomId = mappedRoomRows[0].id;
+            stayStatus = "confirmed";
+            console.log("[AIOSELL] Assigned Room:", {
+              roomId: assignedRoomId,
+              roomNumber: mappedRoomRows[0].roomNumber,
+              roomType: mapping.hostezeeRoomType,
+              totalAvailable: mappedRoomRows.length,
+            });
           } else {
-            console.error(`[AIOSELL-WEBHOOK] Room Mapping Failed — no mapping for code "${roomCode}" in config ${config.id}. Available codes: [${mappings.map(m => m.aiosellRoomCode).join(", ")}]`);
+            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} → TBS`);
           }
+
           resolvedRooms.push({
             roomId: assignedRoomId,
-            aiosellRoomCode: roomCode,
-            roomType: rd.roomTypeName || rd.roomCode || "",
+            aiosellRoomCode: incomingRoomCode || mapping.aiosellRoomCode,
+            roomType: rd.roomTypeName || mapping.hostezeeRoomType || "",
             mealPlan: rd.mealPlan || "none",
             status: stayStatus,
             adults: rd.occupancy?.adults || 1,

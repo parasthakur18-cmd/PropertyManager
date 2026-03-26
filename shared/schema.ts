@@ -1787,6 +1787,7 @@ export const aiosellRoomMappings = pgTable("aiosell_room_mappings", {
   hostezeeRoomId: integer("hostezee_room_id").notNull(),
   hostezeeRoomType: varchar("hostezee_room_type", { length: 100 }).notNull(),
   aiosellRoomCode: varchar("aiosell_room_code", { length: 100 }).notNull(),
+  aiosellRoomId: varchar("aiosell_room_id", { length: 100 }), // numeric room ID from AioSell (optional)
   createdAt: timestamp("created_at").defaultNow(),
 });
 

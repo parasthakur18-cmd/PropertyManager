@@ -407,6 +407,14 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_aiosell_room_mappings_room_id",
+    async run() {
+      if (!(await tableExists("aiosell_room_mappings"))) return;
+      if (await columnExists("aiosell_room_mappings", "aiosell_room_id")) return;
+      await runRaw(`ALTER TABLE aiosell_room_mappings ADD COLUMN aiosell_room_id VARCHAR(100)`);
+    },
+  },
+  {
     name: "add_lease_year_overrides_new_columns",
     async run() {
       if (!(await tableExists("lease_year_overrides"))) return;
