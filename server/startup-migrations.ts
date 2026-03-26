@@ -407,6 +407,52 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_lease_year_overrides_new_columns",
+    async run() {
+      if (!(await tableExists("lease_year_overrides"))) return;
+      const client = await pool.connect();
+      try {
+        // Add remark column
+        const hasRemark = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'lease_year_overrides' AND column_name = 'remark'
+        `);
+        if (hasRemark.rows.length === 0) {
+          await client.query(`ALTER TABLE lease_year_overrides ADD COLUMN remark text`);
+        }
+
+        // Add manual_paid_override column
+        const hasManualPaid = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'lease_year_overrides' AND column_name = 'manual_paid_override'
+        `);
+        if (hasManualPaid.rows.length === 0) {
+          await client.query(`ALTER TABLE lease_year_overrides ADD COLUMN manual_paid_override numeric(10,2)`);
+        }
+
+        // Add manual_balance_override column
+        const hasManualBalance = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'lease_year_overrides' AND column_name = 'manual_balance_override'
+        `);
+        if (hasManualBalance.rows.length === 0) {
+          await client.query(`ALTER TABLE lease_year_overrides ADD COLUMN manual_balance_override numeric(10,2)`);
+        }
+
+        // Add is_locked column
+        const hasLocked = await client.query(`
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'lease_year_overrides' AND column_name = 'is_locked'
+        `);
+        if (hasLocked.rows.length === 0) {
+          await client.query(`ALTER TABLE lease_year_overrides ADD COLUMN is_locked boolean NOT NULL DEFAULT false`);
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
+  {
     name: "consolidate_wallets_to_cash_and_upi",
     async run() {
       if (!(await tableExists("wallets"))) return;
