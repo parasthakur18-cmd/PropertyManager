@@ -232,8 +232,8 @@ export default function SalariesPage() {
   const openPaymentDialog = (staff: any) => {
     setPaymentStaffId(staff.staffId);
     setPaymentStaffName(staff.staffName);
-    setPaymentAmount(staff.totalPayable.toFixed(2));
-    setPaymentMaxAmount(staff.totalPayable);
+    setPaymentAmount((staff.finalPayable || 0).toFixed(2));
+    setPaymentMaxAmount(staff.finalPayable || 0);
     setIsPaymentDialogOpen(true);
   };
 
@@ -292,13 +292,13 @@ export default function SalariesPage() {
     },
   });
 
-  // Calculate totals including carry-forward
+  // Calculate totals — all values come from backend, no recalculation here
   const totals = {
     totalBaseSalary: salaries.reduce((sum: number, s: any) => sum + (s.baseSalary || 0), 0),
-    totalDeductions: salaries.reduce((sum: number, s: any) => sum + (s.attendanceDeductions || 0), 0),
+    totalDeductions: salaries.reduce((sum: number, s: any) => sum + (s.deduction || 0), 0),
     totalAdvances: salaries.reduce((sum: number, s: any) => sum + (s.totalAdvances || 0), 0),
     totalPreviousPending: salaries.reduce((sum: number, s: any) => sum + (s.previousPending || 0), 0),
-    totalPayable: salaries.reduce((sum: number, s: any) => sum + (s.totalPayable || 0), 0),
+    totalPayable: salaries.reduce((sum: number, s: any) => sum + (s.finalPayable || 0), 0),
     totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
@@ -313,18 +313,24 @@ export default function SalariesPage() {
       "Staff Name",
       "Job Title",
       "Base Salary",
+      "Total Days",
       "Present Days",
       "Absent Days",
       "Leave Days",
+      "Total Leave",
+      "Paid Leave (Free)",
+      "Leave Without Pay",
       "Half Days",
-      "Attendance Deductions",
+      "Daily Rate",
+      "Deduction (LWP + Half Day)",
+      "Gross Salary",
       "Regular Advances",
       "Extra Advances",
       "Total Advances",
+      "Net Salary",
       "Previous Pending",
-      "Current Month Gross",
       "Payments Made",
-      "Total Payable",
+      "Final Payable",
       "Status"
     ];
 
@@ -332,39 +338,33 @@ export default function SalariesPage() {
       s.staffName,
       s.jobTitle,
       s.baseSalary,
+      s.totalDays || 0,
       s.presentDays,
       s.absentDays,
       s.leaveDays || 0,
+      s.totalLeave || 0,
+      s.paidLeave || 0,
+      s.leaveWithoutPay || 0,
       s.halfDays || 0,
-      s.attendanceDeductions,
+      s.dailyRate || 0,
+      s.deduction || 0,
+      s.grossSalary || 0,
       s.regularAdvances || 0,
       s.extraAdvances || 0,
       s.totalAdvances,
+      s.netSalary || 0,
       s.previousPending || 0,
-      s.currentMonthGross || 0,
       s.paymentsMade || 0,
-      s.totalPayable,
+      s.finalPayable || 0,
       s.status
     ]);
 
-    // Add totals row
+    // Add totals row (matches 22-column layout)
     rows.push([
-      "TOTAL",
-      "",
-      totals.totalBaseSalary,
-      "",
-      "",
-      "",
-      "",
-      totals.totalDeductions,
-      "",
-      "",
-      totals.totalAdvances,
-      totals.totalPreviousPending,
-      "",
-      totals.totalPaymentsMade,
-      totals.totalPayable,
-      ""
+      "TOTAL", "", totals.totalBaseSalary,
+      "", "", "", "", "", "", "", "", "",
+      totals.totalDeductions, "", "", "", totals.totalAdvances, "",
+      totals.totalPreviousPending, totals.totalPaymentsMade, totals.totalPayable, ""
     ]);
 
     const csvContent = [
@@ -787,8 +787,8 @@ export default function SalariesPage() {
 
                     {/* Attendance Summary */}
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">Attendance</p>
-                      <div className="grid grid-cols-4 gap-2 text-center">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">Attendance ({staff.totalDays || 0} days)</p>
+                      <div className="grid grid-cols-4 gap-2 text-center mb-3">
                         <div className="p-2 bg-green-50 rounded">
                           <p className="text-sm font-bold text-green-700">{staff.presentDays}</p>
                           <p className="text-xs text-muted-foreground">Present</p>
@@ -806,14 +806,34 @@ export default function SalariesPage() {
                           <p className="text-xs text-muted-foreground">Half-day</p>
                         </div>
                       </div>
+                      {/* Leave policy summary */}
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs bg-muted/40 rounded p-2">
+                        <div>
+                          <p className="font-semibold">{staff.totalLeave || 0}</p>
+                          <p className="text-muted-foreground">Total Leave</p>
+                          <p className="text-muted-foreground">(Absent + Leave)</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-700">{staff.paidLeave || 0}</p>
+                          <p className="text-muted-foreground">Paid Leave</p>
+                          <p className="text-muted-foreground">(Free, max 2)</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-red-700">{staff.leaveWithoutPay || 0}</p>
+                          <p className="text-muted-foreground">LWP</p>
+                          <p className="text-muted-foreground">(Deducted)</p>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Deductions & Advances */}
                     <div className="space-y-2 pb-4 border-b">
                       <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">Attendance Deductions</p>
+                        <p className="text-sm text-muted-foreground">
+                          Deduction <span className="text-xs">(LWP: {staff.leaveWithoutPay || 0} days + {staff.halfDays || 0} half-days)</span>
+                        </p>
                         <p className="font-semibold text-red-600">
-                          -₹{(staff.attendanceDeductions || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          -₹{(staff.deduction || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
                       {staff.advances && staff.advances.length > 0 && (
@@ -854,11 +874,19 @@ export default function SalariesPage() {
                         </div>
                       )}
                       <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground">Current Month Gross</p>
+                        <p className="text-sm text-muted-foreground">Gross Salary</p>
                         <p className="font-semibold">
-                          ₹{(staff.currentMonthGross || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          ₹{(staff.grossSalary || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </p>
                       </div>
+                      {staff.totalAdvances > 0 && (
+                        <div className="flex justify-between items-center">
+                          <p className="text-sm text-muted-foreground">Net Salary (after advances)</p>
+                          <p className="font-semibold">
+                            ₹{(staff.netSalary || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </p>
+                        </div>
+                      )}
                       {staff.paymentsMade > 0 && (
                         <div className="flex justify-between items-center">
                           <p className="text-sm text-purple-600 font-medium">Already Paid This Month</p>
@@ -871,18 +899,18 @@ export default function SalariesPage() {
 
                     {/* Final Salary (Highlighted) */}
                     <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">TOTAL PAYABLE</p>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">FINAL PAYABLE</p>
                       <p className="text-3xl font-bold text-green-700 dark:text-green-400" data-testid={`text-final-salary-${staff.staffId}`}>
-                        ₹{(staff.totalPayable || staff.finalSalary || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        ₹{(staff.finalPayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                       </p>
                       <p className="text-xs text-muted-foreground mt-2">
                         {staff.previousPending > 0 && `Previous: ₹${(staff.previousPending || 0).toLocaleString('en-IN')} + `}
-                        Current: ₹{(staff.currentMonthNet || 0).toLocaleString('en-IN')}
+                        Net: ₹{(staff.netSalary || 0).toLocaleString('en-IN')}
                         {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
                       </p>
                       
                       {/* Pay Button */}
-                      {staff.totalPayable > 0 && (
+                      {staff.finalPayable > 0 && (
                         <Button 
                           onClick={() => openPaymentDialog(staff)}
                           className="w-full mt-4"
@@ -892,7 +920,7 @@ export default function SalariesPage() {
                           Pay Salary
                         </Button>
                       )}
-                      {staff.totalPayable <= 0 && (
+                      {staff.finalPayable <= 0 && (
                         <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                           <Check className="h-5 w-5" />
                           <span className="font-semibold">Fully Paid</span>
@@ -1011,13 +1039,13 @@ export default function SalariesPage() {
                             <Badge variant="destructive">{staff.absentDays}</Badge>
                           </td>
                           <td className="text-right p-3 text-red-600 font-semibold">
-                            -₹{staff.attendanceDeductions.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                            -₹{(staff.deduction || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </td>
                           <td className="text-right p-3 text-orange-600 font-semibold">
                             -₹{staff.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </td>
                           <td className="text-right p-3 text-green-700 font-bold text-base">
-                            ₹{staff.finalSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                            ₹{(staff.finalPayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </td>
                           <td className="text-center p-3">
                             <Badge
@@ -1033,7 +1061,7 @@ export default function SalariesPage() {
                             </Badge>
                           </td>
                           <td className="text-center p-3">
-                            {staff.totalPayable > 0 ? (
+                            {staff.finalPayable > 0 ? (
                               <Button 
                                 size="sm"
                                 onClick={() => openPaymentDialog(staff)}

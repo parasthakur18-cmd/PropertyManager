@@ -1,0 +1,123 @@
+Update the EXISTING salary calculation logic in my system. Do NOT rebuild from scratch. Only modify formulas and ensure frontend matches backend.
+
+---
+
+### CHANGE 1 — REMOVE OLD WORKING DAY LOGIC
+
+* Remove any logic that:
+
+  * excludes Sundays
+  * uses fixed 26 working days
+
+Replace with:
+totalDays = actual number of days in selected month (28–31)
+
+---
+
+### CHANGE 2 — IMPLEMENT NEW LEAVE POLICY
+
+Replace existing absence/leave deduction logic with:
+
+totalLeave = absentDays + leaveDays
+
+paidLeave = Math.min(2, totalLeave)
+
+leaveWithoutPay = totalLeave - paidLeave
+
+Rules:
+
+* First 2 leaves are always PAID
+* Includes BOTH absent + leave
+* No carry forward to next month
+
+---
+
+### CHANGE 3 — HALF DAY RULE (IMPORTANT)
+
+* Half days should NOT be part of paid leave
+* Always deduct separately:
+
+halfDayDeduction = halfDays * dailyRate * 0.5
+
+---
+
+### CHANGE 4 — UPDATE SALARY FORMULA
+
+Replace entire deduction logic with:
+
+dailyRate = baseSalary / totalDays
+
+deduction =
+(leaveWithoutPay * dailyRate) +
+(halfDays * dailyRate * 0.5)
+
+grossSalary = baseSalary - deduction
+
+netSalary = grossSalary - advances
+
+finalPayable =
+previousPending +
+netSalary -
+paymentsMade
+
+---
+
+### CHANGE 5 — PREVENT DOUBLE CALCULATION BUGS
+
+* Ensure:
+
+  * advances are deducted ONLY ONCE
+  * paymentsMade is deducted ONLY in finalPayable
+  * no duplicate deductions anywhere else
+
+---
+
+### CHANGE 6 — FRONTEND FIX (CRITICAL)
+
+Check all frontend salary displays and ensure:
+
+1. Frontend does NOT recalculate anything
+2. All values come from backend response only
+3. Display these exact backend fields:
+
+* totalDays
+* dailyRate
+* totalLeave
+* paidLeave (max 2)
+* leaveWithoutPay
+* halfDays
+* deduction
+* grossSalary
+* netSalary
+* finalPayable
+
+---
+
+### CHANGE 7 — ROUNDING FIX
+
+* Do NOT round during intermediate steps
+* Only round final outputs to 2 decimal places
+
+---
+
+### CHANGE 8 — EDGE CASE FIXES
+
+* If totalLeave ≤ 2 → no deduction
+* If no attendance issues → full salary
+* Prevent negative salary
+* Month should dynamically change (Feb, March, etc.)
+
+---
+
+### GOAL
+
+After changes:
+
+* Salary must always start from FULL salary
+* Only LWP and half days reduce salary
+* Frontend and backend numbers must MATCH exactly
+* No incorrect pending like ₹10,000
+
+---
+
+Modify existing functions only. Do not change database structure unless necessary.

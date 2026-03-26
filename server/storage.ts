@@ -3919,48 +3919,51 @@ export class DatabaseStorage implements IStorage {
             )
           );
 
-        // Count exceptions only (attendance is exception-based — only absences/leaves/half-days are recorded)
+        // Count attendance exceptions (exception-based system)
         const absentDays = attendanceList.filter(a => a.status === 'absent').length;
         const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
         const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
 
-        // Calculate total working days in the FULL month (always used for daily rate)
-        let totalWorkingDaysFullMonth = 0;
+        // CHANGE 1: Use actual calendar days (no Sunday exclusion — all 28/29/30/31 days)
+        let totalDays = 0;
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          if (d.getDay() !== 0) totalWorkingDaysFullMonth++; // 0 = Sunday
+          totalDays++;
         }
 
-        // Determine applicable working days (prorated if staff joined mid-month)
-        let applicableWorkingDays = totalWorkingDaysFullMonth;
+        // Determine applicable days for mid-month joiners (also counts all calendar days)
+        let applicableDays = totalDays;
         let isJoiningMonth = false;
         if (staff.joiningDate) {
           const joinDate = new Date(staff.joiningDate);
-          // Normalize to date only (ignore time) for comparison
           joinDate.setHours(0, 0, 0, 0);
           const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
           if (joinDate > monthStart && joinDate <= endDate) {
             isJoiningMonth = true;
-            applicableWorkingDays = 0;
+            applicableDays = 0;
             for (let d = new Date(joinDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-              if (d.getDay() !== 0) applicableWorkingDays++;
+              applicableDays++;
             }
           }
         }
-        const totalWorkingDays = applicableWorkingDays;
 
-        // Daily rate is ALWAYS based on the full month (not prorated days)
-        // so that deductions per absent day are consistent regardless of joining date
         const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
-        const dailyRate = totalWorkingDaysFullMonth > 0 ? baseSalaryNum / totalWorkingDaysFullMonth : 0;
 
-        // Prorated base: for joining month, only earn for days from joining date onward
-        const proratedBase = isJoiningMonth ? applicableWorkingDays * dailyRate : baseSalaryNum;
+        // Daily rate always based on full month calendar days (no rounding until final)
+        const dailyRate = totalDays > 0 ? baseSalaryNum / totalDays : 0;
 
-        // Deductions: absent = full day, half-day = 0.5 day, leave = paid (no deduction)
-        const attendanceDeductions = (absentDays * dailyRate) + (halfDays * 0.5 * dailyRate);
+        // Prorated base for mid-month joiners; full base for everyone else
+        const proratedBase = isJoiningMonth ? applicableDays * dailyRate : baseSalaryNum;
 
-        // Present = applicable working days - absents - half-days
-        const presentDays = Math.max(0, applicableWorkingDays - absentDays - (halfDays * 0.5));
+        // CHANGE 2: New leave policy — first 2 leaves (absent + leave combined) are PAID
+        const totalLeave = absentDays + leaveDays;
+        const paidLeave = Math.min(2, totalLeave);       // first 2 always paid, no carry forward
+        const leaveWithoutPay = totalLeave - paidLeave;  // only these reduce salary
+
+        // CHANGE 3 & 4: Half days are SEPARATE (not part of paid leave), always deducted
+        const deduction = (leaveWithoutPay * dailyRate) + (halfDays * dailyRate * 0.5);
+
+        // Informational: present = applicable days minus all exceptions
+        const presentDays = Math.max(0, applicableDays - absentDays - leaveDays - halfDays);
 
         // Get all advances for this staff member in current period
         const currentAdvances = await db
@@ -4036,25 +4039,32 @@ export class DatabaseStorage implements IStorage {
         // Previous pending = what was owed - what was paid - advances already taken
         const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
 
-        // Current month gross: prorated if joining mid-month, else full base minus deductions
-        const currentMonthGross = proratedBase - attendanceDeductions;
-        const currentMonthNet = currentMonthGross - totalAdvances;
-        
-        // Total payable = previous pending + current month net - payments already made this month
-        const totalPayable = previousPending + currentMonthNet - totalPaymentsMade;
+        // CHANGE 4 & 5: Gross → Net → Final (no double deductions, no rounding until final)
+        const grossSalary = Math.max(0, proratedBase - deduction);
+        const netSalary = grossSalary - totalAdvances;  // advances deducted ONCE here only
+        const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade);
 
         return {
           staffId: staff.id,
           staffName: staff.name,
           jobTitle: staff.jobTitle || 'N/A',
           baseSalary: baseSalaryNum,
+          // Attendance breakdown
           presentDays,
           absentDays,
           leaveDays,
           halfDays,
-          totalWorkingDays,
+          // New leave policy fields
+          totalDays,
+          totalLeave,
+          paidLeave,
+          leaveWithoutPay,
+          // Financials (all rounded to 2dp only at return)
           dailyRate: Math.round(dailyRate * 100) / 100,
-          attendanceDeductions: Math.round(attendanceDeductions * 100) / 100,
+          deduction: Math.round(deduction * 100) / 100,
+          grossSalary: Math.round(grossSalary * 100) / 100,
+          netSalary: Math.round(netSalary * 100) / 100,
+          finalPayable: Math.round(finalPayable * 100) / 100,
           // Advances breakdown
           regularAdvances: Math.round(totalRegularAdvances * 100) / 100,
           extraAdvances: Math.round(totalExtraAdvances * 100) / 100,
@@ -4077,12 +4087,14 @@ export class DatabaseStorage implements IStorage {
           })),
           // Carry forward
           previousPending: Math.round(previousPending * 100) / 100,
-          currentMonthGross: Math.round(currentMonthGross * 100) / 100,
-          currentMonthNet: Math.round(currentMonthNet * 100) / 100,
-          // Final totals
-          totalPayable: Math.round(totalPayable * 100) / 100,
-          finalSalary: Math.round(totalPayable * 100) / 100,
-          status: totalPayable <= 0 ? 'paid' : totalPayable < currentMonthNet ? 'partial' : 'pending',
+          // Backward-compatible aliases (so any existing code still works)
+          totalWorkingDays: totalDays,
+          attendanceDeductions: Math.round(deduction * 100) / 100,
+          currentMonthGross: Math.round(grossSalary * 100) / 100,
+          currentMonthNet: Math.round(netSalary * 100) / 100,
+          totalPayable: Math.round(finalPayable * 100) / 100,
+          finalSalary: Math.round(finalPayable * 100) / 100,
+          status: finalPayable <= 0 ? 'paid' : finalPayable < netSalary ? 'partial' : 'pending',
         };
       })
     );
