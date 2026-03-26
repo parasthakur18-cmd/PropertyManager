@@ -50,6 +50,8 @@ interface PnLReport {
   leaseId: number | null;
   pnlData: PnLData[];
   totalRevenue: number;
+  totalBookingRevenue: number;
+  totalRestaurantRevenue: number;
   totalLeaseAmount: number;
   totalExpenses: number;
   totalSalaries: number;
@@ -366,8 +368,17 @@ export default function PnLStatement() {
                         <Home className="h-4 w-4 text-muted-foreground" />
                         Room Bookings & Services
                       </span>
-                      <span className="font-mono font-medium">{formatCurrency(pnlReport.totalRevenue)}</span>
+                      <span className="font-mono font-medium">{formatCurrency(pnlReport.totalBookingRevenue ?? pnlReport.totalRevenue)}</span>
                     </div>
+                    {(pnlReport.totalRestaurantRevenue ?? 0) > 0 && (
+                      <div className="flex justify-between items-center py-2 border-b">
+                        <span className="flex items-center gap-2">
+                          <Utensils className="h-4 w-4 text-muted-foreground" />
+                          Restaurant / Dine-in Orders
+                        </span>
+                        <span className="font-mono font-medium">{formatCurrency(pnlReport.totalRestaurantRevenue)}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex justify-between items-center py-3 mt-2 bg-green-50 dark:bg-green-950/20 px-4 rounded-lg">
                     <span className="font-semibold">Total Revenue</span>

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft, Search, XCircle } from "lucide-react";
+import { Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft, Search, XCircle, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type MenuItem, type Room } from "@shared/schema";
+import { type MenuItem, type Property } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/hooks/useAuth";
 
 interface CartItem extends MenuItem {
   quantity: number;
@@ -25,13 +26,27 @@ export default function QuickOrder() {
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [restaurantCustomerType, setRestaurantCustomerType] = useState<RestaurantCustomerType>("walk-in");
   const [selectedRoom, setSelectedRoom] = useState<string>("");
+  const [selectedWalkInPropertyId, setSelectedWalkInPropertyId] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
-  const { toast} = useToast();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  const { data: properties = [] } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+  });
+
+  // Properties accessible to this user
+  const availableProperties = useMemo(() => {
+    return properties.filter(p => {
+      if (user?.role === 'admin' || user?.role === 'super-admin') return true;
+      return (user?.assignedPropertyIds || []).includes(String(p.id));
+    });
+  }, [properties, user]);
 
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
@@ -59,6 +74,7 @@ export default function QuickOrder() {
       setOrderType(null);
       setCart([]);
       setSelectedRoom("");
+      setSelectedWalkInPropertyId("");
       setCustomerName("");
       setCustomerPhone("");
       setSpecialInstructions("");
@@ -171,13 +187,23 @@ export default function QuickOrder() {
         }
       }
       if (orderType === "restaurant") {
-        if (restaurantCustomerType === "walk-in" && (!customerName || !customerPhone)) {
-          toast({
-            title: "Customer Info Required",
-            description: "Please enter customer name and phone",
-            variant: "destructive",
-          });
-          return;
+        if (restaurantCustomerType === "walk-in") {
+          if (!customerName || !customerPhone) {
+            toast({
+              title: "Customer Info Required",
+              description: "Please enter customer name and phone",
+              variant: "destructive",
+            });
+            return;
+          }
+          if (!selectedWalkInPropertyId && availableProperties.length > 1) {
+            toast({
+              title: "Property Required",
+              description: "Please select which property this order is for",
+              variant: "destructive",
+            });
+            return;
+          }
         }
         if (restaurantCustomerType === "in-house" && !selectedRoom) {
           toast({
@@ -238,8 +264,13 @@ export default function QuickOrder() {
           orderData.customerPhone = roomGuest.guestPhone || "";
         }
       } else {
-        // Walk-in customer - no property association
-        orderData.propertyId = null;
+        // Walk-in customer — use selected property, or auto-pick if only one
+        const walkinPropertyId = selectedWalkInPropertyId
+          ? parseInt(selectedWalkInPropertyId)
+          : availableProperties.length === 1
+            ? availableProperties[0].id
+            : null;
+        orderData.propertyId = walkinPropertyId;
         orderData.customerName = customerName;
         orderData.customerPhone = customerPhone;
       }
@@ -407,6 +438,27 @@ export default function QuickOrder() {
                   {/* Show appropriate fields based on customer type */}
                   {restaurantCustomerType === "walk-in" ? (
                     <>
+                      {availableProperties.length > 1 && (
+                        <div>
+                          <Label htmlFor="walkin-property">Property / Restaurant *</Label>
+                          <Select value={selectedWalkInPropertyId} onValueChange={setSelectedWalkInPropertyId}>
+                            <SelectTrigger id="walkin-property" data-testid="select-walkin-property">
+                              <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                              <SelectValue placeholder="Select which property this order is for" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableProperties.map(p => (
+                                <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-walkin-property-${p.id}`}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            This links the order to the correct property kitchen
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <Label htmlFor="customer-name">Customer Name *</Label>
                         <Input

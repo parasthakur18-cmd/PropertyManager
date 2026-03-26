@@ -3035,7 +3035,22 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
-      const totalRevenue = parseFloat(revenueResult?.total || '0');
+      // Get walk-in restaurant revenue during lease period (orders with this propertyId, status delivered/completed)
+      const [restaurantRevenueResult] = await db
+        .select({ total: sql<string>`COALESCE(SUM(CAST(${orders.totalAmount} AS NUMERIC)), 0)` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.propertyId, propertyId),
+            inArray(orders.status, ['delivered', 'completed']),
+            gte(orders.createdAt, leaseStartDate),
+            lte(orders.createdAt, leaseEndDate)
+          )
+        );
+
+      const bookingRevenue = parseFloat(revenueResult?.total || '0');
+      const restaurantRevenue = parseFloat(restaurantRevenueResult?.total || '0');
+      const totalRevenue = bookingRevenue + restaurantRevenue;
       const totalExpenses = parseFloat(expensesResult?.total || '0');
       const totalSalaries = parseFloat(salariesResult?.total || '0');
       const totalLeaseAmount = parseFloat(lease.totalAmount.toString());
@@ -3051,6 +3066,8 @@ export class DatabaseStorage implements IStorage {
         leaseEndDate: leaseEndDate,
         landlordName: lease.landlordName || 'N/A',
         totalLeaseAmount,
+        bookingRevenue,
+        restaurantRevenue,
         totalRevenue,
         totalExpenses,
         totalSalaries,
@@ -3076,6 +3093,8 @@ export class DatabaseStorage implements IStorage {
 
     // Summary across all leases
     const totalRevenue = pnlData.reduce((sum, p) => sum + p.totalRevenue, 0);
+    const totalBookingRevenue = pnlData.reduce((sum, p) => sum + p.bookingRevenue, 0);
+    const totalRestaurantRevenue = pnlData.reduce((sum, p) => sum + p.restaurantRevenue, 0);
     const totalLeaseAmount = pnlData.reduce((sum, p) => sum + p.totalLeaseAmount, 0);
     const totalExpenses = pnlData.reduce((sum, p) => sum + p.totalExpenses, 0);
     const totalSalaries = pnlData.reduce((sum, p) => sum + p.totalSalaries, 0);
@@ -3089,6 +3108,8 @@ export class DatabaseStorage implements IStorage {
       leaseId: leaseId || null,
       pnlData,
       totalRevenue,
+      totalBookingRevenue,
+      totalRestaurantRevenue,
       totalLeaseAmount,
       totalExpenses,
       totalSalaries,
@@ -3178,7 +3199,22 @@ export class DatabaseStorage implements IStorage {
     const monthlyLeaseAmount = leaseWalletTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const usedPropertyRent = false;
 
-    const totalRevenue = parseFloat(revenueResult?.total || '0');
+    // Get restaurant (walk-in dine-in) revenue during the month
+    const [restaurantRevenueResult] = await db
+      .select({ total: sql<string>`COALESCE(SUM(CAST(${orders.totalAmount} AS NUMERIC)), 0)` })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.propertyId, propertyId),
+          inArray(orders.status, ['delivered', 'completed']),
+          gte(orders.createdAt, startDate),
+          lte(orders.createdAt, endDate)
+        )
+      );
+
+    const bookingRevenue = parseFloat(revenueResult?.total || '0');
+    const restaurantRevenue = parseFloat(restaurantRevenueResult?.total || '0');
+    const totalRevenue = bookingRevenue + restaurantRevenue;
     const totalExpenses = parseFloat(expensesResult?.total || '0');
     const totalSalaries = parseFloat(salariesResult?.total || '0');
     
@@ -3210,6 +3246,8 @@ export class DatabaseStorage implements IStorage {
         periodStart: startDate,
         periodEnd: endDate,
         totalLeaseAmount: monthlyLeaseAmount,
+        bookingRevenue,
+        restaurantRevenue,
         totalRevenue,
         totalExpenses,
         totalSalaries,
@@ -3221,6 +3259,8 @@ export class DatabaseStorage implements IStorage {
         profitMargin,
       }],
       totalRevenue,
+      totalBookingRevenue: bookingRevenue,
+      totalRestaurantRevenue: restaurantRevenue,
       totalLeaseAmount: monthlyLeaseAmount,
       totalExpenses,
       totalSalaries,

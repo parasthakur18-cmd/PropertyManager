@@ -6632,7 +6632,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const allOrders = await storage.getAllOrders();
       const orders = allOrders.filter(order => {
-        if (!order.propertyId) return tenant.hasUnlimitedAccess;
+        // Walk-in restaurant orders (propertyId = null) — visible to any authenticated user with property access
+        if (!order.propertyId) return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.length > 0;
         return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(order.propertyId);
       });
       res.json(orders);
