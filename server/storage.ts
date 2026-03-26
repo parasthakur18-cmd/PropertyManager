@@ -2423,9 +2423,9 @@ export class DatabaseStorage implements IStorage {
         if (override.manualPaidOverride !== null && override.manualPaidOverride !== undefined) {
           displayPaid = parseFloat(override.manualPaidOverride as string);
         }
-        if (override.manualBalanceOverride !== null && override.manualBalanceOverride !== undefined) {
-          displayClosing = parseFloat(override.manualBalanceOverride as string);
-        }
+        // Always recalculate closing from totalDue − displayPaid so carry-forward is correct.
+        // Never trust the stored manualBalanceOverride for carry-forward logic.
+        displayClosing = totalDue - displayPaid;
       }
 
       // Status: cleared = 0, advance = negative (credit), pending = positive (debt)

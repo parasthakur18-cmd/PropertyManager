@@ -71,7 +71,6 @@ const yearOverrideFormSchema = z.object({
 const manualYearFormSchema = z.object({
   yearRent: z.string().min(1, "Year rent is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
   paid: z.string().min(1, "Paid amount is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
-  closingBalance: z.string().min(1, "Closing balance is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
   remark: z.string().optional(),
 });
 
@@ -189,7 +188,7 @@ export default function Leases() {
   const [editingRemarkYear, setEditingRemarkYear] = useState<number | null>(null);
   const [remarkDraft, setRemarkDraft] = useState("");
   const [isManualYearDialogOpen, setIsManualYearDialogOpen] = useState(false);
-  const [manualYearTarget, setManualYearTarget] = useState<{ yearNumber: number; yearRent: string; paid: string; closingBalance: string; remark: string } | null>(null);
+  const [manualYearTarget, setManualYearTarget] = useState<{ yearNumber: number; yearRent: string; paid: string; openingBalance: string; remark: string } | null>(null);
 
   const canEditLease = user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'manager';
   const canOverrideYears = user?.role === 'admin' || user?.role === 'super-admin';
@@ -314,7 +313,6 @@ export default function Leases() {
     defaultValues: {
       yearRent: "",
       paid: "",
-      closingBalance: "",
       remark: "",
     },
   });
@@ -325,7 +323,6 @@ export default function Leases() {
       const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides/${data.yearNumber}`, "PATCH", {
         amount: data.yearRent,
         manualPaidOverride: data.paid,
-        manualBalanceOverride: data.closingBalance,
         remark: data.remark || null,
         isLocked: true,
       });
@@ -1593,25 +1590,39 @@ export default function Leases() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={manualYearForm.control}
-                  name="closingBalance"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Closing Balance (₹)</FormLabel>
-                      <p className="text-xs text-muted-foreground -mt-1">Positive = pending, Negative = advance credit</p>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          placeholder="e.g. 0 or -5000 for advance"
-                          data-testid="input-manual-closing-balance"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Computed closing balance — read only, derived from Opening + Year Rent − Paid */}
+                {(() => {
+                  const watchedRent = parseFloat(manualYearForm.watch("yearRent") || "0") || 0;
+                  const watchedPaid = parseFloat(manualYearForm.watch("paid") || "0") || 0;
+                  const opening = parseFloat(manualYearTarget?.openingBalance || "0") || 0;
+                  const totalDue = opening + watchedRent;
+                  const closing = totalDue - watchedPaid;
+                  const closingColor = closing > 0 ? "text-red-600 dark:text-red-400" : closing < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400";
+                  return (
+                    <div className="rounded-md border bg-muted/40 px-3 py-2 space-y-1" data-testid="computed-closing-balance">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Opening Balance</span>
+                        <span className="font-mono">₹{opening.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>+ Year Rent</span>
+                        <span className="font-mono">₹{watchedRent.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>= Total Due</span>
+                        <span className="font-mono font-medium">₹{totalDue.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>− Paid</span>
+                        <span className="font-mono text-green-600 dark:text-green-400">₹{watchedPaid.toLocaleString('en-IN')}</span>
+                      </div>
+                      <div className={`flex items-center justify-between text-sm font-semibold border-t pt-1 mt-1 ${closingColor}`}>
+                        <span>= Closing Balance</span>
+                        <span className="font-mono">₹{closing.toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <FormField
                   control={manualYearForm.control}
                   name="remark"
@@ -1832,13 +1843,12 @@ export default function Leases() {
                                               yearNumber: yr.year,
                                               yearRent: String(Math.round(parseFloat(yr.yearRent || yr.amountDue || "0"))),
                                               paid: String(Math.round(parseFloat(yr.paid || yr.amountPaid || "0"))),
-                                              closingBalance: String(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))),
+                                              openingBalance: String(Math.round(parseFloat(yr.openingBalance || "0"))),
                                               remark: yr.remark || "",
                                             });
                                             manualYearForm.reset({
                                               yearRent: String(Math.round(parseFloat(yr.yearRent || yr.amountDue || "0"))),
                                               paid: String(Math.round(parseFloat(yr.paid || yr.amountPaid || "0"))),
-                                              closingBalance: String(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))),
                                               remark: yr.remark || "",
                                             });
                                             setIsManualYearDialogOpen(true);
