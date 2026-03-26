@@ -134,7 +134,6 @@ function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: numbe
 
 function LeaseLedger({ rows }: { rows: any[] }) {
   if (!rows || rows.length === 0) return <div className="text-sm text-muted-foreground text-center py-4">No ledger data available</div>;
-  const ledgerRows = rows;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm" data-testid="table-lease-ledger">
@@ -149,15 +148,31 @@ function LeaseLedger({ rows }: { rows: any[] }) {
           </tr>
         </thead>
         <tbody>
-          {ledgerRows.map((row: any, idx: number) => (
-            <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/30"} data-testid={`ledger-row-${idx}`}>
-              <td className="p-2">{row.month}</td>
-              <td className="text-right p-2 font-mono">₹{row.rentDue.toLocaleString()}</td>
-              <td className="text-right p-2 font-mono text-muted-foreground">₹{Math.max(0, row.carriedFwd).toLocaleString()}</td>
-              <td className="text-right p-2 font-mono">₹{row.totalDue.toLocaleString()}</td>
-              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{row.paid.toLocaleString()}</td>
+          {rows.map((row: any, idx: number) => (
+            <tr
+              key={idx}
+              className={`${row.isManualEntry ? "bg-amber-50 dark:bg-amber-950/20 border-l-2 border-l-amber-400" : idx % 2 === 0 ? "" : "bg-muted/30"}`}
+              data-testid={`ledger-row-${idx}`}
+            >
+              <td className="p-2">
+                <div className="flex items-center gap-1.5">
+                  <span>{row.month}</span>
+                  {row.isManualEntry && (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-amber-700 dark:text-amber-400 font-medium">
+                      <Lock className="h-2.5 w-2.5" />
+                      Manual
+                    </span>
+                  )}
+                </div>
+              </td>
+              <td className="text-right p-2 font-mono">₹{row.rentDue.toLocaleString('en-IN')}</td>
+              <td className="text-right p-2 font-mono text-muted-foreground">₹{Math.max(0, row.carriedFwd).toLocaleString('en-IN')}</td>
+              <td className="text-right p-2 font-mono">₹{row.totalDue.toLocaleString('en-IN')}</td>
+              <td className={`text-right p-2 font-mono ${row.paid > 0 ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+                ₹{row.paid.toLocaleString('en-IN')}
+              </td>
               <td className={`text-right p-2 font-mono ${row.pending > 0 ? "text-red-600 dark:text-red-400" : row.pending < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
-                {row.pending < 0 ? `+₹${Math.abs(row.pending).toLocaleString()} Adv` : `₹${row.pending.toLocaleString()}`}
+                {row.pending < 0 ? `+₹${Math.abs(row.pending).toLocaleString('en-IN')} Adv` : `₹${row.pending.toLocaleString('en-IN')}`}
               </td>
             </tr>
           ))}

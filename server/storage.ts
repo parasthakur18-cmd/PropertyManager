@@ -2520,8 +2520,13 @@ export class DatabaseStorage implements IStorage {
 
     // Build override map (1-based yearNumber → override amount)
     const overrideMap: Record<number, number> = {};
+    // Build locked year map (1-based yearNumber → manualPaidOverride)
+    const lockedYearMap: Record<number, number> = {};
     for (const ov of yearOverrides) {
       overrideMap[ov.yearNumber] = parseFloat(ov.amount as string);
+      if (ov.isLocked && ov.manualPaidOverride !== null && ov.manualPaidOverride !== undefined) {
+        lockedYearMap[ov.yearNumber] = parseFloat(ov.manualPaidOverride as string);
+      }
     }
 
     const startDate = lease.startDate ? new Date(lease.startDate) : new Date();
@@ -2544,6 +2549,12 @@ export class DatabaseStorage implements IStorage {
       return baseAmount + incrementValue * yearIndex;
     };
 
+    // Helper: determine which lease year (0-indexed) a given date falls in
+    const getYearIndexForDate = (d: Date): number => {
+      const elapsed = Math.max(0, d.getTime() - startDate.getTime());
+      return Math.floor(elapsed / (365.25 * 24 * 60 * 60 * 1000));
+    };
+
     const rows: any[] = [];
     let carryForward = 0;
 
@@ -2557,10 +2568,15 @@ export class DatabaseStorage implements IStorage {
 
       // Determine which lease year this month belongs to (0-indexed)
       const monthMidpoint = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 15);
-      const elapsedMs = Math.max(0, monthMidpoint.getTime() - startDate.getTime());
-      const yearIndex = Math.floor(elapsedMs / (365.25 * 24 * 60 * 60 * 1000));
+      const yearIndex = getYearIndexForDate(monthMidpoint);
+      const yearNumber = yearIndex + 1; // 1-based
       const yearAmount = getYearAmount(yearIndex);
       const monthlyRate = yearAmount / 12;
+
+      // Check if this is the LAST month of a locked year by seeing if the next month crosses a year boundary
+      const nextMonthMidpoint = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 15);
+      const nextYearIndex = getYearIndexForDate(nextMonthMidpoint);
+      const isLastMonthOfLockedYear = lockedYearMap[yearNumber] !== undefined && nextYearIndex > yearIndex;
 
       // Pro-rata for first month
       let rentDue = monthlyRate;
@@ -2575,12 +2591,43 @@ export class DatabaseStorage implements IStorage {
 
       const totalDue = carryForward + rentDue;
 
-      // Payments in this calendar month
+      // Actual DB payments in this calendar month
       const monthPayments = payments.filter(p => {
         const pd = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
         return pd >= currentMonth && pd <= monthEnd;
       });
-      const paid = monthPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+      let paid = monthPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+      let isManualEntry = false;
+
+      // For the last month of a locked year, inject the manual paid override as a lump payment
+      if (isLastMonthOfLockedYear) {
+        const manualPaid = lockedYearMap[yearNumber];
+        paid = manualPaid; // replace with manual override (DB payments for locked years are zero)
+        isManualEntry = true;
+        // Force carry-forward to match the locked year's closing balance:
+        // closing = yearlyRent(full year) - manualPaid, accumulated from previous carry-forward
+        const yearlyRent = yearAmount; // full year rent
+        const yearStart = new Date(startDate);
+        yearStart.setFullYear(startDate.getFullYear() + yearIndex);
+        // The year's total due up to this point = carryFwd at start of year + full year rent
+        // We already accumulated through each month, so just use totalDue - paid
+        const pending = totalDue - paid;
+        carryForward = pending;
+
+        rows.push({
+          month: monthStr,
+          monthKey,
+          rentDue: Math.round(rentDue),
+          carriedFwd: Math.round(Math.max(0, carryForward - rentDue + paid)), // display carry at start of month
+          totalDue: Math.round(totalDue),
+          paid: Math.round(paid),
+          pending: Math.round(pending),
+          isManualEntry,
+        });
+
+        currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+        continue;
+      }
 
       // Allow negative (credit/advance) — do NOT Math.max(0,...)
       const pending = totalDue - paid;
@@ -2594,6 +2641,7 @@ export class DatabaseStorage implements IStorage {
         totalDue: Math.round(totalDue),
         paid: Math.round(paid),
         pending: Math.round(pending),
+        isManualEntry: false,
       });
 
       currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
