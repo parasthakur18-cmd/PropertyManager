@@ -966,10 +966,14 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
     mutationFn: async () => {
       const rooms = mappings
         .filter(m => inventoryValues[m.aiosellRoomCode])
-        .map(m => ({
-          roomCode: m.aiosellRoomCode,
-          available: parseInt(inventoryValues[m.aiosellRoomCode] || "0"),
-        }));
+        .map(m => {
+          const entry: { roomCode: string; available: number; roomId?: string } = {
+            roomCode: m.aiosellRoomCode,
+            available: parseInt(inventoryValues[m.aiosellRoomCode] || "0"),
+          };
+          if (m.aiosellRoomId) entry.roomId = m.aiosellRoomId;
+          return entry;
+        });
       if (rooms.length === 0) throw new Error("Set at least one inventory count");
       const res = await apiRequest("/api/aiosell/push-inventory", "POST", {
         propertyId,

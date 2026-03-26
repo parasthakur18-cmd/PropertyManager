@@ -21,7 +21,7 @@ interface AiosellApiResponse {
 interface InventoryUpdate {
   startDate: string;
   endDate: string;
-  rooms: { available: number; roomCode: string }[];
+  rooms: { available: number; roomCode: string; roomId?: string }[];
 }
 
 interface RateUpdate {
@@ -122,6 +122,9 @@ async function makeAiosellRequest(
     }
 
     console.log(`[AIOSELL] ${syncType} result: ${responseData.success ? "SUCCESS" : "FAILED"} - ${responseData.message || ""}`);
+    if (!responseData.success) {
+      console.error(`[AIOSELL PUSH] Rejected by AioSell — full response:`, JSON.stringify(responseData));
+    }
     return responseData;
   } catch (error: any) {
     logEntry.status = "error";
@@ -383,6 +386,9 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
 
     console.log(`[AIOSELL] Auto-sync started for property ${propertyId} — ${mappings.length} mapping(s): ${mappings.map(m => `${m.aiosellRoomCode}→${m.hostezeeRoomType}`).join(", ")}`);
 
+    // Build a quick lookup: roomCode → full mapping (needed to attach roomId when pushing)
+    const mappingByCode = new Map(mappings.map(m => [m.aiosellRoomCode, m]));
+
     // Fetch all rooms for this property
     const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
 
@@ -536,18 +542,39 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     }
     ranges.push(currentRange);
 
-    // Convert to InventoryUpdate format
+    // Convert to InventoryUpdate format — attach roomId when mapping has one
     const inventoryUpdates = ranges.map(range => ({
       startDate: range.startDate,
       endDate: range.endDate,
-      rooms: Object.entries(range.counts).map(([roomCode, available]) => ({ roomCode, available })),
+      rooms: Object.entries(range.counts).map(([roomCode, available]) => {
+        const mapping = mappingByCode.get(roomCode);
+        const entry: { roomCode: string; available: number; roomId?: string } = { roomCode, available };
+        if (mapping?.aiosellRoomId) {
+          entry.roomId = mapping.aiosellRoomId;
+        }
+        return entry;
+      }),
     }));
 
     if (inventoryUpdates.length > 0) {
-      // Log the first date's availability as a summary snapshot
+      // Summary snapshot for the first date range
       const firstUpdate = inventoryUpdates[0];
       const availSummary = firstUpdate.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ");
-      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date ranges for property ${propertyId}. Today's availability: [${availSummary}]`);
+      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date range(s) for property ${propertyId}. Today's availability: [${availSummary}]`);
+
+      // Per-room push log (production visibility)
+      for (const update of inventoryUpdates) {
+        for (const room of update.rooms) {
+          console.log("[AIOSELL PUSH] Sending:", {
+            roomId: room.roomId ?? null,
+            roomCode: room.roomCode,
+            availability: room.available,
+            startDate: update.startDate,
+            endDate: update.endDate,
+          });
+        }
+      }
+
       await pushInventory(config, inventoryUpdates);
     }
   } catch (error: any) {
