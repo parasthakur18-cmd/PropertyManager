@@ -2458,6 +2458,14 @@ export class DatabaseStorage implements IStorage {
       runningBalance = isLocked ? displayClosing : actualClosingBalance;
     }
 
+    // Use display paid from yearlyBreakdown (includes manualPaidOverride for locked years)
+    const displayTotalPaid = yearlyBreakdown.reduce((sum, yr) => sum + parseFloat(yr.paid), 0);
+    // Last year closing balance = total pending (what's still owed after all payments)
+    const lastYearClosing = yearlyBreakdown.length > 0
+      ? parseFloat(yearlyBreakdown[yearlyBreakdown.length - 1].closingBalance)
+      : totalPending;
+    const displayTotalPending = Math.max(0, lastYearClosing);
+
     return {
       lease,
       payments,
@@ -2467,10 +2475,10 @@ export class DatabaseStorage implements IStorage {
         currentYearAmount: currentYearAmount.toFixed(2),
         currentYearNumber,
         monthlyAmount: monthlyAmount.toFixed(2),
-        totalPaid: totalPaid.toFixed(2),
+        totalPaid: displayTotalPaid.toFixed(2),
         carryForward: carryForward.toFixed(2),
         currentYearPending: currentYearPending.toFixed(2),
-        totalPending: totalPending.toFixed(2),
+        totalPending: displayTotalPending.toFixed(2),
         paymentsCount: payments.length,
         leaseDurationYears: leaseDurationYears.toFixed(1),
         elapsedYears: elapsedYears.toFixed(1),

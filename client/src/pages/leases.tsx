@@ -1997,9 +1997,9 @@ export default function Leases() {
                                     </td>
                                     <td className="text-right p-2 font-mono">₹{Math.round(monthlyAmount).toLocaleString()}</td>
                                     <td className="text-right p-2 font-mono">₹{Math.round(displayAmount).toLocaleString()}</td>
-                                    <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{parseFloat(yr.amountPaid).toLocaleString()}</td>
-                                    <td className={`text-right p-2 font-mono ${parseFloat(yr.balance) > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                                      ₹{parseFloat(yr.balance).toLocaleString()}
+                                    <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(yr.paid || yr.amountPaid || "0")).toLocaleString('en-IN')}</td>
+                                    <td className={`text-right p-2 font-mono ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+                                      ₹{Math.round(parseFloat(yr.closingBalance || yr.balance || "0")).toLocaleString('en-IN')}
                                     </td>
                                     <td className="text-center p-2">
                                       <Badge
