@@ -5206,7 +5206,6 @@ export class DatabaseStorage implements IStorage {
     // Create default wallets
     const defaultWallets = [
       { propertyId, name: 'Cash Counter', type: 'cash', isDefault: true },
-      { propertyId, name: 'Primary UPI', type: 'upi', isDefault: true },
       { propertyId, name: 'Primary Bank Account', type: 'bank', isDefault: true },
     ];
     
@@ -5229,17 +5228,17 @@ export class DatabaseStorage implements IStorage {
     let walletType: string;
     const method = (paymentMethod || '').toLowerCase();
     
-    // Simplified: cash → cash wallet, everything else → upi wallet
+    // cash → cash wallet, everything else (upi, bank, bank_transfer, card, online, etc.) → bank wallet
     if (method.includes('cash')) {
       walletType = 'cash';
     } else {
-      // UPI covers: upi, bank_transfer, card, razorpay, online, phonepe, gpay, paytm, etc.
-      walletType = 'upi';
+      // Bank covers: bank, upi, bank_transfer, card, razorpay, online, phonepe, gpay, paytm, etc.
+      walletType = 'bank';
     }
     
-    // Find matching wallet, prefer default; fallback to any wallet
-    const matchingWallet = propertyWallets.find(w => w.type === walletType && w.isDefault) 
-      || propertyWallets.find(w => w.type === walletType)
+    // Find matching wallet: prefer bank type (covers old 'upi' type wallets too), then default, then any
+    const matchingWallet = propertyWallets.find(w => (w.type === walletType || (walletType === 'bank' && w.type === 'upi')) && w.isDefault) 
+      || propertyWallets.find(w => w.type === walletType || (walletType === 'bank' && w.type === 'upi'))
       || propertyWallets.find(w => w.isDefault)
       || propertyWallets[0];
     

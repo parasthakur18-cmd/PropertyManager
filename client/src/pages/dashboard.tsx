@@ -813,7 +813,7 @@ export default function Dashboard() {
   const getWalletIcon = (type: string) => {
     switch (type) {
       case 'cash': return Banknote;
-      case 'upi': return Smartphone;
+      case 'upi':
       case 'bank': return CreditCard;
       default: return Wallet;
     }
@@ -822,7 +822,7 @@ export default function Dashboard() {
   const getWalletColor = (type: string) => {
     switch (type) {
       case 'cash': return 'from-green-500 to-emerald-500';
-      case 'upi': return 'from-purple-500 to-violet-500';
+      case 'upi':
       case 'bank': return 'from-blue-500 to-cyan-500';
       default: return 'from-slate-500 to-slate-600';
     }
@@ -858,7 +858,7 @@ export default function Dashboard() {
                         <div className={`p-2 rounded-lg bg-gradient-to-br ${colorClass} text-white`}>
                           <Icon className="h-4 w-4" />
                         </div>
-                        <span className="text-sm font-medium text-muted-foreground capitalize">{wallet.type}</span>
+                        <span className="text-sm font-medium text-muted-foreground capitalize">{wallet.type === 'upi' ? 'bank' : wallet.type}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate mb-1">{wallet.name}</p>
                       <p className={`text-2xl font-bold font-mono ${isNegative ? 'text-destructive' : 'text-foreground'}`}>
@@ -907,7 +907,7 @@ export default function Dashboard() {
                   <div className={`p-2 rounded-lg bg-gradient-to-br ${colorClass} text-white mb-2`}>
                     <Icon className="h-4 w-4" />
                   </div>
-                  <p className="text-xs text-muted-foreground capitalize">{wallet.type}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{wallet.type === 'upi' ? 'bank' : wallet.type}</p>
                   <p className={`text-sm font-bold font-mono ${isNegative ? 'text-destructive' : ''}`}>
                     ₹{balance.toLocaleString('en-IN')}
                   </p>

@@ -401,7 +401,7 @@ export default function ActiveBookings() {
   });
 
   const generateUpiLink = async () => {
-    if (paymentMethod === "upi" && checkoutDialog.booking) {
+    if (paymentMethod === "bank" && checkoutDialog.booking) {
       const breakdown = calculateTotalWithCharges(
         checkoutDialog.booking, 
         gstOnRooms,
@@ -1786,12 +1786,12 @@ export default function ActiveBookings() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank">Bank</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {paymentMethod === "upi" && (
+                {paymentMethod === "bank" && (
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Cash Received (optional)</Label>
                     <Input
@@ -1802,24 +1802,24 @@ export default function ActiveBookings() {
                       placeholder="Enter cash amount if any"
                       data-testid="input-cash-received"
                     />
-                    <p className="text-xs text-muted-foreground">Enter cash collected from guest — remaining will be the UPI amount due.</p>
+                    <p className="text-xs text-muted-foreground">Enter cash collected from guest — remaining will be the bank/online amount due.</p>
                   </div>
                 )}
 
                 <div className="bg-primary/10 p-3 rounded-md">
                   <div className="flex justify-between gap-4 items-center">
                     <span className="font-semibold">
-                      {paymentMethod === "upi" && parseFloat(cashAmount || "0") > 0
-                        ? "UPI Amount Due:"
+                      {paymentMethod === "bank" && parseFloat(cashAmount || "0") > 0
+                        ? "Bank Amount Due:"
                         : "Balance Due:"}
                     </span>
                     <span className={`font-mono text-xl font-bold whitespace-nowrap ${remainingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       ₹{Math.max(0, remainingBalance).toFixed(2)}
                     </span>
                   </div>
-                  {paymentMethod === "upi" && parseFloat(cashAmount || "0") > 0 && (
+                  {paymentMethod === "bank" && parseFloat(cashAmount || "0") > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + UPI: ₹{Math.max(0, remainingBalance).toLocaleString()}
+                      Cash: ₹{parseFloat(cashAmount || "0").toLocaleString()} + Bank: ₹{Math.max(0, remainingBalance).toLocaleString()}
                     </p>
                   )}
                 </div>

@@ -360,7 +360,7 @@ export default function Wallets() {
     setEditingWallet(wallet);
     walletForm.reset({
       name: wallet.name,
-      type: (wallet.type === "bank" ? "upi" : wallet.type) as "cash" | "upi",
+      type: (wallet.type === "upi" ? "bank" : wallet.type) as "cash" | "bank",
       accountNumber: wallet.accountNumber || "",
       ifscCode: wallet.ifscCode || "",
       upiId: wallet.upiId || "",
@@ -386,7 +386,8 @@ export default function Wallets() {
   const getWalletIcon = (type: string) => {
     switch (type) {
       case "cash": return Banknote;
-      case "upi": return CreditCard;
+      case "upi":
+      case "bank": return CreditCard;
       default: return CreditCard;
     }
   };
@@ -394,8 +395,9 @@ export default function Wallets() {
   const getWalletTypeColor = (type: string) => {
     switch (type) {
       case "cash": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
-      case "upi": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
-      default: return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      case "upi":
+      case "bank": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      default: return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
     }
   };
 
@@ -706,7 +708,7 @@ export default function Wallets() {
                               <CardTitle className="text-lg">{wallet.name}</CardTitle>
                             </div>
                             <Badge className={getWalletTypeColor(wallet.type)}>
-                              {wallet.type.toUpperCase()}
+                              {wallet.type === 'upi' ? 'BANK' : wallet.type.toUpperCase()}
                             </Badge>
                           </div>
                           {wallet.description && (
@@ -722,9 +724,9 @@ export default function Wallets() {
                               </p>
                               <p className="text-xs text-muted-foreground mt-1 text-teal-600 font-medium">Tap to view transactions →</p>
                             </div>
-                            {wallet.type === "upi" && wallet.upiId && (
+                            {(wallet.type === "upi" || wallet.type === "bank") && wallet.upiId && (
                               <div className="text-sm">
-                                <span className="text-muted-foreground">UPI: </span>
+                                <span className="text-muted-foreground">ID: </span>
                                 <span>{wallet.upiId}</span>
                               </div>
                             )}
@@ -1337,22 +1339,22 @@ export default function Wallets() {
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="cash">Cash</SelectItem>
-                        <SelectItem value="upi">UPI</SelectItem>
+                        <SelectItem value="bank">Bank</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              {walletForm.watch("type") === "upi" && (
+              {walletForm.watch("type") === "bank" && (
                 <FormField
                   control={walletForm.control}
                   name="upiId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>UPI ID</FormLabel>
+                      <FormLabel>Account / UPI ID (Optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="name@upi" {...field} data-testid="input-upi-id" />
+                        <Input placeholder="Account number or UPI ID" {...field} data-testid="input-upi-id" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -1575,7 +1577,7 @@ export default function Wallets() {
                     <Icon className="h-4 w-4" />
                     <span className="font-medium">{wallet.name}</span>
                     <Badge className={getWalletTypeColor(wallet.type)} variant="secondary">
-                      {wallet.type.toUpperCase()}
+                      {wallet.type === 'upi' ? 'BANK' : wallet.type.toUpperCase()}
                     </Badge>
                     <span className="text-sm text-muted-foreground ml-auto">
                       Current: ₹{parseFloat(wallet.currentBalance?.toString() || "0").toLocaleString()}
