@@ -17348,6 +17348,20 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
       }
 
+      // Detect duplicate aiosellRoomCode values (would cause silent wrong assignments)
+      const roomCodes = mappings.map((m: any) => m.aiosellRoomCode);
+      const duplicateCodes = roomCodes.filter((code: string, i: number) => roomCodes.indexOf(code) !== i);
+      if (duplicateCodes.length > 0) {
+        return res.status(400).json({ message: `Duplicate AioSell room codes found: ${[...new Set(duplicateCodes)].join(", ")}. Each room code must be unique.` });
+      }
+
+      // Detect duplicate hostezeeRoomType values (one Hostezee type cannot map to two AioSell codes)
+      const roomTypes = mappings.map((m: any) => m.hostezeeRoomType);
+      const duplicateTypes = roomTypes.filter((t: string, i: number) => roomTypes.indexOf(t) !== i);
+      if (duplicateTypes.length > 0) {
+        return res.status(400).json({ message: `Duplicate Hostezee room types found: ${[...new Set(duplicateTypes)].join(", ")}. Each room type must appear only once.` });
+      }
+
       // Resolve room IDs before deleting/inserting to fail early if any room is not found
       const resolvedMappings = [];
       for (const m of mappings) {
@@ -17813,24 +17827,29 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         for (const rd of rooms_) {
           const roomCode = rd.roomCode || "";
+          console.log(`[AIOSELL-WEBHOOK] Incoming room code: "${roomCode}" (booking ${bookingId})`);
           const mapping = mappings.find(m => m.aiosellRoomCode === roomCode);
           let assignedRoomId: number | null = null;
           let stayStatus: "confirmed" | "tbs" = "tbs";
           if (mapping) {
+            console.log(`[AIOSELL-WEBHOOK] Mapped room code "${roomCode}" → Hostezee type "${mapping.hostezeeRoomType}" (configId ${config.id})`);
+            // Find ANY available room of the mapped type (not just the single stored hostezeeRoomId)
+            // This handles properties with multiple rooms of the same type correctly
             const mappedRoomRows = await db.select().from(rooms)
               .where(and(
-                eq(rooms.id, mapping.hostezeeRoomId),
                 eq(rooms.propertyId, config.propertyId),
+                eq(rooms.roomType, mapping.hostezeeRoomType),
                 eq(rooms.status, "available"),
               ));
             if (mappedRoomRows.length > 0) {
               assignedRoomId = mappedRoomRows[0].id;
               stayStatus = "confirmed";
+              console.log(`[AIOSELL-WEBHOOK] Assigned room #${assignedRoomId} ("${mappedRoomRows[0].roomNumber}") for code "${roomCode}"`);
             } else {
-              console.warn(`[AIOSELL-WEBHOOK] Room code "${roomCode}" not available for property ${config.propertyId} → TBS`);
+              console.warn(`[AIOSELL-WEBHOOK] Room code "${roomCode}" (type "${mapping.hostezeeRoomType}") has no available rooms for property ${config.propertyId} → TBS`);
             }
           } else {
-            console.warn(`[AIOSELL-WEBHOOK] No mapping for room code "${roomCode}" in config ${config.id} → TBS`);
+            console.error(`[AIOSELL-WEBHOOK] Room Mapping Failed — no mapping for code "${roomCode}" in config ${config.id}. Available codes: [${mappings.map(m => m.aiosellRoomCode).join(", ")}]`);
           }
           resolvedRooms.push({
             roomId: assignedRoomId,

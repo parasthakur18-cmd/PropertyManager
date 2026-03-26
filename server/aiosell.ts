@@ -376,7 +376,12 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     if (!config || !config.isActive) return;
 
     const mappings = await getRoomMappingsForConfig(config.id);
-    if (mappings.length === 0) return;
+    if (mappings.length === 0) {
+      console.warn(`[AIOSELL] Auto-sync skipped for property ${propertyId}: no room mappings configured`);
+      return;
+    }
+
+    console.log(`[AIOSELL] Auto-sync started for property ${propertyId} — ${mappings.length} mapping(s): ${mappings.map(m => `${m.aiosellRoomCode}→${m.hostezeeRoomType}`).join(", ")}`);
 
     // Fetch all rooms for this property
     const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
@@ -539,7 +544,10 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     }));
 
     if (inventoryUpdates.length > 0) {
-      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date ranges for property ${propertyId}`);
+      // Log the first date's availability as a summary snapshot
+      const firstUpdate = inventoryUpdates[0];
+      const availSummary = firstUpdate.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ");
+      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date ranges for property ${propertyId}. Today's availability: [${availSummary}]`);
       await pushInventory(config, inventoryUpdates);
     }
   } catch (error: any) {
