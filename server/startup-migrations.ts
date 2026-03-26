@@ -406,6 +406,46 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "consolidate_wallets_to_cash_and_upi",
+    async run() {
+      if (!(await tableExists("wallets"))) return;
+      const client = await pool.connect();
+      try {
+        // For properties that have both a 'bank' wallet AND a 'upi' wallet:
+        // deactivate the 'bank' wallet (preserve history, just hide it)
+        await client.query(`
+          UPDATE wallets w
+          SET is_active = false, name = CONCAT(name, ' (merged)')
+          WHERE w.type = 'bank'
+            AND w.is_active = true
+            AND EXISTS (
+              SELECT 1 FROM wallets upi
+              WHERE upi.property_id = w.property_id
+                AND upi.type = 'upi'
+                AND upi.is_active = true
+            )
+        `);
+
+        // For properties that have a 'bank' wallet but NO 'upi' wallet:
+        // rename it to "Primary UPI" and change type to 'upi'
+        await client.query(`
+          UPDATE wallets w
+          SET type = 'upi', name = 'Primary UPI', is_default = true
+          WHERE w.type = 'bank'
+            AND w.is_active = true
+            AND NOT EXISTS (
+              SELECT 1 FROM wallets upi
+              WHERE upi.property_id = w.property_id
+                AND upi.type = 'upi'
+                AND upi.is_active = true
+            )
+        `);
+      } finally {
+        client.release();
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

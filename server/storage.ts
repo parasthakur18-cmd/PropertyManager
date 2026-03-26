@@ -4932,7 +4932,7 @@ export class DatabaseStorage implements IStorage {
   
   async getWalletsByProperty(propertyId: number): Promise<Wallet[]> {
     return await db.select().from(wallets)
-      .where(eq(wallets.propertyId, propertyId))
+      .where(and(eq(wallets.propertyId, propertyId), eq(wallets.isActive, true)))
       .orderBy(wallets.type, wallets.name);
   }
 
