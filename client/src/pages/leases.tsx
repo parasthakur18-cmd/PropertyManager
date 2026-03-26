@@ -1744,78 +1744,89 @@ export default function Leases() {
                     <div className="border rounded-lg overflow-hidden">
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm" data-testid="table-financial-summary">
-                          <thead className="bg-muted/50">
-                            <tr>
-                              <th className="text-left p-2 whitespace-nowrap">Year</th>
-                              <th className="text-right p-2 whitespace-nowrap">Opening Bal.</th>
-                              <th className="text-right p-2 whitespace-nowrap">Year Rent</th>
-                              <th className="text-right p-2 whitespace-nowrap">Total Due</th>
-                              <th className="text-right p-2 whitespace-nowrap text-green-700 dark:text-green-400">Paid</th>
-                              <th className="text-right p-2 whitespace-nowrap">Closing Bal.</th>
-                              <th className="text-center p-2">Status</th>
-                              <th className="text-left p-2 min-w-[120px]">Remark</th>
-                              {canOverrideYears && <th className="text-right p-2 whitespace-nowrap">Actions</th>}
+                          <thead className="bg-muted/50 border-b">
+                            <tr className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                              <th className="text-left p-3 whitespace-nowrap">Year</th>
+                              <th className="text-left p-3 whitespace-nowrap">Period</th>
+                              <th className="text-right p-3 whitespace-nowrap">Opening</th>
+                              <th className="text-right p-3 whitespace-nowrap">Year Rent</th>
+                              <th className="text-right p-3 whitespace-nowrap">Total Due</th>
+                              <th className="text-right p-3 whitespace-nowrap">Paid</th>
+                              <th className="text-right p-3 whitespace-nowrap">Closing</th>
+                              <th className="text-center p-3 whitespace-nowrap">Status</th>
+                              <th className="text-left p-3 min-w-[110px]">Remarks</th>
+                              {canOverrideYears && <th className="text-right p-3 whitespace-nowrap">Actions</th>}
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y">
                             {leaseSummary.summary.yearlyBreakdown.map((yr: any) => {
-                              const statusColor = yr.status === 'cleared'
-                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                                : yr.status === 'advance'
-                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
-                                : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+                              // FY YY-YY label from startDate
+                              const yrStart = yr.startDate ? new Date(yr.startDate) : null;
+                              const yrEnd = yr.endDate ? new Date(yr.endDate) : null;
+                              const fyLabel = yrStart && yrEnd
+                                ? `FY ${String(yrStart.getFullYear()).slice(2)}-${String(yrEnd.getFullYear()).slice(2)}`
+                                : `Year ${yr.year}`;
+                              const periodLabel = yrStart && yrEnd
+                                ? `${yrStart.toLocaleString('default', { month: 'short' })} ${yrStart.getFullYear()} – ${yrEnd.toLocaleString('default', { month: 'short' })} ${yrEnd.getFullYear()}`
+                                : "—";
 
+                              // Indian number formatting
                               const fmtAmt = (val: string | number) => {
                                 const n = Math.round(parseFloat(String(val || "0")));
                                 if (n === 0) return "₹0";
-                                if (n < 0) return `Adv ₹${Math.abs(n).toLocaleString()}`;
-                                return `₹${n.toLocaleString()}`;
+                                if (n < 0) return `-₹${Math.abs(n).toLocaleString('en-IN')}`;
+                                return `₹${n.toLocaleString('en-IN')}`;
                               };
+
+                              // Remarks column logic
+                              const remarksLabel = yr.isLocked
+                                ? (yr.remark ? yr.remark : "Manual")
+                                : yr.isCurrentYear
+                                ? (yr.remark || "Current")
+                                : (yr.remark || "—");
+
+                              const statusLabel = yr.status === 'cleared' ? 'Cleared' : yr.status === 'advance' ? 'Advance' : 'Pending';
+                              const statusColor = yr.status === 'cleared'
+                                ? 'text-green-700 dark:text-green-400'
+                                : yr.status === 'advance'
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-orange-600 dark:text-orange-400';
 
                               return (
                                 <tr
                                   key={yr.year}
-                                  className={`${yr.isCurrentYear ? "bg-blue-50/50 dark:bg-blue-950/20" : "hover:bg-muted/30"} ${yr.isLocked ? "border-l-2 border-l-amber-400" : ""}`}
+                                  className={`${yr.isCurrentYear ? "bg-blue-50/40 dark:bg-blue-950/20" : "hover:bg-muted/30"} ${yr.isLocked ? "border-l-2 border-l-amber-400" : ""} transition-colors`}
                                   data-testid={`financial-row-${yr.year}`}
                                 >
-                                  <td className="p-2 font-medium">
-                                    <div className="flex flex-col gap-0.5">
-                                      <div className="flex items-center gap-1">
-                                        <span>Yr {yr.year}</span>
-                                        {yr.isCurrentYear && <Badge variant="outline" className="text-xs px-1">Now</Badge>}
-                                      </div>
-                                      {yr.isLocked && (
-                                        <span className="inline-flex items-center gap-0.5 text-xs text-amber-700 dark:text-amber-400 font-normal">
-                                          <Lock className="h-2.5 w-2.5" />
-                                          Manual Entry
-                                        </span>
-                                      )}
+                                  <td className="p-3 font-semibold whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                      {yr.isLocked && <Lock className="h-3 w-3 text-amber-500 flex-shrink-0" />}
+                                      <span>{fyLabel}</span>
                                     </div>
                                   </td>
-                                  <td className={`text-right p-2 font-mono text-sm ${parseFloat(yr.openingBalance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.openingBalance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
+                                  <td className="p-3 text-muted-foreground whitespace-nowrap text-xs">{periodLabel}</td>
+                                  <td className={`text-right p-3 font-mono ${parseFloat(yr.openingBalance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.openingBalance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
                                     {fmtAmt(yr.openingBalance || "0")}
                                   </td>
-                                  <td className="text-right p-2 font-mono text-sm">{fmtAmt(yr.yearRent || yr.amountDue || "0")}</td>
-                                  <td className="text-right p-2 font-mono text-sm">{fmtAmt(yr.totalDue || "0")}</td>
-                                  <td className="text-right p-2 font-mono text-sm text-green-600 dark:text-green-400">{fmtAmt(yr.paid || yr.amountPaid || "0")}</td>
-                                  <td className={`text-right p-2 font-mono text-sm font-semibold ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.closingBalance || yr.balance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+                                  <td className="text-right p-3 font-mono">{fmtAmt(yr.yearRent || yr.amountDue || "0")}</td>
+                                  <td className="text-right p-3 font-mono font-medium">{fmtAmt(yr.totalDue || "0")}</td>
+                                  <td className="text-right p-3 font-mono text-green-600 dark:text-green-400">{fmtAmt(yr.paid || yr.amountPaid || "0")}</td>
+                                  <td className={`text-right p-3 font-mono font-semibold ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.closingBalance || yr.balance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
                                     {fmtAmt(yr.closingBalance || yr.balance || "0")}
                                   </td>
-                                  <td className="p-2 text-center">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
-                                      {yr.status === 'cleared' ? 'Cleared' : yr.status === 'advance' ? 'Advance' : 'Pending'}
-                                    </span>
+                                  <td className={`p-3 text-center font-medium ${statusColor}`}>
+                                    {statusLabel}
                                   </td>
-                                  <td className="p-2 max-w-[120px]">
-                                    <span className="text-xs text-muted-foreground line-clamp-2">{yr.remark || "—"}</span>
+                                  <td className="p-3 text-xs text-muted-foreground max-w-[130px]">
+                                    <span className="line-clamp-2">{remarksLabel}</span>
                                   </td>
                                   {canOverrideYears && (
-                                    <td className="p-2 text-right whitespace-nowrap">
+                                    <td className="p-3 text-right whitespace-nowrap">
                                       <div className="flex items-center justify-end gap-1">
                                         <Button
                                           size="sm"
                                           variant="outline"
-                                          className="h-6 px-2 text-xs"
+                                          className="h-7 px-2 text-xs"
                                           onClick={() => {
                                             setManualYearTarget({
                                               yearNumber: yr.year,
@@ -1841,7 +1852,7 @@ export default function Leases() {
                                           <Button
                                             size="sm"
                                             variant="ghost"
-                                            className="h-6 px-2 text-xs text-amber-700 dark:text-amber-400"
+                                            className="h-7 px-2 text-xs text-amber-700 dark:text-amber-400"
                                             onClick={() => unlockYearMutation.mutate(yr.year)}
                                             disabled={unlockYearMutation.isPending}
                                             data-testid={`button-unlock-year-${yr.year}`}
@@ -1858,12 +1869,12 @@ export default function Leases() {
                               );
                             })}
                           </tbody>
-                          <tfoot className="bg-muted/50 font-semibold border-t">
+                          <tfoot className="bg-muted/50 font-semibold border-t text-sm">
                             <tr>
-                              <td className="p-2" colSpan={3}>Total</td>
-                              <td className="text-right p-2 font-mono">₹{Math.round(leaseSummary.summary.yearlyBreakdown.reduce((s: number, y: any) => s + parseFloat(y.totalDue || "0"), 0)).toLocaleString()}</td>
-                              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPaid || "0")).toLocaleString()}</td>
-                              <td className="text-right p-2 font-mono text-orange-600 dark:text-orange-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPending || "0")).toLocaleString()}</td>
+                              <td className="p-3" colSpan={4}>Totals</td>
+                              <td className="text-right p-3 font-mono">₹{Math.round(leaseSummary.summary.yearlyBreakdown.reduce((s: number, y: any) => s + parseFloat(y.totalDue || "0"), 0)).toLocaleString('en-IN')}</td>
+                              <td className="text-right p-3 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPaid || "0")).toLocaleString('en-IN')}</td>
+                              <td className="text-right p-3 font-mono text-orange-600 dark:text-orange-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPending || "0")).toLocaleString('en-IN')}</td>
                               <td colSpan={canOverrideYears ? 3 : 2}></td>
                             </tr>
                           </tfoot>
