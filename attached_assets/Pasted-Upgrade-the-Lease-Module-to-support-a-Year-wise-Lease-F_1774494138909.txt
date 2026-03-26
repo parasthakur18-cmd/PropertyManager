@@ -1,0 +1,170 @@
+Upgrade the Lease Module to support a "Year-wise Lease Financial Summary" similar to an Excel dashboard.
+
+DO NOT rebuild the module. Modify existing logic carefully.
+
+---
+
+## PART 1 — FIX BACKEND LOGIC
+
+1. Fix yearly balance calculation in calculateLeaseSummary():
+
+Replace current logic:
+balance = yearDue - yearPaid
+
+With:
+
+openingBalance = previousYearClosing
+
+totalDue = openingBalance + yearDue
+
+closingBalance = totalDue - yearPaid
+
+previousYearClosing = closingBalance
+
+Return per year:
+
+* year
+* openingBalance
+* yearRent
+* totalDue
+* paid
+* closingBalance
+
+---
+
+2. Fix credit handling:
+
+Remove:
+Math.max(0, totalDue - paid)
+
+Replace with:
+balance = totalDue - paid
+
+Allow negative balance (credit).
+
+If balance < 0:
+mark as "advance"
+
+---
+
+3. Fix carry forward bug:
+
+Replace:
+summary.summary.currentPending
+
+With:
+summary.summary.totalPending
+
+---
+
+4. Unify ledger logic:
+
+Move monthly ledger calculation fully to backend.
+
+Frontend should NOT compute ledger anymore.
+
+---
+
+PART 2 — ADD YEARLY REMARKS
+
+---
+
+Update lease_year_overrides table:
+
+Add new column:
+
+* remark (text, optional)
+
+Allow editing remarks without changing amount.
+
+---
+
+PART 3 — FRONTEND UI (MAIN CHANGE)
+
+---
+
+Add new default tab:
+
+"Financial Summary"
+
+Display table:
+
+Columns:
+
+* Year
+* Period (start → end)
+* Opening Balance
+* Year Rent
+* Total Due
+* Paid
+* Closing Balance
+* Remarks
+
+---
+
+4. Row Behavior:
+
+* If closingBalance = 0 → show "Cleared"
+* If closingBalance > 0 → show "Pending"
+* If closingBalance < 0 → show "Advance"
+
+Use color:
+
+* Green = cleared
+* Red = pending
+* Blue = advance
+
+---
+
+5. Expand Row:
+
+Click on a year →
+Show monthly ledger inside (reuse existing ledger UI)
+
+---
+
+PART 4 — PROPERTY FILTER
+
+---
+
+On leases page:
+
+Add dropdown:
+
+* All Properties
+* Filter by property
+
+---
+
+PART 5 — DO NOT CHANGE
+
+---
+
+* Existing payment system
+* Wallet integration
+* Audit logs
+* Increment logic
+* Override system
+
+---
+
+GOAL
+
+---
+
+Transform lease module into a financial dashboard:
+
+* Clear year-wise view
+* Carry forward visible
+* Exact Excel-style clarity
+* No calculation mismatch
+
+---
+
+IMPORTANT
+
+---
+
+Do NOT break existing APIs.
+Do NOT duplicate logic.
+Modify existing functions cleanly.

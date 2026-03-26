@@ -15,7 +15,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { type PropertyLease, type Property, type LeaseYearOverride } from "@shared/schema";
 import { z } from "zod";
 import { format, getDaysInMonth, differenceInDays, startOfMonth, endOfMonth, addMonths, isBefore, isAfter } from "date-fns";
-import { Plus, IndianRupee, Calendar, CreditCard, Edit, ChevronDown, History, Download, FileText, TrendingUp, AlertCircle, Pencil, RotateCcw } from "lucide-react";
+import { Plus, IndianRupee, Calendar, CreditCard, Edit, ChevronDown, History, Download, FileText, TrendingUp, AlertCircle, Pencil, RotateCcw, ChevronRight, Lock, Unlock, Building2, BarChart3 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -125,84 +126,9 @@ function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: numbe
   );
 }
 
-function LeaseLedger({ lease, payments }: { lease: any; payments: any[] }) {
-  if (!lease?.startDate) return <div className="text-sm text-muted-foreground text-center py-4">No start date set</div>;
-
-  const leaseStartDate = new Date(lease.startDate);
-  const leaseEndDate = lease.endDate ? new Date(lease.endDate) : null;
-  const now = new Date();
-  const lastDate = leaseEndDate && isBefore(leaseEndDate, now) ? leaseEndDate : now;
-
-  const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
-  const monthlyRent = baseAmount / 12;
-
-  const months: Date[] = [];
-  let current = startOfMonth(leaseStartDate);
-  const end = endOfMonth(lastDate);
-
-  while (isBefore(current, end) || current.getTime() === end.getTime()) {
-    months.push(new Date(current));
-    current = addMonths(current, 1);
-    if (months.length > 120) break;
-  }
-
-  const allocatedPayments = payments.filter((p: any) => p.appliesToMonth && p.appliesToYear);
-  const unallocatedPayments = payments.filter((p: any) => !p.appliesToMonth || !p.appliesToYear)
-    .sort((a: any, b: any) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
-
-  let paymentIndex = 0;
-  let carryForward = 0;
-
-  const ledgerRows = months.map((month, idx) => {
-    const monthStart = startOfMonth(month);
-    const monthEnd = endOfMonth(month);
-    const daysInMonth = getDaysInMonth(month);
-    const monthNum = month.getMonth() + 1;
-    const yearNum = month.getFullYear();
-
-    let rentDue = monthlyRent;
-    if (idx === 0 && leaseStartDate.getDate() > 1) {
-      const daysRemaining = daysInMonth - leaseStartDate.getDate() + 1;
-      rentDue = (monthlyRent / daysInMonth) * daysRemaining;
-    }
-    if (leaseEndDate && idx === months.length - 1 && leaseEndDate.getDate() < daysInMonth) {
-      const daysUsed = leaseEndDate.getDate();
-      rentDue = (monthlyRent / daysInMonth) * daysUsed;
-    }
-
-    const prevCarry = carryForward;
-    const totalDue = rentDue + prevCarry;
-
-    let paid = 0;
-    const monthAllocated = allocatedPayments.filter(
-      (p: any) => parseInt(p.appliesToMonth) === monthNum && parseInt(p.appliesToYear) === yearNum
-    );
-    monthAllocated.forEach((p: any) => { paid += parseFloat(p.amount || "0"); });
-
-    while (paymentIndex < unallocatedPayments.length) {
-      const p = unallocatedPayments[paymentIndex];
-      const pDate = new Date(p.paymentDate);
-      if (pDate >= monthStart && pDate <= monthEnd) {
-        paid += parseFloat(p.amount || "0");
-        paymentIndex++;
-      } else {
-        break;
-      }
-    }
-
-    const pending = Math.max(0, totalDue - paid);
-    carryForward = pending;
-
-    return {
-      month: format(month, "MMM yyyy"),
-      rentDue: Math.round(rentDue),
-      carriedFwd: Math.round(prevCarry),
-      totalDue: Math.round(totalDue),
-      paid: Math.round(paid),
-      pending: Math.round(pending),
-    };
-  });
-
+function LeaseLedger({ rows }: { rows: any[] }) {
+  if (!rows || rows.length === 0) return <div className="text-sm text-muted-foreground text-center py-4">No ledger data available</div>;
+  const ledgerRows = rows;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm" data-testid="table-lease-ledger">
@@ -217,15 +143,15 @@ function LeaseLedger({ lease, payments }: { lease: any; payments: any[] }) {
           </tr>
         </thead>
         <tbody>
-          {ledgerRows.map((row, idx) => (
+          {ledgerRows.map((row: any, idx: number) => (
             <tr key={idx} className={idx % 2 === 0 ? "" : "bg-muted/30"} data-testid={`ledger-row-${idx}`}>
               <td className="p-2">{row.month}</td>
               <td className="text-right p-2 font-mono">₹{row.rentDue.toLocaleString()}</td>
-              <td className="text-right p-2 font-mono text-muted-foreground">₹{row.carriedFwd.toLocaleString()}</td>
+              <td className="text-right p-2 font-mono text-muted-foreground">₹{Math.max(0, row.carriedFwd).toLocaleString()}</td>
               <td className="text-right p-2 font-mono">₹{row.totalDue.toLocaleString()}</td>
               <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{row.paid.toLocaleString()}</td>
-              <td className={`text-right p-2 font-mono ${row.pending > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                ₹{row.pending.toLocaleString()}
+              <td className={`text-right p-2 font-mono ${row.pending > 0 ? "text-red-600 dark:text-red-400" : row.pending < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+                {row.pending < 0 ? `+₹${Math.abs(row.pending).toLocaleString()} Adv` : `₹${row.pending.toLocaleString()}`}
               </td>
             </tr>
           ))}
@@ -251,6 +177,10 @@ export default function Leases() {
   const [leaseForSummary, setLeaseForSummary] = useState<number | null>(null);
   const [expandedLeases, setExpandedLeases] = useState<Set<number>>(new Set());
   const [selectedLeaseForPayment, setSelectedLeaseForPayment] = useState<PropertyLease | null>(null);
+  const [propertyFilter, setPropertyFilter] = useState<number | null>(null);
+  const [expandedYearRows, setExpandedYearRows] = useState<Set<number>>(new Set());
+  const [editingRemarkYear, setEditingRemarkYear] = useState<number | null>(null);
+  const [remarkDraft, setRemarkDraft] = useState("");
 
   const canEditLease = user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'manager';
   const canOverrideYears = user?.role === 'admin' || user?.role === 'super-admin';
@@ -292,6 +222,16 @@ export default function Leases() {
 
   const { data: summaryPayments = [] } = useQuery<any[]>({
     queryKey: ["/api/leases", leaseForSummary, "payments"],
+    enabled: !!leaseForSummary,
+  });
+
+  const { data: monthlyLedger = [], isLoading: isLedgerLoading } = useQuery<any[]>({
+    queryKey: ["/api/leases", leaseForSummary, "monthly-ledger"],
+    enabled: !!leaseForSummary,
+  });
+
+  const { data: performanceData } = useQuery<any>({
+    queryKey: ["/api/leases", leaseForSummary, "performance"],
     enabled: !!leaseForSummary,
   });
 
@@ -532,6 +472,22 @@ export default function Leases() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to remove override", variant: "destructive" });
+    },
+  });
+
+  const updateYearRemarkMutation = useMutation({
+    mutationFn: async ({ yearNumber, remark }: { yearNumber: number; remark: string }) => {
+      if (!leaseForSummary) throw new Error("No lease selected");
+      const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides/${yearNumber}`, "PATCH", { remark });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "summary"] });
+      setEditingRemarkYear(null);
+      toast({ title: "Remark saved" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save remark", variant: "destructive" });
     },
   });
 
@@ -877,19 +833,47 @@ export default function Leases() {
           </Dialog>
         </div>
 
-        {leases.length === 0 ? (
+        {/* Property Filter */}
+        <div className="flex items-center gap-3">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <Select
+            value={propertyFilter?.toString() || "all"}
+            onValueChange={(v) => setPropertyFilter(v === "all" ? null : parseInt(v))}
+          >
+            <SelectTrigger className="w-64" data-testid="select-property-filter">
+              <SelectValue placeholder="All Properties" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Properties</SelectItem>
+              {properties.map((p) => (
+                <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {propertyFilter && (
+            <Badge variant="secondary" className="cursor-pointer" onClick={() => setPropertyFilter(null)}>
+              Clear filter
+            </Badge>
+          )}
+        </div>
+
+        {(() => {
+          const filteredLeases = propertyFilter
+            ? leases.filter((l: any) => l.propertyId === propertyFilter)
+            : leases;
+          return filteredLeases.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <IndianRupee className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No leases yet</h3>
+              <h3 className="text-lg font-semibold mb-2">{propertyFilter ? "No leases for this property" : "No leases yet"}</h3>
               <p className="text-muted-foreground text-center mb-4">
-                Start by adding a property lease agreement
+                {propertyFilter ? "Try selecting a different property or add a new lease" : "Start by adding a property lease agreement"}
               </p>
             </CardContent>
           </Card>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {leases.map((lease: any) => {
+            {filteredLeases.map((lease: any) => {
               const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
               const carryForward = parseFloat(lease.carryForwardAmount || "0");
 
@@ -1049,7 +1033,8 @@ export default function Leases() {
               );
             })}
           </div>
-        )}
+        );
+        })()}
 
         {/* Payment Dialog */}
         <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
@@ -1549,12 +1534,148 @@ export default function Leases() {
             {isSummaryLoading ? (
               <div className="text-center py-8 text-muted-foreground">Loading summary...</div>
             ) : leaseSummary ? (
-              <Tabs defaultValue="summary" className="flex-1 overflow-hidden flex flex-col">
+              <Tabs defaultValue="financial" className="flex-1 overflow-hidden flex flex-col">
                 <TabsList className="w-full" data-testid="tabs-summary">
-                  <TabsTrigger value="summary" data-testid="tab-summary">Summary</TabsTrigger>
-                  <TabsTrigger value="ledger" data-testid="tab-ledger">Lease Ledger</TabsTrigger>
+                  <TabsTrigger value="financial" data-testid="tab-financial">Financial</TabsTrigger>
+                  <TabsTrigger value="summary" data-testid="tab-summary">Overview</TabsTrigger>
+                  <TabsTrigger value="ledger" data-testid="tab-ledger">Ledger</TabsTrigger>
+                  <TabsTrigger value="performance" data-testid="tab-performance">Performance</TabsTrigger>
                   <TabsTrigger value="history" data-testid="tab-history">History</TabsTrigger>
                 </TabsList>
+
+                {/* Financial Summary Tab */}
+                <TabsContent value="financial" className="flex-1 overflow-y-auto pr-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium">Year-wise Financial Summary</h4>
+                    <Button variant="outline" size="sm" onClick={() => leaseForSummary && downloadLedger(leaseForSummary)} data-testid="button-download-financial">
+                      <Download className="h-4 w-4 mr-1" />
+                      Export
+                    </Button>
+                  </div>
+
+                  {leaseSummary.summary.yearlyBreakdown && leaseSummary.summary.yearlyBreakdown.length > 0 ? (
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm" data-testid="table-financial-summary">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left p-2 whitespace-nowrap">Year</th>
+                              <th className="text-right p-2 whitespace-nowrap">Opening Balance</th>
+                              <th className="text-right p-2 whitespace-nowrap">Year Rent</th>
+                              <th className="text-right p-2 whitespace-nowrap">Total Due</th>
+                              <th className="text-right p-2 whitespace-nowrap text-green-700 dark:text-green-400">Paid</th>
+                              <th className="text-right p-2 whitespace-nowrap">Closing Balance</th>
+                              <th className="text-center p-2">Status</th>
+                              <th className="text-left p-2 min-w-[160px]">Remark</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {leaseSummary.summary.yearlyBreakdown.map((yr: any) => {
+                              const isEditing = editingRemarkYear === yr.year;
+                              const statusColor = yr.status === 'cleared'
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : yr.status === 'advance'
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+
+                              return (
+                                <tr
+                                  key={yr.year}
+                                  className={yr.isCurrentYear ? "bg-blue-50/50 dark:bg-blue-950/20" : "hover:bg-muted/30"}
+                                  data-testid={`financial-row-${yr.year}`}
+                                >
+                                  <td className="p-2 font-medium">
+                                    <div className="flex items-center gap-1">
+                                      <span>Yr {yr.year}</span>
+                                      {yr.isCurrentYear && <Badge variant="outline" className="text-xs px-1">Now</Badge>}
+                                      {yr.isLocked && <Lock className="h-3 w-3 text-muted-foreground" />}
+                                    </div>
+                                  </td>
+                                  <td className={`text-right p-2 font-mono ${parseFloat(yr.openingBalance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.openingBalance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
+                                    {parseFloat(yr.openingBalance || "0") === 0
+                                      ? "₹0"
+                                      : parseFloat(yr.openingBalance || "0") > 0
+                                      ? `₹${Math.round(parseFloat(yr.openingBalance)).toLocaleString()}`
+                                      : `Adv ₹${Math.abs(Math.round(parseFloat(yr.openingBalance))).toLocaleString()}`
+                                    }
+                                  </td>
+                                  <td className="text-right p-2 font-mono">₹{Math.round(parseFloat(yr.yearRent || yr.amountDue || "0")).toLocaleString()}</td>
+                                  <td className="text-right p-2 font-mono">₹{Math.round(parseFloat(yr.totalDue || "0")).toLocaleString()}</td>
+                                  <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(yr.paid || yr.amountPaid || "0")).toLocaleString()}</td>
+                                  <td className={`text-right p-2 font-mono font-semibold ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.closingBalance || yr.balance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+                                    {Math.abs(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))) === 0
+                                      ? "₹0"
+                                      : parseFloat(yr.closingBalance || yr.balance || "0") < 0
+                                      ? `Adv ₹${Math.abs(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))).toLocaleString()}`
+                                      : `₹${Math.round(parseFloat(yr.closingBalance || yr.balance || "0")).toLocaleString()}`
+                                    }
+                                  </td>
+                                  <td className="p-2 text-center">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                                      {yr.status === 'cleared' ? 'Cleared' : yr.status === 'advance' ? 'Advance' : 'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className="p-2">
+                                    {isEditing ? (
+                                      <div className="flex items-center gap-1">
+                                        <Input
+                                          value={remarkDraft}
+                                          onChange={(e) => setRemarkDraft(e.target.value)}
+                                          className="h-6 text-xs py-0 px-1"
+                                          placeholder="Add remark..."
+                                          autoFocus
+                                        />
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 px-1 text-xs"
+                                          onClick={() => updateYearRemarkMutation.mutate({ yearNumber: yr.year, remark: remarkDraft })}
+                                          disabled={updateYearRemarkMutation.isPending}
+                                        >✓</Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 px-1 text-xs"
+                                          onClick={() => setEditingRemarkYear(null)}
+                                        >✗</Button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1 group">
+                                        <span className="text-xs text-muted-foreground flex-1">{yr.remark || ""}</span>
+                                        {canOverrideYears && (
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100"
+                                            onClick={() => { setEditingRemarkYear(yr.year); setRemarkDraft(yr.remark || ""); }}
+                                            data-testid={`button-edit-remark-${yr.year}`}
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                          </Button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot className="bg-muted/50 font-semibold border-t">
+                            <tr>
+                              <td className="p-2" colSpan={3}>Total</td>
+                              <td className="text-right p-2 font-mono">₹{Math.round(leaseSummary.summary.yearlyBreakdown.reduce((s: number, y: any) => s + parseFloat(y.totalDue || "0"), 0)).toLocaleString()}</td>
+                              <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPaid || "0")).toLocaleString()}</td>
+                              <td className="text-right p-2 font-mono text-orange-600 dark:text-orange-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPending || "0")).toLocaleString()}</td>
+                              <td colSpan={2}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground text-center py-8">No year breakdown available</div>
+                  )}
+                </TabsContent>
 
                 <TabsContent value="summary" className="flex-1 overflow-y-auto pr-2 space-y-6">
                   {/* Landlord & Period info */}
@@ -1741,13 +1862,61 @@ export default function Leases() {
                 </TabsContent>
 
                 <TabsContent value="ledger" className="flex-1 overflow-y-auto pr-2">
-                  <h4 className="font-medium mb-3">Monthly Lease Ledger</h4>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Pro-rata calculation applied for partial first month. Unpaid amounts carry forward.
-                  </p>
-                  <div className="border rounded-lg overflow-hidden">
-                    <LeaseLedger lease={getSummaryLease()} payments={summaryPayments} />
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-medium">Monthly Lease Ledger</h4>
+                    <p className="text-xs text-muted-foreground">Pro-rata for partial first month. Unpaid amounts carry forward.</p>
                   </div>
+                  {isLedgerLoading ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">Loading ledger...</div>
+                  ) : monthlyLedger.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">No ledger data available</div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <LeaseLedger rows={monthlyLedger} />
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Performance Tab */}
+                <TabsContent value="performance" className="flex-1 overflow-y-auto pr-2 space-y-4">
+                  <h4 className="font-medium">Revenue vs Lease Paid</h4>
+                  {!performanceData ? (
+                    <div className="text-center py-8 text-muted-foreground text-sm">Loading performance data...</div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 rounded-lg bg-muted/50">
+                          <p className="text-xs text-muted-foreground">Total Revenue</p>
+                          <p className="text-lg font-semibold font-mono">₹{Math.round(performanceData.totalRevenue || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-green-50 dark:bg-green-950/30">
+                          <p className="text-xs text-muted-foreground">Lease Paid</p>
+                          <p className="text-lg font-semibold font-mono text-green-600 dark:text-green-400">₹{Math.round(performanceData.totalLeasePaid || 0).toLocaleString()}</p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30">
+                          <p className="text-xs text-muted-foreground">Net Profit</p>
+                          <p className="text-lg font-semibold font-mono text-blue-600 dark:text-blue-400">₹{Math.round(performanceData.totalProfit || 0).toLocaleString()}</p>
+                        </div>
+                      </div>
+
+                      {performanceData.months && performanceData.months.length > 0 && (
+                        <div className="border rounded-lg p-4">
+                          <p className="text-sm font-medium mb-3 text-muted-foreground">Monthly Trend</p>
+                          <ResponsiveContainer width="100%" height={220}>
+                            <BarChart data={performanceData.months.slice(-24)} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                              <XAxis dataKey="month" tick={{ fontSize: 9 }} />
+                              <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} width={55} />
+                              <Tooltip formatter={(val: any) => `₹${Number(val).toLocaleString()}`} />
+                              <Legend wrapperStyle={{ fontSize: "11px" }} />
+                              <Bar dataKey="revenue" name="Revenue" fill="#2BB6A8" radius={[3, 3, 0, 0]} />
+                              <Bar dataKey="leasePaid" name="Lease Paid" fill="#1E3A5F" radius={[3, 3, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="history" className="flex-1 overflow-y-auto pr-2">

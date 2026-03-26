@@ -293,6 +293,7 @@ export interface IStorage {
   // Lease calculation helpers
   calculateCurrentYearAmount(lease: PropertyLease): number;
   calculateLeaseSummary(leaseId: number): Promise<any>;
+  calculateMonthlyLedger(leaseId: number): Promise<any[]>;
   updateLeaseCarryForward(leaseId: number): Promise<PropertyLease>;
 
   // Property Expense operations
@@ -2235,8 +2236,15 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     if (existing.length > 0) {
+      const updateData: any = { amount: data.amount, updatedAt: new Date() };
+      if (data.reason !== undefined) updateData.reason = data.reason;
+      if ((data as any).remark !== undefined) updateData.remark = (data as any).remark;
+      if ((data as any).manualPaidOverride !== undefined) updateData.manualPaidOverride = (data as any).manualPaidOverride;
+      if ((data as any).manualBalanceOverride !== undefined) updateData.manualBalanceOverride = (data as any).manualBalanceOverride;
+      if ((data as any).isLocked !== undefined) updateData.isLocked = (data as any).isLocked;
+      if (data.createdBy) updateData.createdBy = data.createdBy;
       const [updated] = await db.update(leaseYearOverrides)
-        .set({ amount: data.amount, reason: data.reason, createdBy: data.createdBy, updatedAt: new Date() })
+        .set(updateData)
         .where(eq(leaseYearOverrides.id, existing[0].id))
         .returning();
       return updated;
@@ -2382,31 +2390,72 @@ export class DatabaseStorage implements IStorage {
       totalLeaseValue += getYearAmount(year);
     }
 
-    // Year-by-year breakdown for detailed view
+    // Year-by-year breakdown with cumulative opening/closing balance
     const yearlyBreakdown = [];
+    let runningBalance = 0; // opening balance for Year 1 = 0
+
     for (let year = 0; year < Math.min(currentYearNumber, Math.ceil(leaseDurationYears)); year++) {
       const yearStart = new Date(startDate);
       yearStart.setFullYear(startDate.getFullYear() + year);
       const yearEnd = new Date(yearStart);
       yearEnd.setFullYear(yearEnd.getFullYear() + 1);
-      
+
       const yearPayments = payments.filter(p => {
         const paymentDate = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
         return paymentDate >= yearStart && paymentDate < yearEnd;
       });
-      const yearPaid = yearPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
-      const yearDue = getYearAmount(year);
-      
+      const actualYearPaid = yearPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+      const yearRent = getYearAmount(year);
+
+      const openingBalance = runningBalance;
+      const totalDue = openingBalance + yearRent;
+      const actualClosingBalance = totalDue - actualYearPaid;
+
+      // Check for manual override (is_locked mode)
+      const yearNumber = year + 1;
+      const override = yearOverrides.find(ov => ov.yearNumber === yearNumber);
+      const isLocked = override?.isLocked || false;
+
+      let displayPaid = actualYearPaid;
+      let displayClosing = actualClosingBalance;
+
+      if (isLocked && override) {
+        if (override.manualPaidOverride !== null && override.manualPaidOverride !== undefined) {
+          displayPaid = parseFloat(override.manualPaidOverride as string);
+        }
+        if (override.manualBalanceOverride !== null && override.manualBalanceOverride !== undefined) {
+          displayClosing = parseFloat(override.manualBalanceOverride as string);
+        }
+      }
+
+      // Status: cleared = 0, advance = negative (credit), pending = positive (debt)
+      let status: 'cleared' | 'pending' | 'advance';
+      if (displayClosing < 0) status = 'advance';
+      else if (displayClosing === 0) status = 'cleared';
+      else status = 'pending';
+
       yearlyBreakdown.push({
-        year: year + 1,
+        year: yearNumber,
         startDate: yearStart.toISOString().split('T')[0],
         endDate: new Date(yearEnd.getTime() - 1).toISOString().split('T')[0],
-        amountDue: yearDue.toFixed(2),
-        amountPaid: yearPaid.toFixed(2),
-        balance: (yearDue - yearPaid).toFixed(2),
+        openingBalance: openingBalance.toFixed(2),
+        yearRent: yearRent.toFixed(2),
+        totalDue: totalDue.toFixed(2),
+        paid: displayPaid.toFixed(2),
+        closingBalance: displayClosing.toFixed(2),
+        // backward compat aliases
+        amountDue: yearRent.toFixed(2),
+        amountPaid: actualYearPaid.toFixed(2),
+        balance: displayClosing.toFixed(2),
+        status,
         isCurrentYear: year === completedYears,
         isCompleted: year < completedYears,
+        isLocked,
+        remark: override?.remark || null,
       });
+
+      // Next year's opening = actual closing (not display) for accounting consistency
+      runningBalance = actualClosingBalance;
     }
 
     return {
@@ -2437,7 +2486,7 @@ export class DatabaseStorage implements IStorage {
     const summary = await this.calculateLeaseSummary(leaseId);
     if (!summary) throw new Error("Lease not found");
 
-    const newCarryForward = parseFloat(summary.summary.currentPending);
+    const newCarryForward = parseFloat(summary.summary.totalPending);
     
     const [updatedLease] = await db
       .update(propertyLeases)
@@ -2449,6 +2498,100 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return updatedLease;
+  }
+
+  // Calculate month-by-month ledger (backend version, used by API + CSV export)
+  async calculateMonthlyLedger(leaseId: number): Promise<any[]> {
+    const lease = await this.getLease(leaseId);
+    if (!lease) return [];
+
+    const [payments, yearOverrides] = await Promise.all([
+      this.getLeasePayments(leaseId),
+      this.getLeaseYearOverrides(leaseId),
+    ]);
+
+    // Build override map (1-based yearNumber → override amount)
+    const overrideMap: Record<number, number> = {};
+    for (const ov of yearOverrides) {
+      overrideMap[ov.yearNumber] = parseFloat(ov.amount as string);
+    }
+
+    const startDate = lease.startDate ? new Date(lease.startDate) : new Date();
+    const endDate = lease.endDate ? new Date(lease.endDate) : new Date();
+    const now = new Date();
+    const effectiveEnd = endDate < now ? endDate : now;
+
+    const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
+    const incrementValue = parseFloat(lease.yearlyIncrementValue || "0");
+    const isPercentage = lease.yearlyIncrementType === 'percentage';
+
+    const getYearAmount = (yearIndex: number): number => {
+      const yearNumber = yearIndex + 1;
+      if (overrideMap[yearNumber] !== undefined) return overrideMap[yearNumber];
+      if (lease.isOverridden) {
+        const elapsed = Math.floor((effectiveEnd.getTime() - startDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        if (yearIndex === elapsed) return parseFloat(lease.currentYearAmount || "0");
+      }
+      if (isPercentage) return baseAmount * Math.pow(1 + incrementValue / 100, yearIndex);
+      return baseAmount + incrementValue * yearIndex;
+    };
+
+    const rows: any[] = [];
+    let carryForward = 0;
+
+    let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endMonth = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), 1);
+
+    while (currentMonth <= endMonth) {
+      const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+      const monthStr = currentMonth.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+      const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+
+      // Determine which lease year this month belongs to (0-indexed)
+      const monthMidpoint = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 15);
+      const elapsedMs = Math.max(0, monthMidpoint.getTime() - startDate.getTime());
+      const yearIndex = Math.floor(elapsedMs / (365.25 * 24 * 60 * 60 * 1000));
+      const yearAmount = getYearAmount(yearIndex);
+      const monthlyRate = yearAmount / 12;
+
+      // Pro-rata for first month
+      let rentDue = monthlyRate;
+      if (
+        currentMonth.getFullYear() === startDate.getFullYear() &&
+        currentMonth.getMonth() === startDate.getMonth()
+      ) {
+        const daysInMonth = monthEnd.getDate();
+        const daysRemaining = daysInMonth - startDate.getDate() + 1;
+        rentDue = (monthlyRate / daysInMonth) * daysRemaining;
+      }
+
+      const totalDue = carryForward + rentDue;
+
+      // Payments in this calendar month
+      const monthPayments = payments.filter(p => {
+        const pd = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
+        return pd >= currentMonth && pd <= monthEnd;
+      });
+      const paid = monthPayments.reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0);
+
+      // Allow negative (credit/advance) — do NOT Math.max(0,...)
+      const pending = totalDue - paid;
+      carryForward = pending;
+
+      rows.push({
+        month: monthStr,
+        monthKey,
+        rentDue: Math.round(rentDue),
+        carriedFwd: Math.round(Math.max(0, totalDue - rentDue)), // carry from previous (debt only for display)
+        totalDue: Math.round(totalDue),
+        paid: Math.round(paid),
+        pending: Math.round(pending),
+      });
+
+      currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+    }
+
+    return rows;
   }
 
   // Property Expense operations
@@ -2962,32 +3105,22 @@ export class DatabaseStorage implements IStorage {
         )
       );
 
-    // Get monthly rent - first check for lease, then fallback to property's monthlyRent
-    const allLeases = await this.getLeasesByProperty(propertyId);
-    let monthlyLeaseAmount = 0;
-    let usedPropertyRent = false;
-    
-    for (const lease of allLeases) {
-      const leaseStart = new Date(lease.startDate);
-      const leaseEnd = lease.endDate ? new Date(lease.endDate) : new Date(2099, 11, 31);
-      
-      // Check if lease overlaps with the selected month
-      if (leaseStart <= endDate && leaseEnd >= startDate) {
-        // Calculate monthly amount (total / months in lease period)
-        const leaseMonths = Math.max(1, Math.ceil((leaseEnd.getTime() - leaseStart.getTime()) / (30 * 24 * 60 * 60 * 1000)));
-        const monthlyRate = parseFloat(lease.totalAmount.toString()) / leaseMonths;
-        monthlyLeaseAmount += monthlyRate;
-      }
-    }
-    
-    // If no lease covers this month, use property's monthlyRent
-    if (monthlyLeaseAmount === 0) {
-      const property = await this.getProperty(propertyId);
-      if (property?.monthlyRent) {
-        monthlyLeaseAmount = parseFloat(property.monthlyRent.toString());
-        usedPropertyRent = true;
-      }
-    }
+    // Get actual lease payments made in this month (from wallet transactions, source = lease_payment)
+    // This uses payment date (not lease month) — so April rent paid in May shows in May
+    const leaseWalletTxns = await db
+      .select({ amount: walletTransactions.amount })
+      .from(walletTransactions)
+      .where(
+        and(
+          eq(walletTransactions.propertyId, propertyId),
+          eq(walletTransactions.source, 'lease_payment'),
+          eq(walletTransactions.transactionType, 'debit'),
+          gte(walletTransactions.transactionDate, startDate.toISOString().split('T')[0]),
+          lte(walletTransactions.transactionDate, endDate.toISOString().split('T')[0])
+        )
+      );
+    const monthlyLeaseAmount = leaseWalletTxns.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const usedPropertyRent = false;
 
     const totalRevenue = parseFloat(revenueResult?.total || '0');
     const totalExpenses = parseFloat(expensesResult?.total || '0');

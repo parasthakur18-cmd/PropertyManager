@@ -8524,7 +8524,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.post("/api/leases/:leaseId/year-overrides", isAuthenticated, async (req: any, res) => {
     try {
       const leaseId = parseInt(req.params.leaseId);
-      const { yearNumber, amount, reason } = req.body;
+      const { yearNumber, amount, reason, remark, manualPaidOverride, manualBalanceOverride, isLocked } = req.body;
 
       if (!yearNumber || !amount) {
         return res.status(400).json({ message: "yearNumber and amount are required" });
@@ -8541,8 +8541,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         yearNumber: parseInt(yearNumber),
         amount: amount.toString(),
         reason: reason || null,
+        remark: remark || null,
+        manualPaidOverride: manualPaidOverride != null ? manualPaidOverride.toString() : null,
+        manualBalanceOverride: manualBalanceOverride != null ? manualBalanceOverride.toString() : null,
+        isLocked: isLocked || false,
         createdBy: changedByName,
-      });
+      } as any);
 
       await storage.createLeaseHistory({
         leaseId,
@@ -8555,6 +8559,65 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       });
 
       res.status(201).json(override);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // PATCH: update year override fields (remark, manual mode)
+  app.patch("/api/leases/:leaseId/year-overrides/:yearNumber", isAuthenticated, async (req: any, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const yearNumber = parseInt(req.params.yearNumber);
+      const { remark, manualPaidOverride, manualBalanceOverride, isLocked } = req.body;
+
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      const changedByName = currentUser?.firstName
+        ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim()
+        : currentUser?.email || userId;
+
+      // Upsert — get existing or create with current amount
+      const existing = await storage.getLeaseYearOverrides(leaseId);
+      const existingOverride = existing.find(ov => ov.yearNumber === yearNumber);
+
+      let overrideAmount = existingOverride?.amount;
+      if (!existingOverride) {
+        // For remark-only update, auto-calculate amount from lease
+        const lease = await storage.getLease(leaseId);
+        if (!lease) return res.status(404).json({ message: "Lease not found" });
+        const baseAmt = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
+        const incType = lease.yearlyIncrementType || "none";
+        const incVal = parseFloat(lease.yearlyIncrementValue || "0");
+        let calculated = baseAmt;
+        for (let i = 1; i < yearNumber; i++) {
+          if (incType === "percentage") calculated = calculated * (1 + incVal / 100);
+          else if (incType === "fixed") calculated = calculated + incVal;
+        }
+        overrideAmount = Math.round(calculated).toString();
+      }
+
+      const updateData: any = { amount: overrideAmount, leaseId, yearNumber, createdBy: changedByName };
+      if (remark !== undefined) updateData.remark = remark;
+      if (manualPaidOverride !== undefined) updateData.manualPaidOverride = manualPaidOverride != null ? manualPaidOverride.toString() : null;
+      if (manualBalanceOverride !== undefined) updateData.manualBalanceOverride = manualBalanceOverride != null ? manualBalanceOverride.toString() : null;
+      if (isLocked !== undefined) updateData.isLocked = isLocked;
+
+      const updated = await storage.createLeaseYearOverride(updateData as any);
+
+      if (isLocked !== undefined) {
+        await storage.createLeaseHistory({
+          leaseId,
+          changeType: 'year_override',
+          fieldChanged: `year${yearNumber}ManualMode`,
+          oldValue: existingOverride.isLocked ? 'locked' : 'auto',
+          newValue: isLocked ? 'locked' : 'auto',
+          changedBy: changedByName,
+          changeReason: isLocked ? `Manual mode enabled for year ${yearNumber}` : `Manual mode disabled for year ${yearNumber}`,
+        });
+      }
+
+      res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -8584,6 +8647,87 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       });
 
       res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Monthly ledger (backend-computed, used by UI + CSV)
+  app.get("/api/leases/:leaseId/monthly-ledger", isAuthenticated, async (req, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const rows = await storage.calculateMonthlyLedger(leaseId);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Lease performance: revenue vs lease paid per month
+  app.get("/api/leases/:leaseId/performance", isAuthenticated, async (req, res) => {
+    try {
+      const leaseId = parseInt(req.params.leaseId);
+      const lease = await storage.getLease(leaseId);
+      if (!lease) return res.status(404).json({ message: "Lease not found" });
+
+      const payments = await storage.getLeasePayments(leaseId);
+      const startDate = lease.startDate ? new Date(lease.startDate) : new Date();
+      const endDate = lease.endDate ? new Date(lease.endDate) : new Date();
+      const now = new Date();
+      const effectiveEnd = endDate < now ? endDate : now;
+
+      // Build month range
+      const months: string[] = [];
+      let cur = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+      const end = new Date(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), 1);
+      while (cur <= end) {
+        months.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}`);
+        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      }
+
+      // Get revenue per month from bills (paid bills only)
+      const performanceData = await Promise.all(months.map(async (month) => {
+        const [yr, mo] = month.split('-').map(Number);
+        const mStart = new Date(yr, mo - 1, 1);
+        const mEnd = new Date(yr, mo, 0, 23, 59, 59);
+
+        const [revResult] = await db
+          .select({ total: sql<string>`COALESCE(SUM(${bills.totalAmount}), 0)` })
+          .from(bills)
+          .innerJoin(bookings, eq(bills.bookingId, bookings.id))
+          .where(
+            and(
+              eq(bookings.propertyId, lease.propertyId),
+              eq(bills.paymentStatus, 'paid'),
+              gte(bills.createdAt, mStart),
+              lte(bills.createdAt, mEnd)
+            )
+          );
+
+        const revenue = parseFloat(revResult?.total || '0');
+        const leasePaid = payments
+          .filter(p => {
+            const pd = p.paymentDate ? new Date(p.paymentDate) : new Date(p.createdAt || now);
+            return pd >= mStart && pd <= mEnd;
+          })
+          .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+
+        return {
+          month,
+          revenue: Math.round(revenue),
+          leasePaid: Math.round(leasePaid),
+          profit: Math.round(revenue - leasePaid),
+        };
+      }));
+
+      res.json({
+        leaseId,
+        propertyId: lease.propertyId,
+        totalRevenue: performanceData.reduce((s, d) => s + d.revenue, 0),
+        totalLeasePaid: performanceData.reduce((s, d) => s + d.leasePaid, 0),
+        totalProfit: performanceData.reduce((s, d) => s + d.profit, 0),
+        months: performanceData,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

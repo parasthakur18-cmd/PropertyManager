@@ -1,0 +1,273 @@
+Upgrade the existing Lease Module in Hostezee into a complete "Lease Financial Control System" with Excel-style clarity, correct accounting logic, manual flexibility, and seamless integration with the existing Profit & Loss (P&L) system.
+
+IMPORTANT:
+
+* DO NOT break existing PMS functionality
+* DO NOT modify existing booking or revenue logic
+* DO NOT duplicate expense entries
+* All changes must be backward compatible
+* Maintain data integrity across Wallet, Lease, and P&L
+
+---
+
+## PART 1 — FIX CORE LEASE CALCULATIONS
+
+1. Fix Year-wise Balance Calculation:
+
+openingBalance = previousYearClosing
+totalDue = openingBalance + yearRent
+closingBalance = totalDue - paid
+previousYearClosing = closingBalance
+
+Return:
+
+* openingBalance
+* yearRent
+* totalDue
+* paid
+* closingBalance
+
+---
+
+2. Fix Overpayment (Credit Handling):
+
+Remove:
+Math.max(0, totalDue - paid)
+
+Use:
+closingBalance = totalDue - paid
+
+If closingBalance < 0:
+→ mark as "Advance"
+
+---
+
+3. Fix Carry Forward Bug:
+
+Replace:
+summary.summary.currentPending
+
+With:
+summary.summary.totalPending
+
+---
+
+4. Unify Ledger Logic:
+
+* Move all ledger calculations to backend
+* Frontend must only display data
+* CSV export and UI must use same backend function
+
+---
+
+## PART 2 — MANUAL YEAR CONTROL
+
+Extend lease_year_overrides:
+
+Add:
+
+* remark (text)
+* manual_paid_override (number)
+* manual_balance_override (number)
+* is_locked (boolean)
+
+Logic:
+
+IF is_locked:
+
+* use manual values
+  ELSE:
+* use system calculation
+
+DO NOT modify:
+
+* payments
+* ledger entries
+
+---
+
+## PART 3 — FINANCIAL SUMMARY UI
+
+Add new default tab:
+
+"Financial Summary"
+
+Columns:
+
+* Year
+* Period
+* Opening Balance
+* Year Rent
+* Total Due
+* Paid
+* Closing Balance
+* Remarks
+
+Status:
+
+* Cleared (green)
+* Pending (red)
+* Advance (blue)
+
+Row actions:
+
+* Edit
+* Manual Mode toggle
+
+Expandable row:
+→ shows month-wise ledger (from backend)
+
+---
+
+## PART 4 — P&L INTEGRATION (CRITICAL)
+
+EXISTING SYSTEM:
+Lease payments already create wallet debit entries:
+source = "lease_payment"
+
+---
+
+DO NOT CHANGE THIS BEHAVIOR
+
+---
+
+NEW REQUIREMENTS:
+
+1. Ensure ALL lease payments are categorized correctly:
+
+* expense_category = "Lease Rent"
+* source = "lease_payment"
+
+---
+
+2. P&L CALCULATION RULE:
+
+Revenue:
+
+* From bookings (existing system)
+
+Expenses:
+
+* Include wallet debits where source = "lease_payment"
+
+---
+
+3. IMPORTANT:
+
+DO NOT:
+
+* Add lease again as separate expense
+* Recalculate lease inside P&L
+
+ONLY use:
+→ existing wallet entries
+
+---
+
+4. VERIFY P&L CONSISTENCY:
+
+Ensure:
+
+# Total Lease Paid (Lease Module)
+
+Total Lease Expense (P&L)
+
+---
+
+5. MONTHLY P&L ALIGNMENT:
+
+Lease expense must reflect based on:
+→ payment date (not lease month)
+
+Example:
+If April rent paid in May → expense shows in May
+
+---
+
+6. ADD LEASE VISIBILITY IN P&L UI:
+
+In P&L breakdown:
+
+Add section:
+
+"Lease Expenses"
+
+Show:
+
+* Total Lease Paid
+* Month-wise lease expense
+* Property-wise lease expense
+
+---
+
+7. OWNER INSIGHT (NEW ADDITION):
+
+Inside Lease Module → Performance Tab:
+
+Show:
+
+* Monthly Revenue (from bookings)
+* Monthly Lease Paid
+* Monthly Profit
+
+Formula:
+
+profit = revenue - lease_paid
+
+---
+
+## PART 5 — REPORTING
+
+Ensure APIs return:
+
+1. Lease Summary
+2. Year-wise financial breakdown
+3. Monthly ledger (backend only)
+
+---
+
+## PART 6 — PROPERTY FILTER
+
+Add property filter dropdown on lease page
+
+---
+
+## PART 7 — DATA SAFETY RULES
+
+* Ledger = source of truth
+* Payments = source of truth for P&L
+* Manual overrides affect ONLY summary
+* Never modify historical payments
+* Always recalculate after:
+
+  * payment
+  * override
+  * manual edit
+
+---
+
+## FINAL GOAL
+
+System should provide:
+
+1. Excel-like lease clarity (year-wise view)
+2. Accurate carry forward tracking
+3. Manual flexibility for real-world adjustments
+4. Perfect integration with P&L (no mismatch)
+5. Clear business insights:
+
+   * rent vs revenue
+   * profit visibility
+
+---
+
+## CRITICAL CHECK
+
+Before finishing:
+
+* Verify no duplication in P&L
+* Verify wallet entries remain unchanged
+* Verify lease summary matches ledger totals
+* Verify P&L lease expense matches lease payments
+
+System must remain stable and production-safe.
