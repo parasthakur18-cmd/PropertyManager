@@ -6690,49 +6690,58 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const allUsers = await storage.getAllUsers();
         const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen');
         const guest = orderData.guestId ? await storage.getGuest(orderData.guestId) : null;
-        
+
+        // Pre-compute shared values once (used for WA + push)
+        const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+        const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
+        const roomLabel = roomInfo
+          ? `Room ${roomInfo.roomNumber}`
+          : orderData.orderType === 'room' ? 'N/A' : 'Restaurant';
+        const guestLabel = guest?.fullName || order.customerName || 'Guest';
+        const orderItems = (order.items as any[]) || [];
+        const orderDetails = orderItems.length > 0
+          ? orderItems.map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`).join('\n')
+          : 'See PMS for details';
+        const totalAmountStr = String(orderData.totalAmount || 0);
+
         for (const admin of adminUsers) {
           // In-app notification
           await db.insert(notifications).values({
             userId: admin.id,
             type: "new_order",
             title: "New Order Placed",
-            message: `New ${orderData.orderType || 'food'} order #${order.id} for ${guest?.fullName || 'Guest'}. Amount: ₹${orderData.totalAmount || 0}`,
+            message: `New ${orderData.orderType || 'food'} order #${order.id} for ${guestLabel}. Amount: ₹${totalAmountStr}`,
             soundType: "info",
             relatedId: order.id,
             relatedType: "order",
           });
-          
-          // WhatsApp alert (even when app is closed)
-          if (admin.phone) {
-            try {
-              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
-              const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
-              const hotelName = property?.name || 'Hotel';
-              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
-              
-              await sendCustomWhatsAppMessage({
-                countryCode: '91',
-                mobile: admin.phone,
-                message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
-              });
-              console.log(`[WhatsApp] New order alert sent to ${admin.email}`);
-            } catch (waError: any) {
-              console.warn(`[WhatsApp] Failed to send order alert to ${admin.phone}:`, waError.message);
-            }
-          }
         }
         console.log(`[NOTIFICATIONS] New order notification created for ${adminUsers.length} users`);
 
+        // WhatsApp staff alerts — all admin/kitchen numbers via resolveAlertRecipients
+        if (orderData.propertyId) {
+          try {
+            const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", orderData.propertyId);
+            for (const phone of recipients) {
+              if (!isRealPhone(phone)) continue;
+              try {
+                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalAmountStr);
+                console.log(`[WhatsApp] Food order staff alert sent to ${phone} for order #${order.id}`);
+              } catch (waErr: any) {
+                console.warn(`[WhatsApp] Staff alert failed for ${phone}:`, waErr.message);
+              }
+            }
+          } catch (waStaffErr: any) {
+            console.warn(`[WhatsApp] Food order staff alert routing failed:`, waStaffErr.message);
+          }
+        }
+
         // Send PWA push notification to all subscribed admin/kitchen devices
         try {
-          const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-          const property = orderData.propertyId ? await storage.getProperty(orderData.propertyId) : null;
           const pushPayload = {
             type: "new_order",
             title: "🍽️ New Food Order!",
-            body: `Order #${order.id}${roomInfo ? ` — Room ${roomInfo.roomNumber}` : ""}${property ? ` @ ${property.name}` : ""}. Amount: ₹${orderData.totalAmount || 0}`,
+            body: `Order #${order.id}${roomInfo ? ` — Room ${roomInfo.roomNumber}` : ""}${property ? ` @ ${property.name}` : ""}. Amount: ₹${totalAmountStr}`,
             url: "/restaurant",
             orderId: order.id,
           };
@@ -6742,33 +6751,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         } catch (pushErr: any) {
           console.warn("[Push] Failed to send order push:", pushErr.message);
         }
-        
-        // Send to configured food order WhatsApp numbers
+
+        // Send to extra configured food order WhatsApp numbers (Feature Settings)
         if (orderData.propertyId) {
           try {
             const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(orderData.propertyId);
             if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
-              const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-              const roomNum = roomInfo ? roomInfo.roomNumber : 'N/A';
-              const property = await storage.getProperty(orderData.propertyId);
-              const hotelName = property?.name || 'Hotel';
-              const orderType = orderData.orderType === 'room' ? 'Room' : 'Restaurant';
-              
               for (const phone of foodOrderSettings.phoneNumbers) {
+                if (!isRealPhone(phone)) continue;
                 try {
-                  await sendCustomWhatsAppMessage({
-                    countryCode: '91',
-                    mobile: phone,
-                    message: `Hello ${hotelName} 👋\n\nYou have received a new food order.\n\n🛏 Room No: ${roomNum}\n🍽 Order Type: ${orderType}\n\nPlease check the order in the Kitchen Orders section of the PMS for item details and preparation.\n\nThank you.`
-                  });
-                  console.log(`[WhatsApp] Food order alert sent to configured number: ${phone}`);
+                  await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalAmountStr);
+                  console.log(`[WhatsApp] Food order alert sent to extra number: ${phone}`);
                 } catch (waErr: any) {
-                  console.warn(`[WhatsApp] Failed to send to ${phone}:`, waErr.message);
+                  console.warn(`[WhatsApp] Failed to send to extra number ${phone}:`, waErr.message);
                 }
               }
             }
           } catch (foodWaErr: any) {
-            console.warn(`[WhatsApp] Food order settings fetch failed:`, foodWaErr.message);
+            console.warn(`[WhatsApp] Food order extra numbers fetch failed:`, foodWaErr.message);
           }
         }
 
