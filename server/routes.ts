@@ -8569,7 +8569,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     try {
       const leaseId = parseInt(req.params.leaseId);
       const yearNumber = parseInt(req.params.yearNumber);
-      const { remark, manualPaidOverride, manualBalanceOverride, isLocked } = req.body;
+      const { remark, manualPaidOverride, manualBalanceOverride, isLocked, amount: bodyAmount } = req.body;
 
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
@@ -8596,6 +8596,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
         overrideAmount = Math.round(calculated).toString();
       }
+
+      // bodyAmount can override the year rent (for full manual entry mode)
+      if (bodyAmount !== undefined) overrideAmount = bodyAmount.toString();
 
       const updateData: any = { amount: overrideAmount, leaseId, yearNumber, createdBy: changedByName };
       if (remark !== undefined) updateData.remark = remark;

@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,6 +66,13 @@ const editLeaseFormSchema = z.object({
 const yearOverrideFormSchema = z.object({
   amount: z.string().min(1, "Custom amount is required").refine(v => parseFloat(v) > 0, "Must be greater than 0"),
   reason: z.string().min(1, "Reason is required"),
+});
+
+const manualYearFormSchema = z.object({
+  yearRent: z.string().min(1, "Year rent is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
+  paid: z.string().min(1, "Paid amount is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
+  closingBalance: z.string().min(1, "Closing balance is required").refine(v => !isNaN(parseFloat(v)), "Must be a number"),
+  remark: z.string().optional(),
 });
 
 function LeasePaymentHistory({ leaseId, isExpanded, onToggle }: { leaseId: number; isExpanded: boolean; onToggle: () => void }) {
@@ -181,6 +188,8 @@ export default function Leases() {
   const [expandedYearRows, setExpandedYearRows] = useState<Set<number>>(new Set());
   const [editingRemarkYear, setEditingRemarkYear] = useState<number | null>(null);
   const [remarkDraft, setRemarkDraft] = useState("");
+  const [isManualYearDialogOpen, setIsManualYearDialogOpen] = useState(false);
+  const [manualYearTarget, setManualYearTarget] = useState<{ yearNumber: number; yearRent: string; paid: string; closingBalance: string; remark: string } | null>(null);
 
   const canEditLease = user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'manager';
   const canOverrideYears = user?.role === 'admin' || user?.role === 'super-admin';
@@ -297,6 +306,62 @@ export default function Leases() {
     defaultValues: {
       amount: "",
       reason: "",
+    },
+  });
+
+  const manualYearForm = useForm({
+    resolver: zodResolver(manualYearFormSchema),
+    defaultValues: {
+      yearRent: "",
+      paid: "",
+      closingBalance: "",
+      remark: "",
+    },
+  });
+
+  const saveManualYearMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof manualYearFormSchema> & { yearNumber: number }) => {
+      if (!leaseForSummary) throw new Error("No lease selected");
+      const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides/${data.yearNumber}`, "PATCH", {
+        amount: data.yearRent,
+        manualPaidOverride: data.paid,
+        manualBalanceOverride: data.closingBalance,
+        remark: data.remark || null,
+        isLocked: true,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "year-overrides"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
+      setIsManualYearDialogOpen(false);
+      setManualYearTarget(null);
+      manualYearForm.reset();
+      toast({ title: "Year saved", description: "Manual entry applied. System calculations paused for this year." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save manual entry", variant: "destructive" });
+    },
+  });
+
+  const unlockYearMutation = useMutation({
+    mutationFn: async (yearNumber: number) => {
+      if (!leaseForSummary) throw new Error("No lease selected");
+      const response = await apiRequest(`/api/leases/${leaseForSummary}/year-overrides/${yearNumber}`, "PATCH", {
+        isLocked: false,
+        manualPaidOverride: null,
+        manualBalanceOverride: null,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "summary"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leases", leaseForSummary, "year-overrides"] });
+      toast({ title: "Year unlocked", description: "System calculations restored for this year." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to unlock year", variant: "destructive" });
     },
   });
 
@@ -1467,6 +1532,128 @@ export default function Leases() {
           </DialogContent>
         </Dialog>
 
+        {/* Manual Year Edit Dialog */}
+        <Dialog open={isManualYearDialogOpen} onOpenChange={(open) => {
+          setIsManualYearDialogOpen(open);
+          if (!open) { setManualYearTarget(null); manualYearForm.reset(); }
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {manualYearTarget ? `Edit Year ${manualYearTarget.yearNumber} — Manual Entry` : "Edit Year"}
+              </DialogTitle>
+            </DialogHeader>
+            <DialogDescription className="sr-only">
+              Manually set Year Rent, Paid Amount, and Closing Balance for this year. System calculations will be paused.
+            </DialogDescription>
+            <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300 mb-2">
+              <strong>Manual mode:</strong> System calculations will be paused for this year. Ledger entries are not affected.
+            </div>
+            <Form {...manualYearForm}>
+              <form
+                onSubmit={manualYearForm.handleSubmit((data) => {
+                  if (!manualYearTarget) return;
+                  saveManualYearMutation.mutate({ ...data, yearNumber: manualYearTarget.yearNumber });
+                })}
+                className="space-y-4"
+              >
+                <FormField
+                  control={manualYearForm.control}
+                  name="yearRent"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Year Rent (₹)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          placeholder="e.g. 180000"
+                          data-testid="input-manual-year-rent"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={manualYearForm.control}
+                  name="paid"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Paid Amount (₹)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          placeholder="e.g. 180000"
+                          data-testid="input-manual-paid"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={manualYearForm.control}
+                  name="closingBalance"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Closing Balance (₹)</FormLabel>
+                      <p className="text-xs text-muted-foreground -mt-1">Positive = pending, Negative = advance credit</p>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          placeholder="e.g. 0 or -5000 for advance"
+                          data-testid="input-manual-closing-balance"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={manualYearForm.control}
+                  name="remark"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Remarks (optional)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          {...field}
+                          placeholder="e.g. Negotiated settlement for FY 2024-25"
+                          rows={2}
+                          data-testid="input-manual-remark"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => { setIsManualYearDialogOpen(false); setManualYearTarget(null); manualYearForm.reset(); }}
+                    data-testid="button-cancel-manual-year"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={saveManualYearMutation.isPending}
+                    data-testid="button-save-manual-year"
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <Lock className="h-4 w-4 mr-2" />
+                    {saveManualYearMutation.isPending ? "Saving..." : "Save & Lock Year"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
         {/* Year Override Dialog */}
         <Dialog open={isYearOverrideDialogOpen} onOpenChange={(open) => {
           setIsYearOverrideDialogOpen(open);
@@ -1560,102 +1747,113 @@ export default function Leases() {
                           <thead className="bg-muted/50">
                             <tr>
                               <th className="text-left p-2 whitespace-nowrap">Year</th>
-                              <th className="text-right p-2 whitespace-nowrap">Opening Balance</th>
+                              <th className="text-right p-2 whitespace-nowrap">Opening Bal.</th>
                               <th className="text-right p-2 whitespace-nowrap">Year Rent</th>
                               <th className="text-right p-2 whitespace-nowrap">Total Due</th>
                               <th className="text-right p-2 whitespace-nowrap text-green-700 dark:text-green-400">Paid</th>
-                              <th className="text-right p-2 whitespace-nowrap">Closing Balance</th>
+                              <th className="text-right p-2 whitespace-nowrap">Closing Bal.</th>
                               <th className="text-center p-2">Status</th>
-                              <th className="text-left p-2 min-w-[160px]">Remark</th>
+                              <th className="text-left p-2 min-w-[120px]">Remark</th>
+                              {canOverrideYears && <th className="text-right p-2 whitespace-nowrap">Actions</th>}
                             </tr>
                           </thead>
                           <tbody>
                             {leaseSummary.summary.yearlyBreakdown.map((yr: any) => {
-                              const isEditing = editingRemarkYear === yr.year;
                               const statusColor = yr.status === 'cleared'
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                                 : yr.status === 'advance'
                                 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
                                 : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
 
+                              const fmtAmt = (val: string | number) => {
+                                const n = Math.round(parseFloat(String(val || "0")));
+                                if (n === 0) return "₹0";
+                                if (n < 0) return `Adv ₹${Math.abs(n).toLocaleString()}`;
+                                return `₹${n.toLocaleString()}`;
+                              };
+
                               return (
                                 <tr
                                   key={yr.year}
-                                  className={yr.isCurrentYear ? "bg-blue-50/50 dark:bg-blue-950/20" : "hover:bg-muted/30"}
+                                  className={`${yr.isCurrentYear ? "bg-blue-50/50 dark:bg-blue-950/20" : "hover:bg-muted/30"} ${yr.isLocked ? "border-l-2 border-l-amber-400" : ""}`}
                                   data-testid={`financial-row-${yr.year}`}
                                 >
                                   <td className="p-2 font-medium">
-                                    <div className="flex items-center gap-1">
-                                      <span>Yr {yr.year}</span>
-                                      {yr.isCurrentYear && <Badge variant="outline" className="text-xs px-1">Now</Badge>}
-                                      {yr.isLocked && <Lock className="h-3 w-3 text-muted-foreground" />}
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1">
+                                        <span>Yr {yr.year}</span>
+                                        {yr.isCurrentYear && <Badge variant="outline" className="text-xs px-1">Now</Badge>}
+                                      </div>
+                                      {yr.isLocked && (
+                                        <span className="inline-flex items-center gap-0.5 text-xs text-amber-700 dark:text-amber-400 font-normal">
+                                          <Lock className="h-2.5 w-2.5" />
+                                          Manual Entry
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
-                                  <td className={`text-right p-2 font-mono ${parseFloat(yr.openingBalance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.openingBalance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
-                                    {parseFloat(yr.openingBalance || "0") === 0
-                                      ? "₹0"
-                                      : parseFloat(yr.openingBalance || "0") > 0
-                                      ? `₹${Math.round(parseFloat(yr.openingBalance)).toLocaleString()}`
-                                      : `Adv ₹${Math.abs(Math.round(parseFloat(yr.openingBalance))).toLocaleString()}`
-                                    }
+                                  <td className={`text-right p-2 font-mono text-sm ${parseFloat(yr.openingBalance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.openingBalance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
+                                    {fmtAmt(yr.openingBalance || "0")}
                                   </td>
-                                  <td className="text-right p-2 font-mono">₹{Math.round(parseFloat(yr.yearRent || yr.amountDue || "0")).toLocaleString()}</td>
-                                  <td className="text-right p-2 font-mono">₹{Math.round(parseFloat(yr.totalDue || "0")).toLocaleString()}</td>
-                                  <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(yr.paid || yr.amountPaid || "0")).toLocaleString()}</td>
-                                  <td className={`text-right p-2 font-mono font-semibold ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.closingBalance || yr.balance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
-                                    {Math.abs(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))) === 0
-                                      ? "₹0"
-                                      : parseFloat(yr.closingBalance || yr.balance || "0") < 0
-                                      ? `Adv ₹${Math.abs(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))).toLocaleString()}`
-                                      : `₹${Math.round(parseFloat(yr.closingBalance || yr.balance || "0")).toLocaleString()}`
-                                    }
+                                  <td className="text-right p-2 font-mono text-sm">{fmtAmt(yr.yearRent || yr.amountDue || "0")}</td>
+                                  <td className="text-right p-2 font-mono text-sm">{fmtAmt(yr.totalDue || "0")}</td>
+                                  <td className="text-right p-2 font-mono text-sm text-green-600 dark:text-green-400">{fmtAmt(yr.paid || yr.amountPaid || "0")}</td>
+                                  <td className={`text-right p-2 font-mono text-sm font-semibold ${parseFloat(yr.closingBalance || yr.balance || "0") > 0 ? "text-red-600 dark:text-red-400" : parseFloat(yr.closingBalance || yr.balance || "0") < 0 ? "text-blue-600 dark:text-blue-400" : "text-green-600 dark:text-green-400"}`}>
+                                    {fmtAmt(yr.closingBalance || yr.balance || "0")}
                                   </td>
                                   <td className="p-2 text-center">
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
                                       {yr.status === 'cleared' ? 'Cleared' : yr.status === 'advance' ? 'Advance' : 'Pending'}
                                     </span>
                                   </td>
-                                  <td className="p-2">
-                                    {isEditing ? (
-                                      <div className="flex items-center gap-1">
-                                        <Input
-                                          value={remarkDraft}
-                                          onChange={(e) => setRemarkDraft(e.target.value)}
-                                          className="h-6 text-xs py-0 px-1"
-                                          placeholder="Add remark..."
-                                          autoFocus
-                                        />
+                                  <td className="p-2 max-w-[120px]">
+                                    <span className="text-xs text-muted-foreground line-clamp-2">{yr.remark || "—"}</span>
+                                  </td>
+                                  {canOverrideYears && (
+                                    <td className="p-2 text-right whitespace-nowrap">
+                                      <div className="flex items-center justify-end gap-1">
                                         <Button
                                           size="sm"
-                                          variant="ghost"
-                                          className="h-6 px-1 text-xs"
-                                          onClick={() => updateYearRemarkMutation.mutate({ yearNumber: yr.year, remark: remarkDraft })}
-                                          disabled={updateYearRemarkMutation.isPending}
-                                        >✓</Button>
-                                        <Button
-                                          size="sm"
-                                          variant="ghost"
-                                          className="h-6 px-1 text-xs"
-                                          onClick={() => setEditingRemarkYear(null)}
-                                        >✗</Button>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-1 group">
-                                        <span className="text-xs text-muted-foreground flex-1">{yr.remark || ""}</span>
-                                        {canOverrideYears && (
+                                          variant="outline"
+                                          className="h-6 px-2 text-xs"
+                                          onClick={() => {
+                                            setManualYearTarget({
+                                              yearNumber: yr.year,
+                                              yearRent: String(Math.round(parseFloat(yr.yearRent || yr.amountDue || "0"))),
+                                              paid: String(Math.round(parseFloat(yr.paid || yr.amountPaid || "0"))),
+                                              closingBalance: String(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))),
+                                              remark: yr.remark || "",
+                                            });
+                                            manualYearForm.reset({
+                                              yearRent: String(Math.round(parseFloat(yr.yearRent || yr.amountDue || "0"))),
+                                              paid: String(Math.round(parseFloat(yr.paid || yr.amountPaid || "0"))),
+                                              closingBalance: String(Math.round(parseFloat(yr.closingBalance || yr.balance || "0"))),
+                                              remark: yr.remark || "",
+                                            });
+                                            setIsManualYearDialogOpen(true);
+                                          }}
+                                          data-testid={`button-edit-year-${yr.year}`}
+                                        >
+                                          <Pencil className="h-3 w-3 mr-1" />
+                                          Edit
+                                        </Button>
+                                        {yr.isLocked && (
                                           <Button
                                             size="sm"
                                             variant="ghost"
-                                            className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100"
-                                            onClick={() => { setEditingRemarkYear(yr.year); setRemarkDraft(yr.remark || ""); }}
-                                            data-testid={`button-edit-remark-${yr.year}`}
+                                            className="h-6 px-2 text-xs text-amber-700 dark:text-amber-400"
+                                            onClick={() => unlockYearMutation.mutate(yr.year)}
+                                            disabled={unlockYearMutation.isPending}
+                                            data-testid={`button-unlock-year-${yr.year}`}
+                                            title="Restore system calculations"
                                           >
-                                            <Pencil className="h-3 w-3" />
+                                            <Unlock className="h-3 w-3 mr-1" />
+                                            Unlock
                                           </Button>
                                         )}
                                       </div>
-                                    )}
-                                  </td>
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -1666,7 +1864,7 @@ export default function Leases() {
                               <td className="text-right p-2 font-mono">₹{Math.round(leaseSummary.summary.yearlyBreakdown.reduce((s: number, y: any) => s + parseFloat(y.totalDue || "0"), 0)).toLocaleString()}</td>
                               <td className="text-right p-2 font-mono text-green-600 dark:text-green-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPaid || "0")).toLocaleString()}</td>
                               <td className="text-right p-2 font-mono text-orange-600 dark:text-orange-400">₹{Math.round(parseFloat(leaseSummary.summary.totalPending || "0")).toLocaleString()}</td>
-                              <td colSpan={2}></td>
+                              <td colSpan={canOverrideYears ? 3 : 2}></td>
                             </tr>
                           </tfoot>
                         </table>
@@ -1783,13 +1981,19 @@ export default function Leases() {
                                       ₹{parseFloat(yr.balance).toLocaleString()}
                                     </td>
                                     <td className="text-center p-2">
-                                      <Badge variant={isCustom ? "default" : "secondary"} className="text-xs" data-testid={`badge-year-type-${yr.year}`}>
-                                        {isCustom ? "Custom" : "Auto"}
+                                      <Badge
+                                        variant={yr.isLocked ? "default" : isCustom ? "outline" : "secondary"}
+                                        className={`text-xs ${yr.isLocked ? "bg-amber-500 text-white border-0" : ""}`}
+                                        data-testid={`badge-year-type-${yr.year}`}
+                                      >
+                                        {yr.isLocked ? "Manual" : isCustom ? "Custom" : "Auto"}
                                       </Badge>
                                     </td>
                                     {canOverrideYears && (
                                       <td className="text-right p-2 sticky right-0 bg-background">
-                                        {isCustom ? (
+                                        {yr.isLocked ? (
+                                          <span className="text-xs text-muted-foreground italic">Use Financial tab to edit</span>
+                                        ) : isCustom ? (
                                           <Button
                                             variant="ghost"
                                             size="sm"

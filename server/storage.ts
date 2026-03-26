@@ -2454,8 +2454,8 @@ export class DatabaseStorage implements IStorage {
         remark: override?.remark || null,
       });
 
-      // Next year's opening = actual closing (not display) for accounting consistency
-      runningBalance = actualClosingBalance;
+      // Next year's opening: use manual closing if locked, else actual system closing
+      runningBalance = isLocked ? displayClosing : actualClosingBalance;
     }
 
     return {
