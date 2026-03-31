@@ -5742,6 +5742,133 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if ((eventType === "payment_link.paid" || status === "paid") && reference_id) {
         console.log(`[RazorPay Webhook] Processing PAID status for reference_id: ${reference_id}`);
         
+        // ── ENQUIRY PAYMENT ─────────────────────────────────────────────────
+        if (reference_id.startsWith("enquiry_")) {
+          const enquiryMatch = reference_id.match(/enquiry_(\d+)_/);
+          const enquiryIdFromRef = enquiryMatch ? parseInt(enquiryMatch[1]) : null;
+          console.log(`[RazorPay Webhook] Enquiry payment received, enquiryId: ${enquiryIdFromRef}`);
+
+          if (enquiryIdFromRef) {
+            try {
+              const [enq] = await db.select().from(enquiries).where(eq(enquiries.id, enquiryIdFromRef));
+
+              if (enq && enq.status !== "confirmed") {
+                const amountPaid = amount ? (amount / 100) : 0;
+
+                // Find or create guest
+                let guestId: number | null = null;
+                if (enq.guestPhone) {
+                  const cleanPhone = enq.guestPhone.replace(/[^\d]/g, "");
+                  const phoneVariants = [enq.guestPhone, cleanPhone, `+91${cleanPhone.slice(-10)}`];
+                  const existingGuests = await db.select().from(guests).where(
+                    sql`${guests.phone} = ANY(${phoneVariants})`
+                  ).limit(1);
+                  if (existingGuests.length > 0) {
+                    guestId = existingGuests[0].id;
+                  }
+                }
+                if (!guestId && enq.guestName) {
+                  const newGuest = await storage.createGuest({
+                    fullName: enq.guestName,
+                    phone: enq.guestPhone || null,
+                    email: enq.guestEmail || null,
+                    idType: null,
+                    idNumber: null,
+                    address: null,
+                    nationality: "Indian",
+                  });
+                  guestId = newGuest.id;
+                }
+
+                if (guestId) {
+                  // Create booking from enquiry
+                  const newBooking = await storage.createBooking({
+                    propertyId: enq.propertyId,
+                    roomId: enq.roomId,
+                    roomIds: enq.roomIds,
+                    isGroupBooking: enq.isGroupEnquiry || false,
+                    bedsBooked: enq.bedsBooked,
+                    guestId,
+                    checkInDate: enq.checkInDate,
+                    checkOutDate: enq.checkOutDate,
+                    numberOfGuests: enq.numberOfGuests,
+                    customPrice: enq.priceQuoted ? String(enq.priceQuoted) : null,
+                    advanceAmount: String(amountPaid),
+                    advancePaymentStatus: "paid",
+                    totalAmount: enq.priceQuoted ? String(enq.priceQuoted) : null,
+                    status: "confirmed",
+                    specialRequests: enq.specialRequests,
+                    source: "walk-in",
+                    mealPlan: enq.mealPlan || "EP",
+                  });
+                  storage.invalidateBookingsCache();
+
+                  // Mark enquiry as confirmed + payment received
+                  await storage.updateEnquiryStatus(enquiryIdFromRef, "confirmed");
+                  await storage.updateEnquiryPaymentStatus(enquiryIdFromRef, "received");
+
+                  // Record payment to wallet
+                  try {
+                    await storage.recordBillPaymentToWallet(
+                      enq.propertyId,
+                      newBooking.id,
+                      amountPaid,
+                      'razorpay_online',
+                      `Enquiry advance payment - ${enq.guestName} (Booking #${newBooking.id})`,
+                      null
+                    );
+                  } catch (walletErr) {
+                    console.warn(`[Webhook] Wallet record failed for enquiry booking:`, walletErr);
+                  }
+
+                  // Send WhatsApp payment confirmation to guest
+                  if (enq.guestPhone) {
+                    try {
+                      const prop = await storage.getProperty(enq.propertyId);
+                      await sendAdvancePaymentConfirmation(
+                        enq.guestPhone,
+                        enq.guestName || "Guest",
+                        `₹${amountPaid.toLocaleString('en-IN')}`,
+                        prop?.name || "Hotel"
+                      );
+                    } catch (waErr) {
+                      console.warn(`[Webhook] WhatsApp confirmation failed for enquiry payment:`, waErr);
+                    }
+                  }
+
+                  // Notify admins
+                  try {
+                    const allUsers = await storage.getAllUsers();
+                    const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin');
+                    for (const admin of admins) {
+                      await db.insert(notifications).values({
+                        userId: admin.id,
+                        type: "payment_received",
+                        title: "Enquiry Payment Received — Booking Created",
+                        message: `Booking #${newBooking.id} auto-created from Enquiry #${enquiryIdFromRef}! Advance ₹${amountPaid} received from ${enq.guestName || 'Guest'}`,
+                        soundType: "payment",
+                        relatedId: newBooking.id,
+                        relatedType: "booking",
+                      });
+                    }
+                  } catch (notifErr) {
+                    console.warn(`[Webhook] Admin notification failed for enquiry payment:`, notifErr);
+                  }
+
+                  console.log(`[RazorPay Webhook] ✅ Enquiry #${enquiryIdFromRef} auto-confirmed → Booking #${newBooking.id} created`);
+                }
+              } else {
+                console.log(`[RazorPay Webhook] Enquiry #${enquiryIdFromRef} already confirmed or not found — skipping`);
+              }
+            } catch (enqErr: any) {
+              console.error(`[RazorPay Webhook] Error processing enquiry payment:`, enqErr.message);
+            }
+          }
+
+          return res.json({ status: "ok" });
+        }
+        // ── END ENQUIRY PAYMENT ──────────────────────────────────────────────
+
         // Check if this is an advance payment (reference_id starts with "advance_")
         const isAdvancePayment = reference_id.startsWith("advance_");
         
@@ -7789,12 +7916,31 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const paymentLinkUrl = paymentLink.shortUrl || paymentLink.paymentLink;
       console.log(`[Enquiry Payment] Payment link created: ${paymentLinkUrl}`);
 
-      // Send via WhatsApp using Authkey
-      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "29412";
+      // Fetch property details for WhatsApp template
+      const enquiryProperty = enquiry.propertyId ? await storage.getProperty(enquiry.propertyId) : null;
+      const enquiryPropertyName = enquiryProperty?.name || "Hotel";
+      const enquiryCheckIn = enquiry.checkInDate ? format(new Date(enquiry.checkInDate), "dd MMM yyyy") : "N/A";
+      const enquiryCheckOut = enquiry.checkOutDate ? format(new Date(enquiry.checkOutDate), "dd MMM yyyy") : "N/A";
+      const enquiryGuests = String(enquiry.numberOfGuests || 1);
+      const enquiryTotalAmount = enquiry.priceQuoted
+        ? parseFloat(String(enquiry.priceQuoted)).toLocaleString('en-IN')
+        : advanceAmount.toFixed(2);
+
+      // Send via WhatsApp using Authkey — WID 30424 (7 variables)
+      // {{1}}=guest_name {{2}}=property_name {{3}}=check_in {{4}}=check_out {{5}}=guests {{6}}=total_amount {{7}}=payment_link
+      const templateId = process.env.AUTHKEY_WA_SPLIT_PAYMENT || "30424";
       const result = await sendCustomWhatsAppMessage(
         enquiry.guestPhone,
         templateId,
-        [enquiry.guestName, `₹${advanceAmount.toFixed(2)}`, paymentLinkUrl]
+        [
+          enquiry.guestName,
+          enquiryPropertyName,
+          enquiryCheckIn,
+          enquiryCheckOut,
+          enquiryGuests,
+          enquiryTotalAmount,
+          paymentLinkUrl,
+        ]
       );
 
       if (result.success) {
