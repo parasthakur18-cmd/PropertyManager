@@ -923,6 +923,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Broadcast real-time SSE event to all connected staff clients
+      try {
+        const roomInfoSse = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+        eventBus.publish({
+          type: 'order.placed',
+          propertyId: orderData.propertyId ?? undefined,
+          data: {
+            id: order.id,
+            roomNumber: roomInfoSse?.roomNumber ?? null,
+            totalAmount: order.totalAmount,
+            orderType: order.orderType,
+          },
+        });
+      } catch (sseErr: any) {
+        console.warn('[SSE] Failed to broadcast public order.placed:', sseErr.message);
+      }
+
       res.status(201).json(order);
     } catch (error: any) {
       console.error("Public order error:", error);
@@ -6784,7 +6801,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       } catch (notifError: any) {
         console.error(`[NOTIFICATIONS] Failed to create order notification:`, notifError.message);
       }
-      
+
+      // Broadcast real-time SSE event so all connected clients update instantly
+      try {
+        const roomInfoSse = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+        eventBus.publish({
+          type: 'order.placed',
+          propertyId: orderData.propertyId ?? undefined,
+          data: {
+            id: order.id,
+            roomNumber: roomInfoSse?.roomNumber ?? null,
+            totalAmount: order.totalAmount,
+            orderType: order.orderType,
+          },
+        });
+      } catch (sseErr: any) {
+        console.warn('[SSE] Failed to broadcast order.placed:', sseErr.message);
+      }
+
       res.status(201).json(order);
     } catch (error: any) {
       if (error instanceof z.ZodError) {

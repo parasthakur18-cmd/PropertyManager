@@ -1,6 +1,27 @@
 import { queryClient } from './queryClient';
 import { toast } from '@/hooks/use-toast';
 
+// Play a short 3-beep alert sound using Web Audio API (no file needed)
+function playOrderAlertSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    [0, 0.45, 0.9].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.6, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.35);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.35);
+    });
+  } catch (_) {
+    // Silently ignore if audio is not available
+  }
+}
+
 export interface DomainEvent {
   id: string;
   type: string;
@@ -88,10 +109,15 @@ export function handleDomainEvent(event: DomainEvent) {
       queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/bookings/active'] });
       queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
-      
+
+      playOrderAlertSound();
+
       toast({
-        title: "New Order",
-        description: event.data.roomNumber ? `Room ${event.data.roomNumber}` : 'Café order',
+        title: "🍽️ New Food Order!",
+        description: event.data.roomNumber
+          ? `Room ${event.data.roomNumber} — ₹${event.data.totalAmount}`
+          : `Walk-in / Café — ₹${event.data.totalAmount}`,
+        duration: 8000,
       });
       break;
 
