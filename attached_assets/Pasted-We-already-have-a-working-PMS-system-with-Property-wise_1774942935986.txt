@@ -1,0 +1,147 @@
+We already have a working PMS system with:
+
+* Property-wise wallets (Cash + UPI/Bank)
+* All income and expenses recorded as wallet transactions
+* Daily closing system
+* Monthly and lease-based PnL per property
+* Strict property-level isolation (no mixing of transactions)
+
+Now we want to ADD a new financial control layer WITHOUT breaking existing logic.
+
+---
+
+### 🎯 GOAL
+
+Introduce:
+
+1. Property-to-Property Fund Transfer
+2. Expense Blocking (no negative wallet)
+3. Cash-in Source Tracking
+4. Clean PnL with Transfers included
+
+---
+
+### ⚠️ IMPORTANT RULE
+
+DO NOT start coding yet.
+
+First:
+
+* Analyze existing system structure
+* Ask all required questions
+* Identify edge cases
+* Propose architecture
+
+---
+
+### 🧠 FEATURES TO ADD
+
+#### 1. INTERNAL TRANSFER SYSTEM
+
+Allow transferring funds between properties.
+
+Example:
+
+* Transfer ₹10,000 from Property B → Property A
+
+System should:
+
+* Debit Property B wallet
+* Credit Property A wallet
+* Tag transaction as INTERNAL_TRANSFER
+* Store:
+
+  * from_property_id
+  * to_property_id
+  * reference / note
+
+---
+
+#### 2. EXPENSE BLOCKING
+
+Before any debit (expense, salary, lease, vendor payment):
+
+If:
+wallet_balance < amount
+
+Then:
+
+* BLOCK the transaction
+* Show message: "Insufficient balance"
+* Offer transfer option from another property
+
+---
+
+#### 3. CASH-IN SOURCE
+
+When manually adding money:
+
+System must ask:
+
+* Source:
+  [ ] External (Owner funding)
+  [ ] From another property
+
+If from property:
+→ trigger transfer logic
+
+---
+
+#### 4. PnL UPDATE
+
+Ensure PnL includes:
+
+Profit = Revenue − Expenses + Transfer In − Transfer Out
+
+---
+
+### 📦 EXISTING SYSTEM MUST REMAIN
+
+* Wallet logic
+* Daily closing
+* Salary deduction system
+* Booking/payment flow
+
+---
+
+### 🧩 YOUR TASK (VERY IMPORTANT)
+
+Before writing code:
+
+1. Analyze current wallet_transactions structure
+2. Check how balances are computed
+3. Check where expenses are validated
+4. Check how PnL is calculated
+5. Identify required schema changes (if any)
+6. Identify API changes
+7. Identify UI changes
+
+---
+
+### ❓ ASK ME QUESTIONS
+
+You MUST ask:
+
+* Do we allow partial transfers?
+* Can transfers happen between wallet types (Cash ↔ UPI)?
+* Should transfers affect daily closing?
+* Do we need approval system?
+* How to handle rollback if transfer fails?
+* Should transfers be reversible?
+
+---
+
+### 🧱 OUTPUT FORMAT
+
+Give:
+
+1. System design (flow)
+2. DB changes (if needed)
+3. API endpoints required
+4. UI changes required
+5. Edge cases
+6. Risks
+
+DO NOT WRITE CODE YET.
+
+Wait for my approval before development.
