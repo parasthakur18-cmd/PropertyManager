@@ -5775,7 +5775,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                     idType: null,
                     idNumber: null,
                     address: null,
-                    nationality: "Indian",
                   });
                   guestId = newGuest.id;
                 }
