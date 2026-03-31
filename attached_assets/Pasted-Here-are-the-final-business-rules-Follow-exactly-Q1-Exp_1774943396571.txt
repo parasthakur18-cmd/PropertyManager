@@ -1,0 +1,130 @@
+Here are the final business rules. Follow exactly.
+
+---
+
+### Q1 — Expense Blocking Level
+
+Check MUST be on the selected wallet only (NOT total property balance).
+
+Example:
+Cash = 500, UPI = 10,000
+Expense from Cash = 2,000
+
+→ BLOCK (because Cash wallet is insufficient)
+
+Do NOT combine wallet balances.
+
+---
+
+### Q2 — Cross-Wallet Transfers
+
+Transfers must be SAME wallet type only:
+
+Cash → Cash
+UPI/Bank → UPI/Bank
+
+Do NOT allow Cash → UPI or UPI → Cash via transfer.
+
+---
+
+### Q3 — Partial Transfers
+
+YES — partial transfers are allowed.
+
+Example:
+Property B has ₹7,000
+Property A needs ₹10,000
+
+→ Allow transfer of ₹7,000
+→ User can transfer remaining from another property
+
+---
+
+### Q4 — PnL Treatment
+
+Transfers must NOT affect PnL.
+
+Correct:
+
+Profit = Revenue − Expenses
+
+Transfers should be tracked separately as:
+
+* Transfer In
+* Transfer Out
+
+They must NOT be included in revenue or expense.
+
+---
+
+### Q5 — Daily Closing
+
+Transfers should be allowed even if previous day is closed.
+
+They must be recorded in the CURRENT open day only.
+
+Do NOT modify closed day balances.
+
+---
+
+### Q6 — Approval System
+
+No approval required.
+
+Transfers are instant for authorized users.
+
+---
+
+### Q7 — Reversibility
+
+Transfers should be reversible.
+
+DO NOT delete transactions.
+
+Instead:
+
+* Create reverse transactions
+* Maintain full audit trail
+
+Example:
+Original:
+B → -10,000
+A → +10,000
+
+Reverse:
+B → +10,000
+A → -10,000
+
+---
+
+### Q8 — Concurrency / Safety
+
+YES — implement database-level protection.
+
+Use:
+
+* DB transaction (atomic)
+* Row-level locking OR safe balance check
+
+This is mandatory to prevent negative balances.
+
+---
+
+### FINAL RULES
+
+* Do NOT break existing wallet system
+
+* Do NOT modify existing sources
+
+* Add new source types:
+
+  * internal_transfer
+  * external_funding
+
+* Transfers are NOT income
+
+* Transfers are NOT expense
+
+* Transfers are balance movement only
+
+* Expense must NEVER make wallet negative
