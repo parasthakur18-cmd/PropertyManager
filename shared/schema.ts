@@ -1670,6 +1670,7 @@ export const walletTransactions = pgTable("wallet_transactions", {
   referenceNumber: varchar("reference_number", { length: 100 }), // UTR, cheque no, receipt no
   transactionDate: date("transaction_date").notNull(),
   dayClosingId: integer("day_closing_id"), // Links to daily closing if locked
+  direction: varchar("direction", { length: 10 }), // 'in' | 'out' — only set for internal_transfer / external_funding
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1681,6 +1682,30 @@ export const insertWalletTransactionSchema = createInsertSchema(walletTransactio
 
 export type WalletTransaction = typeof walletTransactions.$inferSelect;
 export type InsertWalletTransaction = z.infer<typeof insertWalletTransactionSchema>;
+
+// Property Transfers — internal fund movements between properties
+export const propertyTransfers = pgTable("property_transfers", {
+  id: serial("id").primaryKey(),
+  fromPropertyId: integer("from_property_id").notNull().references(() => properties.id),
+  toPropertyId: integer("to_property_id").notNull().references(() => properties.id),
+  fromWalletId: integer("from_wallet_id").notNull().references(() => wallets.id),
+  toWalletId: integer("to_wallet_id").notNull().references(() => wallets.id),
+  walletType: varchar("wallet_type", { length: 20 }).notNull(), // 'cash' | 'upi'
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  referenceNote: text("reference_note"),
+  status: varchar("status", { length: 20 }).notNull().default("completed"), // 'completed' | 'reversed'
+  reversedById: integer("reversed_by_id"), // points to the reversal transfer id
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPropertyTransferSchema = createInsertSchema(propertyTransfers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PropertyTransfer = typeof propertyTransfers.$inferSelect;
+export type InsertPropertyTransfer = z.infer<typeof insertPropertyTransferSchema>;
 
 // Daily Closing - locks day's transactions and stores final balances
 export const dailyClosings = pgTable("daily_closings", {

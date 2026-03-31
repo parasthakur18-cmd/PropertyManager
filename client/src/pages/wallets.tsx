@@ -13,13 +13,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Wallet, CreditCard, Banknote, ArrowUpRight, ArrowDownRight, Clock, Lock, RefreshCw, AlertTriangle, CheckCircle2, Download, Eye, Trash2, Pencil } from "lucide-react";
+import { Plus, Wallet, CreditCard, Banknote, ArrowUpRight, ArrowDownRight, Clock, Lock, RefreshCw, AlertTriangle, CheckCircle2, Download, Eye, Trash2, Pencil, ArrowLeftRight, Building2, TrendingUp, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import type { Property, Wallet as WalletType, WalletTransaction, DailyClosing } from "@shared/schema";
+import type { Property, Wallet as WalletType, WalletTransaction, DailyClosing, PropertyTransfer } from "@shared/schema";
 
 const walletFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -48,7 +48,7 @@ export default function Wallets() {
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<WalletType | null>(null);
   const [editingWallet, setEditingWallet] = useState<WalletType | null>(null);
-  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "closings" | "reports">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "transfers" | "closings" | "reports">("overview");
   const [reportStartDate, setReportStartDate] = useState<string>(new Date(new Date().setDate(1)).toISOString().split("T")[0]);
   const [reportEndDate, setReportEndDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -59,8 +59,45 @@ export default function Wallets() {
   const [txSourceFilter, setTxSourceFilter] = useState<string>("all");
   const [txSearch, setTxSearch] = useState<string>("");
 
+  // Transfer & Top-up state
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
+  const [isTopupDialogOpen, setIsTopupDialogOpen] = useState(false);
+  const [transferSourceWallet, setTransferSourceWallet] = useState<WalletType | null>(null);
+  const [topupTargetWallet, setTopupTargetWallet] = useState<WalletType | null>(null);
+  const [transferToPropertyId, setTransferToPropertyId] = useState<string>("");
+  const [transferToWalletId, setTransferToWalletId] = useState<string>("");
+  const [transferAmount, setTransferAmount] = useState<string>("");
+  const [transferNote, setTransferNote] = useState<string>("");
+  const [topupAmount, setTopupAmount] = useState<string>("");
+  const [topupNote, setTopupNote] = useState<string>("");
+  const [topupDate, setTopupDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
+  });
+
+  // Wallets of the selected "transfer-to" property (for transfer modal)
+  const { data: toPropertyWallets = [] } = useQuery<WalletType[]>({
+    queryKey: ["/api/wallets", parseInt(transferToPropertyId) || 0],
+    queryFn: async () => {
+      if (!transferToPropertyId) return [];
+      const r = await fetch(`/api/wallets?propertyId=${transferToPropertyId}`);
+      if (!r.ok) throw new Error("Failed to fetch wallets");
+      return r.json();
+    },
+    enabled: !!transferToPropertyId,
+  });
+
+  // Transfers for current property
+  const { data: transfers = [] } = useQuery<PropertyTransfer[]>({
+    queryKey: ["/api/transfers", selectedProperty],
+    queryFn: async () => {
+      if (!selectedProperty) return [];
+      const r = await fetch(`/api/transfers?propertyId=${selectedProperty}`);
+      if (!r.ok) throw new Error("Failed to fetch transfers");
+      return r.json();
+    },
+    enabled: !!selectedProperty,
   });
 
   const { data: wallets = [], isLoading: walletsLoading } = useQuery<WalletType[]>({
@@ -270,6 +307,90 @@ export default function Wallets() {
     },
   });
 
+  const transferMutation = useMutation({
+    mutationFn: async () => {
+      if (!transferSourceWallet || !selectedProperty) throw new Error("No source wallet selected");
+      const r = await apiRequest("/api/transfers", "POST", {
+        fromPropertyId: selectedProperty,
+        toPropertyId: parseInt(transferToPropertyId),
+        fromWalletId: transferSourceWallet.id,
+        toWalletId: parseInt(transferToWalletId),
+        amount: parseFloat(transferAmount),
+        referenceNote: transferNote || null,
+      });
+      if (!r.ok) {
+        const body = await r.json();
+        const err: any = new Error(body.message || "Transfer failed");
+        err.code = body.code;
+        err.available = body.available;
+        throw err;
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transfers", selectedProperty] });
+      setIsTransferDialogOpen(false);
+      setTransferSourceWallet(null);
+      setTransferToPropertyId("");
+      setTransferToWalletId("");
+      setTransferAmount("");
+      setTransferNote("");
+      toast({ title: "Transfer complete", description: `₹${parseFloat(transferAmount).toLocaleString()} transferred successfully.` });
+    },
+    onError: (error: any) => {
+      toast({
+        title: error.code === "INSUFFICIENT_BALANCE" ? "Insufficient Balance" : "Transfer Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const topupMutation = useMutation({
+    mutationFn: async () => {
+      if (!topupTargetWallet || !selectedProperty) throw new Error("No wallet selected");
+      const r = await apiRequest(`/api/wallets/${topupTargetWallet.id}/topup`, "POST", {
+        propertyId: selectedProperty,
+        amount: parseFloat(topupAmount),
+        referenceNote: topupNote || null,
+        transactionDate: topupDate,
+      });
+      if (!r.ok) { const b = await r.json(); throw new Error(b.message || "Top-up failed"); }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions", selectedProperty] });
+      setIsTopupDialogOpen(false);
+      setTopupTargetWallet(null);
+      setTopupAmount("");
+      setTopupNote("");
+      toast({ title: "Funds added", description: `₹${parseFloat(topupAmount).toLocaleString()} added as external funding.` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const reverseTransferMutation = useMutation({
+    mutationFn: async (transferId: number) => {
+      const r = await apiRequest(`/api/transfers/${transferId}/reverse`, "POST", {});
+      if (!r.ok) { const b = await r.json(); throw new Error(b.message || "Reversal failed"); }
+      return r.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/transfers", selectedProperty] });
+      toast({ title: "Transfer reversed", description: "The transfer has been reversed and funds restored." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Reversal failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const closeDayMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("/api/daily-closings/close", "POST", {
@@ -413,6 +534,9 @@ export default function Wallets() {
       case "refund": return "Refund";
       case "manual": return "Manual Entry";
       case "extra_service_payment": return "Extra Service";
+      case "internal_transfer": return "Property Transfer";
+      case "external_funding": return "External Funding";
+      case "opening_balance": return "Opening Balance";
       default: return source?.replace(/_/g, " ") || "Other";
     }
   };
@@ -429,6 +553,8 @@ export default function Wallets() {
       case "refund": return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
       case "manual": return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
       case "extra_service_payment": return "bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200";
+      case "internal_transfer": return "bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-200";
+      case "external_funding": return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200";
       default: return "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200";
     }
   };
@@ -670,6 +796,7 @@ export default function Wallets() {
             <TabsList>
               <TabsTrigger value="overview" data-testid="tab-overview">Wallets</TabsTrigger>
               <TabsTrigger value="transactions" data-testid="tab-transactions">Transactions</TabsTrigger>
+              <TabsTrigger value="transfers" data-testid="tab-transfers">Transfers</TabsTrigger>
               <TabsTrigger value="closings" data-testid="tab-closings">Daily Closings</TabsTrigger>
               <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             </TabsList>
@@ -730,14 +857,49 @@ export default function Wallets() {
                                 <span>{wallet.upiId}</span>
                               </div>
                             )}
-                            <div className="flex gap-2 pt-2">
+                            <div className="flex gap-2 pt-2 flex-wrap">
                               <Button 
                                 size="sm" 
                                 onClick={(e) => { e.stopPropagation(); handleAddTransaction(wallet); }}
                                 data-testid={`button-add-transaction-${wallet.id}`}
                               >
                                 <Plus className="h-4 w-4 mr-1" />
-                                Transaction
+                                Record
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTopupTargetWallet(wallet);
+                                  setTopupAmount("");
+                                  setTopupNote("");
+                                  setTopupDate(new Date().toISOString().split("T")[0]);
+                                  setIsTopupDialogOpen(true);
+                                }}
+                                data-testid={`button-topup-wallet-${wallet.id}`}
+                                title="Add external funds (owner/investor)"
+                              >
+                                <TrendingUp className="h-4 w-4 mr-1" />
+                                Add Funds
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTransferSourceWallet(wallet);
+                                  setTransferToPropertyId("");
+                                  setTransferToWalletId("");
+                                  setTransferAmount("");
+                                  setTransferNote("");
+                                  setIsTransferDialogOpen(true);
+                                }}
+                                data-testid={`button-transfer-wallet-${wallet.id}`}
+                                title="Transfer funds to another property"
+                              >
+                                <ArrowLeftRight className="h-4 w-4 mr-1" />
+                                Transfer
                               </Button>
                               <Button 
                                 size="sm" 
@@ -916,6 +1078,112 @@ export default function Wallets() {
                       </ScrollArea>
                     );
                   })()}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="transfers" className="mt-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Property Transfers</CardTitle>
+                      <CardDescription>Internal fund movements between properties — not counted in P&L</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {transfers.length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground">
+                      <ArrowLeftRight className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                      <p>No transfers recorded yet.</p>
+                      <p className="text-sm mt-1">Use the "Transfer" button on a wallet card to move funds between properties.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-muted-foreground text-xs uppercase">
+                            <th className="text-left py-2 pr-4">Date</th>
+                            <th className="text-left py-2 pr-4">Direction</th>
+                            <th className="text-left py-2 pr-4">Other Property</th>
+                            <th className="text-left py-2 pr-4">Type</th>
+                            <th className="text-right py-2 pr-4">Amount</th>
+                            <th className="text-left py-2 pr-4">Note</th>
+                            <th className="text-left py-2">Status</th>
+                            <th className="text-right py-2">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {transfers.map((t) => {
+                            const isOut = t.fromPropertyId === selectedProperty;
+                            const otherPropertyId = isOut ? t.toPropertyId : t.fromPropertyId;
+                            const otherProperty = properties.find(p => p.id === otherPropertyId);
+                            return (
+                              <tr key={t.id} className="border-b hover:bg-muted/30" data-testid={`row-transfer-${t.id}`}>
+                                <td className="py-2 pr-4 text-muted-foreground">
+                                  {t.createdAt ? format(new Date(t.createdAt), "dd MMM yyyy") : "—"}
+                                </td>
+                                <td className="py-2 pr-4">
+                                  {isOut ? (
+                                    <span className="flex items-center gap-1 text-red-600 font-medium">
+                                      <ArrowUpRight className="h-4 w-4" /> Sent
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                      <ArrowDownRight className="h-4 w-4" /> Received
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <span className="flex items-center gap-1">
+                                    <Building2 className="h-3 w-3 text-muted-foreground" />
+                                    {otherProperty?.name || `Property #${otherPropertyId}`}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-4">
+                                  <Badge variant="outline" className="text-xs capitalize">{t.walletType}</Badge>
+                                </td>
+                                <td className="py-2 pr-4 text-right font-mono font-semibold">
+                                  <span className={isOut ? "text-red-600" : "text-emerald-600"}>
+                                    {isOut ? "−" : "+"}₹{parseFloat(t.amount.toString()).toLocaleString()}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-4 text-muted-foreground max-w-[180px] truncate">
+                                  {t.referenceNote || "—"}
+                                </td>
+                                <td className="py-2 pr-4">
+                                  {t.status === "reversed" ? (
+                                    <Badge variant="secondary" className="text-xs">Reversed</Badge>
+                                  ) : (
+                                    <Badge className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">Completed</Badge>
+                                  )}
+                                </td>
+                                <td className="py-2 text-right">
+                                  {t.status === "completed" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        if (confirm(`Reverse transfer of ₹${parseFloat(t.amount.toString()).toLocaleString()}? This will restore funds to the original wallet.`)) {
+                                          reverseTransferMutation.mutate(t.id);
+                                        }
+                                      }}
+                                      disabled={reverseTransferMutation.isPending}
+                                      data-testid={`button-reverse-transfer-${t.id}`}
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                                      Reverse
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1550,6 +1818,198 @@ export default function Wallets() {
             >
               <Lock className="h-4 w-4 mr-2" />
               Close Day
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── TRANSFER DIALOG ── */}
+      <Dialog open={isTransferDialogOpen} onOpenChange={(o) => { if (!o) setIsTransferDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-transfer-funds">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowLeftRight className="h-5 w-5 text-primary" />
+              Transfer Funds to Another Property
+            </DialogTitle>
+            <DialogDescription>
+              Only same-type wallets (Cash→Cash, UPI→UPI). Transfers are balance movements — not income or expense.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Source */}
+            <div className="rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs text-muted-foreground mb-1">From wallet</p>
+              <p className="font-semibold">{transferSourceWallet?.name} — {properties.find(p => p.id === selectedProperty)?.name}</p>
+              <p className="text-sm text-muted-foreground">
+                Available: <span className="font-mono font-medium text-foreground">₹{parseFloat(transferSourceWallet?.currentBalance?.toString() || "0").toLocaleString()}</span>
+                {" "}({transferSourceWallet?.type === "cash" ? "Cash" : "UPI/Bank"})
+              </p>
+            </div>
+
+            {/* Destination property */}
+            <div className="space-y-1.5">
+              <Label>To Property</Label>
+              <Select value={transferToPropertyId} onValueChange={(v) => { setTransferToPropertyId(v); setTransferToWalletId(""); }}>
+                <SelectTrigger data-testid="select-transfer-to-property">
+                  <SelectValue placeholder="Select property..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {properties.filter(p => p.id !== selectedProperty).map(p => (
+                    <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Destination wallet */}
+            {transferToPropertyId && (
+              <div className="space-y-1.5">
+                <Label>To Wallet</Label>
+                <Select value={transferToWalletId} onValueChange={setTransferToWalletId}>
+                  <SelectTrigger data-testid="select-transfer-to-wallet">
+                    <SelectValue placeholder="Select wallet..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {toPropertyWallets
+                      .filter(w => {
+                        const srcType = transferSourceWallet?.type === "cash" ? "cash" : "upi";
+                        const dstType = w.type === "cash" ? "cash" : "upi";
+                        return srcType === dstType;
+                      })
+                      .map(w => (
+                        <SelectItem key={w.id} value={String(w.id)}>
+                          {w.name} (₹{parseFloat(w.currentBalance?.toString() || "0").toLocaleString()})
+                        </SelectItem>
+                      ))
+                    }
+                    {toPropertyWallets.filter(w => {
+                      const srcType = transferSourceWallet?.type === "cash" ? "cash" : "upi";
+                      const dstType = w.type === "cash" ? "cash" : "upi";
+                      return srcType === dstType;
+                    }).length === 0 && (
+                      <div className="p-3 text-sm text-muted-foreground text-center">
+                        No matching {transferSourceWallet?.type === "cash" ? "Cash" : "UPI/Bank"} wallet in that property
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Amount */}
+            <div className="space-y-1.5">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Enter amount"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+                data-testid="input-transfer-amount"
+              />
+              {transferAmount && parseFloat(transferAmount) > parseFloat(transferSourceWallet?.currentBalance?.toString() || "0") && (
+                <p className="text-xs text-destructive">
+                  Exceeds available balance. Maximum ₹{parseFloat(transferSourceWallet?.currentBalance?.toString() || "0").toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            {/* Note */}
+            <div className="space-y-1.5">
+              <Label>Reference Note (optional)</Label>
+              <Input
+                placeholder="e.g. Emergency cover for March salary"
+                value={transferNote}
+                onChange={(e) => setTransferNote(e.target.value)}
+                data-testid="input-transfer-note"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={transferMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => transferMutation.mutate()}
+              disabled={
+                transferMutation.isPending ||
+                !transferToPropertyId ||
+                !transferToWalletId ||
+                !transferAmount ||
+                parseFloat(transferAmount) <= 0 ||
+                parseFloat(transferAmount) > parseFloat(transferSourceWallet?.currentBalance?.toString() || "0")
+              }
+              data-testid="button-confirm-transfer"
+            >
+              {transferMutation.isPending ? "Transferring..." : `Transfer ₹${transferAmount ? parseFloat(transferAmount).toLocaleString() : "0"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── ADD FUNDS (TOP-UP) DIALOG ── */}
+      <Dialog open={isTopupDialogOpen} onOpenChange={(o) => { if (!o) setIsTopupDialogOpen(false); }}>
+        <DialogContent className="sm:max-w-sm" data-testid="dialog-add-funds">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+              Add External Funds
+            </DialogTitle>
+            <DialogDescription>
+              Record owner or investor capital injection into this wallet. This appears as "External Funding" — excluded from P&L revenue.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg border p-3 bg-muted/40">
+              <p className="text-xs text-muted-foreground mb-1">Adding to</p>
+              <p className="font-semibold">{topupTargetWallet?.name}</p>
+              <p className="text-sm text-muted-foreground">
+                Current balance: <span className="font-mono font-medium text-foreground">₹{parseFloat(topupTargetWallet?.currentBalance?.toString() || "0").toLocaleString()}</span>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Enter amount"
+                value={topupAmount}
+                onChange={(e) => setTopupAmount(e.target.value)}
+                data-testid="input-topup-amount"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={topupDate}
+                onChange={(e) => setTopupDate(e.target.value)}
+                data-testid="input-topup-date"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Note (optional)</Label>
+              <Input
+                placeholder="e.g. Owner capital injection — March 2026"
+                value={topupNote}
+                onChange={(e) => setTopupNote(e.target.value)}
+                data-testid="input-topup-note"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTopupDialogOpen(false)} disabled={topupMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => topupMutation.mutate()}
+              disabled={topupMutation.isPending || !topupAmount || parseFloat(topupAmount) <= 0}
+              data-testid="button-confirm-topup"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {topupMutation.isPending ? "Adding..." : `Add ₹${topupAmount ? parseFloat(topupAmount).toLocaleString() : "0"}`}
             </Button>
           </DialogFooter>
         </DialogContent>

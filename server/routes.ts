@@ -9215,6 +9215,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       );
       res.json(transaction);
     } catch (error: any) {
+      if (error?.code === 'INSUFFICIENT_BALANCE') {
+        return res.status(422).json({
+          code: 'INSUFFICIENT_BALANCE',
+          message: error.message,
+          available: error.available,
+          required: error.required,
+          walletId: error.walletId,
+          walletName: error.walletName,
+        });
+      }
       res.status(500).json({ message: error.message });
     }
   });
@@ -9247,6 +9257,109 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.json(transaction);
     } catch (error: any) {
       console.error('[Wallet] Error setting opening balance:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== WALLET TOP-UP (External Funding) =====
+
+  app.post("/api/wallets/:id/topup", isAuthenticated, async (req, res) => {
+    try {
+      const walletId = parseInt(req.params.id);
+      const { propertyId, amount, referenceNote, transactionDate } = req.body;
+      const userId = req.session?.userId || null;
+
+      if (!amount || parseFloat(amount) <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+      if (!propertyId) return res.status(400).json({ message: "propertyId is required" });
+
+      const transaction = await storage.topupWallet(
+        walletId,
+        parseInt(propertyId),
+        parseFloat(amount),
+        referenceNote || null,
+        transactionDate ? new Date(transactionDate) : new Date(),
+        userId
+      );
+      res.json(transaction);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ===== PROPERTY TRANSFERS =====
+
+  // List transfers for a property (both incoming and outgoing)
+  app.get("/api/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId) return res.status(400).json({ message: "propertyId is required" });
+      const transfers = await storage.getPropertyTransfers(propertyId);
+      res.json(transfers);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Create a new transfer
+  app.post("/api/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const { fromPropertyId, toPropertyId, fromWalletId, toWalletId, amount, referenceNote } = req.body;
+      const userId = req.session?.userId || null;
+
+      if (!fromPropertyId || !toPropertyId || !fromWalletId || !toWalletId || !amount) {
+        return res.status(400).json({ message: "fromPropertyId, toPropertyId, fromWalletId, toWalletId, amount are required" });
+      }
+      if (parseFloat(amount) <= 0) {
+        return res.status(400).json({ message: "Amount must be greater than 0" });
+      }
+
+      const transfer = await storage.createPropertyTransfer(
+        parseInt(fromPropertyId),
+        parseInt(toPropertyId),
+        parseInt(fromWalletId),
+        parseInt(toWalletId),
+        parseFloat(amount),
+        referenceNote || null,
+        userId
+      );
+      res.status(201).json(transfer);
+    } catch (error: any) {
+      if (error?.code === 'INSUFFICIENT_BALANCE') {
+        return res.status(422).json({
+          code: 'INSUFFICIENT_BALANCE',
+          message: error.message,
+          available: error.available,
+          required: error.required,
+          walletId: error.walletId,
+          walletName: error.walletName,
+        });
+      }
+      if (error?.code === 'WALLET_TYPE_MISMATCH') {
+        return res.status(422).json({ code: 'WALLET_TYPE_MISMATCH', message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reverse a transfer
+  app.post("/api/transfers/:id/reverse", isAuthenticated, async (req, res) => {
+    try {
+      const transferId = parseInt(req.params.id);
+      const userId = req.session?.userId || null;
+      const transfer = await storage.reversePropertyTransfer(transferId, userId);
+      res.json(transfer);
+    } catch (error: any) {
+      if (error?.code === 'INSUFFICIENT_BALANCE') {
+        return res.status(422).json({
+          code: 'INSUFFICIENT_BALANCE',
+          message: error.message,
+          available: error.available,
+          required: error.required,
+          walletId: error.walletId,
+        });
+      }
       res.status(500).json({ message: error.message });
     }
   });

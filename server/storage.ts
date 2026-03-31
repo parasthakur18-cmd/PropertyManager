@@ -134,6 +134,8 @@ import {
   type LeaseYearOverride,
   type InsertLeaseYearOverride,
   pushSubscriptions,
+  propertyTransfers,
+  type PropertyTransfer,
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
@@ -457,6 +459,12 @@ export interface IStorage {
   createWalletTransaction(transaction: InsertWalletTransaction): Promise<WalletTransaction>;
   recordPaymentToWallet(propertyId: number, walletId: number, amount: number, source: string, sourceId: number | null, description: string, referenceNumber: string | null, transactionDate: Date, createdBy: string | null): Promise<WalletTransaction>;
   recordExpenseFromWallet(propertyId: number, walletId: number, amount: number, source: string, sourceId: number | null, description: string, referenceNumber: string | null, transactionDate: Date, createdBy: string | null): Promise<WalletTransaction>;
+
+  // Property Transfer operations
+  createPropertyTransfer(fromPropertyId: number, toPropertyId: number, fromWalletId: number, toWalletId: number, amount: number, referenceNote: string | null, createdBy: string | null): Promise<PropertyTransfer>;
+  reversePropertyTransfer(transferId: number, createdBy: string | null): Promise<PropertyTransfer>;
+  getPropertyTransfers(propertyId: number): Promise<PropertyTransfer[]>;
+  topupWallet(walletId: number, propertyId: number, amount: number, referenceNote: string | null, transactionDate: Date, createdBy: string | null): Promise<WalletTransaction>;
   
   // Daily Closing operations
   getDailyClosingsByProperty(propertyId: number): Promise<DailyClosing[]>;
@@ -5059,6 +5067,21 @@ export class DatabaseStorage implements IStorage {
     if (!wallet) throw new Error('Wallet not found');
     
     const currentBalance = parseFloat(wallet.currentBalance?.toString() || '0');
+
+    // ── BALANCE GUARD ──────────────────────────────────────────────────────────
+    if (currentBalance < amount) {
+      const err: any = new Error(
+        `Insufficient balance in ${wallet.name}. Available ₹${currentBalance.toFixed(2)}, required ₹${amount.toFixed(2)}.`
+      );
+      err.code = 'INSUFFICIENT_BALANCE';
+      err.available = currentBalance;
+      err.required = amount;
+      err.walletId = walletId;
+      err.walletName = wallet.name;
+      throw err;
+    }
+    // ──────────────────────────────────────────────────────────────────────────
+
     const newBalance = currentBalance - amount;
     
     // Update wallet balance
@@ -5499,6 +5522,223 @@ export class DatabaseStorage implements IStorage {
       new Date(),
       userId
     );
+  }
+
+  // ===== PROPERTY TRANSFER OPERATIONS =====
+
+  async createPropertyTransfer(
+    fromPropertyId: number,
+    toPropertyId: number,
+    fromWalletId: number,
+    toWalletId: number,
+    amount: number,
+    referenceNote: string | null,
+    createdBy: string | null
+  ): Promise<PropertyTransfer> {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Validate
+    if (fromPropertyId === toPropertyId) throw new Error('Cannot transfer between the same property');
+    if (amount <= 0) throw new Error('Transfer amount must be greater than zero');
+
+    // Use a raw transaction for atomicity + row-level locking
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Row-lock both wallets
+      const { rows: [fromW] } = await client.query(
+        'SELECT * FROM wallets WHERE id = $1 FOR UPDATE', [fromWalletId]
+      );
+      const { rows: [toW] } = await client.query(
+        'SELECT * FROM wallets WHERE id = $1 FOR UPDATE', [toWalletId]
+      );
+
+      if (!fromW) throw new Error('Source wallet not found');
+      if (!toW) throw new Error('Destination wallet not found');
+
+      // Normalise wallet type
+      const normType = (t: string) => (t === 'cash' ? 'cash' : 'upi');
+      if (normType(fromW.type) !== normType(toW.type)) {
+        throw Object.assign(new Error('Wallet types must match (Cash→Cash or UPI→UPI)'), { code: 'WALLET_TYPE_MISMATCH' });
+      }
+
+      // Balance guard
+      const fromBalance = parseFloat(fromW.current_balance || '0');
+      if (fromBalance < amount) {
+        throw Object.assign(
+          new Error(`Insufficient balance in ${fromW.name}. Available ₹${fromBalance.toFixed(2)}, required ₹${amount.toFixed(2)}.`),
+          { code: 'INSUFFICIENT_BALANCE', available: fromBalance, required: amount, walletId: fromWalletId, walletName: fromW.name }
+        );
+      }
+
+      // Insert transfer record
+      const { rows: [transfer] } = await client.query(
+        `INSERT INTO property_transfers
+          (from_property_id, to_property_id, from_wallet_id, to_wallet_id, wallet_type, amount, reference_note, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'completed',$8)
+         RETURNING *`,
+        [fromPropertyId, toPropertyId, fromWalletId, toWalletId, normType(fromW.type), amount.toFixed(2), referenceNote, createdBy]
+      );
+
+      // Debit source wallet
+      const fromNew = (fromBalance - amount).toFixed(2);
+      await client.query('UPDATE wallets SET current_balance = $1 WHERE id = $2', [fromNew, fromWalletId]);
+      await client.query(
+        `INSERT INTO wallet_transactions
+          (wallet_id, property_id, transaction_type, amount, balance_after, source, source_id, description, reference_number, transaction_date, direction, created_by)
+         VALUES ($1,$2,'debit',$3,$4,'internal_transfer',$5,$6,$7,$8,'out',$9)`,
+        [fromWalletId, fromPropertyId, amount.toFixed(2), fromNew,
+         transfer.id,
+         `Transfer to Property #${toPropertyId}${referenceNote ? ': ' + referenceNote : ''}`,
+         `TRF-${transfer.id}`, today, createdBy]
+      );
+
+      // Credit destination wallet
+      const toBalance = parseFloat(toW.current_balance || '0');
+      const toNew = (toBalance + amount).toFixed(2);
+      await client.query('UPDATE wallets SET current_balance = $1 WHERE id = $2', [toNew, toWalletId]);
+      await client.query(
+        `INSERT INTO wallet_transactions
+          (wallet_id, property_id, transaction_type, amount, balance_after, source, source_id, description, reference_number, transaction_date, direction, created_by)
+         VALUES ($1,$2,'credit',$3,$4,'internal_transfer',$5,$6,$7,$8,'in',$9)`,
+        [toWalletId, toPropertyId, amount.toFixed(2), toNew,
+         transfer.id,
+         `Transfer from Property #${fromPropertyId}${referenceNote ? ': ' + referenceNote : ''}`,
+         `TRF-${transfer.id}`, today, createdBy]
+      );
+
+      await client.query('COMMIT');
+      console.log(`[Transfer] ₹${amount} from Property #${fromPropertyId} → Property #${toPropertyId} (TRF-${transfer.id})`);
+      return this._mapTransfer(transfer);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async reversePropertyTransfer(transferId: number, createdBy: string | null): Promise<PropertyTransfer> {
+    // Fetch original transfer
+    const [original] = await db.select().from(propertyTransfers).where(eq(propertyTransfers.id, transferId));
+    if (!original) throw new Error('Transfer not found');
+    if (original.status === 'reversed') throw new Error('Transfer has already been reversed');
+
+    const amount = parseFloat(original.amount.toString());
+    const today = new Date().toISOString().split('T')[0];
+    const note = `Reversal of TRF-${original.id}${original.referenceNote ? ': ' + original.referenceNote : ''}`;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Row-lock both wallets (reversed direction)
+      const { rows: [toW] } = await client.query('SELECT * FROM wallets WHERE id = $1 FOR UPDATE', [original.toWalletId]);
+      const { rows: [fromW] } = await client.query('SELECT * FROM wallets WHERE id = $1 FOR UPDATE', [original.fromWalletId]);
+      if (!fromW || !toW) throw new Error('Wallet not found during reversal');
+
+      // Balance guard on destination wallet (it will be debited back)
+      const toBalance = parseFloat(toW.current_balance || '0');
+      if (toBalance < amount) {
+        throw Object.assign(
+          new Error(`Insufficient balance to reverse. ${toW.name} has ₹${toBalance.toFixed(2)}, need ₹${amount.toFixed(2)}.`),
+          { code: 'INSUFFICIENT_BALANCE', available: toBalance, required: amount, walletId: original.toWalletId }
+        );
+      }
+
+      // Create reversal transfer record
+      const { rows: [reversal] } = await client.query(
+        `INSERT INTO property_transfers
+          (from_property_id, to_property_id, from_wallet_id, to_wallet_id, wallet_type, amount, reference_note, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'completed',$8)
+         RETURNING *`,
+        [original.toPropertyId, original.fromPropertyId, original.toWalletId, original.fromWalletId,
+         original.walletType, original.amount, note, createdBy]
+      );
+
+      // Mark original as reversed
+      await client.query(
+        'UPDATE property_transfers SET status=$1, reversed_by_id=$2 WHERE id=$3',
+        ['reversed', reversal.id, transferId]
+      );
+
+      // Debit destination wallet (returns money)
+      const toNew = (toBalance - amount).toFixed(2);
+      await client.query('UPDATE wallets SET current_balance = $1 WHERE id = $2', [toNew, original.toWalletId]);
+      await client.query(
+        `INSERT INTO wallet_transactions
+          (wallet_id, property_id, transaction_type, amount, balance_after, source, source_id, description, reference_number, transaction_date, direction, created_by)
+         VALUES ($1,$2,'debit',$3,$4,'internal_transfer',$5,$6,$7,$8,'out',$9)`,
+        [original.toWalletId, original.toPropertyId, amount.toFixed(2), toNew,
+         reversal.id, note, `TRF-${reversal.id}`, today, createdBy]
+      );
+
+      // Credit source wallet (gets money back)
+      const fromBalance = parseFloat(fromW.current_balance || '0');
+      const fromNew = (fromBalance + amount).toFixed(2);
+      await client.query('UPDATE wallets SET current_balance = $1 WHERE id = $2', [fromNew, original.fromWalletId]);
+      await client.query(
+        `INSERT INTO wallet_transactions
+          (wallet_id, property_id, transaction_type, amount, balance_after, source, source_id, description, reference_number, transaction_date, direction, created_by)
+         VALUES ($1,$2,'credit',$3,$4,'internal_transfer',$5,$6,$7,$8,'in',$9)`,
+        [original.fromWalletId, original.fromPropertyId, amount.toFixed(2), fromNew,
+         reversal.id, note, `TRF-${reversal.id}`, today, createdBy]
+      );
+
+      await client.query('COMMIT');
+      console.log(`[Transfer] Reversed TRF-${transferId} via TRF-${reversal.id}`);
+      return this._mapTransfer(reversal);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getPropertyTransfers(propertyId: number): Promise<PropertyTransfer[]> {
+    const { rows } = await pool.query(
+      `SELECT * FROM property_transfers
+       WHERE from_property_id = $1 OR to_property_id = $1
+       ORDER BY created_at DESC`,
+      [propertyId]
+    );
+    return rows.map(this._mapTransfer);
+  }
+
+  async topupWallet(
+    walletId: number,
+    propertyId: number,
+    amount: number,
+    referenceNote: string | null,
+    transactionDate: Date,
+    createdBy: string | null
+  ): Promise<WalletTransaction> {
+    if (amount <= 0) throw new Error('Amount must be greater than zero');
+    return this.recordPaymentToWallet(
+      propertyId, walletId, amount,
+      'external_funding', null,
+      referenceNote || 'External funding (owner/investor)',
+      null, transactionDate, createdBy
+    );
+  }
+
+  private _mapTransfer(row: any): PropertyTransfer {
+    return {
+      id: row.id,
+      fromPropertyId: row.from_property_id,
+      toPropertyId: row.to_property_id,
+      fromWalletId: row.from_wallet_id,
+      toWalletId: row.to_wallet_id,
+      walletType: row.wallet_type,
+      amount: row.amount,
+      referenceNote: row.reference_note,
+      status: row.status,
+      reversedById: row.reversed_by_id,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+    };
   }
 }
 

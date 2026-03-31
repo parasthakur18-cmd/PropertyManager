@@ -472,6 +472,37 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_wallet_transactions_direction",
+    async run() {
+      if (!(await columnExists("wallet_transactions", "direction"))) {
+        await runRaw(`ALTER TABLE wallet_transactions ADD COLUMN direction VARCHAR(10)`);
+      }
+    },
+  },
+  {
+    name: "create_property_transfers",
+    async run() {
+      if (!(await tableExists("property_transfers"))) {
+        await runRaw(`
+          CREATE TABLE property_transfers (
+            id SERIAL PRIMARY KEY,
+            from_property_id INTEGER NOT NULL REFERENCES properties(id),
+            to_property_id INTEGER NOT NULL REFERENCES properties(id),
+            from_wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+            to_wallet_id INTEGER NOT NULL REFERENCES wallets(id),
+            wallet_type VARCHAR(20) NOT NULL,
+            amount DECIMAL(12,2) NOT NULL,
+            reference_note TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'completed',
+            reversed_by_id INTEGER,
+            created_by VARCHAR REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+          )
+        `);
+      }
+    },
+  },
+  {
     name: "consolidate_wallets_to_cash_and_upi",
     async run() {
       if (!(await tableExists("wallets"))) return;
