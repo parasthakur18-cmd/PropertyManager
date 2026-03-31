@@ -461,6 +461,17 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_orders_payment_fields",
+    async run() {
+      if (!(await columnExists("orders", "payment_status"))) {
+        await runRaw(`ALTER TABLE orders ADD COLUMN payment_status VARCHAR(20) DEFAULT 'unpaid'`);
+      }
+      if (!(await columnExists("orders", "payment_method"))) {
+        await runRaw(`ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20)`);
+      }
+    },
+  },
+  {
     name: "consolidate_wallets_to_cash_and_upi",
     async run() {
       if (!(await tableExists("wallets"))) return;

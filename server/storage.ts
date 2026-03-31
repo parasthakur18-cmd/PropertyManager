@@ -228,7 +228,7 @@ export interface IStorage {
   getOrdersByBooking(bookingId: number): Promise<Order[]>;
   createOrder(order: InsertOrder): Promise<Order>;
   updateOrder(id: number, order: Partial<InsertOrder>): Promise<Order>;
-  updateOrderStatus(id: number, status: string): Promise<Order>;
+  updateOrderStatus(id: number, status: string, extra?: Record<string, any>): Promise<Order>;
   deleteOrder(id: number): Promise<void>;
 
   // Extra Service operations
@@ -1298,10 +1298,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateOrderStatus(id: number, status: string): Promise<Order> {
+  async updateOrderStatus(id: number, status: string, extra?: Record<string, any>): Promise<Order> {
+    const setPayload: Record<string, any> = { status, updatedAt: new Date() };
+    if (extra?.paymentStatus) setPayload.paymentStatus = extra.paymentStatus;
+    if (extra?.paymentMethod) setPayload.paymentMethod = extra.paymentMethod;
     const [updated] = await db
       .update(orders)
-      .set({ status, updatedAt: new Date() })
+      .set(setPayload)
       .where(eq(orders.id, id))
       .returning();
     return updated;

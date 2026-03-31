@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2 } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,9 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { useAuth } from "@/hooks/useAuth";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Smartphone } from "lucide-react";
+
+// Payment dialog state type
+type PaymentDialogState = { open: false } | { open: true; orderId: number; total: number; customerName: string };
 
 const statusColors = {
   pending: "bg-amber-500 text-white",
@@ -55,6 +58,8 @@ export default function Kitchen() {
   });
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [paymentDialog, setPaymentDialog] = useState<PaymentDialogState>({ open: false });
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"cash" | "upi">("cash");
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -145,8 +150,8 @@ export default function Kitchen() {
   }, [orders, playNotification, toast]);
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
-      return await apiRequest(`/api/orders/${id}/status`, "PATCH", { status });
+    mutationFn: async ({ id, status, paymentMethod }: { id: number; status: string; paymentMethod?: string }) => {
+      return await apiRequest(`/api/orders/${id}/status`, "PATCH", { status, paymentMethod });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
@@ -290,7 +295,7 @@ export default function Kitchen() {
               <div className="flex items-center gap-2 flex-wrap">
                 <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
                   {orderType === "restaurant" ? (
-                    customerName || "Restaurant"
+                    customerName || "Dine-in Guest"
                   ) : showRoomNumber ? (
                     `Room ${roomNumber}${customerName ? ` - ${customerName}` : ""}`
                   ) : customerName ? (
@@ -349,6 +354,18 @@ export default function Kitchen() {
                 <span>Total</span>
                 <span className="font-mono" data-testid={`text-order-total-${order.id}`}>₹{order.totalAmount}</span>
               </div>
+              {/* Payment status for restaurant orders */}
+              {orderType === "restaurant" && (order.paymentStatus === "paid" ? (
+                <div className="flex items-center gap-1 mt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  <CheckCircle className="h-3 w-3" />
+                  Paid via {order.paymentMethod === "upi" ? "UPI" : "Cash"}
+                </div>
+              ) : order.status === "delivered" ? (
+                <div className="flex items-center gap-1 mt-1 text-xs text-orange-600 dark:text-orange-400">
+                  <Clock className="h-3 w-3" />
+                  Payment pending
+                </div>
+              ) : null)}
             </div>
 
             <div className="flex gap-2">
@@ -407,11 +424,25 @@ export default function Kitchen() {
               {order.status === "ready" && (
                 <Button
                   className="flex-1"
-                  onClick={() => updateStatusMutation.mutate({ id: order.id, status: "delivered" })}
+                  onClick={() => {
+                    if (orderType === "restaurant") {
+                      // Open payment dialog for walk-in/dine-in orders
+                      setSelectedPaymentMethod("cash");
+                      setPaymentDialog({
+                        open: true,
+                        orderId: order.id,
+                        total: parseFloat(order.totalAmount),
+                        customerName: customerName || "Dine-in Guest",
+                      });
+                    } else {
+                      // Room orders go to booking bill — mark delivered directly
+                      updateStatusMutation.mutate({ id: order.id, status: "delivered" });
+                    }
+                  }}
                   disabled={updateStatusMutation.isPending}
                   data-testid={`button-deliver-order-${order.id}`}
                 >
-                  Delivered
+                  {orderType === "restaurant" ? "Collect & Close" : "Delivered"}
                 </Button>
               )}
             </div>
@@ -780,6 +811,97 @@ export default function Kitchen() {
               data-testid="button-save-order"
             >
               {updateOrderMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment collection dialog for restaurant walk-in orders */}
+      <Dialog
+        open={paymentDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setPaymentDialog({ open: false });
+        }}
+      >
+        <DialogContent className="sm:max-w-sm" data-testid="dialog-payment-collection">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5 text-primary" />
+              Collect Payment
+            </DialogTitle>
+          </DialogHeader>
+
+          {paymentDialog.open && (
+            <div className="space-y-5 py-2">
+              <div className="rounded-lg border p-4 bg-muted/40">
+                <p className="text-sm text-muted-foreground">Customer</p>
+                <p className="font-medium">{paymentDialog.customerName}</p>
+                <p className="text-sm text-muted-foreground mt-2">Amount due</p>
+                <p className="text-2xl font-bold text-primary">₹{paymentDialog.total.toFixed(2)}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Payment method</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod("cash")}
+                    data-testid="button-payment-cash"
+                    className={`flex flex-col items-center justify-center gap-1.5 p-4 rounded-lg border-2 transition-colors
+                      ${selectedPaymentMethod === "cash"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    <Banknote className="h-6 w-6" />
+                    <span className="text-sm font-medium">Cash</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod("upi")}
+                    data-testid="button-payment-upi"
+                    className={`flex flex-col items-center justify-center gap-1.5 p-4 rounded-lg border-2 transition-colors
+                      ${selectedPaymentMethod === "upi"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    <SmartphoneIcon className="h-6 w-6" />
+                    <span className="text-sm font-medium">UPI</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPaymentDialog({ open: false })}
+              disabled={updateStatusMutation.isPending}
+              data-testid="button-cancel-payment"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!paymentDialog.open) return;
+                updateStatusMutation.mutate(
+                  {
+                    id: paymentDialog.orderId,
+                    status: "delivered",
+                    paymentMethod: selectedPaymentMethod,
+                  },
+                  {
+                    onSuccess: () => {
+                      setPaymentDialog({ open: false });
+                      toast({ title: `Payment recorded — ₹${paymentDialog.total.toFixed(2)} (${selectedPaymentMethod.toUpperCase()})` });
+                    },
+                  }
+                );
+              }}
+              disabled={updateStatusMutation.isPending}
+              data-testid="button-confirm-payment"
+            >
+              {updateStatusMutation.isPending ? "Processing..." : `Confirm ₹${paymentDialog.open ? paymentDialog.total.toFixed(2) : "0"}`}
             </Button>
           </DialogFooter>
         </DialogContent>

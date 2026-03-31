@@ -7118,10 +7118,43 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.patch("/api/orders/:id/status", isAuthenticated, async (req, res) => {
+  app.patch("/api/orders/:id/status", isAuthenticated, async (req: any, res) => {
     try {
-      const { status } = req.body;
-      const order = await storage.updateOrderStatus(parseInt(req.params.id), status);
+      const { status, paymentMethod } = req.body;
+      const orderId = parseInt(req.params.id);
+
+      // Build update payload
+      const updatePayload: Record<string, any> = { status };
+
+      // When a restaurant walk-in order is delivered with a payment method → mark as paid
+      if (status === "delivered" && paymentMethod) {
+        updatePayload.paymentStatus = "paid";
+        updatePayload.paymentMethod = paymentMethod;
+      }
+
+      const order = await storage.updateOrderStatus(orderId, status, updatePayload);
+
+      // Record to wallet for restaurant walk-in orders paid on delivery
+      if (status === "delivered" && paymentMethod && order?.propertyId && order?.orderType === "restaurant") {
+        try {
+          const auth = await getAuthenticatedTenant(req);
+          const userId = auth?.userId || null;
+          const amount = parseFloat(String(order.totalAmount || 0));
+          const desc = `Food order #${orderId} — ${order.customerName || "Dine-in Guest"}`;
+          await storage.recordFoodOrderPaymentToWallet(
+            order.propertyId,
+            orderId,
+            amount,
+            paymentMethod,
+            desc,
+            userId
+          );
+          console.log(`[Orders] Recorded ₹${amount} (${paymentMethod}) to wallet for order #${orderId}`);
+        } catch (walletErr: any) {
+          console.warn(`[Orders] Wallet recording failed for order #${orderId}:`, walletErr.message);
+        }
+      }
+
       res.json(order);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

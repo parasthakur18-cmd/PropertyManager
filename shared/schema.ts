@@ -450,6 +450,8 @@ export const orders = pgTable("orders", {
   orderType: varchar("order_type", { length: 50 }),
   customerName: varchar("customer_name", { length: 255 }),
   customerPhone: varchar("customer_phone", { length: 20 }),
+  paymentStatus: varchar("payment_status", { length: 20 }).default("unpaid"),
+  paymentMethod: varchar("payment_method", { length: 20 }),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
