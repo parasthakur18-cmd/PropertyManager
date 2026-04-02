@@ -1191,6 +1191,19 @@ export class DatabaseStorage implements IStorage {
           console.warn("[Storage] getAllOrders - Error creating booking map");
         }
         
+        // Build roomId → active booking map so orders without bookingId/guestId
+        // can still resolve the guest currently checked into that room
+        let roomToActiveBookingMap: Map<number, any> = new Map();
+        try {
+          for (const b of allBookings) {
+            if (b.status === 'checked-in' && b.roomId) {
+              roomToActiveBookingMap.set(Number(b.roomId), b);
+            }
+          }
+        } catch (e) {
+          console.warn("[Storage] getAllOrders - Error creating roomToActiveBookingMap");
+        }
+        
         try {
           guestMap = new Map(allGuests.map(g => [g.id, g]));
         } catch (e) {
@@ -1205,12 +1218,18 @@ export class DatabaseStorage implements IStorage {
             
             const room = roomIdNum ? roomMap.get(roomIdNum) : null;
             const booking = bookingIdNum ? bookingMap.get(bookingIdNum) : null;
-            // Look up guest via booking.guestId OR order.guestId (whichever is available)
+            // Fallback: if order has no bookingId/guestId, look up current active booking for this room
+            const fallbackBooking = (!booking && !order.guestId && roomIdNum)
+              ? roomToActiveBookingMap.get(roomIdNum)
+              : null;
+            // Resolve guestId: from linked booking → from order directly → from current room booking
             const guestIdNum = booking?.guestId
               ? Number(booking.guestId)
               : order.guestId
                 ? Number(order.guestId)
-                : null;
+                : fallbackBooking?.guestId
+                  ? Number(fallbackBooking.guestId)
+                  : null;
             const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
             
             return {
