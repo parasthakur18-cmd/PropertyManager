@@ -1913,7 +1913,27 @@ export default function Wallets() {
                 const srcBal = parseFloat(transferSourceWallet?.currentBalance?.toString() || "0");
                 const amt = parseFloat(transferAmount || "0");
                 if (srcBal <= 0) return (
-                  <p className="text-xs text-destructive">This wallet has no available funds to transfer.</p>
+                  <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 space-y-2">
+                    <p className="text-xs text-amber-800 dark:text-amber-200 font-medium">
+                      This wallet has no available funds. Add funds first, then transfer.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-7 border-amber-400 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                      onClick={() => {
+                        setIsTransferDialogOpen(false);
+                        setTopupTargetWallet(transferSourceWallet);
+                        setTopupAmount("");
+                        setTopupNote("");
+                        setTopupDate(new Date().toISOString().split("T")[0]);
+                        setIsTopupDialogOpen(true);
+                      }}
+                    >
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                      Add Funds to {transferSourceWallet?.name}
+                    </Button>
+                  </div>
                 );
                 if (transferAmount && amt > srcBal) return (
                   <p className="text-xs text-destructive">
