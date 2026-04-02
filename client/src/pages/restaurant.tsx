@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from "@/hooks/useAuth";
+import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Smartphone } from "lucide-react";
 
@@ -57,13 +58,16 @@ export default function Kitchen() {
     order: null,
   });
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
   const [paymentDialog, setPaymentDialog] = useState<PaymentDialogState>({ open: false });
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"cash" | "upi">("cash");
 
-  const { data: properties } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-  });
+  // Global property selection — synced with dashboard via localStorage
+  const {
+    selectedPropertyId,
+    setSelectedPropertyId,
+    availableProperties,
+    showPropertySwitcher,
+  } = usePropertyFilter();
 
   // Auto-prompt push subscription when the kitchen page loads
   useEffect(() => {
@@ -113,14 +117,6 @@ export default function Kitchen() {
   const { data: menuItems } = useQuery<any[]>({
     queryKey: ["/api/menu-items"],
   });
-
-  // Filter properties based on user's assigned properties
-  const availableProperties = useMemo(() => {
-    return properties?.filter(p => {
-      if (user?.role === 'super_admin') return true;
-      return user?.assignedPropertyIds?.includes(String(p.id));
-    }) || [];
-  }, [properties, user]);
 
   // Filter orders by selected property
   const filteredOrdersByProperty = useMemo(() => {
