@@ -9,10 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type MenuItem, type Property } from "@shared/schema";
+import { type MenuItem } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/useAuth";
+import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 
 interface CartItem extends MenuItem {
   quantity: number;
@@ -26,7 +26,6 @@ export default function QuickOrder() {
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [restaurantCustomerType, setRestaurantCustomerType] = useState<RestaurantCustomerType>("walk-in");
   const [selectedRoom, setSelectedRoom] = useState<string>("");
-  const [selectedWalkInPropertyId, setSelectedWalkInPropertyId] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -34,19 +33,14 @@ export default function QuickOrder() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
   const { toast } = useToast();
-  const { user } = useAuth();
 
-  const { data: properties = [] } = useQuery<Property[]>({
-    queryKey: ["/api/properties"],
-  });
-
-  // Properties accessible to this user
-  const availableProperties = useMemo(() => {
-    return properties.filter(p => {
-      if (user?.role === 'admin' || user?.role === 'super-admin') return true;
-      return (user?.assignedPropertyIds || []).includes(String(p.id));
-    });
-  }, [properties, user]);
+  // Global property selection — synced with dashboard via localStorage
+  const {
+    selectedPropertyId,
+    setSelectedPropertyId,
+    availableProperties,
+    showPropertySwitcher,
+  } = usePropertyFilter();
 
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
@@ -122,18 +116,29 @@ export default function QuickOrder() {
     return item ? item.quantity : 0;
   };
 
-  // Get unique categories from menu items
-  const categories = useMemo(() => {
+  // Only menu items belonging to the selected property
+  const propertyMenuItems = useMemo(() => {
     if (!menuItems) return [];
-    const uniqueCategories = Array.from(new Set(menuItems.map(item => item.category || "Uncategorized")));
+    if (!selectedPropertyId) return menuItems;
+    return menuItems.filter(item => item.propertyId === selectedPropertyId);
+  }, [menuItems, selectedPropertyId]);
+
+  // Only rooms belonging to the selected property
+  const filteredRooms = useMemo(() => {
+    if (!roomsWithGuests) return [];
+    if (!selectedPropertyId) return roomsWithGuests;
+    return roomsWithGuests.filter(r => r.propertyId === selectedPropertyId);
+  }, [roomsWithGuests, selectedPropertyId]);
+
+  // Get unique categories from property-filtered menu items
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(new Set(propertyMenuItems.map(item => item.category || "Uncategorized")));
     return uniqueCategories.sort();
-  }, [menuItems]);
+  }, [propertyMenuItems]);
 
   // Filter menu items by search term and category, sort by sequence
   const filteredMenuItems = useMemo(() => {
-    if (!menuItems) return [];
-    
-    let filtered = menuItems;
+    let filtered = propertyMenuItems;
     
     // Filter by category
     if (selectedCategoryFilter) {
@@ -155,7 +160,7 @@ export default function QuickOrder() {
       const seqB = b.displayOrder ?? 9999;
       return seqA - seqB;
     });
-  }, [menuItems, searchTerm, selectedCategoryFilter]);
+  }, [propertyMenuItems, searchTerm, selectedCategoryFilter]);
 
   const handleNextStep = () => {
     if (step === 1 && !orderType) {
@@ -196,10 +201,10 @@ export default function QuickOrder() {
             });
             return;
           }
-          if (!selectedWalkInPropertyId && availableProperties.length > 1) {
+          if (!selectedPropertyId && availableProperties.length > 1) {
             toast({
               title: "Property Required",
-              description: "Please select which property this order is for",
+              description: "Please select a property using the selector above",
               variant: "destructive",
             });
             return;
@@ -254,10 +259,10 @@ export default function QuickOrder() {
     if (orderType === "room") {
       orderData.roomId = parseInt(selectedRoom);
       // Also include guest name, phone, bookingId, and propertyId for room orders
-      const roomGuest = roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom));
+      const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
       if (roomGuest) {
-        orderData.propertyId = roomGuest.propertyId; // Get property from room
-        orderData.bookingId = roomGuest.bookingId; // Link order to booking for checkout
+        orderData.propertyId = roomGuest.propertyId;
+        orderData.bookingId = roomGuest.bookingId;
         orderData.customerName = roomGuest.guestName;
         orderData.customerPhone = roomGuest.guestPhone || "";
       }
@@ -265,21 +270,16 @@ export default function QuickOrder() {
       if (restaurantCustomerType === "in-house") {
         // In-house guest at café - link to their room bill
         orderData.roomId = parseInt(selectedRoom);
-        const roomGuest = roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom));
+        const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
         if (roomGuest) {
-          orderData.propertyId = roomGuest.propertyId; // Get property from room
-          orderData.bookingId = roomGuest.bookingId; // Link to booking for auto-merge to bill
+          orderData.propertyId = roomGuest.propertyId;
+          orderData.bookingId = roomGuest.bookingId;
           orderData.customerName = roomGuest.guestName;
           orderData.customerPhone = roomGuest.guestPhone || "";
         }
       } else {
-        // Walk-in customer — use selected property, or auto-pick if only one
-        const walkinPropertyId = selectedWalkInPropertyId
-          ? parseInt(selectedWalkInPropertyId)
-          : availableProperties.length === 1
-            ? availableProperties[0].id
-            : null;
-        orderData.propertyId = walkinPropertyId;
+        // Walk-in customer — use globally selected property
+        orderData.propertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
         orderData.customerName = customerName;
         orderData.customerPhone = customerPhone;
       }
@@ -310,11 +310,44 @@ export default function QuickOrder() {
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
-          <Phone className="h-8 w-8 text-primary" />
-          Quick Order Entry
-        </h1>
-        <p className="text-muted-foreground mt-1">Take orders from guests - Step {step} of 3</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
+              <Phone className="h-8 w-8 text-primary" />
+              Quick Order Entry
+            </h1>
+            <p className="text-muted-foreground mt-1">Take orders from guests - Step {step} of 3</p>
+          </div>
+          {showPropertySwitcher && (
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Select
+                value={selectedPropertyId?.toString() ?? ""}
+                onValueChange={(v) => {
+                  setSelectedPropertyId(v ? parseInt(v) : null);
+                  // Reset form when property changes
+                  setStep(1);
+                  setOrderType(null);
+                  setCart([]);
+                  setSelectedRoom("");
+                  setSelectedCategoryFilter(null);
+                  setSearchTerm("");
+                }}
+              >
+                <SelectTrigger className="w-52" data-testid="select-quick-order-property">
+                  <SelectValue placeholder="Select property" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableProperties.map(p => (
+                    <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-quick-order-property-${p.id}`}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Step 1: Order Type Selection */}
@@ -385,9 +418,9 @@ export default function QuickOrder() {
                     <div className="text-sm text-destructive p-3 border border-destructive rounded-md">
                       Error loading rooms. Please try again.
                     </div>
-                  ) : roomsWithGuests && roomsWithGuests.length === 0 ? (
+                  ) : filteredRooms.length === 0 ? (
                     <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                      No rooms with checked-in guests available. Please check in a guest first.
+                      No rooms with checked-in guests for this property.
                     </div>
                   ) : (
                     <Select value={selectedRoom} onValueChange={setSelectedRoom}>
@@ -395,7 +428,7 @@ export default function QuickOrder() {
                         <SelectValue placeholder="Select room with checked-in guest" />
                       </SelectTrigger>
                       <SelectContent>
-                        {roomsWithGuests?.map((room) => (
+                        {filteredRooms.map((room) => (
                           <SelectItem key={room.roomId} value={room.roomId.toString()}>
                             Room {room.roomNumber} - {room.guestName}
                           </SelectItem>
@@ -447,27 +480,6 @@ export default function QuickOrder() {
                   {/* Show appropriate fields based on customer type */}
                   {restaurantCustomerType === "walk-in" ? (
                     <>
-                      {availableProperties.length > 1 && (
-                        <div>
-                          <Label htmlFor="walkin-property">Property / Restaurant *</Label>
-                          <Select value={selectedWalkInPropertyId} onValueChange={setSelectedWalkInPropertyId}>
-                            <SelectTrigger id="walkin-property" data-testid="select-walkin-property">
-                              <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
-                              <SelectValue placeholder="Select which property this order is for" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableProperties.map(p => (
-                                <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-walkin-property-${p.id}`}>
-                                  {p.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            This links the order to the correct property kitchen
-                          </p>
-                        </div>
-                      )}
                       <div>
                         <Label htmlFor="customer-name">Customer Name *</Label>
                         <Input
@@ -498,9 +510,9 @@ export default function QuickOrder() {
                         <div className="text-sm text-destructive p-3 border border-destructive rounded-md">
                           Error loading rooms. Please try again.
                         </div>
-                      ) : roomsWithGuests && roomsWithGuests.length === 0 ? (
+                      ) : filteredRooms.length === 0 ? (
                         <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                          No checked-in guests available. Please check in a guest first.
+                          No checked-in guests for this property.
                         </div>
                       ) : (
                         <Select value={selectedRoom} onValueChange={setSelectedRoom}>
@@ -508,7 +520,7 @@ export default function QuickOrder() {
                             <SelectValue placeholder="Select guest's room" />
                           </SelectTrigger>
                           <SelectContent>
-                            {roomsWithGuests?.map((room) => (
+                            {filteredRooms.map((room) => (
                               <SelectItem key={room.roomId} value={room.roomId.toString()}>
                                 Room {room.roomNumber} - {room.guestName}
                               </SelectItem>
@@ -595,7 +607,7 @@ export default function QuickOrder() {
                         onClick={() => setSelectedCategoryFilter(null)}
                         data-testid="badge-quick-category-all"
                       >
-                        All Categories ({menuItems?.length || 0})
+                        All Categories ({propertyMenuItems.length})
                       </Badge>
                       {categories.map((cat) => (
                         <Badge
@@ -605,7 +617,7 @@ export default function QuickOrder() {
                           onClick={() => setSelectedCategoryFilter(cat)}
                           data-testid={`badge-quick-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
                         >
-                          {cat} ({menuItems?.filter(item => (item.category || "Uncategorized") === cat).length || 0})
+                          {cat} ({propertyMenuItems.filter(item => (item.category || "Uncategorized") === cat).length})
                         </Badge>
                       ))}
                     </div>
@@ -711,13 +723,13 @@ export default function QuickOrder() {
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Room:</span>
                         <span className="font-medium">
-                          {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
+                          {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Guest:</span>
                         <span className="font-medium">
-                          {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
+                          {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
                         </span>
                       </div>
                     </>
@@ -732,13 +744,13 @@ export default function QuickOrder() {
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Room:</span>
                             <span className="font-medium">
-                              {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
+                              {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
                             </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="text-muted-foreground">Guest:</span>
                             <span className="font-medium">
-                              {roomsWithGuests?.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
+                              {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
                             </span>
                           </div>
                         </>
