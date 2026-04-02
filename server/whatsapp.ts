@@ -238,12 +238,10 @@ export async function sendCheckInNotification(
   foodOrderLink: string,
   templateIdOverride?: string
 ): Promise<WhatsAppResponse> {
-  // Use override if provided, otherwise pick template by property name:
-  // 28769 → Woodpecker Inn only | 29292 → all other properties
+  // Use override if provided (routes.ts always passes the correct one based on property name)
+  // 28769 → Woodpecker Inn ONLY | 29292 → all other properties
   const isWoodpecker = propertyName.toLowerCase().includes("woodpecker");
-  const templateId = templateIdOverride
-    || process.env.AUTHKEY_WA_CHECKIN_DETAILS
-    || (isWoodpecker ? "28769" : "29292");
+  const templateId = templateIdOverride || (isWoodpecker ? "28769" : "29292");
 
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";

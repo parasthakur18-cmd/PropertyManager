@@ -3856,9 +3856,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                   : "https://hostezee.in";
                 const foodOrderLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(roomNumbers)}`;
                 // Send check-in notification
-                // Template 28769 → Woodpecker Inn | Template 29292 → all other properties
+                // Template 28769 → Woodpecker Inn ONLY | Template 29292 → all other properties
                 const isWoodpeckerProperty = propertyName.toLowerCase().includes("woodpecker");
-                const checkinTemplateId = process.env.AUTHKEY_WA_CHECKIN_DETAILS || (isWoodpeckerProperty ? "28769" : "29292");
+                const checkinTemplateId = isWoodpeckerProperty ? "28769" : "29292";
                 await sendCheckInNotification(guest.phone, guestName, propertyName, foodOrderLink, checkinTemplateId);
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${checkinTemplateId}, property: ${propertyName})`);
               } else {
