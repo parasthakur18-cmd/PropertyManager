@@ -229,6 +229,15 @@ export default function QuickOrder() {
       return;
     }
 
+    if (orderType === "restaurant" && restaurantCustomerType === "walk-in" && !customerName.trim()) {
+      toast({
+        title: "Customer Name Required",
+        description: "Please enter the customer's name before submitting",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const orderData: any = {
       items: cart.map((item) => ({
         id: item.id,

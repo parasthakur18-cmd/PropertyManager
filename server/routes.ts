@@ -6804,6 +6804,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const { tenant } = auth;
 
       let orderData = insertOrderSchema.parse(req.body) as any;
+
+      // Require customerName for restaurant walk-in orders (no room linked)
+      if (orderData.orderType === "restaurant" && !orderData.roomId && !orderData.customerName?.trim()) {
+        return res.status(400).json({ message: "Customer name is required for restaurant walk-in orders." });
+      }
       
       // If order has bookingId but no guestId, automatically set guestId from booking
       if (orderData.bookingId && !orderData.guestId) {
