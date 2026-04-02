@@ -1826,8 +1826,8 @@ export default function Wallets() {
 
       {/* ── TRANSFER DIALOG ── */}
       <Dialog open={isTransferDialogOpen} onOpenChange={(o) => { if (!o) setIsTransferDialogOpen(false); }}>
-        <DialogContent className="sm:max-w-md" data-testid="dialog-transfer-funds">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md flex flex-col max-h-[90vh]" data-testid="dialog-transfer-funds">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <ArrowLeftRight className="h-5 w-5 text-primary" />
               Transfer Funds to Another Property
@@ -1836,7 +1836,7 @@ export default function Wallets() {
               Only same-type wallets (Cash→Cash, UPI→UPI). Transfers are balance movements — not income or expense.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto flex-1 pr-1">
             {/* Source */}
             <div className="rounded-lg border p-3 bg-muted/40">
               <p className="text-xs text-muted-foreground mb-1">From wallet</p>
@@ -1909,11 +1909,19 @@ export default function Wallets() {
                 onChange={(e) => setTransferAmount(e.target.value)}
                 data-testid="input-transfer-amount"
               />
-              {transferAmount && parseFloat(transferAmount) > parseFloat(transferSourceWallet?.currentBalance?.toString() || "0") && (
-                <p className="text-xs text-destructive">
-                  Exceeds available balance. Maximum ₹{parseFloat(transferSourceWallet?.currentBalance?.toString() || "0").toLocaleString()}
-                </p>
-              )}
+              {(() => {
+                const srcBal = parseFloat(transferSourceWallet?.currentBalance?.toString() || "0");
+                const amt = parseFloat(transferAmount || "0");
+                if (srcBal <= 0) return (
+                  <p className="text-xs text-destructive">This wallet has no available funds to transfer.</p>
+                );
+                if (transferAmount && amt > srcBal) return (
+                  <p className="text-xs text-destructive">
+                    Exceeds available balance. Maximum ₹{srcBal.toLocaleString()}
+                  </p>
+                );
+                return null;
+              })()}
             </div>
 
             {/* Note */}
@@ -1927,20 +1935,25 @@ export default function Wallets() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 pt-2 border-t">
             <Button variant="outline" onClick={() => setIsTransferDialogOpen(false)} disabled={transferMutation.isPending}>
               Cancel
             </Button>
             <Button
               onClick={() => transferMutation.mutate()}
-              disabled={
-                transferMutation.isPending ||
-                !transferToPropertyId ||
-                !transferToWalletId ||
-                !transferAmount ||
-                parseFloat(transferAmount) <= 0 ||
-                parseFloat(transferAmount) > parseFloat(transferSourceWallet?.currentBalance?.toString() || "0")
-              }
+              disabled={(() => {
+                const srcBal = parseFloat(transferSourceWallet?.currentBalance?.toString() || "0");
+                const amt = parseFloat(transferAmount || "0");
+                return (
+                  transferMutation.isPending ||
+                  !transferToPropertyId ||
+                  !transferToWalletId ||
+                  !transferAmount ||
+                  amt <= 0 ||
+                  srcBal <= 0 ||
+                  amt > srcBal
+                );
+              })()}
               data-testid="button-confirm-transfer"
             >
               {transferMutation.isPending ? "Transferring..." : `Transfer ₹${transferAmount ? parseFloat(transferAmount).toLocaleString() : "0"}`}
