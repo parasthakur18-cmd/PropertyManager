@@ -92,6 +92,11 @@ function cleanIndianPhoneNumber(phone: string): string {
  * Send WhatsApp message using authkey.io API
  */
 export async function sendWhatsAppMessage(params: WhatsAppMessageParams): Promise<WhatsAppResponse> {
+  if (params.templateId === "disabled") {
+    console.log(`[WhatsApp] Template disabled — skipping message to +${params.countryCode}-${params.mobile}`);
+    return { success: true, message: "Template disabled" };
+  }
+
   const authkey = process.env.AUTHKEY_API_KEY;
   
   if (!authkey) {
