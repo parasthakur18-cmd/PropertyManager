@@ -284,8 +284,8 @@ export default function Kitchen() {
     const hasCheckedInBooking = order.hasCheckedInBooking;
     const roomNumber = order.roomNumber;
     
-    // Only show room number if the room has an active checked-in booking
-    const showRoomNumber = orderType !== "restaurant" && hasCheckedInBooking && roomNumber;
+    // Show room number for any room-type order that has a room number
+    const showRoomNumber = orderType !== "restaurant" && roomNumber;
     
     return (
       <Card key={order.id} className="hover-elevate" data-testid={`card-order-${order.id}`}>

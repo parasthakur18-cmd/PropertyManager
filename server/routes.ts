@@ -896,27 +896,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn("[Push] Public order push failed:", pushErr.message);
       }
 
-      // Send WhatsApp staff alert (WID 29652) via alert routing system
+      // Send WhatsApp staff alert via alert routing system + Feature Settings phone numbers
       if (orderData.propertyId) {
         try {
-          const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", orderData.propertyId);
-          if (recipients.length > 0) {
-            const items = (order.items as any[]) || [];
-            const orderDetails = items
-              .map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`)
-              .join("\n");
-            const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
-            const roomLabel = roomInfo
-              ? `Room ${roomInfo.roomNumber}`
-              : order.customerName
-                ? "Restaurant / Walk-in"
-                : "Restaurant";
-            const guestLabel = order.customerName || "Guest";
+          const items = (order.items as any[]) || [];
+          const orderDetails = items
+            .map((i: any) => `${i.quantity}x ${i.name} - ₹${i.price}`)
+            .join("\n");
+          const roomInfo = orderData.roomId ? await storage.getRoom(orderData.roomId) : null;
+          const roomLabel = roomInfo
+            ? `Room ${roomInfo.roomNumber}`
+            : order.customerName
+              ? "Restaurant / Walk-in"
+              : "Restaurant";
+          const guestLabel = order.customerName || "Guest";
+          const totalStr = String(order.totalAmount);
+
+          // 1. Alert routing system (whatsapp_alert_rules)
+          try {
+            const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", orderData.propertyId);
             for (const phone of recipients) {
               if (!isRealPhone(phone)) continue;
-              await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, String(order.totalAmount));
+              await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalStr);
               console.log(`[WhatsApp] Food order alert sent to ${phone} for order #${order.id}`);
             }
+          } catch (waRouteErr: any) {
+            console.warn(`[WhatsApp] Food order alert routing failed:`, waRouteErr.message);
+          }
+
+          // 2. Feature Settings extra phone numbers (same as staff order route)
+          try {
+            const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(orderData.propertyId);
+            if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
+              for (const phone of foodOrderSettings.phoneNumbers) {
+                if (!isRealPhone(phone)) continue;
+                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalStr);
+                console.log(`[WhatsApp] Food order alert sent to Feature Settings number: ${phone}`);
+              }
+            }
+          } catch (waFeatErr: any) {
+            console.warn(`[WhatsApp] Food order Feature Settings alert failed:`, waFeatErr.message);
           }
         } catch (waStaffErr: any) {
           console.warn(`[WhatsApp] Food order staff alert failed (non-critical):`, waStaffErr.message);

@@ -1205,15 +1205,21 @@ export class DatabaseStorage implements IStorage {
             
             const room = roomIdNum ? roomMap.get(roomIdNum) : null;
             const booking = bookingIdNum ? bookingMap.get(bookingIdNum) : null;
-            const guestIdNum = booking?.guestId ? Number(booking.guestId) : null;
+            // Look up guest via booking.guestId OR order.guestId (whichever is available)
+            const guestIdNum = booking?.guestId
+              ? Number(booking.guestId)
+              : order.guestId
+                ? Number(order.guestId)
+                : null;
             const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
             
             return {
               ...order,
               roomStatus: room?.status || null,
               roomNumber: room?.roomNumber || null,
-              customerName: guest?.fullName || null,
-              customerPhone: guest?.phone || null,
+              // Prefer linked guest name, fall back to stored customerName on the order
+              customerName: guest?.fullName || order.customerName || null,
+              customerPhone: guest?.phone || order.customerPhone || null,
               hasCheckedInBooking: roomIdNum ? activeBookingRooms.has(roomIdNum) : false,
             };
           } catch (mapError: any) {
