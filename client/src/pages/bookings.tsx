@@ -292,13 +292,16 @@ export default function Bookings() {
   const editCheckOutDate = editForm.watch("checkOutDate");
 
   // Fetch room availability based on selected dates (for new booking)
-  const { data: roomAvailability } = useQuery({
-    queryKey: ["/api/rooms/availability", checkInDate, checkOutDate],
+  const { data: roomAvailability, isFetching: isAvailabilityFetching } = useQuery({
+    queryKey: ["/api/rooms/availability", checkInDate, checkOutDate, selectedPropertyId],
     enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate),
     queryFn: async () => {
-      const response = await fetch(
-        `/api/rooms/availability?checkIn=${checkInDate.toISOString()}&checkOut=${checkOutDate.toISOString()}`
-      );
+      const params = new URLSearchParams({
+        checkIn: checkInDate.toISOString(),
+        checkOut: checkOutDate.toISOString(),
+      });
+      if (selectedPropertyId) params.set("propertyId", selectedPropertyId.toString());
+      const response = await fetch(`/api/rooms/availability?${params}`);
       if (!response.ok) throw new Error("Failed to fetch availability");
       return response.json() as Promise<Array<{
         roomId: number;
@@ -358,9 +361,23 @@ export default function Bookings() {
   });
 
   // Helper function to get available rooms based on date-range availability
-  // Returns ALL rooms - availability is validated at booking time to prevent double-booking
+  // Filters rooms to only those with no conflicting bookings for the selected dates
   const getAvailableRooms = (isEditMode: boolean = false) => {
-    return rooms || [];
+    if (!rooms) return [];
+    const availability = isEditMode ? editRoomAvailability : roomAvailability;
+    // If dates are set and availability data is loaded, filter to available rooms only
+    const hasDateRange = isEditMode
+      ? !!(editCheckInDate && editCheckOutDate && editCheckInDate < editCheckOutDate)
+      : !!(checkInDate && checkOutDate && checkInDate < checkOutDate);
+    if (hasDateRange && availability) {
+      const availableIds = new Set(
+        availability
+          .filter(a => a.available > 0)
+          .map(a => a.roomId)
+      );
+      return rooms.filter(r => availableIds.has(r.id));
+    }
+    return rooms;
   };
 
   // Helper to filter rooms by booking type (dormitory vs non-dormitory)
@@ -1350,36 +1367,53 @@ export default function Bookings() {
                     <FormField
                       control={form.control}
                       name="roomId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Room</FormLabel>
-                          <Select
-                            onValueChange={(value) => {
-                              const roomId = parseInt(value);
-                              field.onChange(roomId);
-                            }}
-                            value={field.value ? field.value.toString() : undefined}
-                            disabled={!selectedPropertyId}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-booking-room">
-                                <SelectValue placeholder={selectedPropertyId ? "Select room" : "Select a property first"} />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {getRoomsForBookingType("single", { isEditMode: false }).map((room) => {
-                                const roomDescription = room.roomType || "Standard";
-                                return (
-                                  <SelectItem key={room.id} value={room.id.toString()}>
-                                    Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        const availableSingleRooms = getRoomsForBookingType("single", { isEditMode: false });
+                        const datesSelected = !!(checkInDate && checkOutDate && checkInDate < checkOutDate);
+                        const loadingAvailability = datesSelected && isAvailabilityFetching;
+                        const noRoomsAvailable = datesSelected && !isAvailabilityFetching && roomAvailability && availableSingleRooms.length === 0;
+                        return (
+                          <FormItem>
+                            <FormLabel>Room</FormLabel>
+                            {noRoomsAvailable ? (
+                              <div className="p-4 border border-dashed border-orange-300 rounded-md bg-orange-50 dark:bg-orange-950/20 text-center">
+                                <p className="text-sm font-medium text-orange-700 dark:text-orange-400">No rooms available for the selected dates</p>
+                                <p className="text-xs text-orange-600 dark:text-orange-500 mt-1">All rooms are booked for this period. Try different dates or a different property.</p>
+                              </div>
+                            ) : (
+                              <Select
+                                onValueChange={(value) => {
+                                  const roomId = parseInt(value);
+                                  field.onChange(roomId);
+                                }}
+                                value={field.value ? field.value.toString() : undefined}
+                                disabled={!selectedPropertyId || loadingAvailability}
+                              >
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-booking-room">
+                                    <SelectValue placeholder={
+                                      !selectedPropertyId ? "Select a property first" :
+                                      loadingAvailability ? "Checking availability..." :
+                                      "Select available room"
+                                    } />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {availableSingleRooms.map((room) => {
+                                    const roomDescription = room.roomType || "Standard";
+                                    return (
+                                      <SelectItem key={room.id} value={room.id.toString()}>
+                                        Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                   </TabsContent>
 
@@ -1488,6 +1522,12 @@ export default function Bookings() {
                       {!selectedPropertyId && (
                         <div className="border border-dashed border-border rounded-md p-6 text-center text-sm text-muted-foreground">
                           Select a property above to see available rooms
+                        </div>
+                      )}
+                      {selectedPropertyId && !!(checkInDate && checkOutDate && checkInDate < checkOutDate) && !isAvailabilityFetching && roomAvailability && getRoomsForBookingType("group", { isEditMode: false }).length === 0 && (
+                        <div className="p-4 border border-dashed border-orange-300 rounded-md bg-orange-50 dark:bg-orange-950/20 text-center">
+                          <p className="text-sm font-medium text-orange-700 dark:text-orange-400">No rooms available for the selected dates</p>
+                          <p className="text-xs text-orange-600 dark:text-orange-500 mt-1">All rooms are booked for this period. Try different dates or a different property.</p>
                         </div>
                       )}
                       <div className={`border border-border rounded-md max-h-64 overflow-y-auto ${!selectedPropertyId ? 'hidden' : ''}`}>

@@ -2371,14 +2371,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Get all active bookings and filter in JavaScript (historical working solution)
       const { bookings } = await import("@shared/schema");
       
-      // Fetch all non-cancelled bookings for the property
+      // Fetch all active bookings for the property (exclude cancelled + checked-out, same as conflict check)
       const allBookings = await db
         .select()
         .from(bookings)
         .where(
           propertyId 
-            ? and(eq(bookings.propertyId, Number(propertyId)), not(eq(bookings.status, "cancelled")))
-            : not(eq(bookings.status, "cancelled"))
+            ? and(
+                eq(bookings.propertyId, Number(propertyId)),
+                not(eq(bookings.status, "cancelled")),
+                not(eq(bookings.status, "checked-out"))
+              )
+            : and(
+                not(eq(bookings.status, "cancelled")),
+                not(eq(bookings.status, "checked-out"))
+              )
         );
       
       // Filter overlapping bookings using JavaScript Date comparison
