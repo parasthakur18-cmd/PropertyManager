@@ -471,7 +471,7 @@ export interface IStorage {
   getDailyClosingsByProperty(propertyId: number): Promise<DailyClosing[]>;
   getDailyClosing(propertyId: number, date: Date): Promise<DailyClosing | undefined>;
   createDailyClosing(closing: InsertDailyClosing): Promise<DailyClosing>;
-  closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string): Promise<DailyClosing>;
+  closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string | null): Promise<DailyClosing>;
   getDayStatus(propertyId: number, date: Date): Promise<{ isOpen: boolean; closing: DailyClosing | null }>;
   
   // Wallet balance utilities
@@ -5194,7 +5194,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string): Promise<DailyClosing> {
+  async closeDayForProperty(propertyId: number, closingDate: Date, closedBy: string | null): Promise<DailyClosing> {
     const dateStr = closingDate.toISOString().split('T')[0];
     
     // Get all wallets and their current balances

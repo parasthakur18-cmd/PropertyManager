@@ -9462,7 +9462,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.post("/api/daily-closings/close", isAuthenticated, async (req, res) => {
     try {
       const { propertyId, closingDate } = req.body;
-      const userId = req.session?.userId;
+      const userId = req.session?.userId || null;
       
       if (!propertyId) {
         return res.status(400).json({ message: "Property ID is required" });
@@ -9472,7 +9472,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const closing = await storage.closeDayForProperty(
         parseInt(propertyId),
         dateObj,
-        userId || 'system'
+        userId
       );
       res.json(closing);
     } catch (error: any) {
