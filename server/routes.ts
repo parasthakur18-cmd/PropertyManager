@@ -3374,8 +3374,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         
         if (conflictingBooking) {
           const room = await storage.getRoom(roomId);
+          // Try to fetch guest name so staff can identify the conflicting booking quickly
+          let guestLabel = "";
+          try {
+            if (conflictingBooking.guestId) {
+              const conflictGuest = await storage.getGuest(conflictingBooking.guestId);
+              if (conflictGuest?.fullName) {
+                guestLabel = ` (Booking #${conflictingBooking.id} — ${conflictGuest.fullName})`;
+              } else {
+                guestLabel = ` (Booking #${conflictingBooking.id})`;
+              }
+            } else {
+              guestLabel = ` (Booking #${conflictingBooking.id})`;
+            }
+          } catch (_) {
+            guestLabel = ` (Booking #${conflictingBooking.id})`;
+          }
           return res.status(400).json({ 
-            message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}. Please select different dates or a different room.`
+            message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}${guestLabel}. Please cancel or modify that booking first, or select different dates/room.`
           });
         }
       }
