@@ -36,6 +36,7 @@ import {
   wallets,
   walletTransactions,
   dailyClosings,
+  bookingRoomStays,
   type User,
   type UpsertUser,
   type Property,
@@ -722,16 +723,17 @@ export class DatabaseStorage implements IStorage {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const conditions: any[] = [
+    // --- 1. Individual bookings (bookings.roomId is set directly) ---
+    const individualConditions: any[] = [
       eq(bookings.status, "checked-in"),
       gte(bookings.checkOutDate, today),
+      eq(bookings.isGroupBooking, false),
     ];
-
     if (propertyIds && propertyIds.length > 0) {
-      conditions.push(inArray(rooms.propertyId, propertyIds));
+      individualConditions.push(inArray(rooms.propertyId, propertyIds));
     }
 
-    const roomsWithGuests = await db
+    const individualRooms = await db
       .select({
         roomId: rooms.id,
         roomNumber: rooms.roomNumber,
@@ -740,14 +742,53 @@ export class DatabaseStorage implements IStorage {
         guestName: guests.fullName,
         guestPhone: guests.phone,
         bookingId: bookings.id,
+        isGroupBooking: sql<boolean>`false`,
       })
       .from(rooms)
       .innerJoin(bookings, eq(bookings.roomId, rooms.id))
       .innerJoin(guests, eq(bookings.guestId, guests.id))
-      .where(and(...conditions))
+      .where(and(...individualConditions))
       .orderBy(rooms.roomNumber);
 
-    return roomsWithGuests;
+    // --- 2. Group bookings (rooms assigned via bookingRoomStays) ---
+    const groupConditions: any[] = [
+      eq(bookings.status, "checked-in"),
+      gte(bookings.checkOutDate, today),
+      eq(bookings.isGroupBooking, true),
+    ];
+    if (propertyIds && propertyIds.length > 0) {
+      groupConditions.push(inArray(rooms.propertyId, propertyIds));
+    }
+
+    const groupRooms = await db
+      .select({
+        roomId: rooms.id,
+        roomNumber: rooms.roomNumber,
+        roomType: rooms.roomType,
+        propertyId: rooms.propertyId,
+        guestName: guests.fullName,
+        guestPhone: guests.phone,
+        bookingId: bookings.id,
+        isGroupBooking: sql<boolean>`true`,
+      })
+      .from(bookingRoomStays)
+      .innerJoin(bookings, eq(bookings.id, bookingRoomStays.bookingId))
+      .innerJoin(rooms, eq(rooms.id, bookingRoomStays.roomId))
+      .innerJoin(guests, eq(guests.id, bookings.guestId))
+      .where(and(...groupConditions))
+      .orderBy(rooms.roomNumber);
+
+    // Merge and deduplicate by roomId (individual booking takes priority if same room appears in both)
+    const seen = new Set<number>();
+    const merged: any[] = [];
+    for (const row of [...individualRooms, ...groupRooms]) {
+      if (!seen.has(row.roomId)) {
+        seen.add(row.roomId);
+        merged.push(row);
+      }
+    }
+    merged.sort((a, b) => String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true }));
+    return merged;
   }
 
   // Guest operations

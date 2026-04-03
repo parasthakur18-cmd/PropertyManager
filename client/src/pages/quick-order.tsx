@@ -431,6 +431,7 @@ export default function QuickOrder() {
                         {filteredRooms.map((room) => (
                           <SelectItem key={room.roomId} value={room.roomId.toString()}>
                             Room {room.roomNumber} - {room.guestName}
+                            {room.isGroupBooking ? " 🏨 Group" : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -523,6 +524,7 @@ export default function QuickOrder() {
                             {filteredRooms.map((room) => (
                               <SelectItem key={room.roomId} value={room.roomId.toString()}>
                                 Room {room.roomNumber} - {room.guestName}
+                                {room.isGroupBooking ? " 🏨 Group" : ""}
                               </SelectItem>
                             ))}
                           </SelectContent>
