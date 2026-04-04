@@ -4776,31 +4776,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const advancePaymentNum = parseFloat(advancePayment || 0);
       const balanceDueNum = Math.max(0, calculatedBalanceDue);
       
-      // Check if prebill_message template is enabled
-      const prebillTemplateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'prebill_message');
-      const isPrebillEnabled = prebillTemplateSetting?.isEnabled !== false;
-      
-      if (!isPrebillEnabled) {
-        return res.status(400).json({ message: "Pre-bill WhatsApp messages are disabled for this property" });
-      }
-      
-      // Send pre-bill with balance due (after advance payment deduction)
-      const result = await sendPreBillNotification(
+      // Send pre-bill link directly via the custom template (19856)
+      // The guest can see full itemized details on the linked page
+      const linkMessage = `Here is your complete pre-bill for your stay. Room: ${booking.roomNumber || 'N/A'}, Balance Due: ₹${balanceDueNum.toFixed(2)}. View & confirm your bill here: ${preBillLink}`;
+      const result = await sendCustomWhatsAppMessage(
         phoneNumber,
-        guestName,
-        roomChargesNum.toFixed(2),
-        foodChargesNum.toFixed(2),
-        advancePaymentNum.toFixed(2),
-        balanceDueNum.toFixed(2)
+        process.env.AUTHKEY_WA_CUSTOM || "19856",
+        [guestName, linkMessage]
       );
 
       if (result.success) {
-        await sendCustomWhatsAppMessage(
-          phoneNumber,
-          process.env.AUTHKEY_WA_CUSTOM || "19856",
-          [guestName, `View complete bill details here: ${preBillLink}`]
-        );
-        
         res.json({ success: true, message: "Pre-bill sent successfully", preBillLink, token });
       } else {
         res.status(500).json({ message: result.error || "Failed to send pre-bill" });
