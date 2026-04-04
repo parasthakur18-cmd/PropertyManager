@@ -778,10 +778,42 @@ export class DatabaseStorage implements IStorage {
       .where(and(...groupConditions))
       .orderBy(rooms.roomNumber);
 
+    // --- 3. Group bookings using room_ids array (no bookingRoomStays entries — manually created bookings) ---
+    const propertyFilter = propertyIds && propertyIds.length > 0
+      ? sql`AND r.property_id = ANY(ARRAY[${sql.raw(propertyIds.join(','))}]::int[])`
+      : sql``;
+
+    const rawFallback = await db.execute(sql`
+      SELECT
+        r.id        AS "roomId",
+        r.room_number AS "roomNumber",
+        r.room_type   AS "roomType",
+        r.property_id AS "propertyId",
+        g.full_name   AS "guestName",
+        g.phone       AS "guestPhone",
+        b.id          AS "bookingId",
+        true          AS "isGroupBooking"
+      FROM bookings b
+      CROSS JOIN LATERAL unnest(b.room_ids) AS rid
+      INNER JOIN rooms  r ON r.id = rid
+      INNER JOIN guests g ON g.id = b.guest_id
+      WHERE b.status        = 'checked-in'
+        AND b.check_out_date >= ${today}
+        AND b.is_group_booking = true
+        AND b.room_ids IS NOT NULL
+        AND array_length(b.room_ids, 1) > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM booking_room_stays brs WHERE brs.booking_id = b.id
+        )
+        ${propertyFilter}
+      ORDER BY r.room_number
+    `);
+    const fallbackGroupRooms = (rawFallback.rows ?? rawFallback as any[]) as any[];
+
     // Merge and deduplicate by roomId (individual booking takes priority if same room appears in both)
     const seen = new Set<number>();
     const merged: any[] = [];
-    for (const row of [...individualRooms, ...groupRooms]) {
+    for (const row of [...individualRooms, ...groupRooms, ...fallbackGroupRooms]) {
       if (!seen.has(row.roomId)) {
         seen.add(row.roomId);
         merged.push(row);

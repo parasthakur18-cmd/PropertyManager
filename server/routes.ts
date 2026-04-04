@@ -3439,6 +3439,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
       
       const booking = await storage.createBooking(bookingData);
+
+      // For group bookings created manually, insert booking_room_stays rows
+      // so downstream queries (quick order, active bookings) can find the rooms
+      if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 0) {
+        try {
+          await db.insert(bookingRoomStays).values(
+            booking.roomIds.map((rId: number) => ({
+              bookingId: booking.id,
+              roomId: rId,
+              status: "tbs",
+            }))
+          );
+        } catch (staysErr: any) {
+          console.error(`[Booking] Failed to insert room stays for group booking #${booking.id}:`, staysErr.message);
+        }
+      }
       
       // Send response immediately - don't make user wait for notifications/emails/logs
       res.status(201).json(booking);
