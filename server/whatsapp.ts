@@ -788,6 +788,24 @@ export async function sendTaskReminder(
 }
 
 /**
+ * AUTHKEY_WA_PREBILL_LINK (WID 30849) — Pre-bill shareable link template
+ * 
+ * Template body:
+ * "Dear , {{1}}
+ *  Your pre-bill is ready for review.
+ *  Room: {{2}}
+ *  Balance Due: Rs. {{3}}
+ *  Please review your complete itemized bill and confirm here: {{4}}
+ *  For any questions, please contact our front desk."
+ *
+ * Variables (in order):
+ *  1. Guest name (e.g., "Rahul Sharma")
+ *  2. Room number (e.g., "101")
+ *  3. Balance due — numbers only, no ₹ (e.g., "3500.00")
+ *  4. Full pre-bill URL (e.g., "https://hostezee.in/guest/prebill/abc123")
+ */
+
+/**
  * Send custom WhatsApp message with custom template and variables
  * 
  * @param phoneNumber - Indian phone number (will be cleaned and formatted)

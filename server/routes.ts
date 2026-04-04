@@ -4776,13 +4776,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const advancePaymentNum = parseFloat(advancePayment || 0);
       const balanceDueNum = Math.max(0, calculatedBalanceDue);
       
-      // Send pre-bill link directly via the custom template (19856)
-      // The guest can see full itemized details on the linked page
-      const linkMessage = `Here is your complete pre-bill for your stay. Room: ${booking.roomNumber || 'N/A'}, Balance Due: ₹${balanceDueNum.toFixed(2)}. View & confirm your bill here: ${preBillLink}`;
+      // Send pre-bill link via dedicated template (WID 30849 / AUTHKEY_WA_PREBILL_LINK)
+      // Template: "Dear , {{1}} Your pre-bill is ready... Room: {{2}} Balance Due: Rs. {{3}} ...link: {{4}}"
       const result = await sendCustomWhatsAppMessage(
         phoneNumber,
-        process.env.AUTHKEY_WA_CUSTOM || "19856",
-        [guestName, linkMessage]
+        process.env.AUTHKEY_WA_PREBILL_LINK || "30849",
+        [
+          guestName,                          // {{1}} Guest name
+          booking.roomNumber || "N/A",         // {{2}} Room number
+          balanceDueNum.toFixed(2),            // {{3}} Balance due (numbers only, no ₹)
+          preBillLink,                         // {{4}} Full pre-bill URL
+        ]
       );
 
       if (result.success) {
