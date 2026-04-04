@@ -3819,6 +3819,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         updateData.actualCheckInTime = new Date();
       }
       
+      // Guard: if status is already what was requested, return the booking as-is
+      // (prevents duplicate WhatsApp messages when UI shows stale cache)
+      if (currentBooking.status === status) {
+        console.log(`[BookingStatus] Booking #${bookingId} is already '${status}' — returning current state without side effects`);
+        storage.invalidateBookingsCache();
+        return res.json(currentBooking);
+      }
+
       // Update booking status and actual check-in time if applicable
       const booking = await db
         .update(bookingsTable)
@@ -3833,6 +3841,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!booking) {
         return res.status(404).json({ message: "Failed to update booking" });
       }
+
+      // Always invalidate cache immediately so next GET /api/bookings is fresh
+      storage.invalidateBookingsCache();
       
       // Create in-app notification for status changes
       if (status === "checked-in" || status === "checked-out") {
