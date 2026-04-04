@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2 } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -182,6 +182,8 @@ export default function ActiveBookings() {
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
   const [billPreviewOpen, setBillPreviewOpen] = useState(false);
+  const [preBillLink, setPreBillLink] = useState<string | null>(null);
+  const [preBillLinkCopied, setPreBillLinkCopied] = useState(false);
   const [billPreviewBooking, setBillPreviewBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending");
@@ -304,6 +306,8 @@ export default function ActiveBookings() {
       setPaymentStatus("paid");
       setAutoCompletingCheckout(false);
       setCashAmount("");
+      setPreBillLink(null);
+      setPreBillLinkCopied(false);
     }
   }, [checkoutDialog.open]);
 
@@ -1922,7 +1926,10 @@ export default function ActiveBookings() {
                             const error = await res.json();
                             throw new Error(error.message || 'Failed to send pre-bill');
                           }
-                          toast({ title: "Success", description: "Pre-bill sent via WhatsApp" });
+                          const data = await res.json();
+                          setPreBillLink(data.preBillLink || null);
+                          setPreBillLinkCopied(false);
+                          toast({ title: "Pre-bill sent", description: "Guest will receive the bill link on WhatsApp" });
                         } catch (error: any) {
                           toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
                         }
@@ -1966,6 +1973,31 @@ export default function ActiveBookings() {
                       </Button>
                     )}
                   </div>
+
+                  {preBillLink && (
+                    <div className="rounded-md border border-teal-200 bg-teal-50 dark:bg-teal-950/20 dark:border-teal-800 p-3 space-y-1.5">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-teal-700 dark:text-teal-400">
+                        <Link2 className="h-3.5 w-3.5" />
+                        Pre-bill link (send to guest)
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <p className="flex-1 text-xs text-muted-foreground truncate font-mono">{preBillLink}</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 shrink-0"
+                          data-testid="button-copy-prebill-link"
+                          onClick={() => {
+                            navigator.clipboard.writeText(preBillLink);
+                            setPreBillLinkCopied(true);
+                            setTimeout(() => setPreBillLinkCopied(false), 2000);
+                          }}
+                        >
+                          {preBillLinkCopied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="flex gap-2 pt-2">
                     <Button

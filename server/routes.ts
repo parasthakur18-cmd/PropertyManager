@@ -4766,9 +4766,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         status: 'pending'
       }).returning();
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
         ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+        : "https://hostezee.in";
       const preBillLink = `${baseUrl}/guest/prebill/${token}`;
 
       const roomChargesNum = parseFloat(roomCharges || 0);
