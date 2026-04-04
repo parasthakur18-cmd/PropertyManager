@@ -563,12 +563,10 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
                   )}
                 </div>
               ))}
-              {newMappings.length > 0 && (
-                <Button data-testid="button-save-mappings" className="mt-4" onClick={() => saveMappings.mutate(allMappings)} disabled={saveMappings.isPending}>
-                  {saveMappings.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                  Save All Mappings
-                </Button>
-              )}
+              <Button data-testid="button-save-mappings" className="mt-4" onClick={() => saveMappings.mutate(allMappings)} disabled={saveMappings.isPending}>
+                {saveMappings.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Save All Mappings
+              </Button>
             </div>
           )}
         </CardContent>
