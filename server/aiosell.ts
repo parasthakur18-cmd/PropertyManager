@@ -562,6 +562,13 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       const availSummary = firstUpdate.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ");
       console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date range(s) for property ${propertyId}. Today's availability: [${availSummary}]`);
 
+      // Structured [SYNC_DATA] snapshot — gives full picture of what is going to OTAs
+      const blockedTotal = allRooms.filter(r => r.status === "maintenance" || r.status === "out-of-order" || r.status === "blocked").length;
+      const totalMapped = firstUpdate.rooms.length;
+      const availableTotal = firstUpdate.rooms.reduce((sum, r) => sum + r.available, 0);
+      const bookedTotal = allRooms.length - blockedTotal - availableTotal;
+      console.log(`[SYNC_DATA] property=${propertyId} total_rooms=${allRooms.length} blocked=${blockedTotal} booked=${Math.max(0, bookedTotal)} available=${availableTotal} mapped_types=${totalMapped} ranges=${inventoryUpdates.length} breakdown=[${availSummary}]`);
+
       // Per-room push log (production visibility)
       for (const update of inventoryUpdates) {
         for (const room of update.rooms) {

@@ -1,0 +1,163 @@
+Improve and finalize production safety of Hostezee PMS after audit.
+
+IMPORTANT:
+Do NOT rebuild system.
+Extend existing logic only.
+
+---
+
+## GOAL
+
+Eliminate remaining risks:
+
+1. Race condition (double booking)
+2. Inventory sync failure
+3. Group booking visibility in Quick Order
+4. Property selection sync across system
+5. Add detailed inventory logs
+
+---
+
+## STEP 1 — DATABASE-LEVEL BOOKING PROTECTION
+
+Prevent double booking at DB level.
+
+If using PostgreSQL:
+
+Add exclusion constraint:
+
+EXCLUDE USING gist (
+room_id WITH =,
+daterange(check_in, check_out, '[]') WITH &&
+)
+
+If not possible:
+
+* Add transaction lock before insert
+* Re-check availability inside transaction
+
+---
+
+## STEP 2 — INVENTORY SYNC FAILURE HANDLING
+
+Wrap autoSyncInventoryForProperty():
+
+try {
+syncInventory()
+log("[SYNC_SENT]", data)
+} catch (err) {
+log("[SYNC_FAILED]", err.message)
+
+retry up to 3 times with delay
+
+if still fails:
+mark sync_status = "failed"
+}
+
+---
+
+## STEP 3 — ADD INVENTORY SNAPSHOT LOGS
+
+Before sending to AioSell:
+
+log:
+
+[SYNC_DATA]
+property=XXX
+total_rooms=XX
+booked=XX
+blocked=XX
+available=XX
+
+---
+
+## STEP 4 — FIX GROUP BOOKING IN QUICK ORDER
+
+Ensure Quick Order shows group bookings.
+
+If booking has:
+
+* roomIds[] (multiple rooms)
+
+Then:
+
+* Expand into individual room entries in UI
+* OR map each room to booking
+
+Ensure:
+
+* Group rooms appear same as normal rooms
+* Orders can be placed on each room
+
+---
+
+## STEP 5 — FIX PROPERTY SYNC (CRITICAL)
+
+Ensure ONE global property state:
+
+selectedPropertyId
+
+Rules:
+
+* All API calls must use selectedPropertyId
+* Quick Order must re-fetch data when property changes
+
+On property change:
+
+1. Clear:
+
+   * menu items
+   * selected room
+   * cart
+
+2. Re-fetch:
+
+   * rooms
+   * menu items
+
+---
+
+## STEP 6 — VALIDATE MENU FILTERING
+
+Ensure menu query:
+
+SELECT * FROM menu_items
+WHERE property_id = selectedPropertyId
+
+No cross-property data allowed.
+
+---
+
+## STEP 7 — ADD FINAL SAFETY CHECK BEFORE BOOKING
+
+Before inserting booking:
+
+* Run availability check again
+* If conflict:
+  return "Room just got booked, please refresh"
+
+---
+
+## STEP 8 — DEBUG LOGS
+
+Add logs:
+
+[BOOKING_ATTEMPT]
+[BOOKING_SUCCESS]
+[BOOKING_BLOCKED]
+[SYNC_TRIGGER]
+[SYNC_FAILED]
+[SYNC_DATA]
+
+---
+
+## FINAL RESULT
+
+✔ No double booking even under load
+✔ OTA sync never silently fails
+✔ Group bookings visible in Quick Order
+✔ Property switching works everywhere
+✔ Menu items correctly filtered
+✔ Full visibility via logs
+
+END.

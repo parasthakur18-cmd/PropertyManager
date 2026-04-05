@@ -183,6 +183,23 @@ async function sendPushToUsers(userIds: string[], payload: object) {
   }
 }
 
+// Helper: sync inventory with automatic retry (up to 3 attempts, 2s back-off per attempt)
+async function syncWithRetry(propertyId: number, event: string, maxRetries = 3): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await autoSyncInventoryForProperty(propertyId);
+      console.log(`[SYNC_SENT] event=${event} propertyId=${propertyId} attempt=${attempt}`);
+      return;
+    } catch (err: any) {
+      console.error(`[SYNC_FAILED] event=${event} propertyId=${propertyId} attempt=${attempt}/${maxRetries} error=${err.message}`);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+  }
+  console.error(`[SYNC_FAILED] event=${event} propertyId=${propertyId} allRetriesExhausted=true`);
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
@@ -2720,9 +2737,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Trigger inventory sync after room status change so OTAs reflect updated availability
       console.log(`[SYNC_TRIGGER] event=ROOM_STATUS_CHANGED roomId=${existingRoom.id} newStatus=${status} propertyId=${existingRoom.propertyId}`);
-      autoSyncInventoryForProperty(existingRoom.propertyId).catch(err =>
-        console.error(`[AIOSELL] Auto-sync after room status change failed:`, err.message)
-      );
+      syncWithRetry(existingRoom.propertyId, "ROOM_STATUS_CHANGED").catch(() => {});
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
         return res.status(error.statusCode).json({ message: error.message });
@@ -3461,6 +3476,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      const _attemptRooms = [bookingData.roomId, ...(bookingData.roomIds ?? [])].filter(Boolean).join(",") || "N/A";
+      console.log(`[BOOKING_ATTEMPT] rooms=${_attemptRooms} checkIn=${bookingData.checkInDate} checkOut=${bookingData.checkOutDate} guest=${bookingData.guestName}`);
+
       // Final safety re-check immediately before insert — catches the race window where
       // two concurrent requests both passed the earlier conflict check
       const finalRoomIds: number[] = [];
@@ -3479,6 +3497,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const booking = await storage.createBooking(bookingData);
+      console.log(`[BOOKING_SUCCESS] bookingId=${booking.id} rooms=${_attemptRooms} guest=${booking.guestName} propertyId=${booking.propertyId}`);
 
       // For group bookings created manually, insert booking_room_stays rows
       // so downstream queries (quick order, active bookings) can find the rooms
@@ -3603,9 +3622,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         // Sync inventory to AioSell / OTAs (e.g. Booking.com, MMT) so the room is blocked
         if (booking.propertyId) {
           console.log(`[SYNC_TRIGGER] event=BOOKING_CREATED bookingId=${booking.id} room=${booking.roomNumber ?? (booking.roomIds?.join(",") ?? "N/A")} propertyId=${booking.propertyId}`);
-          autoSyncInventoryForProperty(booking.propertyId).catch(err =>
-            console.error(`[AIOSELL] Inventory sync failed after booking #${booking.id} creation:`, err.message)
-          );
+          syncWithRetry(booking.propertyId, "BOOKING_CREATED").catch(() => {});
         }
       });
     } catch (error: any) {
@@ -4009,9 +4026,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       if (booking.propertyId && (status === "checked-in" || status === "checked-out" || status === "cancelled")) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_STATUS_CHANGED bookingId=${booking.id} newStatus=${status} propertyId=${booking.propertyId}`);
-        autoSyncInventoryForProperty(booking.propertyId).catch(err =>
-          console.error(`[AIOSELL] Auto-sync after booking status change failed:`, err.message)
-        );
+        syncWithRetry(booking.propertyId, "BOOKING_STATUS_CHANGED").catch(() => {});
       }
 
       res.json(booking);
@@ -4144,9 +4159,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       if (booking.propertyId) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_CANCELLED bookingId=${booking.id} propertyId=${booking.propertyId}`);
-        autoSyncInventoryForProperty(booking.propertyId).catch(err =>
-          console.error(`[AIOSELL] Auto-sync after cancellation failed:`, err.message)
-        );
+        syncWithRetry(booking.propertyId, "BOOKING_CANCELLED").catch(() => {});
       }
 
       res.json({
@@ -4257,9 +4270,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Free up the room inventory
       if (propertyId) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_NO_SHOW bookingId=${bookingId} propertyId=${propertyId}`);
-        autoSyncInventoryForProperty(propertyId).catch(err =>
-          console.error(`[AIOSELL] Auto-sync after no-show failed:`, err.message)
-        );
+        syncWithRetry(propertyId, "BOOKING_NO_SHOW").catch(() => {});
       }
 
       res.json({
