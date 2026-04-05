@@ -576,6 +576,8 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       }
 
       await pushInventory(config, inventoryUpdates);
+      const sentSummary = inventoryUpdates[0]?.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ") ?? "none";
+      console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} todayAvailability=[${sentSummary}]`);
     }
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);

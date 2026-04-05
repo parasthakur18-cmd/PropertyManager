@@ -2347,17 +2347,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const allRooms = Number.isFinite(propertyIdNum) 
         ? await db.select().from(rooms).where(eq(rooms.propertyId, propertyIdNum!))
         : await db.select().from(rooms);
+
+      // Rooms in maintenance / out-of-order / blocked are never bookable
+      const BLOCKING_STATUSES = ["maintenance", "out-of-order", "blocked"];
+
+      console.log(`[AVAILABILITY_CHECK] property=${propertyIdNum ?? "all"} checkIn=${checkIn ?? "N/A"} checkOut=${checkOut ?? "N/A"} totalRooms=${allRooms.length}`);
       
-      // If no dates provided, return all rooms with full availability
+      // If no dates provided, return all rooms with full availability (skip blocked rooms)
       if (!checkIn || !checkOut) {
-        const availability = allRooms.map(room => ({
-          roomId: room.id,
-          available: 1,
-          ...(room.roomCategory === "dormitory" && {
-            totalBeds: room.totalBeds || 6,
-            remainingBeds: room.totalBeds || 6
-          })
-        }));
+        const availability = allRooms.map(room => {
+          const isBlocked = BLOCKING_STATUSES.includes(room.status ?? "");
+          return {
+            roomId: room.id,
+            available: isBlocked ? 0 : 1,
+            ...(room.roomCategory === "dormitory" && {
+              totalBeds: room.totalBeds || 6,
+              remainingBeds: isBlocked ? 0 : (room.totalBeds || 6)
+            })
+          };
+        });
         return res.json(availability);
       }
       
@@ -2413,6 +2421,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       // Calculate availability for each room
       const availability = allRooms.map(room => {
+        // Rooms in maintenance / out-of-order / blocked are never bookable regardless of dates
+        if (BLOCKING_STATUSES.includes(room.status ?? "")) {
+          if (room.roomCategory === "dormitory") {
+            return { roomId: room.id, available: 0, totalBeds: room.totalBeds || 6, remainingBeds: 0 };
+          }
+          return { roomId: room.id, available: 0 };
+        }
+
         if (room.roomCategory === "dormitory") {
           const totalBeds = room.totalBeds || 6;
           const roomBookings = overlappingBookings.filter(b => 
@@ -2432,10 +2448,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const hasOverlap = overlappingBookings.some(b => 
           b.roomId === room.id || b.roomIds?.includes(room.id)
         );
+
+        const available = hasOverlap ? 0 : 1;
+        if (available === 0) {
+          console.log(`[AVAILABILITY_CHECK] room=${room.roomNumber ?? room.id} available=false reason=booking_overlap`);
+        }
         
         return {
           roomId: room.id,
-          available: hasOverlap ? 0 : 1
+          available
         };
       });
       
@@ -2698,6 +2719,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.json(room);
 
       // Trigger inventory sync after room status change so OTAs reflect updated availability
+      console.log(`[SYNC_TRIGGER] event=ROOM_STATUS_CHANGED roomId=${existingRoom.id} newStatus=${status} propertyId=${existingRoom.propertyId}`);
       autoSyncInventoryForProperty(existingRoom.propertyId).catch(err =>
         console.error(`[AIOSELL] Auto-sync after room status change failed:`, err.message)
       );
@@ -3397,6 +3419,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           } catch (_) {
             guestLabel = ` (Booking #${conflictingBooking.id})`;
           }
+          console.log(`[BOOKING_BLOCKED] room=${room?.roomNumber ?? roomId} reason=overlap conflictingBookingId=${conflictingBooking.id} requestedCheckIn=${checkIn.toISOString().split("T")[0]} requestedCheckOut=${checkOut.toISOString().split("T")[0]}`);
           return res.status(400).json({ 
             message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}${guestLabel}. Please cancel or modify that booking first, or select different dates/room.`
           });
@@ -3438,6 +3461,23 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      // Final safety re-check immediately before insert — catches the race window where
+      // two concurrent requests both passed the earlier conflict check
+      const finalRoomIds: number[] = [];
+      if (bookingData.roomId) finalRoomIds.push(bookingData.roomId);
+      if (bookingData.roomIds?.length) finalRoomIds.push(...bookingData.roomIds);
+      for (const rId of finalRoomIds) {
+        const freshBookings = await storage.getBookingsByRoom(rId);
+        const raceConflict = freshBookings.find(b => {
+          if (b.status === "cancelled" || b.status === "checked-out") return false;
+          return checkIn < new Date(b.checkOutDate) && checkOut > new Date(b.checkInDate);
+        });
+        if (raceConflict) {
+          console.log(`[BOOKING_BLOCKED] room=${rId} reason=race_condition_recheck conflictingBookingId=${raceConflict.id}`);
+          return res.status(409).json({ message: `Room ${rId} was just booked by another request. Please refresh and try again.` });
+        }
+      }
+
       const booking = await storage.createBooking(bookingData);
 
       // For group bookings created manually, insert booking_room_stays rows
@@ -3562,6 +3602,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
         // Sync inventory to AioSell / OTAs (e.g. Booking.com, MMT) so the room is blocked
         if (booking.propertyId) {
+          console.log(`[SYNC_TRIGGER] event=BOOKING_CREATED bookingId=${booking.id} room=${booking.roomNumber ?? (booking.roomIds?.join(",") ?? "N/A")} propertyId=${booking.propertyId}`);
           autoSyncInventoryForProperty(booking.propertyId).catch(err =>
             console.error(`[AIOSELL] Inventory sync failed after booking #${booking.id} creation:`, err.message)
           );
@@ -3967,6 +4008,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       if (booking.propertyId && (status === "checked-in" || status === "checked-out" || status === "cancelled")) {
+        console.log(`[SYNC_TRIGGER] event=BOOKING_STATUS_CHANGED bookingId=${booking.id} newStatus=${status} propertyId=${booking.propertyId}`);
         autoSyncInventoryForProperty(booking.propertyId).catch(err =>
           console.error(`[AIOSELL] Auto-sync after booking status change failed:`, err.message)
         );
@@ -4101,6 +4143,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       });
 
       if (booking.propertyId) {
+        console.log(`[SYNC_TRIGGER] event=BOOKING_CANCELLED bookingId=${booking.id} propertyId=${booking.propertyId}`);
         autoSyncInventoryForProperty(booking.propertyId).catch(err =>
           console.error(`[AIOSELL] Auto-sync after cancellation failed:`, err.message)
         );
@@ -4213,6 +4256,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Free up the room inventory
       if (propertyId) {
+        console.log(`[SYNC_TRIGGER] event=BOOKING_NO_SHOW bookingId=${bookingId} propertyId=${propertyId}`);
         autoSyncInventoryForProperty(propertyId).catch(err =>
           console.error(`[AIOSELL] Auto-sync after no-show failed:`, err.message)
         );

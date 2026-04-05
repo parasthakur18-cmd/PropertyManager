@@ -1,0 +1,160 @@
+Audit and validate room availability, booking overlap, and inventory sync logic in an existing PMS (Hostezee).
+
+IMPORTANT:
+Do NOT rebuild system.
+Only analyze, test, and add safeguards.
+
+---
+
+## STEP 1 — ANALYZE CURRENT AVAILABILITY LOGIC
+
+1. Locate function/query used to fetch available rooms
+
+2. Confirm it excludes rooms with:
+
+   * confirmed bookings
+   * checked-in bookings
+   * overlapping date ranges
+
+3. Verify overlap logic:
+
+(start_date <= existing_end_date) AND (end_date >= existing_start_date)
+
+---
+
+## STEP 2 — CHECK OVERBOOKING RISK
+
+Simulate:
+
+* Create two bookings at the same time for same room and dates
+
+Check:
+
+* Does system allow both? (BUG)
+* Or block second booking? (CORRECT)
+
+If bug exists:
+
+* Add validation before booking confirmation:
+
+Check again for availability just before saving
+
+---
+
+## STEP 3 — VALIDATE CANCELLATION FLOW
+
+Test:
+
+1. Create booking → room becomes unavailable
+2. Cancel booking → room should become available
+
+Verify:
+
+* Availability query reflects change instantly
+* autoSyncInventoryForProperty() is triggered
+
+---
+
+## STEP 4 — VALIDATE OTA FLOW
+
+Simulate webhook:
+
+* Create booking from OTA
+* Cancel booking from OTA
+
+Check:
+
+* Booking is created correctly
+* Booking is cancelled correctly
+* Inventory sync runs both times
+
+---
+
+## STEP 5 — CHECK ROOM STATUS IMPACT
+
+Test:
+
+* Set room to maintenance
+* Try booking same room
+
+Expected:
+
+* Room should NOT appear in available list
+
+---
+
+## STEP 6 — GROUP BOOKING VALIDATION
+
+Check:
+
+* Group booking creates multiple room allocations
+* Each room is blocked properly
+* Quick order can see group booking rooms
+
+---
+
+## STEP 7 — CHECK CHECK-IN / CHECK-OUT
+
+Test:
+
+* Check-in → room not available
+* Check-out → room becomes available
+
+If cleaning status exists:
+
+* Room should stay unavailable until status changes
+
+---
+
+## STEP 8 — INVENTORY SYNC VALIDATION
+
+After every action:
+
+* booking created
+* booking cancelled
+* room status changed
+
+Check:
+
+* autoSyncInventoryForProperty() is triggered
+
+Add logs:
+
+[SYNC_TRIGGER] event=BOOKING_CREATED
+[SYNC_TRIGGER] event=CANCELLED
+[SYNC_TRIGGER] event=ROOM_STATUS_CHANGED
+
+---
+
+## STEP 9 — ADD SAFETY VALIDATION
+
+Before saving any booking:
+
+Re-check availability:
+
+if (room already booked for those dates) {
+return error "Room not available"
+}
+
+---
+
+## STEP 10 — DEBUG LOGGING
+
+Add logs:
+
+[AVAILABILITY_CHECK] room=101 available=true
+[BOOKING_BLOCKED] reason=overlap
+[SYNC_SENT] property=XXX rooms=XX
+
+---
+
+## FINAL GOAL
+
+✔ No double booking
+✔ Correct room availability
+✔ Proper cancellation handling
+✔ OTA sync working correctly
+✔ Group booking handled
+✔ System is safe and reliable
+
+END.
