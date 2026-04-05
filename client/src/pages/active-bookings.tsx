@@ -363,6 +363,9 @@ export default function ActiveBookings() {
     );
   });
 
+  const activeFilteredBookings = filteredBookings?.filter(b => b.status !== "checked-out") ?? [];
+  const checkedOutTodayBookings = filteredBookings?.filter(b => b.status === "checked-out") ?? [];
+
   const sendPreBillMutation = useMutation({
     mutationFn: async ({ bookingId, billDetails }: { bookingId: number; billDetails: any }) => {
       return await apiRequest("/api/send-prebill", "POST", { bookingId, billDetails });
@@ -1056,7 +1059,7 @@ export default function ActiveBookings() {
         </div>
       </div>
 
-      {filteredBookings && filteredBookings.length === 0 ? (
+      {activeFilteredBookings.length === 0 && checkedOutTodayBookings.length === 0 ? (
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
             No active bookings at the moment
@@ -1064,7 +1067,7 @@ export default function ActiveBookings() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {filteredBookings?.map((booking) => (
+          {activeFilteredBookings.map((booking) => (
             <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}>
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -1414,6 +1417,56 @@ export default function ActiveBookings() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {checkedOutTodayBookings.length > 0 && (
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium border-t pt-4">
+            <LogOut className="h-4 w-4" />
+            Checked Out Today ({checkedOutTodayBookings.length})
+          </div>
+          <div className="grid gap-4 opacity-70">
+            {checkedOutTodayBookings.map((booking) => (
+              <Card key={booking.id} data-testid={`card-checked-out-${booking.id}`} className="border-dashed">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-semibold">{booking.guest.fullName}</span>
+                      {booking.room && <span className="text-sm text-muted-foreground">· Room {booking.room.roomNumber}</span>}
+                      {booking.rooms && booking.rooms.length > 0 && (
+                        <span className="text-sm text-muted-foreground">· Rooms {booking.rooms.map(r => r.roomNumber).join(", ")}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-gray-500 border-gray-300">Checked Out</Badge>
+                      {isAdmin && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-teal-600 border-teal-300 hover:bg-teal-50"
+                          onClick={() => reopenBookingMutation.mutate(booking.id)}
+                          disabled={reopenBookingMutation.isPending}
+                          data-testid={`button-reopen-booking-${booking.id}`}
+                        >
+                          <RotateCcw className="h-3 w-3 mr-1" />
+                          Re-open
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
+                    <span>Check-in: {format(new Date(booking.checkInDate), "dd MMM")}</span>
+                    <span>Bill: ₹{parseFloat(booking.charges.subtotal).toFixed(2)}</span>
+                    {parseFloat(booking.charges.advancePaid) > 0 && (
+                      <span className="text-green-600">Advance: ₹{booking.charges.advancePaid}</span>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       )}
 
