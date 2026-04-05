@@ -5670,6 +5670,12 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
+      // Look up property names for readable descriptions
+      const { rows: [fromProp] } = await client.query('SELECT name FROM properties WHERE id = $1', [fromPropertyId]);
+      const { rows: [toProp] } = await client.query('SELECT name FROM properties WHERE id = $1', [toPropertyId]);
+      const fromName = fromProp?.name || `Property #${fromPropertyId}`;
+      const toName = toProp?.name || `Property #${toPropertyId}`;
+
       // Insert transfer record
       const { rows: [transfer] } = await client.query(
         `INSERT INTO property_transfers
@@ -5688,7 +5694,7 @@ export class DatabaseStorage implements IStorage {
          VALUES ($1,$2,'debit',$3,$4,'internal_transfer',$5,$6,$7,$8,'out',$9)`,
         [fromWalletId, fromPropertyId, amount.toFixed(2), fromNew,
          transfer.id,
-         `Transfer to Property #${toPropertyId}${referenceNote ? ': ' + referenceNote : ''}`,
+         `Transfer to ${toName}${referenceNote ? ': ' + referenceNote : ''}`,
          `TRF-${transfer.id}`, today, createdBy]
       );
 
@@ -5702,12 +5708,12 @@ export class DatabaseStorage implements IStorage {
          VALUES ($1,$2,'credit',$3,$4,'internal_transfer',$5,$6,$7,$8,'in',$9)`,
         [toWalletId, toPropertyId, amount.toFixed(2), toNew,
          transfer.id,
-         `Transfer from Property #${fromPropertyId}${referenceNote ? ': ' + referenceNote : ''}`,
+         `Transfer from ${fromName}${referenceNote ? ': ' + referenceNote : ''}`,
          `TRF-${transfer.id}`, today, createdBy]
       );
 
       await client.query('COMMIT');
-      console.log(`[Transfer] ₹${amount} from Property #${fromPropertyId} → Property #${toPropertyId} (TRF-${transfer.id})`);
+      console.log(`[Transfer] ₹${amount} from ${fromName} → ${toName} (TRF-${transfer.id})`);
       return this._mapTransfer(transfer);
     } catch (err) {
       await client.query('ROLLBACK');
