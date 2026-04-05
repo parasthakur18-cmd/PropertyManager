@@ -2550,54 +2550,133 @@ export default function ActiveBookings() {
                   size="sm"
                   onClick={() => {
                     try {
-                      const element = document.getElementById("bill-preview-content");
-                      if (!element) return;
-                      
-                      // Clone and strip Tailwind classes to avoid CSS parsing errors
-                      const clone = element.cloneNode(true) as HTMLElement;
-                      const stripClasses = (el: Element) => {
-                        el.removeAttribute("class");
-                        el.removeAttribute("data-testid");
-                        Array.from(el.children).forEach(child => stripClasses(child));
-                      };
-                      stripClasses(clone);
-                      
-                      // Add basic PDF-friendly styles
-                      clone.style.fontFamily = "Arial, sans-serif";
-                      clone.style.fontSize = "14px";
-                      clone.style.color = "#000";
-                      clone.style.padding = "20px";
-                      
-                      // Create temporary container
+                      const b = billPreviewBooking;
+                      const roomLabel = b.isGroupBooking && b.rooms?.length
+                        ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
+                        : b.room?.roomNumber ?? "TBA";
+                      const propertyName = b.property?.name ?? "Hostezee";
+                      const checkIn = format(new Date(b.checkInDate), "dd MMM yyyy");
+                      const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
+                      const advancePaid = parseFloat(b.charges.advancePaid) || 0;
+                      const subtotal = parseFloat(b.charges.subtotal) || 0;
+                      const balanceDue = Math.max(0, subtotal - advancePaid);
+
+                      const ordersHtml = (b.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
+                        const items = (order.items ?? []).map((item: any) =>
+                          `<tr><td style="padding:3px 8px;color:#555">${item.name}${item.variant ? ` (${item.variant})` : ""} x${item.quantity || 1}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${item.totalPrice || (item.price * (item.quantity || 1))}</td></tr>`
+                        ).join("");
+                        return `
+                          <tr style="background:#f9f9f9">
+                            <td style="padding:6px 8px;font-weight:600" colspan="2">Order #${order.id} <span style="font-size:11px;color:#888;font-weight:400">(${order.status})</span></td>
+                          </tr>
+                          ${items}
+                          <tr><td style="padding:4px 8px;border-top:1px solid #eee;font-weight:600">Order Total</td><td style="padding:4px 8px;border-top:1px solid #eee;text-align:right;font-weight:600">&#8377;${parseFloat(order.totalAmount).toFixed(2)}</td></tr>`;
+                      }).join("");
+
+                      const extrasHtml = (b.extraServices ?? []).map((s: any) =>
+                        `<tr><td style="padding:3px 8px;color:#555">${s.serviceName}${s.serviceDate ? ` <span style="font-size:11px;color:#888">(${format(new Date(s.serviceDate), "dd MMM")})</span>` : ""}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(s.amount).toFixed(2)}</td></tr>`
+                      ).join("");
+
+                      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fff; }
+                        .page { max-width: 680px; margin: 0 auto; padding: 32px 28px; }
+                        .header { background: #1E3A5F; color: #fff; border-radius: 8px 8px 0 0; padding: 22px 24px 18px; }
+                        .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
+                        .header .tagline { font-size: 12px; color: #2BB6A8; margin-top: 2px; }
+                        .header .property { font-size: 14px; margin-top: 8px; opacity: 0.9; }
+                        .bill-meta { background: #f5f8ff; border: 1px solid #dde5f5; border-top: none; border-radius: 0 0 8px 8px; padding: 16px 24px; display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 24px; }
+                        .bill-meta div { min-width: 140px; }
+                        .bill-meta .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+                        .bill-meta .value { font-size: 13px; font-weight: 600; color: #1E3A5F; }
+                        .section { margin-bottom: 20px; }
+                        .section-title { font-size: 13px; font-weight: 700; color: #1E3A5F; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; background: #eef3fb; border-left: 3px solid #2BB6A8; margin-bottom: 0; }
+                        table { width: 100%; border-collapse: collapse; }
+                        table td { font-size: 13px; }
+                        .summary-table { border: 1px solid #e0e7ef; border-radius: 6px; overflow: hidden; }
+                        .summary-table tr:last-child td { border-bottom: none; }
+                        .summary-table td { padding: 8px 14px; border-bottom: 1px solid #eef2f8; }
+                        .total-row td { font-size: 16px; font-weight: 700; background: #1E3A5F; color: #fff; padding: 10px 14px; }
+                        .advance-row td { color: #16a34a; font-weight: 600; background: #f0fdf4; }
+                        .balance-row td { color: #dc2626; font-weight: 700; background: #fff5f5; font-size: 15px; }
+                        .footer { margin-top: 32px; border-top: 1px solid #e0e7ef; padding-top: 14px; text-align: center; color: #aaa; font-size: 11px; }
+                      </style></head><body><div class="page">
+                        <div class="header">
+                          <h1>Hostezee</h1>
+                          <div class="tagline">Simplify Stays</div>
+                          <div class="property">${propertyName}</div>
+                        </div>
+                        <div class="bill-meta">
+                          <div><div class="label">Guest</div><div class="value">${b.guest.fullName}</div></div>
+                          <div><div class="label">Phone</div><div class="value">${b.guest.phone ?? "-"}</div></div>
+                          <div><div class="label">Room</div><div class="value">${roomLabel}</div></div>
+                          <div><div class="label">Check-in</div><div class="value">${checkIn}</div></div>
+                          <div><div class="label">Check-out</div><div class="value">${checkOut}</div></div>
+                          <div><div class="label">Nights</div><div class="value">${b.nightsStayed}</div></div>
+                          <div><div class="label">Guests</div><div class="value">${b.numberOfGuests ?? 1}</div></div>
+                          <div><div class="label">Source</div><div class="value">${b.source ?? "Direct"}</div></div>
+                        </div>
+
+                        <div class="section">
+                          <div class="section-title">Room Charges</div>
+                          <table class="summary-table"><tbody>
+                            ${(b.isGroupBooking && b.rooms?.length ? b.rooms : b.room ? [b.room] : []).map((r: any) =>
+                              `<tr><td>${r.roomNumber ? `Room ${r.roomNumber}` : "Room"} ${r.roomType ? `(${r.roomType})` : ""}</td><td style="text-align:right">&#8377;${(parseFloat(b.charges.roomCharges) / Math.max(1, b.rooms?.length || 1)).toFixed(2)}/night</td></tr>`
+                            ).join("")}
+                            <tr><td style="font-weight:600">${b.nightsStayed} night(s)</td><td style="text-align:right;font-weight:600">&#8377;${parseFloat(b.charges.roomCharges).toFixed(2)}</td></tr>
+                          </tbody></table>
+                        </div>
+
+                        ${(b.orders ?? []).length > 0 ? `
+                        <div class="section">
+                          <div class="section-title">Food Orders</div>
+                          <table class="summary-table"><tbody>
+                            ${ordersHtml}
+                            <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Food Charges</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${parseFloat(b.charges.foodCharges).toFixed(2)}</td></tr>
+                          </tbody></table>
+                        </div>` : ""}
+
+                        ${(b.extraServices ?? []).length > 0 ? `
+                        <div class="section">
+                          <div class="section-title">Extra Services</div>
+                          <table class="summary-table"><tbody>
+                            ${extrasHtml}
+                            <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Extra Services</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${parseFloat(b.charges.extraCharges).toFixed(2)}</td></tr>
+                          </tbody></table>
+                        </div>` : ""}
+
+                        <div class="section">
+                          <div class="section-title">Bill Summary</div>
+                          <table class="summary-table"><tbody>
+                            <tr><td>Room Charges</td><td style="text-align:right">&#8377;${parseFloat(b.charges.roomCharges).toFixed(2)}</td></tr>
+                            <tr><td>Food Charges</td><td style="text-align:right">&#8377;${parseFloat(b.charges.foodCharges).toFixed(2)}</td></tr>
+                            ${parseFloat(b.charges.extraCharges) > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${parseFloat(b.charges.extraCharges).toFixed(2)}</td></tr>` : ""}
+                            <tr class="total-row"><td>Total Bill</td><td style="text-align:right">&#8377;${subtotal.toFixed(2)}</td></tr>
+                            ${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}
+                            ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${balanceDue.toFixed(2)}</td></tr>` : ""}
+                          </tbody></table>
+                        </div>
+
+                        <div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div>
+                      </div></body></html>`;
+
                       const container = document.createElement("div");
                       container.style.position = "fixed";
-                      container.style.left = "0";
+                      container.style.left = "-9999px";
                       container.style.top = "0";
-                      container.style.width = "210mm";
-                      container.style.height = "297mm";
-                      container.style.backgroundColor = "#fff";
-                      container.style.padding = "0";
-                      container.style.margin = "0";
-                      container.style.overflow = "visible";
-                      container.appendChild(clone);
+                      container.innerHTML = html;
                       document.body.appendChild(container);
-                      
+
                       setTimeout(() => {
                         const opt = {
-                          margin: 5,
-                          filename: `Bill_${billPreviewBooking.guest.fullName}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
+                          margin: 0,
+                          filename: `Bill_${b.guest.fullName.replace(/\s+/g, "_")}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
                           image: { type: "png" as const, quality: 0.98 },
                           html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#fff" },
                           jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
                         };
-                        
-                        html2pdf()
-                          .set(opt)
-                          .from(clone)
-                          .save()
-                          .finally(() => {
-                            document.body.removeChild(container);
-                          });
+                        html2pdf().set(opt).from(container.firstChild as HTMLElement).save()
+                          .finally(() => { document.body.removeChild(container); });
                       }, 50);
                     } catch (error) {
                       console.error("PDF download error:", error);
