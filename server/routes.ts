@@ -3079,8 +3079,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const guest = allGuests.find(g => g.id === booking.guestId);
         const room = booking.roomId ? allRooms.find(r => r.id === booking.roomId) : null;
         
-        // For group bookings, get all rooms
-        const groupRooms = booking.isGroupBooking && booking.roomIds
+        // For multi-room bookings, resolve rooms from roomIds array.
+        // Covers: isGroupBooking=true (even if roomId is also set) and
+        //         bulk bookings where isGroupBooking=false but roomId is null.
+        let groupRooms = (booking.isGroupBooking || !room) && booking.roomIds && booking.roomIds.length > 0
           ? allRooms.filter(r => booking.roomIds!.includes(r.id))
           : [];
         
