@@ -2414,6 +2414,14 @@ export default function ActiveBookings() {
                       <span className="font-mono whitespace-nowrap">-₹{billPreviewBooking.charges.advancePaid}</span>
                     </div>
                   )}
+                  {parseFloat(billPreviewBooking.charges.advancePaid) > 0 && (
+                    <div className="border-t pt-2 flex justify-between gap-4 font-bold text-lg text-destructive">
+                      <span>Balance Due:</span>
+                      <span className="font-mono whitespace-nowrap">
+                        ₹{Math.max(0, parseFloat(billPreviewBooking.charges.subtotal) - parseFloat(billPreviewBooking.charges.advancePaid)).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
