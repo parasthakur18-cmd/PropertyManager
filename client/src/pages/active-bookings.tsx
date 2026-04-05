@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2 } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -314,6 +314,23 @@ export default function ActiveBookings() {
   const { data: activeBookings, isLoading } = useQuery<ActiveBooking[]>({
     queryKey: ["/api/bookings/active"],
     refetchInterval: 30000,
+  });
+
+  const { data: currentUser } = useQuery<{ id: string; role: string; email: string }>({
+    queryKey: ["/api/auth/user"],
+  });
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "super-admin";
+
+  const reopenBookingMutation = useMutation({
+    mutationFn: async (bookingId: number) =>
+      await apiRequest(`/api/bookings/${bookingId}/reopen`, "POST"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      toast({ title: "Booking Reopened", description: "Booking has been set back to checked-in. You can now add orders and services." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to Reopen", description: error.message || "Unable to reopen booking", variant: "destructive" });
+    },
   });
 
   const { data: cafeOrders, isLoading: isLoadingCafeOrders, refetch: refetchCafeOrders } = useQuery<any[]>({
@@ -1239,6 +1256,7 @@ export default function ActiveBookings() {
                     <Eye className="h-4 w-4 mr-2" />
                     View Bill
                   </Button>
+                  {booking.status !== "checked-out" && (
                   <Button
                     className="flex-1"
                     variant="default"
@@ -1327,6 +1345,19 @@ export default function ActiveBookings() {
                     <LogOut className="h-4 w-4 mr-2" />
                     Checkout
                   </Button>
+                  )}
+                  {booking.status === "checked-out" && isAdmin && (
+                    <Button
+                      className="flex-1 bg-teal-600 hover:bg-teal-700 text-white"
+                      variant="default"
+                      onClick={() => reopenBookingMutation.mutate(booking.id)}
+                      disabled={reopenBookingMutation.isPending}
+                      data-testid={`button-reopen-booking-${booking.id}`}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-2" />
+                      {reopenBookingMutation.isPending ? "Reopening..." : "Re-open Booking"}
+                    </Button>
+                  )}
                   </div>
                 </div>
               </CardContent>

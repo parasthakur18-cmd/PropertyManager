@@ -3019,9 +3019,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const tenant = getTenantContext(currentUser);
       
-      // Get all checked-in bookings
+      // Get all checked-in bookings, plus any checked-out ones where checkout is today
+      // (so admins can see and re-open bookings that were auto-checked-out by mistake)
+      const todayActiveStr = format(new Date(), "yyyy-MM-dd");
       const allBookings = await storage.getAllBookings();
-      let activeBookings = allBookings.filter(b => b.status === "checked-in");
+      let activeBookings = allBookings.filter(b => {
+        if (b.status === "checked-in") return true;
+        if (b.status === "checked-out" && b.checkOutDate === todayActiveStr) return true;
+        return false;
+      });
       
       // Get all related data
       const allGuests = await storage.getAllGuests();
@@ -5352,6 +5358,41 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     } catch (error: any) {
       console.error("Confirm advance payment error:", error);
       res.status(500).json({ message: error.message || "Failed to confirm advance payment" });
+    }
+  });
+
+  // Admin-only: re-open a booking that was automatically checked out today
+  app.post("/api/bookings/:id/reopen", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+
+      if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "super-admin")) {
+        return res.status(403).json({ message: "Only admin users can reopen a booking" });
+      }
+
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId)) return res.status(400).json({ message: "Invalid booking ID" });
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      if (booking.status !== "checked-out") {
+        return res.status(400).json({ message: "Only checked-out bookings can be reopened" });
+      }
+
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+      if (booking.checkOutDate !== todayStr) {
+        return res.status(400).json({ message: "A booking can only be reopened if its checkout date is today" });
+      }
+
+      const updated = await storage.updateBookingStatus(bookingId, "checked-in");
+      console.log(`[BOOKING_REOPENED] bookingId=${bookingId} adminEmail=${currentUser.email} checkOutDate=${booking.checkOutDate}`);
+
+      res.json({ success: true, booking: updated });
+    } catch (error: any) {
+      console.error("Reopen booking error:", error);
+      res.status(500).json({ message: error.message || "Failed to reopen booking" });
     }
   });
 
