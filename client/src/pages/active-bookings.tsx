@@ -2417,8 +2417,8 @@ export default function ActiveBookings() {
                   </h3>
                   <div className="bg-card border rounded-lg p-3 space-y-2 text-sm">
                     {billPreviewBooking.extraServices.map((service) => (
-                      <div key={service.id} className="flex justify-between gap-4">
-                        <span>
+                      <div key={service.id} className="flex items-center justify-between gap-2">
+                        <span className="flex-1">
                           {service.serviceName}
                           {service.serviceDate && (
                             <span className="text-xs text-muted-foreground ml-1">
@@ -2427,6 +2427,20 @@ export default function ActiveBookings() {
                           )}
                         </span>
                         <span className="font-mono whitespace-nowrap">₹{service.amount}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+                          data-testid={`button-edit-service-bill-${service.id}`}
+                          onClick={() => {
+                            setEditServiceDialog({ open: true, service });
+                            setEditSvcName(service.serviceName);
+                            setEditSvcAmount(service.amount);
+                            setEditSvcDate(service.serviceDate ? service.serviceDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
                       </div>
                     ))}
                     <div className="border-t pt-2 flex justify-between gap-4 font-semibold">
