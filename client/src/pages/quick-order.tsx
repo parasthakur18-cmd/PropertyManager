@@ -68,7 +68,6 @@ export default function QuickOrder() {
       setOrderType(null);
       setCart([]);
       setSelectedRoom("");
-      setSelectedWalkInPropertyId("");
       setCustomerName("");
       setCustomerPhone("");
       setSpecialInstructions("");
