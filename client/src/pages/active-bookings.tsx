@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw } from "lucide-react";
+import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -215,6 +215,14 @@ export default function ActiveBookings() {
   const [svcCollectNow, setSvcCollectNow] = useState(false);
   const [svcPaymentMethod, setSvcPaymentMethod] = useState("cash");
   const [svcCustomType, setSvcCustomType] = useState("");
+
+  const [editServiceDialog, setEditServiceDialog] = useState<{
+    open: boolean;
+    service: { id: number; serviceName: string; amount: string; serviceDate: string } | null;
+  }>({ open: false, service: null });
+  const [editSvcName, setEditSvcName] = useState("");
+  const [editSvcAmount, setEditSvcAmount] = useState("");
+  const [editSvcDate, setEditSvcDate] = useState("");
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -705,6 +713,21 @@ export default function ActiveBookings() {
     },
   });
 
+  const editServiceMutation = useMutation({
+    mutationFn: async (data: { id: number; serviceName: string; amount: string; serviceDate: string }) => {
+      const { id, ...body } = data;
+      return await apiRequest(`/api/extra-services/${id}`, "PATCH", body);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      toast({ title: "Service updated", description: "Extra service has been updated" });
+      setEditServiceDialog({ open: false, service: null });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update service", variant: "destructive" });
+    },
+  });
+
   const handleMergeSingleOrder = (orderId: number) => {
     if (!checkoutDialog.booking) return;
     mergeCafeOrdersMutation.mutate({
@@ -1173,6 +1196,34 @@ export default function ActiveBookings() {
                           <span className="text-muted-foreground">Order #{order.id}</span>
                           <Badge variant="secondary" className="text-xs">{order.status}</Badge>
                           <span className="font-medium whitespace-nowrap">₹{order.totalAmount}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {booking.extraServices && booking.extraServices.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="text-sm font-semibold mb-2">Extra Services</div>
+                    <div className="space-y-1">
+                      {booking.extraServices.map((service) => (
+                        <div key={service.id} className="flex justify-between items-center text-xs gap-1">
+                          <span className="text-muted-foreground truncate flex-1">{service.serviceName}</span>
+                          <span className="font-medium whitespace-nowrap">₹{service.amount}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-primary"
+                            data-testid={`button-edit-service-${service.id}`}
+                            onClick={() => {
+                              setEditServiceDialog({ open: true, service });
+                              setEditSvcName(service.serviceName);
+                              setEditSvcAmount(service.amount);
+                              setEditSvcDate(service.serviceDate ? service.serviceDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -2665,6 +2716,81 @@ export default function ActiveBookings() {
                 data-testid="button-confirm-add-service"
               >
                 {addServiceMutation.isPending ? "Adding..." : svcCollectNow ? "Add & Collect" : "Add to Bill"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Service Dialog */}
+      <Dialog open={editServiceDialog.open} onOpenChange={(open) => {
+        if (!open) setEditServiceDialog({ open: false, service: null });
+      }}>
+        <DialogContent className="max-w-md" data-testid="dialog-edit-service">
+          <DialogHeader>
+            <DialogTitle>Edit Extra Service</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="edit-svc-name">Service Name</Label>
+              <Input
+                id="edit-svc-name"
+                placeholder="e.g., Heater Charges"
+                value={editSvcName}
+                onChange={(e) => setEditSvcName(e.target.value)}
+                data-testid="input-edit-svc-name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="edit-svc-amount">Amount (₹)</Label>
+                <Input
+                  id="edit-svc-amount"
+                  type="number"
+                  placeholder="500"
+                  value={editSvcAmount}
+                  onChange={(e) => setEditSvcAmount(e.target.value)}
+                  data-testid="input-edit-svc-amount"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-svc-date">Service Date</Label>
+                <Input
+                  id="edit-svc-date"
+                  type="date"
+                  value={editSvcDate}
+                  onChange={(e) => setEditSvcDate(e.target.value)}
+                  data-testid="input-edit-svc-date"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setEditServiceDialog({ open: false, service: null })}
+                data-testid="button-cancel-edit-service"
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  if (!editServiceDialog.service || !editSvcAmount || !editSvcName) {
+                    toast({ title: "Missing fields", description: "Please fill in service name and amount", variant: "destructive" });
+                    return;
+                  }
+                  editServiceMutation.mutate({
+                    id: editServiceDialog.service.id,
+                    serviceName: editSvcName,
+                    amount: editSvcAmount,
+                    serviceDate: editSvcDate,
+                  });
+                }}
+                disabled={editServiceMutation.isPending}
+                data-testid="button-confirm-edit-service"
+              >
+                {editServiceMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </div>
