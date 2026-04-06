@@ -607,14 +607,15 @@ export default function Wallets() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <Select
-            value={selectedProperty?.toString() || ""}
-            onValueChange={(v) => setSelectedProperty(parseInt(v))}
+            value={selectedProperty?.toString() || "all"}
+            onValueChange={(v) => setSelectedProperty(v === "all" ? null : parseInt(v))}
             data-testid="select-property"
           >
-            <SelectTrigger className="w-[200px]" data-testid="select-property-trigger">
+            <SelectTrigger className="w-[220px]" data-testid="select-property-trigger">
               <SelectValue placeholder="Select Property" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Properties</SelectItem>
               {properties.map((property) => (
                 <SelectItem key={property.id} value={property.id.toString()}>
                   {property.name}
@@ -631,7 +632,11 @@ export default function Wallets() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
-              <CardTitle className="text-base">All Properties Balance</CardTitle>
+              <CardTitle className="text-base">
+                {selectedProperty
+                  ? `${properties.find(p => p.id === selectedProperty)?.name ?? "Property"} — Balance`
+                  : "All Properties Balance"}
+              </CardTitle>
               {summaryAsOfDate && (
                 <Badge variant="secondary" className="text-xs">
                   As of {format(new Date(summaryAsOfDate + "T00:00:00"), "dd MMM yyyy")}
@@ -685,7 +690,9 @@ export default function Wallets() {
                     </tr>
                   </thead>
                   <tbody>
-                    {allPropertiesSummary.properties.map(p => (
+                    {allPropertiesSummary.properties
+                      .filter(p => !selectedProperty || p.propertyId === selectedProperty)
+                      .map(p => (
                       <tr
                         key={p.propertyId}
                         className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
@@ -706,25 +713,34 @@ export default function Wallets() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 bg-muted/20">
-                      <td className="py-2.5 pr-4 font-bold text-sm">Grand Total</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-green-700 dark:text-green-400 font-mono text-sm">
-                        ₹{parseFloat(allPropertiesSummary.totals.cash).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-purple-700 dark:text-purple-400 font-mono text-sm">
-                        ₹{parseFloat(allPropertiesSummary.totals.upi).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-2.5 pl-3 text-right font-bold font-mono text-base text-primary">
-                        ₹{parseFloat(allPropertiesSummary.totals.grand).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
+                    {(() => {
+                      const visibleRows = allPropertiesSummary.properties.filter(p => !selectedProperty || p.propertyId === selectedProperty);
+                      const footerCash = visibleRows.reduce((s, p) => s + parseFloat(p.cashTotal), 0);
+                      const footerUpi = visibleRows.reduce((s, p) => s + parseFloat(p.upiTotal), 0);
+                      const footerGrand = footerCash + footerUpi;
+                      return (
+                        <tr className="border-t-2 bg-muted/20">
+                          <td className="py-2.5 pr-4 font-bold text-sm">{selectedProperty ? "Total" : "Grand Total"}</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-green-700 dark:text-green-400 font-mono text-sm">
+                            ₹{footerCash.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-purple-700 dark:text-purple-400 font-mono text-sm">
+                            ₹{footerUpi.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 pl-3 text-right font-bold font-mono text-base text-primary">
+                            ₹{footerGrand.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </tfoot>
                 </table>
                 <p className="text-xs text-muted-foreground mt-2">
                   {summaryAsOfDate
-                    ? `Showing wallet balances as they were at end of ${format(new Date(summaryAsOfDate + "T00:00:00"), "dd MMM yyyy")}. `
-                    : "Showing current live balances. "}
-                  Cash = physical cash on hand. UPI = bank / digital accounts. Click a row to manage that property.
+                    ? `Balances as of end of ${format(new Date(summaryAsOfDate + "T00:00:00"), "dd MMM yyyy")}. `
+                    : "Live current balances. "}
+                  Cash = physical cash on hand · UPI = bank / digital accounts.
+                  {!selectedProperty && " Click a row to drill into that property."}
                 </p>
               </div>
             )}
@@ -735,8 +751,8 @@ export default function Wallets() {
       {!selectedProperty ? (
         <Card className="p-8 text-center">
           <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">Select a Property</h3>
-          <p className="text-muted-foreground">Choose a property to manage its payment accounts and wallets</p>
+          <h3 className="text-lg font-medium mb-2">Select a Specific Property</h3>
+          <p className="text-muted-foreground">Choose a property from the dropdown above to add wallets, record transactions, and view detailed statements.</p>
         </Card>
       ) : (
         <>
