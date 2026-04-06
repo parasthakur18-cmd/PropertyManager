@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
-import { format } from "date-fns";
+import { format, isBefore, startOfDay } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -363,8 +363,11 @@ export default function ActiveBookings() {
     );
   });
 
+  const todayStart = startOfDay(new Date());
   const activeFilteredBookings = filteredBookings?.filter(b => b.status !== "checked-out") ?? [];
   const checkedOutTodayBookings = filteredBookings?.filter(b => b.status === "checked-out") ?? [];
+  const isOverdueBooking = (b: any) =>
+    b.status === "checked-in" && isBefore(startOfDay(new Date(b.checkOutDate)), todayStart);
 
   const sendPreBillMutation = useMutation({
     mutationFn: async ({ bookingId, billDetails }: { bookingId: number; billDetails: any }) => {
@@ -1068,13 +1071,29 @@ export default function ActiveBookings() {
       ) : (
         <div className="grid gap-4">
           {activeFilteredBookings.map((booking) => (
-            <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}>
+            <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}
+              className={isOverdueBooking(booking) ? "border-red-400 border-2" : ""}
+            >
               <CardHeader>
+                {isOverdueBooking(booking) && (
+                  <Alert className="mb-2 py-2 border-red-400 bg-red-50 dark:bg-red-950">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <AlertDescription className="text-red-700 dark:text-red-300 text-xs font-semibold">
+                      Overdue Checkout — Checkout date was {format(new Date(booking.checkOutDate), "dd MMM yyyy")}. Please process checkout or extend stay.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <User className="h-4 w-4" />
                       <CardTitle>{booking.guest.fullName}</CardTitle>
+                      {isOverdueBooking(booking) && (
+                        <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Overdue
+                        </Badge>
+                      )}
                       {booking.isGroupBooking && (
                         <Badge variant="secondary" className="bg-blue-500 text-white text-xs">
                           Group
