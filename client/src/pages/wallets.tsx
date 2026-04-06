@@ -59,6 +59,7 @@ export default function Wallets() {
   const [txTypeFilter, setTxTypeFilter] = useState<string>("all");
   const [txSourceFilter, setTxSourceFilter] = useState<string>("all");
   const [txSearch, setTxSearch] = useState<string>("");
+  const [showAllPropertiesSummary, setShowAllPropertiesSummary] = useState(true);
 
   // Transfer & Top-up state
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
@@ -110,6 +111,13 @@ export default function Wallets() {
       return response.json();
     },
     enabled: !!selectedProperty,
+  });
+
+  const { data: allPropertiesSummary, isLoading: allSummaryLoading } = useQuery<{
+    properties: { propertyId: number; propertyName: string; cashTotal: string; upiTotal: string; grandTotal: string; wallets: { id: number; name: string; type: string; balance: string }[] }[];
+    totals: { cash: string; upi: string; grand: string };
+  }>({
+    queryKey: ["/api/wallets/all-properties-summary"],
   });
 
   const { data: transactions = [], isLoading: transactionsLoading } = useQuery<WalletTransaction[]>({
@@ -606,6 +614,85 @@ export default function Wallets() {
           </Select>
         </div>
       </div>
+
+      {/* All-Properties Balance Summary */}
+      <Card data-testid="card-all-properties-summary">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-primary" />
+              <CardTitle className="text-base">All Properties Balance</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setShowAllPropertiesSummary(v => !v)}>
+              {showAllPropertiesSummary ? "Hide" : "Show"}
+            </Button>
+          </div>
+        </CardHeader>
+        {showAllPropertiesSummary && (
+          <CardContent className="pt-0">
+            {allSummaryLoading ? (
+              <div className="space-y-2">
+                {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : !allPropertiesSummary || allPropertiesSummary.properties.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No properties with wallets found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-all-properties-balance">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="text-left py-2 pr-4 font-medium">Property</th>
+                      <th className="text-right py-2 px-3 font-medium">
+                        <span className="flex items-center justify-end gap-1"><Banknote className="h-3.5 w-3.5 text-green-500" />Cash</span>
+                      </th>
+                      <th className="text-right py-2 px-3 font-medium">
+                        <span className="flex items-center justify-end gap-1"><CreditCard className="h-3.5 w-3.5 text-purple-500" />UPI</span>
+                      </th>
+                      <th className="text-right py-2 pl-3 font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPropertiesSummary.properties.map(p => (
+                      <tr
+                        key={p.propertyId}
+                        className="border-b last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                        onClick={() => setSelectedProperty(p.propertyId)}
+                        data-testid={`row-property-balance-${p.propertyId}`}
+                      >
+                        <td className="py-2.5 pr-4 font-medium text-primary hover:underline">{p.propertyName}</td>
+                        <td className="py-2.5 px-3 text-right text-green-700 dark:text-green-400 font-mono">
+                          ₹{parseFloat(p.cashTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-purple-700 dark:text-purple-400 font-mono">
+                          ₹{parseFloat(p.upiTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2.5 pl-3 text-right font-semibold font-mono">
+                          ₹{parseFloat(p.grandTotal).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 bg-muted/20">
+                      <td className="py-2.5 pr-4 font-bold text-sm">Grand Total</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-green-700 dark:text-green-400 font-mono text-sm">
+                        ₹{parseFloat(allPropertiesSummary.totals.cash).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-purple-700 dark:text-purple-400 font-mono text-sm">
+                        ₹{parseFloat(allPropertiesSummary.totals.upi).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-2.5 pl-3 text-right font-bold font-mono text-base text-primary">
+                        ₹{parseFloat(allPropertiesSummary.totals.grand).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <p className="text-xs text-muted-foreground mt-2">Click a property row to manage its wallets.</p>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       {!selectedProperty ? (
         <Card className="p-8 text-center">

@@ -9234,6 +9234,60 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Get wallet balances across ALL accessible properties (property-wise summary)
+  app.get("/api/wallets/all-properties-summary", isAuthenticated, async (req, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const { tenant } = auth;
+
+      const allProperties = await storage.getAllProperties();
+      const accessibleProperties = tenant.hasUnlimitedAccess
+        ? allProperties
+        : allProperties.filter(p => tenant.assignedPropertyIds.includes(p.id));
+
+      const allWallets = await db.select().from(wallets);
+
+      const result = accessibleProperties
+        .filter(p => !p.isDisabled)
+        .map(property => {
+          const propWallets = allWallets.filter(w => w.propertyId === property.id);
+          const cashWallets = propWallets.filter(w => w.type === "cash");
+          const upiWallets = propWallets.filter(w => w.type === "upi" || w.type === "bank");
+          const cashTotal = cashWallets.reduce((s, w) => s + parseFloat(w.currentBalance?.toString() || "0"), 0);
+          const upiTotal = upiWallets.reduce((s, w) => s + parseFloat(w.currentBalance?.toString() || "0"), 0);
+          return {
+            propertyId: property.id,
+            propertyName: property.name,
+            cashTotal: cashTotal.toFixed(2),
+            upiTotal: upiTotal.toFixed(2),
+            grandTotal: (cashTotal + upiTotal).toFixed(2),
+            wallets: propWallets.map(w => ({
+              id: w.id,
+              name: w.name,
+              type: w.type,
+              balance: parseFloat(w.currentBalance?.toString() || "0").toFixed(2),
+            })),
+          };
+        });
+
+      const overallCash = result.reduce((s, p) => s + parseFloat(p.cashTotal), 0);
+      const overallUpi = result.reduce((s, p) => s + parseFloat(p.upiTotal), 0);
+
+      res.json({
+        properties: result,
+        totals: {
+          cash: overallCash.toFixed(2),
+          upi: overallUpi.toFixed(2),
+          grand: (overallCash + overallUpi).toFixed(2),
+        },
+      });
+    } catch (error: any) {
+      console.error("[/api/wallets/all-properties-summary] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Get single wallet
   app.get("/api/wallets/:id", isAuthenticated, async (req, res) => {
     try {
