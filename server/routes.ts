@@ -9250,7 +9250,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         ? allProperties
         : allProperties.filter(p => tenant.assignedPropertyIds.includes(p.id));
 
-      const allWallets = await db.select().from(wallets);
+      const allWallets = await db.select().from(wallets).where(eq(wallets.isActive, true));
 
       // If filtering by date, get the last balanceAfter for each wallet on or before that date
       let walletBalanceMap: Map<number, number> = new Map();
