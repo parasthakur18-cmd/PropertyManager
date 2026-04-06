@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/hooks/useAuth";
 import type { Property, Wallet as WalletType, WalletTransaction, DailyClosing, PropertyTransfer } from "@shared/schema";
 
 const walletFormSchema = z.object({
@@ -43,6 +44,8 @@ const transactionFormSchema = z.object({
 
 export default function Wallets() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin" || user?.role === "super-admin";
   const [selectedProperty, setSelectedProperty] = useState<number | null>(null);
   const [isWalletDialogOpen, setIsWalletDialogOpen] = useState(false);
   const [isTransactionDialogOpen, setIsTransactionDialogOpen] = useState(false);
@@ -74,6 +77,11 @@ export default function Wallets() {
   const [topupAmount, setTopupAmount] = useState<string>("");
   const [topupNote, setTopupNote] = useState<string>("");
   const [topupDate, setTopupDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  // Correct Transaction state
+  const [correctTxDialog, setCorrectTxDialog] = useState<{ open: boolean; tx: WalletTransaction | null }>({ open: false, tx: null });
+  const [correctReason, setCorrectReason] = useState("");
+  const [correctNewWalletId, setCorrectNewWalletId] = useState<string>("");
 
   const { data: properties = [] } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -467,6 +475,25 @@ export default function Wallets() {
         description: error.message || "Failed to set opening balances",
         variant: "destructive",
       });
+    },
+  });
+
+  const correctTransactionMutation = useMutation({
+    mutationFn: async ({ txId, reason, newWalletId }: { txId: number; reason: string; newWalletId: number | null }) => {
+      const res = await apiRequest(`/api/wallet-transactions/${txId}/reverse`, "POST", { reason, newWalletId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions", selectedProperty] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallets/all-properties-summary"] });
+      setCorrectTxDialog({ open: false, tx: null });
+      setCorrectReason("");
+      setCorrectNewWalletId("");
+      toast({ title: "Transaction corrected", description: "The reversal entry and re-credit have been recorded in the ledger." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Correction failed", description: error.message || "Could not reverse transaction", variant: "destructive" });
     },
   });
 
@@ -1205,13 +1232,34 @@ export default function Wallets() {
                                     </p>
                                   </div>
                                 </div>
-                                <div className="text-right shrink-0">
-                                  <p className={`font-bold ${tx.transactionType === "credit" ? "text-green-600" : "text-red-600"}`}>
-                                    {tx.transactionType === "credit" ? "+" : "-"}₹{parseFloat(tx.amount?.toString() || "0").toLocaleString()}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Bal: ₹{parseFloat(tx.balanceAfter?.toString() || "0").toLocaleString()}
-                                  </p>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="text-right">
+                                    <p className={`font-bold ${tx.transactionType === "credit" ? "text-green-600" : "text-red-600"}`}>
+                                      {tx.transactionType === "credit" ? "+" : "-"}₹{parseFloat(tx.amount?.toString() || "0").toLocaleString()}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Bal: ₹{parseFloat(tx.balanceAfter?.toString() || "0").toLocaleString()}
+                                    </p>
+                                    {(tx as any).isReversal && (
+                                      <span className="text-xs text-orange-500 font-medium">Reversal</span>
+                                    )}
+                                  </div>
+                                  {isAdmin && !((tx as any).isReversal) && tx.transactionType === "credit" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-muted-foreground hover:text-orange-600"
+                                      title="Correct this transaction"
+                                      onClick={() => {
+                                        setCorrectTxDialog({ open: true, tx });
+                                        setCorrectReason("");
+                                        setCorrectNewWalletId("");
+                                      }}
+                                      data-testid={`button-correct-tx-${tx.id}`}
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -2245,6 +2293,88 @@ export default function Wallets() {
             >
               <CheckCircle2 className="h-4 w-4 mr-2" />
               Set Opening Balances
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Correct Transaction Dialog */}
+      <Dialog open={correctTxDialog.open} onOpenChange={(o) => { if (!o) setCorrectTxDialog({ open: false, tx: null }); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-orange-500" />
+              Correct Transaction
+            </DialogTitle>
+            <DialogDescription>
+              This creates a reversal debit on the original wallet and optionally a re-credit on the correct wallet. The full history is preserved.
+            </DialogDescription>
+          </DialogHeader>
+          {correctTxDialog.tx && (
+            <div className="space-y-4">
+              <div className="rounded-lg border p-3 bg-muted/40 text-sm space-y-1">
+                <p className="font-medium">{correctTxDialog.tx.description || correctTxDialog.tx.source}</p>
+                <p className="text-muted-foreground">
+                  {wallets.find(w => w.id === correctTxDialog.tx?.walletId)?.name} •{" "}
+                  <span className="text-green-600 font-semibold">
+                    +₹{parseFloat(correctTxDialog.tx.amount?.toString() || "0").toLocaleString()}
+                  </span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tx #{correctTxDialog.tx.id} • {format(new Date(correctTxDialog.tx.transactionDate), "dd MMM yyyy")}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Reason for correction <span className="text-red-500">*</span></Label>
+                <Input
+                  value={correctReason}
+                  onChange={e => setCorrectReason(e.target.value)}
+                  placeholder="e.g. Wrong payment mode — should be UPI not Cash"
+                  data-testid="input-correct-reason"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Move amount to correct wallet (optional)</Label>
+                <Select value={correctNewWalletId} onValueChange={setCorrectNewWalletId}>
+                  <SelectTrigger data-testid="select-correct-wallet">
+                    <SelectValue placeholder="Select wallet to re-credit (leave blank to just reverse)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Just reverse, no re-credit —</SelectItem>
+                    {wallets
+                      .filter(w => w.id !== correctTxDialog.tx?.walletId)
+                      .map(w => (
+                        <SelectItem key={w.id} value={w.id.toString()}>
+                          {w.name} ({w.type.toUpperCase()}) · ₹{parseFloat(w.currentBalance?.toString() || "0").toLocaleString()}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  If the money went to the wrong wallet, select the correct one and the amount will be moved there.
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCorrectTxDialog({ open: false, tx: null })}>Cancel</Button>
+            <Button
+              variant="default"
+              className="bg-orange-600 hover:bg-orange-700"
+              disabled={!correctReason.trim() || correctTransactionMutation.isPending}
+              onClick={() => {
+                if (!correctTxDialog.tx) return;
+                correctTransactionMutation.mutate({
+                  txId: correctTxDialog.tx.id,
+                  reason: correctReason,
+                  newWalletId: correctNewWalletId && correctNewWalletId !== "none" ? parseInt(correctNewWalletId) : null,
+                });
+              }}
+              data-testid="button-confirm-correct-tx"
+            >
+              {correctTransactionMutation.isPending ? "Processing..." : "Confirm Correction"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -481,7 +481,9 @@ export interface IStorage {
   // Wallet integration helpers
   getWalletByPaymentMethod(propertyId: number, paymentMethod: string): Promise<Wallet | null>;
   recordAdvancePaymentToWallet(propertyId: number, bookingId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
-  recordBillPaymentToWallet(propertyId: number, billId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
+  recordBillPaymentToWallet(propertyId: number, billId: number, amount: number, paymentMethod: string, description: string, userId: string | null, bookingId?: number): Promise<WalletTransaction | null>;
+  reverseWalletTransaction(txId: number, reason: string, newWalletId: number | null, createdBy: string | null): Promise<{ reversal: WalletTransaction; reCredit: WalletTransaction | null }>;
+  getWalletTransactionsByBooking(bookingId: number, propertyId: number): Promise<WalletTransaction[]>;
   recordFoodOrderPaymentToWallet(propertyId: number, orderId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordExpenseToWallet(propertyId: number, expenseId: number, amount: number, paymentMethod: string, description: string, userId: string | null): Promise<WalletTransaction | null>;
   recordSalaryPaymentToWallet(propertyId: number, paymentId: number, amount: number, paymentMethod: string, staffName: string, userId: string | null): Promise<WalletTransaction | null>;
@@ -5394,17 +5396,25 @@ export class DatabaseStorage implements IStorage {
       console.log(`[Wallet] No wallet found for property ${propertyId} method ${paymentMethod}, skipping advance wallet update`);
       return null;
     }
-    return this.recordPaymentToWallet(
+    const currentBalance = parseFloat(wallet.currentBalance?.toString() || '0');
+    const newBalance = currentBalance + amount;
+    await this.updateWallet(wallet.id, { currentBalance: newBalance.toString() });
+    return this.createWalletTransaction({
+      walletId: wallet.id,
       propertyId,
-      wallet.id,
-      amount,
-      'advance_payment',
+      transactionType: 'credit',
+      amount: amount.toString(),
+      balanceAfter: newBalance.toString(),
+      source: 'advance_payment',
+      sourceId: bookingId,
       bookingId,
+      paymentType: 'advance',
+      isReversal: false,
       description,
-      null,
-      new Date(),
-      userId
-    );
+      referenceNumber: null,
+      transactionDate: new Date().toISOString().split('T')[0],
+      createdBy: userId,
+    });
   }
 
   async recordBillPaymentToWallet(
@@ -5413,25 +5423,105 @@ export class DatabaseStorage implements IStorage {
     amount: number,
     paymentMethod: string,
     description: string,
-    userId: string | null
+    userId: string | null,
+    bookingId?: number
   ): Promise<WalletTransaction | null> {
     const wallet = await this.getWalletByPaymentMethod(propertyId, paymentMethod);
     if (!wallet) {
       console.log(`[Wallet] No wallet found for property ${propertyId}, skipping wallet update`);
       return null;
     }
-    
-    return this.recordPaymentToWallet(
+    const currentBalance = parseFloat(wallet.currentBalance?.toString() || '0');
+    const newBalance = currentBalance + amount;
+    await this.updateWallet(wallet.id, { currentBalance: newBalance.toString() });
+    return this.createWalletTransaction({
+      walletId: wallet.id,
       propertyId,
-      wallet.id,
-      amount,
-      'booking_payment',
-      billId,
+      transactionType: 'credit',
+      amount: amount.toString(),
+      balanceAfter: newBalance.toString(),
+      source: 'booking_payment',
+      sourceId: billId,
+      bookingId: bookingId ?? null,
+      paymentType: 'checkout',
+      isReversal: false,
       description,
-      null,
-      new Date(),
-      userId
-    );
+      referenceNumber: null,
+      transactionDate: new Date().toISOString().split('T')[0],
+      createdBy: userId,
+    });
+  }
+
+  async getWalletTransactionsByBooking(bookingId: number, propertyId: number): Promise<WalletTransaction[]> {
+    return db.select().from(walletTransactions)
+      .where(and(eq(walletTransactions.bookingId, bookingId), eq(walletTransactions.propertyId, propertyId)))
+      .orderBy(walletTransactions.createdAt);
+  }
+
+  async reverseWalletTransaction(
+    txId: number,
+    reason: string,
+    newWalletId: number | null,
+    createdBy: string | null
+  ): Promise<{ reversal: WalletTransaction; reCredit: WalletTransaction | null }> {
+    // Load original transaction
+    const [original] = await db.select().from(walletTransactions).where(eq(walletTransactions.id, txId));
+    if (!original) throw new Error(`Wallet transaction #${txId} not found`);
+
+    const origAmount = parseFloat(original.amount?.toString() || '0');
+    const today = new Date().toISOString().split('T')[0];
+
+    // Step 1: Create reversal debit on original wallet (NO balance guard for corrections)
+    const origWallet = await this.getWallet(original.walletId);
+    if (!origWallet) throw new Error(`Wallet #${original.walletId} not found`);
+    const origNewBal = parseFloat(origWallet.currentBalance?.toString() || '0') - origAmount;
+    await this.updateWallet(origWallet.id, { currentBalance: origNewBal.toString() });
+    const reversal = await this.createWalletTransaction({
+      walletId: origWallet.id,
+      propertyId: original.propertyId,
+      transactionType: 'debit',
+      amount: origAmount.toString(),
+      balanceAfter: origNewBal.toString(),
+      source: 'correction',
+      sourceId: original.sourceId,
+      bookingId: original.bookingId,
+      paymentType: original.paymentType,
+      isReversal: true,
+      reversalOfId: txId,
+      description: `REVERSAL of Tx#${txId}: ${reason}`,
+      referenceNumber: null,
+      transactionDate: today,
+      createdBy,
+    });
+
+    // Step 2: If a new target wallet is given, create credit there
+    let reCredit: WalletTransaction | null = null;
+    if (newWalletId && newWalletId !== origWallet.id) {
+      const newWallet = await this.getWallet(newWalletId);
+      if (newWallet) {
+        const newWalBal = parseFloat(newWallet.currentBalance?.toString() || '0') + origAmount;
+        await this.updateWallet(newWallet.id, { currentBalance: newWalBal.toString() });
+        reCredit = await this.createWalletTransaction({
+          walletId: newWallet.id,
+          propertyId: original.propertyId,
+          transactionType: 'credit',
+          amount: origAmount.toString(),
+          balanceAfter: newWalBal.toString(),
+          source: original.source,
+          sourceId: original.sourceId,
+          bookingId: original.bookingId,
+          paymentType: original.paymentType,
+          isReversal: false,
+          reversalOfId: txId,
+          description: `CORRECTION of Tx#${txId}: ${reason}`,
+          referenceNumber: null,
+          transactionDate: today,
+          createdBy,
+        });
+      }
+    }
+
+    return { reversal, reCredit };
   }
 
   async recordFoodOrderPaymentToWallet(

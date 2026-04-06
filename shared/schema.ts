@@ -1666,6 +1666,10 @@ export const walletTransactions = pgTable("wallet_transactions", {
   balanceAfter: decimal("balance_after", { precision: 12, scale: 2 }).notNull(),
   source: varchar("source", { length: 50 }).notNull(), // booking_payment, expense, vendor_payment, etc.
   sourceId: integer("source_id"), // Reference to booking/order/expense/vendor_transaction ID
+  bookingId: integer("booking_id"), // Direct link to booking (advance or checkout)
+  paymentType: varchar("payment_type", { length: 20 }), // 'advance' | 'checkout' | 'manual'
+  isReversal: boolean("is_reversal").default(false), // true = this is a corrective reversal entry
+  reversalOfId: integer("reversal_of_id"), // ID of the original transaction this reverses
   description: text("description"),
   referenceNumber: varchar("reference_number", { length: 100 }), // UTR, cheque no, receipt no
   transactionDate: date("transaction_date").notNull(),

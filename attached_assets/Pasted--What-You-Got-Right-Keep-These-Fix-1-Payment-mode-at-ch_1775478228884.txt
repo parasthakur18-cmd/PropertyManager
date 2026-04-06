@@ -1,0 +1,110 @@
+✅ What You Got Right (Keep These)
+✔ Fix 1 — Payment mode at checkout
+
+Absolutely necessary.
+This will remove 80% of your current issues at the source.
+
+✔ Keep it exactly as:
+
+Cash / UPI / Bank / Card dropdown
+No default auto-selection (or at least remember last used)
+✔ Fix 3 — Ledger-based correction (VERY important)
+
+This is the correct financial approach.
+
+Instead of editing:
+
+Reverse old entry
+Add new entry
+
+This keeps:
+
+Audit trail clean
+No hidden manipulation
+Fully professional accounting standard
+
+👉 This is exactly how real systems (like Tally, Zoho Books) work.
+
+⚠️ What Needs Improvement
+❌ Fix 2 — “Delete Transaction” (Not recommended as primary solution)
+
+I understand why you suggested delete — but in a financial system, delete is dangerous.
+
+Problem with delete:
+Breaks audit trail
+No record of what happened
+Can be misused later
+Balance history becomes unreliable
+✅ Better Alternative (Recommended by me)
+🔁 Replace “Delete” with:
+👉 “Reverse / Correct Entry” (Admin Only)
+
+Instead of deleting:
+
+Add button: “Correct Transaction”
+When clicked:
+System creates a reverse entry
+Then optionally allows re-entry with correct mode
+Example (your real case):
+Wrong:
+₹5000 added as Cash
+You correct to UPI:
+
+System will do:
+
+Debit ₹5000 from Cash wallet (reversal)
+Credit ₹5000 to UPI wallet
+
+👉 Final result:
+
+No duplicate confusion
+Full history maintained
+Balance correct
+🔧 Additional Fix (VERY IMPORTANT — You missed this)
+🔗 Link wallet with booking (CRITICAL)
+
+Right now your biggest issue is:
+
+Wallet and booking are disconnected
+
+Fix this by adding:
+bookingId
+paymentType (advance / checkout)
+sourceId (already partially there)
+
+👉 This allows:
+
+Easy tracking
+Auto-correction
+No duplicate entries
+Clean reporting
+🧠 Final Recommended Structure
+1. Checkout Fix
+Add payment mode selector ✅
+2. Wallet System Upgrade
+❌ Remove delete
+✅ Add Reverse / Correct Transaction
+3. Sync Logic
+On booking edit:
+Detect change
+Reverse old entry
+Add new entry
+4. Data Linking
+Every wallet entry must have:
+bookingId
+source (advance / checkout)
+🎯 My Suggestion (Implementation Order)
+
+Don’t do everything at once. Do it in this order:
+
+Checkout payment mode selector (quick win)
+Wallet ↔ Booking linking (foundation)
+Reverse transaction system
+Auto-sync on edit
+🚀 Final Answer
+
+Yes — your approach is 90% correct, but:
+
+❌ Do NOT allow delete
+✅ Use reversal system instead
+✅ Link wallet to booking (must-have)

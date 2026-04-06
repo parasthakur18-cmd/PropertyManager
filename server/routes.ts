@@ -3714,32 +3714,58 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
-      // If advance amount was added/increased, record the delta to wallet
-      if (validatedData.advanceAmount !== undefined) {
-        const newAdv = parseFloat(String(validatedData.advanceAmount || "0"));
+      // Wallet sync on booking edit — handle both amount increase and payment method change
+      if ((validatedData.advanceAmount !== undefined || (validatedData as any).advancePaymentMethod !== undefined) && booking && booking.propertyId) {
+        const newAdv = parseFloat(String(validatedData.advanceAmount ?? existingBooking.advanceAmount ?? "0"));
         const oldAdv = parseFloat(String(existingBooking.advanceAmount || "0"));
+        const newMethod = (validatedData as any).advancePaymentMethod || existingBooking.advancePaymentMethod || "cash";
+        const oldMethod = existingBooking.advancePaymentMethod || "cash";
+        const methodChanged = newMethod !== oldMethod;
         const delta = newAdv - oldAdv;
-        if (delta > 0 && booking && booking.propertyId) {
-          setImmediate(async () => {
-            try {
-              const updUser = req.user as any;
-              const updUserId = updUser?.claims?.sub || updUser?.id || (req.session as any)?.userId;
-              const advGuest = await storage.getGuest(booking.guestId);
-              const advMethod = (validatedData as any).advancePaymentMethod || booking.advancePaymentMethod || "cash";
+
+        setImmediate(async () => {
+          try {
+            const updUser = req.user as any;
+            const updUserId = updUser?.claims?.sub || updUser?.id || (req.session as any)?.userId;
+            const advGuest = await storage.getGuest(booking.guestId);
+
+            // Case 1: Payment METHOD changed (e.g. cash → UPI) — reverse old entries, re-credit new wallet
+            if (methodChanged && oldAdv > 0) {
+              console.log(`[Wallet] Payment method changed ${oldMethod}→${newMethod} for booking #${booking.id}, reversing advance entries`);
+              const existingTxs = await storage.getWalletTransactionsByBooking(booking.id, booking.propertyId);
+              const advanceTxs = existingTxs.filter(t => t.paymentType === 'advance' && !t.isReversal);
+              for (const tx of advanceTxs) {
+                try {
+                  const newWallet = await storage.getWalletByPaymentMethod(booking.propertyId, newMethod);
+                  await storage.reverseWalletTransaction(
+                    tx.id,
+                    `Payment method changed to ${newMethod}`,
+                    newWallet?.id ?? null,
+                    updUserId
+                  );
+                  console.log(`[Wallet] Reversed advance tx #${tx.id} and re-credited to ${newMethod}`);
+                } catch (revErr) {
+                  console.error(`[Wallet] Reversal failed for tx #${tx.id}:`, revErr);
+                }
+              }
+            }
+
+            // Case 2: Amount increased (new delta to record) — use current method
+            if (delta > 0) {
               await storage.recordAdvancePaymentToWallet(
                 booking.propertyId,
                 booking.id,
                 delta,
-                advMethod,
+                newMethod,
                 `Advance - ${advGuest?.fullName || 'Guest'} (Booking #${booking.id})`,
                 updUserId || null
               );
-              console.log(`[Wallet] Advance delta ₹${delta} via ${advMethod} recorded for booking #${booking.id}`);
-            } catch (wErr) {
-              console.error(`[Wallet] Failed advance wallet update for booking #${booking.id}:`, wErr);
+              console.log(`[Wallet] Advance delta ₹${delta} via ${newMethod} recorded for booking #${booking.id}`);
             }
-          });
-        }
+          } catch (wErr) {
+            console.error(`[Wallet] Failed advance wallet update for booking #${booking.id}:`, wErr);
+          }
+        });
       }
       
       // Audit log for booking update with proper before/after structure
@@ -4647,6 +4673,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const guestName = guest?.fullName || 'Guest';
           
           // Handle split payments (cash + online)
+          const checkoutUserId = (req as any).user?.claims?.sub || (req as any).user?.id || null;
           if (splitPaymentMethods && splitPaymentMethods.length > 0) {
             for (const splitPayment of splitPaymentMethods) {
               if (splitPayment.amount > 0) {
@@ -4656,7 +4683,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                   splitPayment.amount,
                   splitPayment.method,
                   `Checkout payment - ${guestName} (Bill #${bill.id}) - ${splitPayment.method.toUpperCase()}`,
-                  (req as any).user?.claims?.sub || (req as any).user?.id || null
+                  checkoutUserId,
+                  bookingId
                 );
                 console.log(`[Wallet] Recorded checkout ${splitPayment.method} payment ₹${splitPayment.amount} for bill #${bill.id}`);
               }
@@ -4669,7 +4697,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               balanceAmount,
               paymentMethod || 'cash',
               `Checkout payment - ${guestName} (Bill #${bill.id})`,
-              (req as any).user?.claims?.sub || (req as any).user?.id || null
+              checkoutUserId,
+              bookingId
             );
             console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
           }
@@ -9477,6 +9506,41 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           walletName: error.walletName,
         });
       }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Reverse a wallet transaction (correction / admin fix)
+  app.post("/api/wallet-transactions/:id/reverse", isAuthenticated, async (req, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      if (tenant.role !== 'admin' && tenant.role !== 'super-admin') {
+        return res.status(403).json({ message: "Only admins can reverse transactions" });
+      }
+      const txId = parseInt(req.params.id);
+      const { reason, newWalletId } = req.body;
+      if (!reason) return res.status(400).json({ message: "Reason is required" });
+      const userId = (req as any).user?.claims?.sub || (req as any).user?.id || req.session?.userId || null;
+      const result = await storage.reverseWalletTransaction(txId, reason, newWalletId ? parseInt(newWalletId) : null, userId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[/api/wallet-transactions/:id/reverse] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get all wallet transactions linked to a specific booking
+  app.get("/api/wallet-transactions/booking/:bookingId", isAuthenticated, async (req, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "Not authenticated" });
+      const { propertyId } = req.query;
+      if (!propertyId) return res.status(400).json({ message: "propertyId query param required" });
+      const txs = await storage.getWalletTransactionsByBooking(parseInt(req.params.bookingId), parseInt(propertyId as string));
+      res.json(txs);
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
