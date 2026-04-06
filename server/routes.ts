@@ -9235,11 +9235,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   });
 
   // Get wallet balances across ALL accessible properties (property-wise summary)
+  // Optional ?asOfDate=YYYY-MM-DD for point-in-time balance
   app.get("/api/wallets/all-properties-summary", isAuthenticated, async (req, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(403).json({ message: "User not found." });
       const { tenant } = auth;
+
+      const asOfDateStr = req.query.asOfDate as string | undefined;
+      const asOfDate = asOfDateStr ? new Date(asOfDateStr + "T23:59:59") : null;
 
       const allProperties = await storage.getAllProperties();
       const accessibleProperties = tenant.hasUnlimitedAccess
@@ -9248,14 +9252,46 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const allWallets = await db.select().from(wallets);
 
+      // If filtering by date, get the last balanceAfter for each wallet on or before that date
+      let walletBalanceMap: Map<number, number> = new Map();
+      if (asOfDate) {
+        const txRows = await db
+          .select({
+            walletId: walletTransactions.walletId,
+            balanceAfter: walletTransactions.balanceAfter,
+            transactionDate: walletTransactions.transactionDate,
+          })
+          .from(walletTransactions)
+          .where(lte(walletTransactions.transactionDate, format(asOfDate, "yyyy-MM-dd")))
+          .orderBy(walletTransactions.walletId, walletTransactions.transactionDate, walletTransactions.id);
+
+        // Group by walletId: take the last row for each wallet (most recent on/before asOfDate)
+        for (const row of txRows) {
+          walletBalanceMap.set(row.walletId, parseFloat(row.balanceAfter?.toString() || "0"));
+        }
+        // For wallets with no transactions before that date, use opening balance
+        for (const w of allWallets) {
+          if (!walletBalanceMap.has(w.id)) {
+            walletBalanceMap.set(w.id, parseFloat(w.openingBalance?.toString() || "0"));
+          }
+        }
+      }
+
       const result = accessibleProperties
         .filter(p => !p.isDisabled)
         .map(property => {
           const propWallets = allWallets.filter(w => w.propertyId === property.id);
           const cashWallets = propWallets.filter(w => w.type === "cash");
           const upiWallets = propWallets.filter(w => w.type === "upi" || w.type === "bank");
-          const cashTotal = cashWallets.reduce((s, w) => s + parseFloat(w.currentBalance?.toString() || "0"), 0);
-          const upiTotal = upiWallets.reduce((s, w) => s + parseFloat(w.currentBalance?.toString() || "0"), 0);
+
+          const getBalance = (w: typeof propWallets[0]) =>
+            asOfDate
+              ? (walletBalanceMap.get(w.id) ?? 0)
+              : parseFloat(w.currentBalance?.toString() || "0");
+
+          const cashTotal = cashWallets.reduce((s, w) => s + getBalance(w), 0);
+          const upiTotal = upiWallets.reduce((s, w) => s + getBalance(w), 0);
+
           return {
             propertyId: property.id,
             propertyName: property.name,
@@ -9266,7 +9302,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               id: w.id,
               name: w.name,
               type: w.type,
-              balance: parseFloat(w.currentBalance?.toString() || "0").toFixed(2),
+              balance: getBalance(w).toFixed(2),
             })),
           };
         });
@@ -9281,6 +9317,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           upi: overallUpi.toFixed(2),
           grand: (overallCash + overallUpi).toFixed(2),
         },
+        asOfDate: asOfDateStr || null,
       });
     } catch (error: any) {
       console.error("[/api/wallets/all-properties-summary] Error:", error.message);

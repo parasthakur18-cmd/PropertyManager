@@ -60,6 +60,7 @@ export default function Wallets() {
   const [txSourceFilter, setTxSourceFilter] = useState<string>("all");
   const [txSearch, setTxSearch] = useState<string>("");
   const [showAllPropertiesSummary, setShowAllPropertiesSummary] = useState(true);
+  const [summaryAsOfDate, setSummaryAsOfDate] = useState<string>("");
 
   // Transfer & Top-up state
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false);
@@ -116,8 +117,17 @@ export default function Wallets() {
   const { data: allPropertiesSummary, isLoading: allSummaryLoading } = useQuery<{
     properties: { propertyId: number; propertyName: string; cashTotal: string; upiTotal: string; grandTotal: string; wallets: { id: number; name: string; type: string; balance: string }[] }[];
     totals: { cash: string; upi: string; grand: string };
+    asOfDate: string | null;
   }>({
-    queryKey: ["/api/wallets/all-properties-summary"],
+    queryKey: ["/api/wallets/all-properties-summary", summaryAsOfDate],
+    queryFn: async () => {
+      const url = summaryAsOfDate
+        ? `/api/wallets/all-properties-summary?asOfDate=${summaryAsOfDate}`
+        : "/api/wallets/all-properties-summary";
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("Failed to fetch summary");
+      return r.json();
+    },
   });
 
   const { data: transactions = [], isLoading: transactionsLoading } = useQuery<WalletTransaction[]>({
@@ -618,14 +628,37 @@ export default function Wallets() {
       {/* All-Properties Balance Summary */}
       <Card data-testid="card-all-properties-summary">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />
               <CardTitle className="text-base">All Properties Balance</CardTitle>
+              {summaryAsOfDate && (
+                <Badge variant="secondary" className="text-xs">
+                  As of {format(new Date(summaryAsOfDate + "T00:00:00"), "dd MMM yyyy")}
+                </Badge>
+              )}
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setShowAllPropertiesSummary(v => !v)}>
-              {showAllPropertiesSummary ? "Hide" : "Show"}
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Balance on date:</Label>
+                <Input
+                  type="date"
+                  value={summaryAsOfDate}
+                  onChange={e => setSummaryAsOfDate(e.target.value)}
+                  className="h-8 w-[150px] text-sm"
+                  max={new Date().toISOString().split("T")[0]}
+                  data-testid="input-summary-date"
+                />
+                {summaryAsOfDate && (
+                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={() => setSummaryAsOfDate("")}>
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowAllPropertiesSummary(v => !v)}>
+                {showAllPropertiesSummary ? "Hide" : "Show"}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         {showAllPropertiesSummary && (
@@ -687,7 +720,12 @@ export default function Wallets() {
                     </tr>
                   </tfoot>
                 </table>
-                <p className="text-xs text-muted-foreground mt-2">Click a property row to manage its wallets.</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {summaryAsOfDate
+                    ? `Showing wallet balances as they were at end of ${format(new Date(summaryAsOfDate + "T00:00:00"), "dd MMM yyyy")}. `
+                    : "Showing current live balances. "}
+                  Cash = physical cash on hand. UPI = bank / digital accounts. Click a row to manage that property.
+                </p>
               </div>
             )}
           </CardContent>
