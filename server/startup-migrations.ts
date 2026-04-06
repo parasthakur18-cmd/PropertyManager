@@ -503,6 +503,24 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    name: "add_wallet_transactions_booking_sync_fields",
+    async run() {
+      if (!(await tableExists("wallet_transactions"))) return;
+      const client = await pool.connect();
+      try {
+        await client.query(`
+          ALTER TABLE wallet_transactions
+            ADD COLUMN IF NOT EXISTS booking_id INTEGER,
+            ADD COLUMN IF NOT EXISTS payment_type VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS is_reversal BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS reversal_of_id INTEGER
+        `);
+      } finally {
+        client.release();
+      }
+    },
+  },
+  {
     name: "consolidate_wallets_to_cash_and_upi",
     async run() {
       if (!(await tableExists("wallets"))) return;
