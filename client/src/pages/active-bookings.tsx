@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, IndianRupee, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, Eye, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil } from "lucide-react";
+import { Hotel, User, Calendar, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format, isBefore, startOfDay } from "date-fns";
@@ -14,7 +14,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { SERVICE_TYPES, PAYMENT_METHODS, serviceTypeLabels } from "@/pages/addons";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useState, useEffect } from "react";
 import { BookingQRCode } from "@/components/BookingQRCode";
 import html2pdf from "html2pdf.js";
@@ -181,10 +180,8 @@ export default function ActiveBookings() {
   const [primaryBookingForMerge, setPrimaryBookingForMerge] = useState<number | null>(null);
   const [qrCodeSheetOpen, setQrCodeSheetOpen] = useState(false);
   const [qrCodeBooking, setQrCodeBooking] = useState<ActiveBooking | null>(null);
-  const [billPreviewOpen, setBillPreviewOpen] = useState(false);
   const [preBillLink, setPreBillLink] = useState<string | null>(null);
   const [preBillLinkCopied, setPreBillLinkCopied] = useState(false);
-  const [billPreviewBooking, setBillPreviewBooking] = useState<ActiveBooking | null>(null);
   const [preBillSent, setPreBillSent] = useState(false);
   const [preBillStatus, setPreBillStatus] = useState<string>("pending");
   const [skipPreBill, setSkipPreBill] = useState(false);
@@ -1317,18 +1314,6 @@ export default function ActiveBookings() {
                     Add Service
                   </Button>
                   <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => {
-                      setBillPreviewBooking(booking);
-                      setBillPreviewOpen(true);
-                    }}
-                    data-testid={`button-view-bill-${booking.id}`}
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    View Bill
-                  </Button>
                   {booking.status !== "checked-out" && (
                   <Button
                     className="flex-1"
@@ -2055,6 +2040,172 @@ export default function ActiveBookings() {
                 </div>
 
                 <div className="space-y-2">
+                  {/* Download Bill PDF */}
+                  <Button
+                    variant="outline"
+                    className="w-full border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-900/20"
+                    data-testid="button-download-bill-checkout"
+                    onClick={() => {
+                      try {
+                        const b = booking;
+                        const roomLabel = b.isGroupBooking && b.rooms?.length
+                          ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
+                          : b.room?.roomNumber ?? "TBA";
+                        const propertyName = b.property?.name ?? "Hostezee";
+                        const checkIn = format(new Date(b.checkInDate), "dd MMM yyyy");
+                        const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
+
+                        const ordersHtml = (b.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
+                          const items = (order.items ?? []).map((item: any) =>
+                            `<tr><td style="padding:3px 8px;color:#555">${item.name}${item.variant ? ` (${item.variant})` : ""} x${item.quantity || 1}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${item.totalPrice || (item.price * (item.quantity || 1))}</td></tr>`
+                          ).join("");
+                          return `
+                            <tr style="background:#f9f9f9">
+                              <td style="padding:6px 8px;font-weight:600" colspan="2">Order #${order.id} <span style="font-size:11px;color:#888;font-weight:400">(${order.status})</span></td>
+                            </tr>
+                            ${items}
+                            <tr><td style="padding:4px 8px;border-top:1px solid #eee;font-weight:600">Order Total</td><td style="padding:4px 8px;border-top:1px solid #eee;text-align:right;font-weight:600">&#8377;${parseFloat(order.totalAmount).toFixed(2)}</td></tr>`;
+                        }).join("");
+
+                        const extrasHtml = (b.extraServices ?? []).map((s: any) =>
+                          `<tr><td style="padding:3px 8px;color:#555">${s.serviceName}${s.serviceDate ? ` <span style="font-size:11px;color:#888">(${format(new Date(s.serviceDate), "dd MMM")})</span>` : ""}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(s.amount).toFixed(2)}</td></tr>`
+                        ).join("");
+
+                        const manualHtml = manualCharges.filter(c => c.name && parseFloat(c.amount) > 0).map(c =>
+                          `<tr><td style="padding:3px 8px;color:#555">${c.name}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(c.amount).toFixed(2)}</td></tr>`
+                        ).join("");
+
+                        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+                          * { box-sizing: border-box; margin: 0; padding: 0; }
+                          body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fff; }
+                          .page { max-width: 680px; margin: 0 auto; padding: 32px 28px; }
+                          .header { background: #1E3A5F; color: #fff; border-radius: 8px 8px 0 0; padding: 22px 24px 18px; }
+                          .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
+                          .header .tagline { font-size: 12px; color: #2BB6A8; margin-top: 2px; }
+                          .header .property { font-size: 14px; margin-top: 8px; opacity: 0.9; }
+                          .bill-meta { background: #f5f8ff; border: 1px solid #dde5f5; border-top: none; border-radius: 0 0 8px 8px; padding: 16px 24px; display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 24px; }
+                          .bill-meta div { min-width: 140px; }
+                          .bill-meta .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+                          .bill-meta .value { font-size: 13px; font-weight: 600; color: #1E3A5F; }
+                          .section { margin-bottom: 20px; }
+                          .section-title { font-size: 13px; font-weight: 700; color: #1E3A5F; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; background: #eef3fb; border-left: 3px solid #2BB6A8; margin-bottom: 0; }
+                          table { width: 100%; border-collapse: collapse; }
+                          table td { font-size: 13px; }
+                          .summary-table { border: 1px solid #e0e7ef; border-radius: 6px; overflow: hidden; }
+                          .summary-table tr:last-child td { border-bottom: none; }
+                          .summary-table td { padding: 8px 14px; border-bottom: 1px solid #eef2f8; }
+                          .total-row td { font-size: 16px; font-weight: 700; background: #1E3A5F; color: #fff; padding: 10px 14px; }
+                          .gst-row td { color: #15803d; font-weight: 600; background: #f0fdf4; }
+                          .discount-row td { color: #dc2626; font-weight: 600; background: #fff5f5; }
+                          .advance-row td { color: #16a34a; font-weight: 600; background: #f0fdf4; }
+                          .balance-row td { color: #dc2626; font-weight: 700; background: #fff5f5; font-size: 15px; }
+                          .footer { margin-top: 32px; border-top: 1px solid #e0e7ef; padding-top: 14px; text-align: center; color: #aaa; font-size: 11px; }
+                        </style></head><body><div class="page">
+                          <div class="header">
+                            <h1>Hostezee</h1>
+                            <div class="tagline">Simplify Stays</div>
+                            <div class="property">${propertyName}</div>
+                          </div>
+                          <div class="bill-meta">
+                            <div><div class="label">Guest</div><div class="value">${b.guest.fullName}</div></div>
+                            <div><div class="label">Phone</div><div class="value">${b.guest.phone ?? "-"}</div></div>
+                            <div><div class="label">Room</div><div class="value">${roomLabel}</div></div>
+                            <div><div class="label">Check-in</div><div class="value">${checkIn}</div></div>
+                            <div><div class="label">Check-out</div><div class="value">${checkOut}</div></div>
+                            <div><div class="label">Nights</div><div class="value">${actualNights}</div></div>
+                            <div><div class="label">Guests</div><div class="value">${b.numberOfGuests ?? 1}</div></div>
+                            <div><div class="label">Source</div><div class="value">${b.source ?? "Direct"}</div></div>
+                          </div>
+
+                          <div class="section">
+                            <div class="section-title">Room Charges</div>
+                            <table class="summary-table"><tbody>
+                              ${(b.isGroupBooking && b.rooms?.length ? b.rooms : b.room ? [b.room] : []).map((r: any) =>
+                                `<tr><td>${r.roomNumber ? `Room ${r.roomNumber}` : "Room"} ${r.roomType ? `(${r.roomType})` : ""}</td><td style="text-align:right">&#8377;${(parseFloat(b.charges.roomCharges) / Math.max(1, b.rooms?.length || 1)).toFixed(2)}/night</td></tr>`
+                              ).join("")}
+                              <tr><td style="font-weight:600">${actualNights} night(s)${extendedStayCharges > 0 ? ` incl. ${extraNights} extended` : ""}</td><td style="text-align:right;font-weight:600">&#8377;${roomCharges.toFixed(2)}</td></tr>
+                            </tbody></table>
+                          </div>
+
+                          ${(b.orders ?? []).filter((o: any) => o.status !== "rejected").length > 0 ? `
+                          <div class="section">
+                            <div class="section-title">Food Orders</div>
+                            <table class="summary-table"><tbody>
+                              ${ordersHtml}
+                              <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Food Charges</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${foodCharges.toFixed(2)}</td></tr>
+                            </tbody></table>
+                          </div>` : ""}
+
+                          ${(b.extraServices ?? []).length > 0 ? `
+                          <div class="section">
+                            <div class="section-title">Extra Services</div>
+                            <table class="summary-table"><tbody>
+                              ${extrasHtml}
+                              <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Extra Services</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${extraCharges.toFixed(2)}</td></tr>
+                            </tbody></table>
+                          </div>` : ""}
+
+                          ${manualHtml ? `
+                          <div class="section">
+                            <div class="section-title">Additional Charges</div>
+                            <table class="summary-table"><tbody>
+                              ${manualHtml}
+                              <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Additional</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${manualChargesTotal.toFixed(2)}</td></tr>
+                            </tbody></table>
+                          </div>` : ""}
+
+                          <div class="section">
+                            <div class="section-title">Bill Summary</div>
+                            <table class="summary-table"><tbody>
+                              <tr><td>Room Charges</td><td style="text-align:right">&#8377;${roomCharges.toFixed(2)}</td></tr>
+                              ${foodCharges > 0 ? `<tr><td>Food Charges</td><td style="text-align:right">&#8377;${foodCharges.toFixed(2)}</td></tr>` : ""}
+                              ${extraCharges > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${extraCharges.toFixed(2)}</td></tr>` : ""}
+                              ${manualChargesTotal > 0 ? `<tr><td>Additional Charges</td><td style="text-align:right">&#8377;${manualChargesTotal.toFixed(2)}</td></tr>` : ""}
+                              <tr><td style="font-weight:600;border-top:1px solid #ddd;padding-top:8px">Subtotal</td><td style="text-align:right;font-weight:600;border-top:1px solid #ddd;padding-top:8px">&#8377;${subtotal.toFixed(2)}</td></tr>
+                              ${roomGst > 0 ? `<tr class="gst-row"><td>GST on Rooms (${roomGstRate}%)</td><td style="text-align:right">&#8377;${roomGst.toFixed(2)}</td></tr>` : ""}
+                              ${foodGst > 0 ? `<tr class="gst-row"><td>GST on Food (${foodGstRate}%)</td><td style="text-align:right">&#8377;${foodGst.toFixed(2)}</td></tr>` : ""}
+                              ${serviceCharge > 0 ? `<tr class="gst-row"><td>Service Charge (${serviceChargeRate}%)</td><td style="text-align:right">&#8377;${serviceCharge.toFixed(2)}</td></tr>` : ""}
+                              ${discount > 0 ? `<tr class="discount-row"><td>Discount</td><td style="text-align:right">-&#8377;${discount.toFixed(2)}</td></tr>` : ""}
+                              <tr class="total-row"><td>Grand Total</td><td style="text-align:right">&#8377;${grandTotal.toFixed(2)}</td></tr>
+                              ${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}
+                              ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${Math.max(0, grandTotal - advancePaid).toFixed(2)}</td></tr>` : ""}
+                            </tbody></table>
+                          </div>
+
+                          <div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div>
+                        </div></body></html>`;
+
+                        const container = document.createElement("div");
+                        container.style.position = "absolute";
+                        container.style.top = "0";
+                        container.style.left = "0";
+                        container.style.width = "800px";
+                        container.style.visibility = "hidden";
+                        container.style.zIndex = "-9999";
+                        container.innerHTML = html;
+                        document.body.appendChild(container);
+
+                        setTimeout(() => {
+                          const opt = {
+                            margin: 0,
+                            filename: `Bill_${b.guest.fullName.replace(/\s+/g, "_")}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
+                            image: { type: "png" as const, quality: 0.98 },
+                            html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#fff" },
+                            jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
+                          };
+                          html2pdf().set(opt).from(container.querySelector(".page") as HTMLElement).save()
+                            .finally(() => { document.body.removeChild(container); });
+                        }, 100);
+                      } catch (error) {
+                        console.error("PDF download error:", error);
+                        toast({ title: "Error", description: "Failed to download bill", variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Bill PDF
+                  </Button>
+
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
@@ -2258,478 +2409,6 @@ export default function ActiveBookings() {
         </DialogContent>
       </Dialog>
 
-      {/* Bill Preview Sheet */}
-      <Sheet open={billPreviewOpen} onOpenChange={setBillPreviewOpen}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <IndianRupee className="h-5 w-5" />
-              Bill Preview
-            </SheetTitle>
-            <SheetDescription>
-              Detailed breakdown for {billPreviewBooking?.guest.fullName}
-            </SheetDescription>
-          </SheetHeader>
-
-          {billPreviewBooking && (
-            <>
-              {/* Hidden PDF Export Content */}
-              <div id="bill-pdf-export" style={{ position: "absolute", left: "-9999px", top: "-9999px", width: "800px", visibility: "hidden" }}>
-                <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", fontSize: "14px", lineHeight: "1.6" }}>
-                  <h2 style={{ textAlign: "center", marginBottom: "20px", fontSize: "18px", fontWeight: "bold" }}>BILL INVOICE</h2>
-                  <div style={{ marginBottom: "15px", border: "1px solid #ddd", padding: "10px" }}>
-                    <div style={{ marginBottom: "8px" }}><strong>Guest:</strong> {billPreviewBooking.guest.fullName}</div>
-                    <div style={{ marginBottom: "8px" }}><strong>Phone:</strong> {billPreviewBooking.guest.phone}</div>
-                    <div style={{ marginBottom: "8px" }}><strong>Room:</strong> {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? billPreviewBooking.rooms.map(r => r.roomNumber).join(", ") : billPreviewBooking.room?.roomNumber || "TBA"}</div>
-                    <div style={{ marginBottom: "8px" }}><strong>Check-in:</strong> {format(new Date(billPreviewBooking.checkInDate), "dd MMM yyyy")}</div>
-                    <div><strong>Nights:</strong> {billPreviewBooking.nightsStayed}</div>
-                  </div>
-                  <div style={{ marginBottom: "15px" }}>
-                    <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Room Charges</h3>
-                    {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? (
-                      billPreviewBooking.rooms.map((room, idx) => (
-                        <div key={idx} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                          <span>Room {room.roomNumber} ({room.type})</span>
-                          <span>₹{room.pricePerNight}/night</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                        <span>Room {billPreviewBooking.room?.roomNumber} ({billPreviewBooking.room?.type})</span>
-                        <span>₹{billPreviewBooking.room?.pricePerNight}/night</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: "5px", marginTop: "5px" }}>
-                      <span>{billPreviewBooking.nightsStayed} night(s) total:</span>
-                      <span>₹{billPreviewBooking.charges.roomCharges}</span>
-                    </div>
-                  </div>
-                  {billPreviewBooking.orders && billPreviewBooking.orders.length > 0 && (
-                    <div style={{ marginBottom: "15px" }}>
-                      <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Food Orders</h3>
-                      {billPreviewBooking.orders.map((order) => (
-                        <div key={order.id} style={{ marginBottom: "10px", border: "1px solid #eee", padding: "8px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px" }}>
-                            <span>Order #{order.id}</span>
-                            <span>[{order.status}]</span>
-                          </div>
-                          {Array.isArray(order.items) && order.items.length > 0 && order.items.map((item: any, idx: number) => (
-                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "3px" }}>
-                              <span>{item.name}{item.variant ? ` (${item.variant})` : ""} x{item.quantity || 1}</span>
-                              <span>₹{item.totalPrice || item.price * (item.quantity || 1)}</span>
-                            </div>
-                          ))}
-                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #eee", paddingTop: "5px", marginTop: "5px" }}>
-                            <span>Order Total:</span>
-                            <span>₹{order.totalAmount}</span>
-                          </div>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", backgroundColor: "#f5f5f5", padding: "8px", marginTop: "8px" }}>
-                        <span>Total Food:</span>
-                        <span>₹{billPreviewBooking.charges.foodCharges}</span>
-                      </div>
-                    </div>
-                  )}
-                  {billPreviewBooking.extraServices && billPreviewBooking.extraServices.length > 0 && (
-                    <div style={{ marginBottom: "15px" }}>
-                      <h3 style={{ fontWeight: "bold", marginBottom: "10px" }}>Extra Services</h3>
-                      {billPreviewBooking.extraServices.map((service: any) => (
-                        <div key={service.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
-                          <span style={{ flex: 1 }}>{service.serviceName}</span>
-                          {service.isPaid && (
-                            <span style={{ fontSize: "11px", color: "#16a34a", marginRight: "8px", fontStyle: "italic" }}>
-                              ✓ collected
-                            </span>
-                          )}
-                          <span style={{ fontWeight: service.isPaid ? "normal" : "bold" }}>₹{service.amount}</span>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: "5px" }}>
-                        <span>Total Extra:</span>
-                        <span>₹{billPreviewBooking.charges.extraCharges}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ backgroundColor: "#f9f9f9", padding: "15px", border: "2px solid #333", marginTop: "15px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                      <span>Room Charges:</span>
-                      <span>₹{billPreviewBooking.charges.roomCharges}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                      <span>Food Charges:</span>
-                      <span>₹{billPreviewBooking.charges.foodCharges}</span>
-                    </div>
-                    {parseFloat(billPreviewBooking.charges.extraCharges) > 0 && (
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <span>Extra Services:</span>
-                        <span>₹{billPreviewBooking.charges.extraCharges}</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "16px", borderTop: "2px solid #333", paddingTop: "10px" }}>
-                      <span>TOTAL:</span>
-                      <span>₹{parseFloat(billPreviewBooking.charges.subtotal).toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Screen Display */}
-              <div id="bill-preview-content" className="mt-6 space-y-6">
-              {/* Guest & Room Info */}
-              <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Guest Name:</span>
-                  <span className="font-semibold text-right">{billPreviewBooking.guest.fullName}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Phone:</span>
-                  <span>{billPreviewBooking.guest.phone}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Room:</span>
-                  <span className="font-semibold text-right">
-                    {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms
-                      ? billPreviewBooking.rooms.map(r => r.roomNumber).join(", ")
-                      : billPreviewBooking.room?.roomNumber || "TBA"}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Check-in:</span>
-                  <span>{format(new Date(billPreviewBooking.checkInDate), "dd MMM yyyy")}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Nights:</span>
-                  <span>{billPreviewBooking.nightsStayed}</span>
-                </div>
-              </div>
-
-              {/* Room Charges */}
-              <div className="space-y-2">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Hotel className="h-4 w-4" />
-                  Room Charges
-                </h3>
-                <div className="bg-card border rounded-lg p-3 space-y-2 text-sm">
-                  {billPreviewBooking.isGroupBooking && billPreviewBooking.rooms ? (
-                    billPreviewBooking.rooms.map((room, idx) => (
-                      <div key={idx} className="flex justify-between gap-4">
-                        <span>Room {room.roomNumber} ({room.type})</span>
-                        <span className="font-mono whitespace-nowrap">₹{room.pricePerNight}/night</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex justify-between gap-4">
-                      <span>Room {billPreviewBooking.room?.roomNumber} ({billPreviewBooking.room?.type})</span>
-                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.room?.pricePerNight}/night</span>
-                    </div>
-                  )}
-                  <div className="border-t pt-2 flex justify-between gap-4 font-semibold">
-                    <span>{billPreviewBooking.nightsStayed} night(s) total:</span>
-                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.roomCharges}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Food Orders */}
-              {billPreviewBooking.orders && billPreviewBooking.orders.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <UtensilsCrossed className="h-4 w-4" />
-                    Food Orders
-                  </h3>
-                  <div className="space-y-3">
-                    {billPreviewBooking.orders.map((order) => (
-                      <div key={order.id} className="bg-card border rounded-lg p-3">
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-sm font-medium">Order #{order.id}</span>
-                          <Badge variant={order.status === "delivered" ? "default" : "secondary"} className="text-xs">
-                            {order.status}
-                          </Badge>
-                        </div>
-                        <div className="space-y-1 text-sm">
-                          {Array.isArray(order.items) && order.items.length > 0 ? (
-                            order.items.map((item: any, idx: number) => (
-                              <div key={idx} className="flex justify-between gap-2 text-muted-foreground">
-                                <span className="flex-1">
-                                  {item.name} 
-                                  {item.variant && <span className="text-xs"> ({item.variant})</span>}
-                                  {item.addOns && item.addOns.length > 0 && (
-                                    <span className="text-xs"> +{item.addOns.map((a: any) => a.name || a).join(", ")}</span>
-                                  )}
-                                  <span className="text-xs"> x{item.quantity || 1}</span>
-                                </span>
-                                <span className="font-mono whitespace-nowrap">₹{item.totalPrice || (item.price * (item.quantity || 1))}</span>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="text-muted-foreground text-xs italic">Items not detailed</div>
-                          )}
-                        </div>
-                        <div className="border-t mt-2 pt-2 flex justify-between gap-4 font-semibold text-sm">
-                          <span>Order Total:</span>
-                          <span className="font-mono whitespace-nowrap">₹{order.totalAmount}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between gap-4 font-semibold text-sm bg-muted/50 p-2 rounded">
-                    <span>Total Food Charges:</span>
-                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.foodCharges}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Extra Services */}
-              {billPreviewBooking.extraServices && billPreviewBooking.extraServices.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Extra Services
-                  </h3>
-                  <div className="bg-card border rounded-lg p-3 space-y-2 text-sm">
-                    {billPreviewBooking.extraServices.map((service) => (
-                      <div key={service.id} className="flex items-center justify-between gap-2">
-                        <span className="flex-1">
-                          {service.serviceName}
-                          {service.serviceDate && (
-                            <span className="text-xs text-muted-foreground ml-1">
-                              ({format(new Date(service.serviceDate), "dd MMM")})
-                            </span>
-                          )}
-                        </span>
-                        <span className="font-mono whitespace-nowrap">₹{service.amount}</span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
-                          data-testid={`button-edit-service-bill-${service.id}`}
-                          onClick={() => {
-                            setEditServiceDialog({ open: true, service });
-                            setEditSvcName(service.serviceName);
-                            setEditSvcAmount(service.amount);
-                            setEditSvcDate(service.serviceDate ? service.serviceDate.split("T")[0] : new Date().toISOString().split("T")[0]);
-                          }}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                    <div className="border-t pt-2 flex justify-between gap-4 font-semibold">
-                      <span>Total Extra Services:</span>
-                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.extraCharges}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Bill Summary */}
-              <div className="border-t pt-4 space-y-2">
-                <h3 className="font-semibold">Bill Summary</h3>
-                <div className="bg-primary/10 p-4 rounded-lg space-y-2">
-                  <div className="flex justify-between gap-4">
-                    <span>Room Charges:</span>
-                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.roomCharges}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span>Food Charges:</span>
-                    <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.foodCharges}</span>
-                  </div>
-                  {parseFloat(billPreviewBooking.charges.extraCharges) > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span>Extra Services:</span>
-                      <span className="font-mono whitespace-nowrap">₹{billPreviewBooking.charges.extraCharges}</span>
-                    </div>
-                  )}
-                  <div className="border-t pt-2 flex justify-between gap-4 font-bold text-lg">
-                    <span>Total Bill:</span>
-                    <span className="font-mono whitespace-nowrap">₹{parseFloat(billPreviewBooking.charges.subtotal).toFixed(2)}</span>
-                  </div>
-                  {parseFloat(billPreviewBooking.charges.advancePaid) > 0 && (
-                    <div className="flex justify-between gap-4 text-muted-foreground">
-                      <span>Advance Paid:</span>
-                      <span className="font-mono whitespace-nowrap">-₹{billPreviewBooking.charges.advancePaid}</span>
-                    </div>
-                  )}
-                  {parseFloat(billPreviewBooking.charges.advancePaid) > 0 && (
-                    <div className="border-t pt-2 flex justify-between gap-4 font-bold text-lg text-destructive">
-                      <span>Balance Due:</span>
-                      <span className="font-mono whitespace-nowrap">
-                        ₹{Math.max(0, parseFloat(billPreviewBooking.charges.subtotal) - parseFloat(billPreviewBooking.charges.advancePaid)).toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    try {
-                      const b = billPreviewBooking;
-                      const roomLabel = b.isGroupBooking && b.rooms?.length
-                        ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
-                        : b.room?.roomNumber ?? "TBA";
-                      const propertyName = b.property?.name ?? "Hostezee";
-                      const checkIn = format(new Date(b.checkInDate), "dd MMM yyyy");
-                      const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
-                      const advancePaid = parseFloat(b.charges.advancePaid) || 0;
-                      const subtotal = parseFloat(b.charges.subtotal) || 0;
-                      const balanceDue = Math.max(0, subtotal - advancePaid);
-
-                      const ordersHtml = (b.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
-                        const items = (order.items ?? []).map((item: any) =>
-                          `<tr><td style="padding:3px 8px;color:#555">${item.name}${item.variant ? ` (${item.variant})` : ""} x${item.quantity || 1}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${item.totalPrice || (item.price * (item.quantity || 1))}</td></tr>`
-                        ).join("");
-                        return `
-                          <tr style="background:#f9f9f9">
-                            <td style="padding:6px 8px;font-weight:600" colspan="2">Order #${order.id} <span style="font-size:11px;color:#888;font-weight:400">(${order.status})</span></td>
-                          </tr>
-                          ${items}
-                          <tr><td style="padding:4px 8px;border-top:1px solid #eee;font-weight:600">Order Total</td><td style="padding:4px 8px;border-top:1px solid #eee;text-align:right;font-weight:600">&#8377;${parseFloat(order.totalAmount).toFixed(2)}</td></tr>`;
-                      }).join("");
-
-                      const extrasHtml = (b.extraServices ?? []).map((s: any) =>
-                        `<tr><td style="padding:3px 8px;color:#555">${s.serviceName}${s.serviceDate ? ` <span style="font-size:11px;color:#888">(${format(new Date(s.serviceDate), "dd MMM")})</span>` : ""}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(s.amount).toFixed(2)}</td></tr>`
-                      ).join("");
-
-                      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-                        * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fff; }
-                        .page { max-width: 680px; margin: 0 auto; padding: 32px 28px; }
-                        .header { background: #1E3A5F; color: #fff; border-radius: 8px 8px 0 0; padding: 22px 24px 18px; }
-                        .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
-                        .header .tagline { font-size: 12px; color: #2BB6A8; margin-top: 2px; }
-                        .header .property { font-size: 14px; margin-top: 8px; opacity: 0.9; }
-                        .bill-meta { background: #f5f8ff; border: 1px solid #dde5f5; border-top: none; border-radius: 0 0 8px 8px; padding: 16px 24px; display: flex; gap: 32px; flex-wrap: wrap; margin-bottom: 24px; }
-                        .bill-meta div { min-width: 140px; }
-                        .bill-meta .label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
-                        .bill-meta .value { font-size: 13px; font-weight: 600; color: #1E3A5F; }
-                        .section { margin-bottom: 20px; }
-                        .section-title { font-size: 13px; font-weight: 700; color: #1E3A5F; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; background: #eef3fb; border-left: 3px solid #2BB6A8; margin-bottom: 0; }
-                        table { width: 100%; border-collapse: collapse; }
-                        table td { font-size: 13px; }
-                        .summary-table { border: 1px solid #e0e7ef; border-radius: 6px; overflow: hidden; }
-                        .summary-table tr:last-child td { border-bottom: none; }
-                        .summary-table td { padding: 8px 14px; border-bottom: 1px solid #eef2f8; }
-                        .total-row td { font-size: 16px; font-weight: 700; background: #1E3A5F; color: #fff; padding: 10px 14px; }
-                        .advance-row td { color: #16a34a; font-weight: 600; background: #f0fdf4; }
-                        .balance-row td { color: #dc2626; font-weight: 700; background: #fff5f5; font-size: 15px; }
-                        .footer { margin-top: 32px; border-top: 1px solid #e0e7ef; padding-top: 14px; text-align: center; color: #aaa; font-size: 11px; }
-                      </style></head><body><div class="page">
-                        <div class="header">
-                          <h1>Hostezee</h1>
-                          <div class="tagline">Simplify Stays</div>
-                          <div class="property">${propertyName}</div>
-                        </div>
-                        <div class="bill-meta">
-                          <div><div class="label">Guest</div><div class="value">${b.guest.fullName}</div></div>
-                          <div><div class="label">Phone</div><div class="value">${b.guest.phone ?? "-"}</div></div>
-                          <div><div class="label">Room</div><div class="value">${roomLabel}</div></div>
-                          <div><div class="label">Check-in</div><div class="value">${checkIn}</div></div>
-                          <div><div class="label">Check-out</div><div class="value">${checkOut}</div></div>
-                          <div><div class="label">Nights</div><div class="value">${b.nightsStayed}</div></div>
-                          <div><div class="label">Guests</div><div class="value">${b.numberOfGuests ?? 1}</div></div>
-                          <div><div class="label">Source</div><div class="value">${b.source ?? "Direct"}</div></div>
-                        </div>
-
-                        <div class="section">
-                          <div class="section-title">Room Charges</div>
-                          <table class="summary-table"><tbody>
-                            ${(b.isGroupBooking && b.rooms?.length ? b.rooms : b.room ? [b.room] : []).map((r: any) =>
-                              `<tr><td>${r.roomNumber ? `Room ${r.roomNumber}` : "Room"} ${r.roomType ? `(${r.roomType})` : ""}</td><td style="text-align:right">&#8377;${(parseFloat(b.charges.roomCharges) / Math.max(1, b.rooms?.length || 1)).toFixed(2)}/night</td></tr>`
-                            ).join("")}
-                            <tr><td style="font-weight:600">${b.nightsStayed} night(s)</td><td style="text-align:right;font-weight:600">&#8377;${parseFloat(b.charges.roomCharges).toFixed(2)}</td></tr>
-                          </tbody></table>
-                        </div>
-
-                        ${(b.orders ?? []).length > 0 ? `
-                        <div class="section">
-                          <div class="section-title">Food Orders</div>
-                          <table class="summary-table"><tbody>
-                            ${ordersHtml}
-                            <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Food Charges</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${parseFloat(b.charges.foodCharges).toFixed(2)}</td></tr>
-                          </tbody></table>
-                        </div>` : ""}
-
-                        ${(b.extraServices ?? []).length > 0 ? `
-                        <div class="section">
-                          <div class="section-title">Extra Services</div>
-                          <table class="summary-table"><tbody>
-                            ${extrasHtml}
-                            <tr style="background:#f0f7ff"><td style="padding:6px 8px;font-weight:700">Total Extra Services</td><td style="padding:6px 8px;text-align:right;font-weight:700">&#8377;${parseFloat(b.charges.extraCharges).toFixed(2)}</td></tr>
-                          </tbody></table>
-                        </div>` : ""}
-
-                        <div class="section">
-                          <div class="section-title">Bill Summary</div>
-                          <table class="summary-table"><tbody>
-                            <tr><td>Room Charges</td><td style="text-align:right">&#8377;${parseFloat(b.charges.roomCharges).toFixed(2)}</td></tr>
-                            <tr><td>Food Charges</td><td style="text-align:right">&#8377;${parseFloat(b.charges.foodCharges).toFixed(2)}</td></tr>
-                            ${parseFloat(b.charges.extraCharges) > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${parseFloat(b.charges.extraCharges).toFixed(2)}</td></tr>` : ""}
-                            <tr class="total-row"><td>Total Bill</td><td style="text-align:right">&#8377;${subtotal.toFixed(2)}</td></tr>
-                            ${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}
-                            ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${balanceDue.toFixed(2)}</td></tr>` : ""}
-                          </tbody></table>
-                        </div>
-
-                        <div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div>
-                      </div></body></html>`;
-
-                      const container = document.createElement("div");
-                      container.style.position = "fixed";
-                      container.style.left = "-9999px";
-                      container.style.top = "0";
-                      container.innerHTML = html;
-                      document.body.appendChild(container);
-
-                      setTimeout(() => {
-                        const opt = {
-                          margin: 0,
-                          filename: `Bill_${b.guest.fullName.replace(/\s+/g, "_")}_${format(new Date(), "dd-MMM-yyyy")}.pdf`,
-                          image: { type: "png" as const, quality: 0.98 },
-                          html2canvas: { scale: 2, useCORS: true, allowTaint: true, backgroundColor: "#fff" },
-                          jsPDF: { orientation: "portrait" as const, unit: "mm" as const, format: "a4" }
-                        };
-                        html2pdf().set(opt).from(container.firstChild as HTMLElement).save()
-                          .finally(() => { document.body.removeChild(container); });
-                      }, 50);
-                    } catch (error) {
-                      console.error("PDF download error:", error);
-                      toast({ title: "Error", description: "Failed to download bill", variant: "destructive" });
-                    }
-                  }}
-                  data-testid="button-download-bill"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Download PDF
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setBillPreviewOpen(false)}
-                >
-                  Close
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={() => {
-                    setBillPreviewOpen(false);
-                    setCheckoutDialog({ open: true, booking: billPreviewBooking });
-                  }}
-                  data-testid="button-proceed-checkout"
-                >
-                  Proceed to Checkout
-                </Button>
-              </div>
-            </div>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
 
       <Dialog open={addServiceDialog.open} onOpenChange={(open) => {
         if (!open) {
