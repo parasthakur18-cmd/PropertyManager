@@ -560,6 +560,20 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "disable_overdue_task_reminders",
+    async run() {
+      if (!(await tableExists("tasks"))) return;
+      await runRaw(`
+        UPDATE tasks
+        SET reminder_enabled = false
+        WHERE reminder_enabled = true
+          AND status IN ('pending', 'in_progress')
+          AND due_date IS NOT NULL
+          AND due_date < NOW() - INTERVAL '7 days'
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

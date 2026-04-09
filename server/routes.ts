@@ -17406,13 +17406,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       
       console.log(`[TASK-REMINDER] Running daily task reminder job at ${format(now, "HH:mm")}`);
       
-      // Get all pending/in_progress tasks with reminders enabled
+      // Get all pending/in_progress tasks with reminders enabled whose due date is within the last 7 days or in the future
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const pendingTasks = await db.select()
         .from(tasks)
         .where(
           and(
             eq(tasks.reminderEnabled, true),
-            inArray(tasks.status, ['pending', 'in_progress'])
+            inArray(tasks.status, ['pending', 'in_progress']),
+            sql`(${tasks.dueDate} IS NULL OR ${tasks.dueDate} >= ${sevenDaysAgo.toISOString()})`
           )
         );
       
