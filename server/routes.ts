@@ -13553,6 +13553,38 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Permanently delete a user (super-admin only)
+  app.delete("/api/super-admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const [dbUser] = await db.select().from(users).where(eq(users.id, userId));
+      if (!dbUser || dbUser.role !== 'super-admin') {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const { id } = req.params;
+
+      if (id === userId) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+      }
+
+      const [targetUser] = await db.select().from(users).where(eq(users.id, id));
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      if (targetUser.role === 'super-admin') {
+        return res.status(403).json({ message: "Cannot delete super-admin accounts" });
+      }
+
+      await storage.deleteUser(id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Return to Super Admin from viewing as user
   app.post("/api/super-admin/return-to-admin", isAuthenticated, async (req, res) => {
     try {

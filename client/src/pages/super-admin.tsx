@@ -40,6 +40,16 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ContactEnquiry {
   id: number;
@@ -253,6 +263,9 @@ export default function SuperAdmin() {
   const [reportStartDate, setReportStartDate] = useState<Date | undefined>(undefined);
   const [reportEndDate, setReportEndDate] = useState<Date | undefined>(undefined);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Delete user confirmation state
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // Email features state
   const [emailDialog, setEmailDialog] = useState(false);
@@ -845,6 +858,22 @@ export default function SuperAdmin() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  // Permanently delete user - MUST be before early returns
+  const deleteUser = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest(`/api/super-admin/users/${userId}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      setUserToDelete(null);
+      toast({ title: "User deleted", description: "The account has been permanently removed." });
+    },
+    onError: (error: any) => {
+      setUserToDelete(null);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1667,6 +1696,17 @@ export default function SuperAdmin() {
                           Activate
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setUserToDelete(user)}
+                        disabled={deleteUser.isPending}
+                        className="text-destructive hover:text-destructive hover:border-destructive"
+                        data-testid={`button-delete-user-${user.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -2724,6 +2764,40 @@ export default function SuperAdmin() {
           </div>
         </div>
         )}
+
+        {/* Delete User Confirmation */}
+        <AlertDialog open={!!userToDelete} onOpenChange={(open) => { if (!open) setUserToDelete(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                <Trash2 className="h-5 w-5" />
+                Permanently Delete Account
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                <span className="block">
+                  You are about to permanently delete the account for{" "}
+                  <span className="font-semibold text-foreground">
+                    {userToDelete?.firstName || userToDelete?.email}
+                  </span>{" "}
+                  ({userToDelete?.email}).
+                </span>
+                <span className="block text-destructive font-medium">
+                  This action cannot be undone. The email address will be freed up and can be used to register again.
+                </span>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => userToDelete && deleteUser.mutate(userToDelete.id)}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                data-testid="button-confirm-delete-user"
+              >
+                Yes, Delete Permanently
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Send Email Dialog */}
         <Dialog open={emailDialog} onOpenChange={setEmailDialog}>
