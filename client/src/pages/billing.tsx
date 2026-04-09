@@ -715,8 +715,18 @@ export default function Billing() {
                         </>
                       )}
                     </p>
-                    <p><span className="text-muted-foreground">Check-in:</span> {billDetails.booking && format(new Date(billDetails.booking.checkInDate), "PPP")}</p>
-                    <p><span className="text-muted-foreground">Check-out:</span> {billDetails.booking && format(new Date(billDetails.booking.checkOutDate), "PPP")}</p>
+                    <p>
+                      <span className="text-muted-foreground">Check-in:</span>{" "}
+                      {billDetails.booking && (
+                        billDetails.booking.actualCheckInTime
+                          ? format(new Date(billDetails.booking.actualCheckInTime), "PPP, h:mm a")
+                          : format(new Date(billDetails.booking.checkInDate), "PPP")
+                      )}
+                    </p>
+                    <p>
+                      <span className="text-muted-foreground">Check-out:</span>{" "}
+                      {billDetails.booking && format(new Date(billDetails.booking.checkOutDate), "PPP")}
+                    </p>
                     <p><span className="text-muted-foreground">Guests:</span> {billDetails.booking?.numberOfGuests}</p>
                   </div>
                 </div>

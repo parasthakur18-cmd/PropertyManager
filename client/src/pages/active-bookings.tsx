@@ -91,6 +91,7 @@ interface ActiveBooking {
   id: number;
   checkInDate: string;
   checkOutDate: string;
+  actualCheckInTime: string | null;
   status: string;
   numberOfGuests: number;
   specialRequests: string | null;
@@ -2051,7 +2052,9 @@ export default function ActiveBookings() {
                           ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
                           : b.room?.roomNumber ?? "TBA";
                         const propertyName = b.property?.name ?? "Hostezee";
-                        const checkIn = format(new Date(b.checkInDate), "dd MMM yyyy");
+                        const checkIn = b.actualCheckInTime
+                          ? format(new Date(b.actualCheckInTime), "dd MMM yyyy, h:mm a")
+                          : format(new Date(b.checkInDate), "dd MMM yyyy");
                         const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
 
                         const ordersHtml = (b.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
