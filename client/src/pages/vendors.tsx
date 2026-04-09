@@ -1297,6 +1297,33 @@ export default function Vendors() {
                 <div className="text-sm text-muted-foreground text-center py-4 border rounded-md bg-muted/30">
                   No credit bills found for this vendor
                 </div>
+              ) : (selectedVendor?.outstandingBalance ?? 0) <= 0 ? (
+                <div>
+                  <div className="text-sm text-center py-3 px-4 mb-2 border border-green-200 dark:border-green-800 rounded-md bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium">
+                    All bills settled — outstanding balance is ₹0.00
+                  </div>
+                  <div className="space-y-2 opacity-50 pointer-events-none select-none">
+                    {vendorTransactions.filter(t => t.transactionType === "credit").map(bill => (
+                      <div
+                        key={bill.id}
+                        className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/20"
+                        data-testid={`bill-settled-${bill.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium line-through text-muted-foreground">
+                              {bill.invoiceNumber || bill.description || "Credit entry"}
+                            </span>
+                            <Badge variant="outline" className="text-green-600 border-green-300 text-xs ml-2 shrink-0">Settled</Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {format(new Date(bill.transactionDate), "dd MMM yyyy")} · ₹{parseFloat(bill.amount.toString()).toLocaleString('en-IN')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {vendorTransactions.filter(t => t.transactionType === "credit").map(bill => {
