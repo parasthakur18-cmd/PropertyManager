@@ -926,7 +926,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : order.customerName
               ? "Restaurant / Walk-in"
               : "Restaurant";
-          const guestLabel = order.customerName || "Guest";
+          const guestObj = orderData.guestId ? await storage.getGuest(orderData.guestId) : null;
+          const guestLabel = guestObj?.fullName || order.customerName || "Guest";
           const totalStr = String(order.totalAmount);
 
           // 1. Alert routing system (whatsapp_alert_rules)
