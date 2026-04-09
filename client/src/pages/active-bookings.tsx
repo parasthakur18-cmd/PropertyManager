@@ -1168,7 +1168,12 @@ export default function ActiveBookings() {
                     <span className="text-muted-foreground">Source</span>
                     <div className="font-semibold">
                       <Badge variant="outline" className="text-xs">
-                        {booking.source || "Walk-in"}
+                        {booking.source?.startsWith("aiosell-")
+                          ? (booking.source.replace("aiosell-", "").toLowerCase().includes("booking") ? "Booking.com"
+                            : booking.source.replace("aiosell-", "").toLowerCase().includes("mmt") ? "MMT"
+                            : booking.source.replace("aiosell-", "").toLowerCase().includes("airbnb") ? "Airbnb"
+                            : "OTA")
+                          : (booking.source || "Walk-in")}
                       </Badge>
                     </div>
                   </div>
@@ -2125,7 +2130,7 @@ export default function ActiveBookings() {
                             <div><div class="label">Check-out</div><div class="value">${checkOut}</div></div>
                             <div><div class="label">Nights</div><div class="value">${actualNights}</div></div>
                             <div><div class="label">Guests</div><div class="value">${b.numberOfGuests ?? 1}</div></div>
-                            <div><div class="label">Source</div><div class="value">${b.source ?? "Direct"}</div></div>
+                            <div><div class="label">Source</div><div class="value">${(() => { const s = b.source ?? ""; if (s.startsWith("aiosell-")) { const c = s.replace("aiosell-","").toLowerCase(); return c.includes("booking") ? "Booking.com" : c.includes("mmt") ? "MMT" : c.includes("airbnb") ? "Airbnb" : "OTA"; } return s || "Direct"; })()}</div></div>
                           </div>
 
                           <div class="section">

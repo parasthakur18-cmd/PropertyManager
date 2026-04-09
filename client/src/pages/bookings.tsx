@@ -97,6 +97,21 @@ const statusColors = {
   no_show: "bg-purple-600 text-white",
 };
 
+function normalizeSource(source: string | null | undefined): string {
+  if (!source) return "Walk-in";
+  if (source.startsWith("aiosell-")) {
+    const channel = source.replace("aiosell-", "").toLowerCase();
+    if (channel.includes("booking")) return "Booking.com";
+    if (channel.includes("mmt") || channel.includes("makemytrip")) return "MMT";
+    if (channel.includes("airbnb")) return "Airbnb";
+    if (channel.includes("goibibo")) return "Goibibo";
+    if (channel.includes("agoda")) return "Agoda";
+    if (channel.includes("expedia")) return "Expedia";
+    return "OTA";
+  }
+  return source;
+}
+
 export default function Bookings() {
   const [location, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -967,19 +982,6 @@ export default function Bookings() {
       } catch {
         return new Date(dateStr);
       }
-    };
-
-    // Normalize source to match the select options (handles OTA/aiosell channel sources)
-    const normalizeSource = (source: string | null | undefined): string => {
-      if (!source) return "Walk-in";
-      if (source.startsWith("aiosell-")) {
-        const channel = source.replace("aiosell-", "").toLowerCase();
-        if (channel.includes("booking")) return "Booking.com";
-        if (channel.includes("mmt") || channel.includes("makemytrip")) return "MMT";
-        if (channel.includes("airbnb")) return "Airbnb";
-        return "OTA";
-      }
-      return source;
     };
 
     // Get guest details for editing
@@ -2110,7 +2112,7 @@ export default function Bookings() {
                         </TableCell>
                         <TableCell className="py-2 text-sm" data-testid={`text-source-${booking.id}`}>
                           <Badge variant="outline" className="text-xs">
-                            {booking.source || "Walk-in"}
+                            {normalizeSource(booking.source)}
                           </Badge>
                         </TableCell>
                         <TableCell>
