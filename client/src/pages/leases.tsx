@@ -957,10 +957,11 @@ export default function Leases() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredLeases.map((lease: any) => {
               const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
-              const carryForward = parseFloat(lease.carryForwardAmount || "0");
+              const carryForward = lease.carryForwardBalance ?? parseFloat(lease.carryForwardAmount || "0");
 
               const isExpiredCard = lease.isExpiredLease || (lease.endDate && new Date(lease.endDate) < new Date());
               const pendingBalance = lease.pendingBalance || 0;
+              const currentYearPaid = lease.currentYearPaid ?? lease.totalPaid ?? 0;
 
               return (
                 <Card key={lease.id} className="hover-elevate" data-testid={`card-lease-${lease.id}`}>
@@ -1027,9 +1028,9 @@ export default function Leases() {
                         </div>
                       )}
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="text-muted-foreground">{isExpiredCard ? "Total Paid" : "Paid This Year"}</span>
                         <span className="font-mono text-green-600 dark:text-green-400" data-testid={`text-total-paid-${lease.id}`}>
-                          ₹{(lease.totalPaid || 0).toLocaleString()}
+                          ₹{(isExpiredCard ? (lease.totalPaid || 0) : currentYearPaid).toLocaleString()}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-sm font-semibold">

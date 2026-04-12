@@ -2125,16 +2125,27 @@ export class DatabaseStorage implements IStorage {
   // Property Lease operations
 
   // Helper: compute proper pending balance based on elapsed time (not totalAmount)
-  private computeLeasePendingBalance(lease: any, payments: any[]): number {
+  private computeLeasePendingBalance(
+    lease: any,
+    payments: any[],
+    yearOverrides: { yearNumber: number; amount: string | number }[] = []
+  ): { pendingBalance: number; currentYearPaid: number; carryForward: number; currentYearAmount: number } {
+    const empty = { pendingBalance: 0, currentYearPaid: 0, carryForward: 0, currentYearAmount: 0 };
     const startDate = lease.startDate ? new Date(lease.startDate) : null;
-    if (!startDate) return 0;
+    if (!startDate) return empty;
 
     const endDate = lease.endDate ? new Date(lease.endDate) : null;
     const now = new Date();
     const effectiveEnd = endDate && endDate < now ? endDate : now;
 
     const baseAmount = parseFloat(lease.baseYearlyAmount || lease.totalAmount || "0");
-    if (baseAmount <= 0) return 0;
+    if (baseAmount <= 0) return empty;
+
+    // Build override map (1-based yearNumber → amount), mirroring calculateLeaseSummary
+    const overrideMap: Record<number, number> = {};
+    for (const ov of yearOverrides) {
+      overrideMap[ov.yearNumber] = parseFloat(String(ov.amount || 0));
+    }
 
     const incrementValue = parseFloat(lease.yearlyIncrementValue || "0");
     const isPercentage = lease.yearlyIncrementType === 'percentage';
@@ -2144,6 +2155,8 @@ export class DatabaseStorage implements IStorage {
     const completedYears = Math.floor(elapsedYears);
 
     const getYearAmount = (yearIndex: number): number => {
+      const yearNumber = yearIndex + 1;
+      if (overrideMap[yearNumber] !== undefined) return overrideMap[yearNumber];
       if (lease.isOverridden && yearIndex === completedYears) {
         return parseFloat(lease.currentYearAmount || "0");
       }
@@ -2154,7 +2167,7 @@ export class DatabaseStorage implements IStorage {
       }
     };
 
-    // Total due for all completed years
+    // Total due for all completed years (using per-year overrides where set)
     let totalDueForCompletedYears = 0;
     for (let y = 0; y < completedYears; y++) {
       totalDueForCompletedYears += getYearAmount(y);
@@ -2177,15 +2190,18 @@ export class DatabaseStorage implements IStorage {
     });
 
     const carryForward = Math.max(0, totalDueForCompletedYears - paymentsTillEndOfLastYear);
+    const currentYearAmt = getYearAmount(completedYears);
 
-    const currentYearAmount = getYearAmount(completedYears);
-    const monthlyAmount = currentYearAmount / 12;
-    const currentYearProgress = elapsedYears - completedYears;
-    const monthsIntoCurrentYear = currentYearProgress * 12;
-    const expectedCurrentYearTillDate = monthlyAmount * Math.floor(monthsIntoCurrentYear);
-    const currentYearPending = Math.max(0, expectedCurrentYearTillDate - paymentsInCurrentYear);
+    // Full-year remaining: entire current year's lease minus what's paid this year + carryforward
+    // This matches the Summary dialog's Closing column formula
+    const currentYearPending = Math.max(0, currentYearAmt - paymentsInCurrentYear);
 
-    return Math.round(carryForward + currentYearPending);
+    return {
+      pendingBalance: Math.round(carryForward + currentYearPending),
+      currentYearPaid: Math.round(paymentsInCurrentYear),
+      carryForward: Math.round(carryForward),
+      currentYearAmount: Math.round(currentYearAmt),
+    };
   }
 
   // Helper: compute extra lease card info (current year number, period, completion status)
@@ -2222,15 +2238,21 @@ export class DatabaseStorage implements IStorage {
     
     const leasesWithBalances = await Promise.all(
       leasesData.map(async (lease) => {
-        const payments = await this.getLeasePayments(lease.id);
+        const [payments, yearOverrides] = await Promise.all([
+          this.getLeasePayments(lease.id),
+          this.getLeaseYearOverrides(lease.id),
+        ]);
         const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const pendingBalance = this.computeLeasePendingBalance(lease, payments);
+        const computed = this.computeLeasePendingBalance(lease, payments, yearOverrides);
         const cardInfo = this.computeLeaseCardInfo(lease);
         
         return {
           ...lease,
           totalPaid,
-          pendingBalance,
+          currentYearPaid: computed.currentYearPaid,
+          pendingBalance: computed.pendingBalance,
+          carryForwardBalance: computed.carryForward,
+          currentYearLeaseAmount: computed.currentYearAmount,
           ...cardInfo,
         };
       })
@@ -2246,15 +2268,21 @@ export class DatabaseStorage implements IStorage {
     
     const leasesWithBalances = await Promise.all(
       leasesData.map(async (lease) => {
-        const payments = await this.getLeasePayments(lease.id);
+        const [payments, yearOverrides] = await Promise.all([
+          this.getLeasePayments(lease.id),
+          this.getLeaseYearOverrides(lease.id),
+        ]);
         const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const pendingBalance = this.computeLeasePendingBalance(lease, payments);
+        const computed = this.computeLeasePendingBalance(lease, payments, yearOverrides);
         const cardInfo = this.computeLeaseCardInfo(lease);
         
         return {
           ...lease,
           totalPaid,
-          pendingBalance,
+          currentYearPaid: computed.currentYearPaid,
+          pendingBalance: computed.pendingBalance,
+          carryForwardBalance: computed.carryForward,
+          currentYearLeaseAmount: computed.currentYearAmount,
           ...cardInfo,
         };
       })
@@ -2290,16 +2318,22 @@ export class DatabaseStorage implements IStorage {
     const lease = await this.getLease(id);
     if (!lease) return null;
 
-    const payments = await this.getLeasePayments(id);
+    const [payments, yearOverrides] = await Promise.all([
+      this.getLeasePayments(id),
+      this.getLeaseYearOverrides(id),
+    ]);
     const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-    const pendingBalance = this.computeLeasePendingBalance(lease, payments);
+    const computed = this.computeLeasePendingBalance(lease, payments, yearOverrides);
     const cardInfo = this.computeLeaseCardInfo(lease);
 
     return {
       ...lease,
       payments,
       totalPaid,
-      pendingBalance,
+      currentYearPaid: computed.currentYearPaid,
+      pendingBalance: computed.pendingBalance,
+      carryForwardBalance: computed.carryForward,
+      currentYearLeaseAmount: computed.currentYearAmount,
       ...cardInfo,
     };
   }
