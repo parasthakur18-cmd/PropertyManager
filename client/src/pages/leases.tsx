@@ -453,11 +453,6 @@ export default function Leases() {
         appliesToYear: "",
       });
       toast({ title: "Payment recorded", description: "Lease payment has been recorded successfully." });
-      if (data?.walletWarning) {
-        setTimeout(() => {
-          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
-        }, 500);
-      }
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to record payment", variant: "destructive" });

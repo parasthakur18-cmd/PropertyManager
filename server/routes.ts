@@ -8868,7 +8868,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       // Record lease payment to wallet if property and amount are provided
       const lease = await storage.getLease(leaseId);
-      let walletWarning: string | null = null;
       if (lease?.propertyId && payment.amount) {
         try {
           await storage.recordLeasePaymentToWallet(
@@ -8881,12 +8880,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           );
           console.log(`[Wallet] Recorded lease payment #${payment.id} to wallet`);
         } catch (walletError: any) {
-          walletWarning = walletError?.message || 'Wallet update failed';
-          console.log(`[Wallet] Could not record lease payment to wallet:`, walletError);
+          // Wallet update failed — roll back the payment so balance is not affected
+          await storage.deleteLeasePayment(payment.id);
+          console.log(`[Wallet] Rolled back lease payment #${payment.id} due to wallet error:`, walletError);
+          return res.status(400).json({ message: walletError?.message || 'Wallet not updated' });
         }
       }
       
-      res.status(201).json({ ...payment, walletWarning });
+      res.status(201).json({ ...payment });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
