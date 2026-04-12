@@ -961,7 +961,9 @@ export default function Leases() {
 
               const isExpiredCard = lease.isExpiredLease || (lease.endDate && new Date(lease.endDate) < new Date());
               const pendingBalance = lease.pendingBalance || 0;
-              const currentYearPaid = lease.currentYearPaid ?? lease.totalPaid ?? 0;
+              const currentYearPaid = lease.currentYearPaid ?? 0;
+              const currentYearLeaseAmt = lease.currentYearLeaseAmount ?? baseAmount;
+              const thisYearBalance = Math.max(0, currentYearLeaseAmt - currentYearPaid);
 
               return (
                 <Card key={lease.id} className="hover-elevate" data-testid={`card-lease-${lease.id}`}>
@@ -1033,17 +1035,49 @@ export default function Leases() {
                           ₹{(isExpiredCard ? (lease.totalPaid || 0) : currentYearPaid).toLocaleString()}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-sm font-semibold">
-                        <span className="text-muted-foreground">{isExpiredCard ? "Outstanding Balance" : "Pending Balance"}</span>
-                        <span className={`font-mono ${pendingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`} data-testid={`text-balance-${lease.id}`}>
-                          {pendingBalance > 0 ? `₹${pendingBalance.toLocaleString()}` : "Fully Paid"}
-                        </span>
-                      </div>
-                      {carryForward > 0 && (
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Carry Forward</span>
-                          <span className="font-mono text-red-600 dark:text-red-400" data-testid={`text-carry-forward-${lease.id}`}>
-                            ₹{carryForward.toLocaleString()}
+
+                      {!isExpiredCard && pendingBalance > 0 && (
+                        <div className="rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 p-2.5 space-y-1.5">
+                          {carryForward > 0 && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-orange-700 dark:text-orange-400">Prev. Year Balance</span>
+                              <span className="font-mono text-red-600 dark:text-red-400 font-medium" data-testid={`text-carry-forward-${lease.id}`}>
+                                ₹{carryForward.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {thisYearBalance > 0 && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-orange-700 dark:text-orange-400">This Year Remaining</span>
+                              <span className="font-mono text-orange-600 dark:text-orange-400 font-medium">
+                                ₹{thisYearBalance.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {carryForward > 0 && thisYearBalance > 0 && (
+                            <div className="border-t border-orange-200 dark:border-orange-700 pt-1.5 flex items-center justify-between text-sm font-semibold">
+                              <span className="text-orange-800 dark:text-orange-300">Total Pending</span>
+                              <span className="font-mono text-orange-700 dark:text-orange-300" data-testid={`text-balance-${lease.id}`}>
+                                ₹{pendingBalance.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                          {!(carryForward > 0 && thisYearBalance > 0) && (
+                            <div className="flex items-center justify-between text-sm font-semibold">
+                              <span className="text-orange-800 dark:text-orange-300">Pending Balance</span>
+                              <span className="font-mono text-orange-700 dark:text-orange-300" data-testid={`text-balance-${lease.id}`}>
+                                ₹{pendingBalance.toLocaleString()}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {(isExpiredCard || pendingBalance === 0) && (
+                        <div className="flex items-center justify-between text-sm font-semibold">
+                          <span className="text-muted-foreground">{isExpiredCard ? "Outstanding Balance" : "Pending Balance"}</span>
+                          <span className={`font-mono ${pendingBalance > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`} data-testid={`text-balance-${lease.id}`}>
+                            {pendingBalance > 0 ? `₹${pendingBalance.toLocaleString()}` : "Fully Paid"}
                           </span>
                         </div>
                       )}
