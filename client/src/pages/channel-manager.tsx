@@ -893,10 +893,27 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
               {ratePlans.map(rp => {
                 const mapping = mappings.find(m => m.id === rp.roomMappingId);
                 const roomCount = allRooms.filter(r => r.roomType === mapping?.hostezeeRoomType).length;
+                const isUnlinked = !mapping;
                 return (
-                  <TableRow key={rp.id} data-testid={`row-push-rate-${rp.id}`}>
-                    <TableCell>{mapping?.hostezeeRoomType || "—"} <span className="text-muted-foreground text-xs">({mapping?.aiosellRoomCode})</span></TableCell>
-                    <TableCell>{rp.ratePlanName}</TableCell>
+                  <TableRow key={rp.id} data-testid={`row-push-rate-${rp.id}`} className={isUnlinked ? "bg-yellow-50 dark:bg-yellow-950/20" : undefined}>
+                    <TableCell>
+                      {isUnlinked ? (
+                        <div className="flex items-center gap-1.5 text-yellow-700 dark:text-yellow-400">
+                          <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="text-sm font-medium">Not linked</span>
+                          <span className="text-xs text-muted-foreground ml-1">→ Fix in Rate Plans tab</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <div className="font-medium text-sm">{mapping.hostezeeRoomType}</div>
+                          <div className="text-xs text-muted-foreground">{mapping.aiosellRoomCode}</div>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="font-medium">{rp.ratePlanName}</div>
+                      <div className="text-xs text-muted-foreground">{rp.ratePlanCode}</div>
+                    </TableCell>
                     <TableCell><Badge variant="outline">{rp.occupancy}</Badge></TableCell>
                     <TableCell><Badge variant="secondary">{roomCount}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{rp.baseRate || "—"}</TableCell>
