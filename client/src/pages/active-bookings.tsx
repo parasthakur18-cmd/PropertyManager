@@ -932,24 +932,10 @@ export default function ActiveBookings() {
                       activeBookings?.map((booking) => (
                         <div
                           key={booking.id}
-                          className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-                          onClick={() => {
-                            const isCurrentlySelected = selectedBookingsForMerge.includes(booking.id);
-                            if (isCurrentlySelected) {
-                              const newIds = selectedBookingsForMerge.filter(id => id !== booking.id);
-                              setSelectedBookingsForMerge(newIds);
-                              if (primaryBookingForMerge === booking.id) {
-                                setPrimaryBookingForMerge(newIds.length > 0 ? newIds[0] : null);
-                              }
-                            } else {
-                              setSelectedBookingsForMerge([...selectedBookingsForMerge, booking.id]);
-                              if (primaryBookingForMerge === null) {
-                                setPrimaryBookingForMerge(booking.id);
-                              }
-                            }
-                          }}
+                          className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted"
                         >
                           <Checkbox
+                            id={`merge-booking-${booking.id}`}
                             checked={selectedBookingsForMerge.includes(booking.id)}
                             onCheckedChange={(checked) => {
                               if (checked) {
@@ -967,12 +953,15 @@ export default function ActiveBookings() {
                             }}
                             data-testid={`checkbox-merge-booking-${booking.id}`}
                           />
-                          <div className="flex-1 text-sm">
+                          <label
+                            htmlFor={`merge-booking-${booking.id}`}
+                            className="flex-1 text-sm cursor-pointer"
+                          >
                             <p className="font-medium">Booking #{booking.id} - {booking.guest.fullName}</p>
                             <p className="text-xs text-muted-foreground">
                               Room {booking.isGroupBooking && booking.rooms ? booking.rooms.map(r => r.roomNumber).join(", ") : booking.room?.roomNumber} • ₹{booking.charges.subtotal}
                             </p>
-                          </div>
+                          </label>
                         </div>
                       ))
                     )}
