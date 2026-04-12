@@ -575,9 +575,11 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+type PlanRow = { roomMappingId: number; ratePlanName: string; ratePlanCode: string; baseRate: string; occupancy: string };
+
 function RatePlansTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
-  const [newPlans, setNewPlans] = useState<{ roomMappingId: number; ratePlanName: string; ratePlanCode: string; baseRate: string; occupancy: string }[]>([]);
+  const [editedPlans, setEditedPlans] = useState<PlanRow[] | null>(null);
 
   const { data: config } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -619,29 +621,43 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
   }
 
   const savePlans = useMutation({
-    mutationFn: async (plans: any[]) => {
+    mutationFn: async (plans: PlanRow[]) => {
       return apiRequest("/api/aiosell/rate-plans", "POST", { propertyId, ratePlans: plans });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/rate-plans"] });
-      setNewPlans([]);
+      setEditedPlans(null);
       toast({ title: "Rate plans saved" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const existingData = ratePlans.map(rp => ({
+  const fromDB: PlanRow[] = ratePlans.map(rp => ({
     roomMappingId: rp.roomMappingId,
     ratePlanName: rp.ratePlanName,
     ratePlanCode: rp.ratePlanCode,
     baseRate: rp.baseRate || "",
     occupancy: rp.occupancy,
   }));
-  const allPlans = [...existingData, ...newPlans];
 
-  const addPlan = () => setNewPlans([...newPlans, { roomMappingId: 0, ratePlanName: "", ratePlanCode: "", baseRate: "", occupancy: "single" }]);
+  const plans = editedPlans ?? fromDB;
+  const isDirty = editedPlans !== null;
 
-  const removeFromNew = (i: number) => setNewPlans(newPlans.filter((_, idx) => idx !== i));
+  const updatePlan = (index: number, field: keyof PlanRow, value: string | number) => {
+    const base = editedPlans ?? fromDB;
+    const updated = base.map((p, i) => i === index ? { ...p, [field]: value } : p);
+    setEditedPlans(updated);
+  };
+
+  const addPlan = () => {
+    const base = editedPlans ?? fromDB;
+    setEditedPlans([...base, { roomMappingId: 0, ratePlanName: "", ratePlanCode: "", baseRate: "", occupancy: "single" }]);
+  };
+
+  const removePlan = (index: number) => {
+    const base = editedPlans ?? fromDB;
+    setEditedPlans(base.filter((_, i) => i !== index));
+  };
 
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
@@ -663,13 +679,13 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" /> Rate Plans</CardTitle>
-              <CardDescription>Define rate plans for each room type to push pricing to OTAs</CardDescription>
+              <CardDescription>Define rate plans for each room type to push pricing to OTAs. You can edit any row to fix room assignments.</CardDescription>
             </div>
             <Button data-testid="button-add-rate-plan" size="sm" onClick={addPlan}><Plus className="h-4 w-4 mr-1" /> Add Rate Plan</Button>
           </div>
         </CardHeader>
         <CardContent>
-          {allPlans.length === 0 ? (
+          {plans.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <DollarSign className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p>No rate plans configured yet. Add rate plans to start pushing rates to OTAs.</p>
@@ -687,70 +703,56 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allPlans.map((plan, index) => {
-                  const isNew = index >= existingData.length;
-                  const newIndex = index - existingData.length;
-                  return (
-                    <TableRow key={index} data-testid={`row-rate-plan-${index}`}>
-                      <TableCell>
-                        <Select
-                          value={plan.roomMappingId ? String(plan.roomMappingId) : ""}
-                          onValueChange={v => {
-                            if (isNew) {
-                              const updated = [...newPlans];
-                              updated[newIndex].roomMappingId = parseInt(v);
-                              setNewPlans(updated);
-                            }
-                          }}
-                          disabled={!isNew}
-                        >
-                          <SelectTrigger data-testid={`select-room-mapping-${index}`}><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>
-                            {mappings.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.hostezeeRoomType} ({m.aiosellRoomCode})</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input data-testid={`input-rate-plan-name-${index}`} value={plan.ratePlanName} onChange={e => {
-                          if (isNew) { const u = [...newPlans]; u[newIndex].ratePlanName = e.target.value; setNewPlans(u); }
-                        }} placeholder="Standard Single" disabled={!isNew} />
-                      </TableCell>
-                      <TableCell>
-                        <Input data-testid={`input-rate-plan-code-${index}`} value={plan.ratePlanCode} onChange={e => {
-                          if (isNew) { const u = [...newPlans]; u[newIndex].ratePlanCode = e.target.value; setNewPlans(u); }
-                        }} placeholder="SUITE-S-101" disabled={!isNew} />
-                      </TableCell>
-                      <TableCell>
-                        <Input data-testid={`input-base-rate-${index}`} type="number" value={plan.baseRate} onChange={e => {
-                          if (isNew) { const u = [...newPlans]; u[newIndex].baseRate = e.target.value; setNewPlans(u); }
-                        }} placeholder="0" disabled={!isNew} />
-                      </TableCell>
-                      <TableCell>
-                        <Select value={plan.occupancy} onValueChange={v => {
-                          if (isNew) { const u = [...newPlans]; u[newIndex].occupancy = v; setNewPlans(u); }
-                        }} disabled={!isNew}>
-                          <SelectTrigger data-testid={`select-occupancy-${index}`}><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="single">Single</SelectItem>
-                            <SelectItem value="double">Double</SelectItem>
-                            <SelectItem value="triple">Triple</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        {isNew && <Button variant="ghost" size="icon" onClick={() => removeFromNew(newIndex)} data-testid={`button-remove-plan-${index}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {plans.map((plan, index) => (
+                  <TableRow key={index} data-testid={`row-rate-plan-${index}`}>
+                    <TableCell>
+                      <Select
+                        value={plan.roomMappingId ? String(plan.roomMappingId) : ""}
+                        onValueChange={v => updatePlan(index, "roomMappingId", parseInt(v))}
+                      >
+                        <SelectTrigger data-testid={`select-room-mapping-${index}`}><SelectValue placeholder="Select room" /></SelectTrigger>
+                        <SelectContent>
+                          {mappings.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.hostezeeRoomType} ({m.aiosellRoomCode})</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Input data-testid={`input-rate-plan-name-${index}`} value={plan.ratePlanName} onChange={e => updatePlan(index, "ratePlanName", e.target.value)} placeholder="Standard Single" />
+                    </TableCell>
+                    <TableCell>
+                      <Input data-testid={`input-rate-plan-code-${index}`} value={plan.ratePlanCode} onChange={e => updatePlan(index, "ratePlanCode", e.target.value)} placeholder="SUITE-S-101" />
+                    </TableCell>
+                    <TableCell>
+                      <Input data-testid={`input-base-rate-${index}`} type="number" value={plan.baseRate} onChange={e => updatePlan(index, "baseRate", e.target.value)} placeholder="0" />
+                    </TableCell>
+                    <TableCell>
+                      <Select value={plan.occupancy} onValueChange={v => updatePlan(index, "occupancy", v)}>
+                        <SelectTrigger data-testid={`select-occupancy-${index}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="single">Single</SelectItem>
+                          <SelectItem value="double">Double</SelectItem>
+                          <SelectItem value="triple">Triple</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => removePlan(index)} data-testid={`button-remove-plan-${index}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}
-          {newPlans.length > 0 && (
-            <Button data-testid="button-save-rate-plans" className="mt-4" onClick={() => savePlans.mutate(allPlans)} disabled={savePlans.isPending}>
-              {savePlans.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Save All Rate Plans
-            </Button>
+          {(isDirty || plans.length > 0) && (
+            <div className="mt-4 flex items-center gap-3">
+              <Button data-testid="button-save-rate-plans" onClick={() => savePlans.mutate(plans)} disabled={savePlans.isPending}>
+                {savePlans.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Save All Rate Plans
+              </Button>
+              {isDirty && (
+                <Button variant="ghost" size="sm" onClick={() => setEditedPlans(null)}>Discard Changes</Button>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

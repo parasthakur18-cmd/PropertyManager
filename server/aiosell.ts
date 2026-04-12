@@ -472,43 +472,76 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
           continue;
         }
 
-        // Count rooms of this type that have NO active booking on this date
-        const bookedRoomIds = new Set<number>();
-        let tbsCount = 0; // TBS stays reduce available count without a specific room
-        for (const booking of activeBookings) {
-          const cin = new Date(booking.checkInDate);
-          const cout = new Date(booking.checkOutDate);
-          cin.setHours(0, 0, 0, 0);
-          cout.setHours(0, 0, 0, 0);
-
-          // Booking occupies a date if: checkIn <= date < checkOut
-          if (cin <= date && date < cout) {
-            if (booking.roomId && roomIds.includes(booking.roomId)) {
-              bookedRoomIds.add(booking.roomId);
-            }
-            if (booking.roomIds) {
-              for (const rid of booking.roomIds) {
-                if (roomIds.includes(rid)) bookedRoomIds.add(rid);
-              }
-            }
-            // Count TBS stays (sold but no specific room assigned) for this room code
-            const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
-            for (const stay of tbsForBooking) {
-              if (stay.aiosellRoomCode === mapping.aiosellRoomCode) {
-                tbsCount++;
-              }
-            }
-          }
-        }
+        // Determine if any room in this mapping is a dormitory type
+        const isDormitory = allRooms.some(r => roomIds.includes(r.id) && r.roomCategory === "dormitory");
 
         // Also exclude rooms in maintenance/out-of-order/blocked status
         const blockedRoomIds = allRooms
           .filter(r => roomIds.includes(r.id) && (r.status === "maintenance" || r.status === "out-of-order" || r.status === "blocked"))
           .map(r => r.id);
+        const activeRoomIds = roomIds.filter(id => !blockedRoomIds.includes(id));
 
-        const physicallyAvailable = roomIds.filter(id => !bookedRoomIds.has(id) && !blockedRoomIds.includes(id)).length;
-        const available = Math.max(0, physicallyAvailable - tbsCount);
-        dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
+        if (isDormitory) {
+          // For dormitory rooms: push available BED count (not room count)
+          // Sum totalBeds across active rooms, then subtract bedsBooked from overlapping bookings
+          const totalBeds = allRooms
+            .filter(r => activeRoomIds.includes(r.id))
+            .reduce((sum, r) => sum + (r.totalBeds || 1), 0);
+
+          // Track beds booked per room
+          const bedsBookedByRoom: Record<number, number> = {};
+          for (const booking of activeBookings) {
+            const cin = new Date(booking.checkInDate);
+            const cout = new Date(booking.checkOutDate);
+            cin.setHours(0, 0, 0, 0);
+            cout.setHours(0, 0, 0, 0);
+            if (cin <= date && date < cout) {
+              const beds = (booking as any).bedsBooked || 1;
+              const bRoomId = booking.roomId;
+              if (bRoomId && activeRoomIds.includes(bRoomId)) {
+                bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
+              }
+              if (booking.roomIds) {
+                for (const rid of booking.roomIds) {
+                  if (activeRoomIds.includes(rid)) {
+                    bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+                  }
+                }
+              }
+            }
+          }
+
+          const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
+          const available = Math.max(0, totalBeds - bedsBooked);
+          dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
+        } else {
+          // For regular rooms: push count of rooms NOT booked on this date
+          const bookedRoomIds = new Set<number>();
+          let tbsCount = 0;
+          for (const booking of activeBookings) {
+            const cin = new Date(booking.checkInDate);
+            const cout = new Date(booking.checkOutDate);
+            cin.setHours(0, 0, 0, 0);
+            cout.setHours(0, 0, 0, 0);
+            if (cin <= date && date < cout) {
+              if (booking.roomId && activeRoomIds.includes(booking.roomId)) {
+                bookedRoomIds.add(booking.roomId);
+              }
+              if (booking.roomIds) {
+                for (const rid of booking.roomIds) {
+                  if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+                }
+              }
+              const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
+              for (const stay of tbsForBooking) {
+                if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsCount++;
+              }
+            }
+          }
+          const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.has(id)).length;
+          const available = Math.max(0, physicallyAvailable - tbsCount);
+          dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
+        }
       }
     }
 

@@ -18397,7 +18397,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       // Build per-mapping availability
       const roomTypeData = mappings.map(mapping => {
         const matchingRooms = allRooms.filter(r =>
-          r.type === mapping.hostezeeRoomType || r.name === mapping.hostezeeRoomType
+          r.roomType === mapping.hostezeeRoomType
         );
         const totalRooms = matchingRooms.length;
         const roomIds = matchingRooms.map(r => r.id);
