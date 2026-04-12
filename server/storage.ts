@@ -4133,24 +4133,17 @@ export class DatabaseStorage implements IStorage {
         const totalExtraAdvances = extraAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
         const totalAdvances = totalRegularAdvances + totalExtraAdvances;
 
-        // Get all payments made for this staff member (linked to their salaries)
-        const staffSalaryRecords = await db
-          .select({ id: staffSalaries.id })
-          .from(staffSalaries)
-          .where(eq(staffSalaries.staffMemberId, staff.id));
-        const staffSalaryIdSet = new Set(staffSalaryRecords.map(s => s.id));
-
-        // Get payments in current period
-        const currentPayments = await db
+        // Get payments in current period for this staff member
+        const staffPaymentsThisMonth = await db
           .select()
           .from(salaryPayments)
           .where(
             and(
+              eq(salaryPayments.staffMemberId, staff.id),
               gte(salaryPayments.paymentDate, startDate),
               lte(salaryPayments.paymentDate, endDate)
             )
           );
-        const staffPaymentsThisMonth = currentPayments.filter(p => staffSalaryIdSet.has(p.salaryId));
         const totalPaymentsMade = staffPaymentsThisMonth.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
 
         // === CARRY FORWARD CALCULATION ===
@@ -4166,12 +4159,16 @@ export class DatabaseStorage implements IStorage {
           );
         const totalPreviousAdvances = previousAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
 
-        // Get all payments made before current month
-        const previousPayments = await db
+        // Get all payments made before current month for this staff member
+        const prevStaffPayments = await db
           .select()
           .from(salaryPayments)
-          .where(lt(salaryPayments.paymentDate, startDate));
-        const prevStaffPayments = previousPayments.filter(p => staffSalaryIdSet.has(p.salaryId));
+          .where(
+            and(
+              eq(salaryPayments.staffMemberId, staff.id),
+              lt(salaryPayments.paymentDate, startDate)
+            )
+          );
         const totalPreviousPayments = prevStaffPayments.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
 
         // Calculate months of service before current month
