@@ -1538,6 +1538,108 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+function ConnectionHealthCard({ propertyId }: { propertyId: number }) {
+  const { data: config } = useQuery<AiosellConfig | null>({
+    queryKey: ["/api/aiosell/config", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/config?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+
+  const { data: mappings = [] } = useQuery<RoomMapping[]>({
+    queryKey: ["/api/aiosell/room-mappings", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/room-mappings?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
+  const { data: ratePlans = [] } = useQuery<RatePlan[]>({
+    queryKey: ["/api/aiosell/rate-plans", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/rate-plans?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
+  if (!propertyId) return null;
+
+  const configOk = !!(config?.hotelCode && config?.pmsName);
+  const mappingsOk = mappings.length > 0;
+  const unlinkedPlans = ratePlans.filter(rp => !mappings.find(m => m.id === rp.roomMappingId));
+  const ratePlansOk = ratePlans.length > 0 && unlinkedPlans.length === 0;
+  const inventoryReady = configOk && mappingsOk;
+  const ratesReady = configOk && mappingsOk && ratePlansOk;
+  const allOk = inventoryReady && ratesReady;
+
+  const checks = [
+    {
+      label: "AioSell Config",
+      ok: configOk,
+      detail: configOk ? `Hotel: ${config?.hotelCode}` : "Go to Settings tab and save Hotel Code + PMS Name",
+    },
+    {
+      label: "Room Mappings",
+      ok: mappingsOk,
+      detail: mappingsOk ? `${mappings.length} room${mappings.length !== 1 ? "s" : ""} mapped to AioSell` : "Go to Room Mapping tab and link your rooms",
+    },
+    {
+      label: "Rate Plans",
+      ok: ratePlansOk,
+      detail: !config ? "Requires AioSell config first"
+        : ratePlans.length === 0 ? "Go to Rate Plans tab and add rate plans"
+        : unlinkedPlans.length > 0 ? `${unlinkedPlans.length} plan${unlinkedPlans.length !== 1 ? "s" : ""} not linked to a room — fix in Rate Plans tab`
+        : `${ratePlans.length} plan${ratePlans.length !== 1 ? "s" : ""} linked and ready`,
+    },
+    {
+      label: "Push Inventory",
+      ok: inventoryReady,
+      detail: inventoryReady ? "Ready — room availability can be pushed to OTAs" : "Fix issues above first",
+    },
+    {
+      label: "Push Rates",
+      ok: ratesReady,
+      detail: ratesReady ? "Ready — rates can be pushed to OTAs" : "Fix issues above first",
+    },
+  ];
+
+  return (
+    <Card className={allOk ? "border-green-200 dark:border-green-800" : "border-yellow-200 dark:border-yellow-800"} data-testid="card-connection-health">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          {allOk
+            ? <CheckCircle className="h-4 w-4 text-green-500" />
+            : <AlertCircle className="h-4 w-4 text-yellow-500" />}
+          Setup Health Check
+          <span className={`ml-auto text-xs font-normal px-2 py-0.5 rounded-full ${allOk ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"}`}>
+            {allOk ? "All systems ready" : "Action required"}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {checks.map(check => (
+            <div key={check.label} className={`rounded-lg border p-3 ${check.ok ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                {check.ok
+                  ? <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                  : <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />}
+                <span className={`text-xs font-semibold ${check.ok ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>{check.label}</span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-snug">{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ChannelManager() {
   const { selectedPropertyId, properties, setSelectedPropertyId, isSuperAdmin } = usePropertyFilter();
 
@@ -1572,7 +1674,9 @@ export default function ChannelManager() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs defaultValue="settings" className="w-full">
+        <>
+          <ConnectionHealthCard propertyId={propertyId} />
+          <Tabs defaultValue="settings" className="w-full">
           <TabsList className="flex w-full overflow-x-auto h-auto flex-wrap gap-1 justify-start bg-muted p-1 rounded-lg" data-testid="tabs-channel-manager">
             <TabsTrigger value="settings" data-testid="tab-settings" className="flex-shrink-0">Settings</TabsTrigger>
             <TabsTrigger value="room-mapping" data-testid="tab-room-mapping" className="flex-shrink-0">Room Mapping</TabsTrigger>
@@ -1592,6 +1696,7 @@ export default function ChannelManager() {
           <TabsContent value="logs"><SyncLogsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
         </Tabs>
+        </>
       )}
     </div>
   );
