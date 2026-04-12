@@ -344,6 +344,9 @@ export interface IStorage {
   deleteSalary(id: number): Promise<void>;
   getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]>;
 
+  getAllSalaryPaymentsWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]>;
+  getAllAdvancesWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]>;
+
   // Salary Advance operations
   getAllAdvances(): Promise<SalaryAdvance[]>;
   getAdvancesByUser(userId: string): Promise<SalaryAdvance[]>;
@@ -4260,6 +4263,30 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(salaryAdvances.createdAt));
   }
 
+  async getAllAdvancesWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]> {
+    const conditions: any[] = [];
+    if (fromDate) conditions.push(gte(salaryAdvances.advanceDate, fromDate));
+    if (toDate) conditions.push(lte(salaryAdvances.advanceDate, toDate));
+    return await db
+      .select({
+        id: salaryAdvances.id,
+        amount: salaryAdvances.amount,
+        advanceDate: salaryAdvances.advanceDate,
+        advanceType: salaryAdvances.advanceType,
+        paymentMode: salaryAdvances.paymentMode,
+        reason: salaryAdvances.reason,
+        repaymentStatus: salaryAdvances.repaymentStatus,
+        notes: salaryAdvances.notes,
+        staffName: staffMembers.name,
+        staffRole: staffMembers.jobTitle,
+        propertyId: staffMembers.propertyId,
+      })
+      .from(salaryAdvances)
+      .leftJoin(staffMembers, eq(salaryAdvances.staffMemberId, staffMembers.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(salaryAdvances.advanceDate));
+  }
+
   async getAdvancesByUser(userId: string): Promise<any[]> {
     // Join with staffMembers to get propertyId for filtering
     return await db
@@ -4330,6 +4357,30 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(salaryPayments)
       .where(and(...conditions))
+      .orderBy(desc(salaryPayments.paymentDate));
+  }
+
+  async getAllSalaryPaymentsWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]> {
+    const conditions: any[] = [];
+    if (fromDate) conditions.push(gte(salaryPayments.paymentDate, fromDate));
+    if (toDate) conditions.push(lte(salaryPayments.paymentDate, toDate));
+    return await db
+      .select({
+        id: salaryPayments.id,
+        amount: salaryPayments.amount,
+        paymentDate: salaryPayments.paymentDate,
+        paymentMethod: salaryPayments.paymentMethod,
+        periodStart: salaryPayments.periodStart,
+        periodEnd: salaryPayments.periodEnd,
+        notes: salaryPayments.notes,
+        paidBy: salaryPayments.paidBy,
+        propertyId: salaryPayments.propertyId,
+        staffName: staffMembers.name,
+        staffRole: staffMembers.jobTitle,
+      })
+      .from(salaryPayments)
+      .leftJoin(staffMembers, eq(salaryPayments.staffMemberId, staffMembers.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(salaryPayments.paymentDate));
   }
 

@@ -11752,6 +11752,134 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // GET /api/staff-funds-report - Complete funds disbursed to staff report (advances + salary payments + expenses)
+  app.get("/api/staff-funds-report", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(403).json({ message: "User not found" });
+
+      const { from, to } = req.query;
+      const fromDate = from ? new Date(from as string) : undefined;
+      const toDate = to ? new Date(to as string + 'T23:59:59') : undefined;
+
+      // Determine accessible property IDs
+      let allProperties = await storage.getAllProperties();
+      if (currentUser.role !== 'superadmin') {
+        const assigned = (currentUser.assignedPropertyIds || []).map(String);
+        if (assigned.length > 0) {
+          allProperties = allProperties.filter((p: any) => assigned.includes(String(p.id)));
+        }
+      }
+      const accessiblePropertyIds = new Set(allProperties.map((p: any) => p.id));
+      const propertyNameMap: Record<number, string> = {};
+      for (const p of allProperties) propertyNameMap[p.id] = p.name;
+
+      const escapeCsv = (val: any) => {
+        const str = String(val ?? '');
+        return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+      const fmtDate = (d: any) => d ? new Date(d).toLocaleDateString('en-IN') : '';
+      const fmtAmt = (v: any) => parseFloat(String(v || 0)).toFixed(2);
+
+      // ── Section 1: Salary Advances ──────────────────────────────
+      const allAdvances = await storage.getAllAdvancesWithStaff(fromDate, toDate);
+      const filteredAdvances = allAdvances.filter((a: any) => a.propertyId && accessiblePropertyIds.has(a.propertyId));
+
+      const advRows: string[] = [
+        'Date,Property,Staff Name,Role,Type,Amount,Payment Mode,Reason,Repayment Status',
+        ...filteredAdvances.map((a: any) => [
+          fmtDate(a.advanceDate),
+          escapeCsv(propertyNameMap[a.propertyId] || ''),
+          escapeCsv(a.staffName || ''),
+          escapeCsv(a.staffRole || ''),
+          escapeCsv(a.advanceType || 'regular'),
+          fmtAmt(a.amount),
+          escapeCsv(a.paymentMode || 'cash'),
+          escapeCsv(a.reason || ''),
+          escapeCsv(a.repaymentStatus || ''),
+        ].join(','))
+      ];
+
+      // ── Section 2: Salary Payments ──────────────────────────────
+      const allPayments = await storage.getAllSalaryPaymentsWithStaff(fromDate, toDate);
+      const filteredPayments = allPayments.filter((p: any) => p.propertyId && accessiblePropertyIds.has(p.propertyId));
+
+      const payRows: string[] = [
+        'Date,Property,Staff Name,Role,Amount,Payment Method,Period,Notes,Paid By',
+        ...filteredPayments.map((p: any) => {
+          const period = (p.periodStart && p.periodEnd)
+            ? `${fmtDate(p.periodStart)} to ${fmtDate(p.periodEnd)}`
+            : '';
+          return [
+            fmtDate(p.paymentDate),
+            escapeCsv(propertyNameMap[p.propertyId] || ''),
+            escapeCsv(p.staffName || ''),
+            escapeCsv(p.staffRole || ''),
+            fmtAmt(p.amount),
+            escapeCsv(p.paymentMethod || ''),
+            escapeCsv(period),
+            escapeCsv(p.notes || ''),
+            escapeCsv(p.paidBy || ''),
+          ].join(',');
+        })
+      ];
+
+      // ── Section 3: Property Expenses ───────────────────────────
+      const allExpenses = await storage.getAllExpenses();
+      const filteredExpenses = allExpenses.filter((e: any) => {
+        if (!accessiblePropertyIds.has(e.propertyId)) return false;
+        if (fromDate && new Date(e.expenseDate) < fromDate) return false;
+        if (toDate && new Date(e.expenseDate) > toDate) return false;
+        return true;
+      });
+
+      const expRows: string[] = [
+        'Date,Property,Category,Amount,Payment Method,Description,Vendor,Receipt No.',
+        ...filteredExpenses.map((e: any) => [
+          fmtDate(e.expenseDate),
+          escapeCsv(propertyNameMap[e.propertyId] || ''),
+          escapeCsv(e.category || ''),
+          fmtAmt(e.amount),
+          escapeCsv(e.paymentMethod || ''),
+          escapeCsv(e.description || ''),
+          escapeCsv(e.vendorName || ''),
+          escapeCsv(e.receiptNumber || ''),
+        ].join(','))
+      ];
+
+      // ── Totals ──────────────────────────────────────────────────
+      const totalAdvances = filteredAdvances.reduce((s: number, a: any) => s + parseFloat(String(a.amount || 0)), 0);
+      const totalPayments = filteredPayments.reduce((s: number, p: any) => s + parseFloat(String(p.amount || 0)), 0);
+      const totalExpenses = filteredExpenses.reduce((s: number, e: any) => s + parseFloat(String(e.amount || 0)), 0);
+      const grandTotal = totalAdvances + totalPayments + totalExpenses;
+
+      const rangeLabel = from && to ? `${from} to ${to}` : from ? `From ${from}` : to ? `Until ${to}` : 'All Time';
+      const csvContent = [
+        `Staff Funds Report — ${rangeLabel}`,
+        `Generated: ${new Date().toLocaleDateString('en-IN')}`,
+        `Grand Total Disbursed: ₹${grandTotal.toFixed(2)}  |  Advances: ₹${totalAdvances.toFixed(2)}  |  Salary Payments: ₹${totalPayments.toFixed(2)}  |  Expenses: ₹${totalExpenses.toFixed(2)}`,
+        '',
+        '=== SALARY ADVANCES ===',
+        ...advRows,
+        '',
+        '=== SALARY PAYMENTS ===',
+        ...payRows,
+        '',
+        '=== PROPERTY EXPENSES ===',
+        ...expRows,
+      ].join('\n');
+
+      const fileSuffix = from && to ? `${from}_to_${to}` : 'all-time';
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=staff-funds-report-${fileSuffix}.csv`);
+      res.send('\uFEFF' + csvContent);
+    } catch (error: any) {
+      console.error('[STAFF FUNDS REPORT ERROR]:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Payment endpoints
   app.get("/api/salaries/:salaryId/payments", isAuthenticated, async (req, res) => {
     try {

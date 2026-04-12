@@ -45,6 +45,14 @@ export default function SalariesPage() {
   const [isExportAllDialogOpen, setIsExportAllDialogOpen] = useState(false);
   const [exportAllMonth, setExportAllMonth] = useState(() => new Date().toISOString().split('T')[0].slice(0, 7));
   const [isExportingAll, setIsExportingAll] = useState(false);
+
+  // Staff Funds Report dialog state
+  const [isFundsReportOpen, setIsFundsReportOpen] = useState(false);
+  const [fundsFrom, setFundsFrom] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0];
+  });
+  const [fundsTo, setFundsTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [isExportingFunds, setIsExportingFunds] = useState(false);
   
   const { toast } = useToast();
 
@@ -307,6 +315,34 @@ export default function SalariesPage() {
     totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
+  // Download Staff Funds Report (advances + salary payments + expenses)
+  const exportFundsReport = async () => {
+    setIsExportingFunds(true);
+    try {
+      const params = new URLSearchParams();
+      if (fundsFrom) params.set('from', fundsFrom);
+      if (fundsTo) params.set('to', fundsTo);
+      const response = await fetch(`/api/staff-funds-report?${params}`, { credentials: 'include' });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: 'Export failed' }));
+        throw new Error(err.message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Staff_Funds_Report_${fundsFrom}_to_${fundsTo}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setIsFundsReportOpen(false);
+      toast({ title: "Report Downloaded", description: "Staff funds report has been saved." });
+    } catch (err: any) {
+      toast({ title: "Download Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsExportingFunds(false);
+    }
+  };
+
   // Export all properties salary + advance report
   const exportAllPropertiesReport = async () => {
     setIsExportingAll(true);
@@ -450,6 +486,10 @@ export default function SalariesPage() {
             <Button variant="outline" onClick={() => setIsExportAllDialogOpen(true)} data-testid="button-export-all-properties">
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export All Properties
+            </Button>
+            <Button variant="outline" onClick={() => setIsFundsReportOpen(true)} data-testid="button-staff-funds-report">
+              <Wallet className="h-4 w-4 mr-2" />
+              Funds Report
             </Button>
             
             <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
@@ -1144,6 +1184,60 @@ export default function SalariesPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Staff Funds Report Dialog */}
+      <Dialog open={isFundsReportOpen} onOpenChange={setIsFundsReportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Staff Funds Report</DialogTitle>
+            <DialogDescription>
+              Complete report of all funds disbursed — salary advances, salary payments, and property expenses — across all properties.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="funds-from">From Date</Label>
+                <Input
+                  id="funds-from"
+                  type="date"
+                  value={fundsFrom}
+                  onChange={(e) => setFundsFrom(e.target.value)}
+                  data-testid="input-funds-from"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="funds-to">To Date</Label>
+                <Input
+                  id="funds-to"
+                  type="date"
+                  value={fundsTo}
+                  onChange={(e) => setFundsTo(e.target.value)}
+                  data-testid="input-funds-to"
+                />
+              </div>
+            </div>
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
+              <p className="font-medium text-foreground">The report includes:</p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-0.5 pl-1">
+                <li>Salary Advances — every advance given with type, mode &amp; status</li>
+                <li>Salary Payments — all salary disbursements with period details</li>
+                <li>Property Expenses — all expense entries with category &amp; vendor</li>
+              </ul>
+              <p className="text-muted-foreground pt-1">Grand total is shown in the file header.</p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setIsFundsReportOpen(false)} data-testid="button-cancel-funds-report">
+              Cancel
+            </Button>
+            <Button onClick={exportFundsReport} disabled={isExportingFunds} data-testid="button-confirm-funds-report">
+              <Download className="h-4 w-4 mr-2" />
+              {isExportingFunds ? "Generating..." : "Download Report"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Export All Properties Dialog */}
       <Dialog open={isExportAllDialogOpen} onOpenChange={setIsExportAllDialogOpen}>
