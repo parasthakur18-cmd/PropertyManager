@@ -11648,6 +11648,110 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // GET /api/salary-export/all - Export full salary + advance report for ALL accessible properties
+  app.get("/api/salary-export/all", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) return res.status(403).json({ message: "User not found" });
+
+      const { month } = req.query;
+      if (!month) return res.status(400).json({ message: "month is required (YYYY-MM)" });
+
+      const [yearNum, monthNum] = (month as string).split('-').map(Number);
+      const monthStart = new Date(yearNum, monthNum - 1, 1);
+      const monthEnd = new Date(yearNum, monthNum, 0, 23, 59, 59);
+
+      // Determine accessible properties
+      let allProperties = await storage.getAllProperties();
+      if (currentUser.role !== 'superadmin') {
+        const assigned = (currentUser.assignedPropertyIds || []).map(String);
+        if (assigned.length > 0) {
+          allProperties = allProperties.filter((p: any) => assigned.includes(String(p.id)));
+        }
+      }
+
+      const escapeCsv = (val: any) => {
+        const str = String(val ?? '');
+        return str.includes(',') || str.includes('"') || str.includes('\n') ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const salaryRows: string[] = [];
+      const advanceRows: string[] = [];
+      const allAdvances = await storage.getAllAdvances();
+
+      salaryRows.push('Property,Staff Name,Role,Base Salary,Total Days,Present Days,Absent Days,Leave Days,Half Days,Daily Rate,Deduction,Regular Advances,Extra Advances,Total Advances,Gross Salary,Net Salary,Previous Pending,Payments Made,Final Payable');
+      advanceRows.push('Property,Staff Name,Date,Type,Amount,Payment Mode,Reason,Repayment Status');
+
+      for (const property of allProperties) {
+        const detailedSalaries = await storage.getDetailedStaffSalaries(property.id, monthStart, monthEnd);
+        const propertyStaffIds = new Set(detailedSalaries.map((s: any) => s.staffId));
+
+        // Salary summary rows
+        for (const s of detailedSalaries) {
+          salaryRows.push([
+            escapeCsv(property.name),
+            escapeCsv(s.staffName),
+            escapeCsv(s.jobTitle),
+            s.baseSalary.toFixed(2),
+            s.totalDays || 0,
+            (s.presentDays || 0).toFixed(1),
+            s.absentDays || 0,
+            s.leaveDays || 0,
+            s.halfDays || 0,
+            (s.dailyRate || 0).toFixed(2),
+            (s.deduction || 0).toFixed(2),
+            (s.regularAdvances || 0).toFixed(2),
+            (s.extraAdvances || 0).toFixed(2),
+            (s.totalAdvances || 0).toFixed(2),
+            (s.grossSalary || 0).toFixed(2),
+            (s.netSalary || 0).toFixed(2),
+            (s.previousPending || 0).toFixed(2),
+            (s.paymentsMade || 0).toFixed(2),
+            (s.finalPayable || 0).toFixed(2),
+          ].join(','));
+        }
+
+        // Individual advance rows for this property's staff
+        const propertyAdvances = allAdvances.filter((adv: any) => propertyStaffIds.has(adv.staffMemberId));
+        const staffNameMap: Record<number, string> = {};
+        for (const s of detailedSalaries) staffNameMap[s.staffId] = s.staffName;
+
+        for (const adv of propertyAdvances) {
+          const advDate = adv.advanceDate ? new Date(adv.advanceDate).toLocaleDateString('en-IN') : '';
+          advanceRows.push([
+            escapeCsv(property.name),
+            escapeCsv(staffNameMap[adv.staffMemberId] || ''),
+            advDate,
+            escapeCsv(adv.advanceType || 'regular'),
+            parseFloat(String(adv.amount || 0)).toFixed(2),
+            escapeCsv(adv.paymentMode || 'cash'),
+            escapeCsv(adv.reason || ''),
+            escapeCsv(adv.repaymentStatus || ''),
+          ].join(','));
+        }
+      }
+
+      const monthLabel = `${yearNum}-${String(monthNum).padStart(2, '0')}`;
+      const csvContent = [
+        `Salary Report - All Properties - ${monthLabel}`,
+        '',
+        '=== SALARY SUMMARY ===',
+        ...salaryRows,
+        '',
+        '=== ADVANCE LEDGER ===',
+        ...advanceRows,
+      ].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename=salary-all-properties-${monthLabel}.csv`);
+      res.send('\uFEFF' + csvContent); // BOM for Excel UTF-8
+    } catch (error: any) {
+      console.error('[SALARY EXPORT ALL ERROR]:', error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Salary Payment endpoints
   app.get("/api/salaries/:salaryId/payments", isAuthenticated, async (req, res) => {
     try {

@@ -40,6 +40,11 @@ export default function SalariesPage() {
   
   // Payment history state
   const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<number | null>(null);
+
+  // Export All dialog state
+  const [isExportAllDialogOpen, setIsExportAllDialogOpen] = useState(false);
+  const [exportAllMonth, setExportAllMonth] = useState(() => new Date().toISOString().split('T')[0].slice(0, 7));
+  const [isExportingAll, setIsExportingAll] = useState(false);
   
   const { toast } = useToast();
 
@@ -302,6 +307,33 @@ export default function SalariesPage() {
     totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
+  // Export all properties salary + advance report
+  const exportAllPropertiesReport = async () => {
+    setIsExportingAll(true);
+    try {
+      const response = await fetch(`/api/salary-export/all?month=${exportAllMonth}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ message: 'Export failed' }));
+        throw new Error(err.message);
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Salary_All_Properties_${exportAllMonth}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setIsExportAllDialogOpen(false);
+      toast({ title: "Export Complete", description: `Full salary report for ${exportAllMonth} downloaded` });
+    } catch (err: any) {
+      toast({ title: "Export Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsExportingAll(false);
+    }
+  };
+
   // Export salary report as CSV
   const exportSalaryReport = () => {
     if (salaries.length === 0) {
@@ -414,6 +446,10 @@ export default function SalariesPage() {
             <Button variant="outline" onClick={exportSalaryReport} data-testid="button-export-report">
               <Download className="h-4 w-4 mr-2" />
               Export Report
+            </Button>
+            <Button variant="outline" onClick={() => setIsExportAllDialogOpen(true)} data-testid="button-export-all-properties">
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Export All Properties
             </Button>
             
             <Dialog open={isAdvanceDialogOpen} onOpenChange={setIsAdvanceDialogOpen}>
@@ -1108,6 +1144,46 @@ export default function SalariesPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Export All Properties Dialog */}
+      <Dialog open={isExportAllDialogOpen} onOpenChange={setIsExportAllDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export All Properties — Salary & Advance Report</DialogTitle>
+            <DialogDescription>
+              Downloads salary summary and individual advance entries for every property you have access to, in a single CSV file.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="export-all-month">Select Month</Label>
+              <Input
+                id="export-all-month"
+                type="month"
+                value={exportAllMonth}
+                onChange={(e) => setExportAllMonth(e.target.value)}
+                data-testid="input-export-all-month"
+              />
+            </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>The CSV will contain two sections:</p>
+              <ul className="list-disc list-inside space-y-0.5 pl-1">
+                <li>Salary Summary — one row per staff per property</li>
+                <li>Advance Ledger — every individual advance entry</li>
+              </ul>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setIsExportAllDialogOpen(false)} data-testid="button-cancel-export-all">
+              Cancel
+            </Button>
+            <Button onClick={exportAllPropertiesReport} disabled={isExportingAll || !exportAllMonth} data-testid="button-confirm-export-all">
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              {isExportingAll ? "Generating..." : "Download CSV"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
