@@ -8,6 +8,8 @@ Hostezee is a comprehensive, multi-tenant property management system designed fo
 
 Preferred communication style: Simple, everyday language.
 
+**Live server focus:** All changes, fixes, and feature requests are intended for the **live production server at hostezee.in**. Always develop and test here, then deploy with `git pull && pm2 restart propertymanager` on the live server. Do not treat this as a staging/test environment.
+
 ## System Architecture
 
 Hostezee employs a monorepo structure with distinct `client/`, `server/`, `shared/`, and `migrations/` directories.
