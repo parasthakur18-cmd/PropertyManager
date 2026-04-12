@@ -2766,6 +2766,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(403).json({ message: "You do not have access to this room" });
       }
       
+      // Auto-cleanup: remove any AioSell channel manager mappings for this room
+      const deletedMappings = await db.delete(aiosellRoomMappings)
+        .where(eq(aiosellRoomMappings.hostezeeRoomId, parseInt(req.params.id)))
+        .returning();
+      if (deletedMappings.length > 0) {
+        console.log(`[ROOM-DELETE] Removed ${deletedMappings.length} AioSell mapping(s) for room ${req.params.id}`);
+      }
+
       await storage.deleteRoom(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {

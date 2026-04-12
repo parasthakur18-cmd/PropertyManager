@@ -255,6 +255,16 @@ export default function Rooms() {
     maintenance: baseFiltered?.filter(r => r.status === "maintenance").length || 0,
   };
 
+  // Summary counts based on the current filtered view (status + type + property)
+  const roomSummary = {
+    totalRooms: filteredRooms?.length || 0,
+    totalBeds: filteredRooms?.reduce((sum, r) => {
+      return sum + (r.roomCategory === "dormitory" ? (r.totalBeds || 1) : 1);
+    }, 0) || 0,
+    dormitoryRooms: filteredRooms?.filter(r => r.roomCategory === "dormitory").length || 0,
+    regularRooms: filteredRooms?.filter(r => r.roomCategory !== "dormitory").length || 0,
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 md:p-8">
@@ -713,6 +723,29 @@ export default function Rooms() {
           </TabsList>
         </Tabs>
       </div>
+
+      {filteredRooms && filteredRooms.length > 0 && (
+        <div className="flex flex-wrap gap-3 mb-4" data-testid="room-summary-bar">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-sm font-medium" data-testid="text-total-rooms">
+            <Hotel className="h-3.5 w-3.5" />
+            <span>{roomSummary.totalRooms} Total Rooms</span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-sm font-medium" data-testid="text-total-beds">
+            <span>🛏</span>
+            <span>{roomSummary.totalBeds} Total Beds</span>
+          </div>
+          {roomSummary.regularRooms > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm" data-testid="text-regular-rooms">
+              <span>{roomSummary.regularRooms} Regular</span>
+            </div>
+          )}
+          {roomSummary.dormitoryRooms > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm" data-testid="text-dormitory-rooms">
+              <span>{roomSummary.dormitoryRooms} Dormitory</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {!filteredRooms || filteredRooms.length === 0 ? (
         <Card className="p-12 text-center">
