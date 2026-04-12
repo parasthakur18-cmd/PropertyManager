@@ -4668,6 +4668,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const bill = await storage.createOrUpdateBill(billData);
 
       // Record payment to wallet if paid - handle split payments
+      let walletWarning: string | null = null;
       if (paymentStatus === "paid" && booking.propertyId && balanceAmount > 0) {
         try {
           const guest = await storage.getGuest(booking.guestId);
@@ -4703,7 +4704,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             );
             console.log(`[Wallet] Recorded checkout payment ₹${balanceAmount} for bill #${bill.id}`);
           }
-        } catch (walletError) {
+        } catch (walletError: any) {
+          walletWarning = walletError?.message || 'Wallet update failed';
           console.log(`[Wallet] Could not record checkout payment to wallet:`, walletError);
         }
       }
@@ -4798,7 +4800,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         console.error(`[WhatsApp] Booking #${booking.id} - Checkout notification failed (non-critical):`, whatsappError.message);
       }
 
-      res.json({ success: true, bill });
+      res.json({ success: true, bill, walletWarning });
     } catch (error: any) {
       console.error("Checkout error:", error);
       res.status(500).json({ message: error.message });
@@ -7326,6 +7328,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const order = await storage.updateOrderStatus(orderId, status, updatePayload);
 
       // Record to wallet for restaurant walk-in orders paid on delivery
+      let walletWarning: string | null = null;
       if (status === "delivered" && paymentMethod && order?.propertyId && order?.orderType === "restaurant") {
         try {
           const auth = await getAuthenticatedTenant(req);
@@ -7342,11 +7345,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           );
           console.log(`[Orders] Recorded ₹${amount} (${paymentMethod}) to wallet for order #${orderId}`);
         } catch (walletErr: any) {
+          walletWarning = walletErr?.message || 'Wallet update failed';
           console.warn(`[Orders] Wallet recording failed for order #${orderId}:`, walletErr.message);
         }
       }
 
-      res.json(order);
+      res.json({ ...order, walletWarning });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -7506,6 +7510,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const service = await storage.createExtraService(data);
 
       // If service is already paid, record to wallet immediately
+      let walletWarning: string | null = null;
       if (service.isPaid && service.propertyId && data.paymentMethod) {
         try {
           const booking = service.bookingId ? await storage.getBooking(service.bookingId) : null;
@@ -7520,12 +7525,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             req.user?.claims?.sub || req.user?.id || null
           );
           console.log(`[Wallet] Recorded extra service payment ₹${service.amount} for service #${service.id}`);
-        } catch (walletErr) {
+        } catch (walletErr: any) {
+          walletWarning = walletErr?.message || 'Wallet update failed';
           console.log(`[Wallet] Could not record extra service payment:`, walletErr);
         }
       }
 
-      res.status(201).json(service);
+      res.status(201).json({ ...service, walletWarning });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });
@@ -7560,6 +7566,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!service) return res.status(404).json({ message: "Service not found" });
 
       // Record wallet transaction
+      let walletWarning: string | null = null;
       if (service.propertyId) {
         try {
           const booking = service.bookingId ? await storage.getBooking(service.bookingId) : null;
@@ -7573,12 +7580,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             `Service: ${service.serviceName} - ${guestName}`,
             req.user?.claims?.sub || req.user?.id || null
           );
-        } catch (walletErr) {
+        } catch (walletErr: any) {
+          walletWarning = walletErr?.message || 'Wallet update failed';
           console.log(`[Wallet] Could not record extra service payment:`, walletErr);
         }
       }
 
-      res.json(service);
+      res.json({ ...service, walletWarning });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -7941,6 +7949,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       });
 
       // Record payment to wallet (same as checkout payment flow)
+      let walletWarning: string | null = null;
       if (pendingAmount > 0 && bill.bookingId) {
         try {
           const booking = await storage.getBooking(bill.bookingId);
@@ -7960,11 +7969,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             console.log(`[Wallet] Recorded pending bill #${billId} payment ₹${pendingAmount} to wallet`);
           }
         } catch (walletErr: any) {
+          walletWarning = walletErr?.message || 'Wallet update failed';
           console.warn(`[Wallet] Could not record bill payment to wallet:`, walletErr.message);
         }
       }
 
-      res.json(updatedBill);
+      res.json({ ...updatedBill, walletWarning });
     } catch (error: any) {
       console.error("❌ ERROR marking bill as paid:", error.message);
       res.status(500).json({ message: error.message });
@@ -8850,6 +8860,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       // Record lease payment to wallet if property and amount are provided
       const lease = await storage.getLease(leaseId);
+      let walletWarning: string | null = null;
       if (lease?.propertyId && payment.amount) {
         try {
           await storage.recordLeasePaymentToWallet(
@@ -8857,16 +8868,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             payment.id,
             parseFloat(payment.amount.toString()),
             payment.paymentMethod || 'cash',
-            `Lease payment - ${lease.lessorName || 'Lease'}`,
+            `Lease payment - ${lease.landlordName || 'Lease'}`,
             req.user?.claims?.sub || req.user?.id || null
           );
           console.log(`[Wallet] Recorded lease payment #${payment.id} to wallet`);
-        } catch (walletError) {
+        } catch (walletError: any) {
+          walletWarning = walletError?.message || 'Wallet update failed';
           console.log(`[Wallet] Could not record lease payment to wallet:`, walletError);
         }
       }
       
-      res.status(201).json(payment);
+      res.status(201).json({ ...payment, walletWarning });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid data", errors: error.errors });

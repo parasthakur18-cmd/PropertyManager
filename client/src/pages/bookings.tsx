@@ -3719,13 +3719,19 @@ function CheckoutBillSummary({
 
   const checkoutMutation = useMutation({
     mutationFn: async (data: any) => {
-      return await apiRequest("/api/bookings/checkout", "POST", data);
+      const res = await apiRequest("/api/bookings/checkout", "POST", data);
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       toast({
         title: "Success",
         description: "Checkout completed successfully",
       });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
       onClose();

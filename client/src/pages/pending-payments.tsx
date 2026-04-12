@@ -85,15 +85,21 @@ export default function PendingPayments() {
 
   const markAsPaidMutation = useMutation({
     mutationFn: async ({ billId, paymentMethod }: { billId: number; paymentMethod: string }) => {
-      return await apiRequest(`/api/bills/${billId}/mark-paid`, "POST", { paymentMethod });
+      const res = await apiRequest(`/api/bills/${billId}/mark-paid`, "POST", { paymentMethod });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bills/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
       toast({
         title: "Payment Recorded",
         description: "Bill has been marked as paid successfully.",
       });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       setSelectedBill(null);
       setPaymentMethod("");
     },

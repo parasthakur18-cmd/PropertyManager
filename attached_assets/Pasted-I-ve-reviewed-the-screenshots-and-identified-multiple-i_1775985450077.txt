@@ -1,0 +1,39 @@
+I’ve reviewed the screenshots and identified multiple issues. Please check the entire system flow carefully and address the following:
+
+1. Pending Balance Calculation
+The pending balance shown does not seem correct.
+The values are not aligning with the payments made.
+Please verify how the pending balance is calculated (including previous dues, overrides, and adjustments).
+2. Payment Not Reflecting in Wallet
+In the payment history, I have attached a payment made yesterday.
+This payment is visible, but it is not deducted from the wallet balance.
+If the system is properly connected, this should happen automatically.
+3. Complete Wallet Flow Verification (Very Important)
+
+Please thoroughly check the entire wallet flow:
+
+From where all incoming payments are being added to the wallet (bookings, advances, etc.)
+Whether all inflows are correctly recorded
+Whether all outflows (expenses like grocery, salary, lease payments, etc.) are properly linked
+
+👉 If the inflow flow is correct, then:
+
+Every expense entry (grocery, vendor, salary, lease, etc.) must be deducted from the wallet
+There should be no manual or disconnected entries
+4. Wallet Balance Validation (Critical Fix)
+If there is no balance in the wallet, the system should:
+Either block the payment, or
+Prompt: “Insufficient balance – please add funds or transfer from another property wallet.”
+Currently, the system allows entries even when balance may not be available, which leads to incorrect financial data.
+5. System Integrity (P&L + Wallet Accuracy)
+Any transaction that impacts P&L must be linked to the wallet
+The system should reflect a complete and accurate financial picture
+There should be no mismatch between wallet, expenses, and reports
+✅ Required Action
+Fix pending balance calculation logic
+Ensure all payments are properly linked to the wallet
+Validate wallet balance before allowing expenses
+Audit and correct the full inflow → wallet → outflow flow
+Ensure no break in system-wide financial consistency
+
+I want this flow to be fully accurate and reliable. There should be no inconsistencies, as this directly affects the P&L and overall financial visibility.

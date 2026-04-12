@@ -111,14 +111,20 @@ export default function Billing() {
 
   const markAsPaidMutation = useMutation({
     mutationFn: async (data: { billId: number; paymentMethod: string }) => {
-      return await apiRequest(`/api/bills/${data.billId}/mark-paid`, "POST", { paymentMethod: data.paymentMethod });
+      const res = await apiRequest(`/api/bills/${data.billId}/mark-paid`, "POST", { paymentMethod: data.paymentMethod });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
       toast({
         title: "Payment recorded",
         description: "Bill marked as paid successfully",
       });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       setMarkPaidDialogOpen(false);
       setBillToMarkPaid(null);
       setPaymentMethod("cash");

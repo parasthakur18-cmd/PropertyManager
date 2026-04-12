@@ -504,7 +504,7 @@ export default function ActiveBookings() {
       cashAmount?: number;
       onlineAmount?: number;
     }) => {
-      return await apiRequest("/api/bookings/checkout", "POST", { 
+      const res = await apiRequest("/api/bookings/checkout", "POST", { 
         bookingId, 
         paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
         paymentStatus,
@@ -520,6 +520,7 @@ export default function ActiveBookings() {
         cashAmount,
         onlineAmount,
       });
+      return res.json();
     },
     onSuccess: (data: any, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
@@ -546,6 +547,11 @@ export default function ActiveBookings() {
         title: variables.paymentStatus === "pending" ? "Checkout — Bill Pending" : "Checkout Successful ✓",
         description: paymentDesc,
       });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       setCheckoutDialog({ open: false, booking: null });
       setPaymentMethod("cash");
       setCashAmount("");
@@ -2329,7 +2335,7 @@ export default function ActiveBookings() {
                           const splitCash = paymentMethod === "upi" && cashPaid > 0 ? cashPaid : undefined;
                           const splitOnline = paymentMethod === "upi" && cashPaid > 0 ? Math.max(0, remainingBalance) : undefined;
 
-                          await apiRequest("/api/bookings/checkout", "POST", {
+                          const checkoutResult2 = await (await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: booking.id,
                             paymentMethod: paymentStatus === "paid" ? paymentMethod : null,
                             paymentStatus: paymentStatus,
@@ -2343,7 +2349,7 @@ export default function ActiveBookings() {
                             manualCharges: manualCharges.filter(c => c.name && c.amount && parseFloat(c.amount) > 0),
                             cashAmount: splitCash,
                             onlineAmount: splitOnline,
-                          });
+                          })).json();
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
@@ -2379,6 +2385,11 @@ export default function ActiveBookings() {
                             title: paymentStatus === "pending" ? "Checkout — Bill Pending" : "Checkout Successful ✓", 
                             description: toastDesc,
                           });
+                          if (checkoutResult2?.walletWarning) {
+                            setTimeout(() => {
+                              toast({ title: "Wallet not updated", description: checkoutResult2.walletWarning, variant: "destructive" });
+                            }, 500);
+                          }
                         } catch (error: any) {
                           const errorMsg = error.message || "Checkout failed";
                           if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {

@@ -438,7 +438,7 @@ export default function Leases() {
       });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/leases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease] });
       queryClient.invalidateQueries({ queryKey: ["/api/leases", selectedLease, "payments"] });
@@ -453,6 +453,11 @@ export default function Leases() {
         appliesToYear: "",
       });
       toast({ title: "Payment recorded", description: "Lease payment has been recorded successfully." });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to record payment", variant: "destructive" });

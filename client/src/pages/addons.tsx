@@ -136,18 +136,24 @@ export default function AddOnServices() {
 
   const createServiceMutation = useMutation({
     mutationFn: async (data: z.infer<typeof serviceFormSchema>) => {
-      return await apiRequest("/api/extra-services", "POST", {
+      const res = await apiRequest("/api/extra-services", "POST", {
         ...data,
         amount: data.amount,
         commission: data.commission || null,
         paymentMethod: data.isPaid ? (data.paymentMethod || "cash") : null,
       });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
       toast({ title: "Service added", description: "Add-on service has been recorded successfully" });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       setIsDialogOpen(false);
       form.reset();
     },
@@ -172,13 +178,19 @@ export default function AddOnServices() {
 
   const markPaidMutation = useMutation({
     mutationFn: async ({ serviceId, paymentMethod }: { serviceId: number; paymentMethod: string }) => {
-      return await apiRequest(`/api/extra-services/${serviceId}/mark-paid`, "POST", { paymentMethod });
+      const res = await apiRequest(`/api/extra-services/${serviceId}/mark-paid`, "POST", { paymentMethod });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/extra-services"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/wallet-transactions"] });
       toast({ title: "Payment recorded", description: "Service payment has been recorded to your wallet" });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
       setMarkPaidDialog({ open: false, serviceId: null });
       setMarkPaidMethod("cash");
     },

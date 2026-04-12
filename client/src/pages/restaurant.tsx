@@ -147,15 +147,21 @@ export default function Kitchen() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, paymentMethod }: { id: number; status: string; paymentMethod?: string }) => {
-      return await apiRequest(`/api/orders/${id}/status`, "PATCH", { status, paymentMethod });
+      const res = await apiRequest(`/api/orders/${id}/status`, "PATCH", { status, paymentMethod });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       toast({
         title: "Success",
         description: "Order status updated",
       });
+      if (data?.walletWarning) {
+        setTimeout(() => {
+          toast({ title: "Wallet not updated", description: data.walletWarning, variant: "destructive" });
+        }, 500);
+      }
     },
     onError: (error: Error) => {
       toast({

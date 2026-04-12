@@ -1928,13 +1928,14 @@ export default function Dashboard() {
                       className="flex-1"
                       onClick={async () => {
                         try {
-                          await apiRequest("/api/bookings/checkout", "POST", {
+                          const checkoutRes = await apiRequest("/api/bookings/checkout", "POST", {
                             bookingId: checkoutBookingId,
                             paymentMethod: paymentMethod,
                             cashReceived: cashPaid,
                             remainingBalance: Math.max(0, remainingBalance),
                             totalAmount: billTotal
                           });
+                          const checkoutData = await checkoutRes.json();
                           queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
@@ -1942,6 +1943,11 @@ export default function Dashboard() {
                           setCheckoutDialogOpen(false);
                           setCashReceived("0");
                           toast({ title: "Success", description: "Checkout completed" });
+                          if (checkoutData?.walletWarning) {
+                            setTimeout(() => {
+                              toast({ title: "Wallet not updated", description: checkoutData.walletWarning, variant: "destructive" });
+                            }, 500);
+                          }
                         } catch (error: any) {
                           const errorMsg = error.message || "Checkout failed";
                           if (errorMsg.includes("Checkout not allowed") || errorMsg.includes("pending")) {
