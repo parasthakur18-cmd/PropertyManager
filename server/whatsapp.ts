@@ -19,7 +19,7 @@
  * - AUTHKEY_WA_SPLIT_PAYMENT: Template for balance payment link (default: 29412)
  * - AUTHKEY_WA_ADVANCE_PAYMENT: Template for advance payment request (default: 29410)
  * - AUTHKEY_WA_ADVANCE_CONFIRMATION: Template for payment received confirmation (default: 29409)
- * - AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT: Template for new food order alert to staff (default: 29652)
+ * - AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT: Template for new food order alert to staff (default: 31524)
  * 
  * Template variables are passed in order: var1, var2, var3, etc.
  * Ensure your authkey templates match the variable order!
@@ -388,22 +388,24 @@ export async function sendFoodOrderReceived(
 
 /**
  * Send new food order alert to property staff/admin
- * Template ID: 29652
+ * Template ID: 31524
  *
  * Template:
- * 🚨 New Food Order Received
+ * 🎉 New Food Order Received
  * Guest: {{1}}
  * Room: {{2}}
- * Order Details:
- * {{3}}
- * Total Amount: ₹ {{4}}
+ *
+ * Please check the app for order details.
+ *
  * ⚠️ Please prepare the order immediately.
  *
  * Template variables (in order):
  * 1. Guest Name
  * 2. Room Number / "Walk-in" / "Restaurant"
- * 3. Order items (formatted list)
- * 4. Total Amount
+ *
+ * Note: Order details and amount are no longer sent via WhatsApp —
+ * staff should check the app for full details. This avoids message
+ * failures caused by long dynamic content.
  *
  * Recipient: property contactPhone (staff/admin)
  */
@@ -411,10 +413,8 @@ export async function sendFoodOrderStaffAlert(
   phoneNumber: string,
   guestName: string,
   room: string,
-  orderDetails: string,
-  totalAmount: string
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT || "29652";
+  const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT || "31524";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -422,7 +422,7 @@ export async function sendFoodOrderStaffAlert(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, room, orderDetails, totalAmount],
+    variables: [guestName, room],
   });
 }
 

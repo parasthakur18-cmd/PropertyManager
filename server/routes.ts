@@ -935,7 +935,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", orderData.propertyId);
             for (const phone of recipients) {
               if (!isRealPhone(phone)) continue;
-              await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalStr);
+              await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel);
               console.log(`[WhatsApp] Food order alert sent to ${phone} for order #${order.id}`);
             }
           } catch (waRouteErr: any) {
@@ -948,7 +948,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
               for (const phone of foodOrderSettings.phoneNumbers) {
                 if (!isRealPhone(phone)) continue;
-                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalStr);
+                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel);
                 console.log(`[WhatsApp] Food order alert sent to Feature Settings number: ${phone}`);
               }
             }
@@ -7069,7 +7069,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             for (const phone of recipients) {
               if (!isRealPhone(phone)) continue;
               try {
-                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalAmountStr);
+                await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel);
                 console.log(`[WhatsApp] Food order staff alert sent to ${phone} for order #${order.id}`);
               } catch (waErr: any) {
                 console.warn(`[WhatsApp] Staff alert failed for ${phone}:`, waErr.message);
@@ -7104,7 +7104,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               for (const phone of foodOrderSettings.phoneNumbers) {
                 if (!isRealPhone(phone)) continue;
                 try {
-                  await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel, orderDetails, totalAmountStr);
+                  await sendFoodOrderStaffAlert(phone, guestLabel, roomLabel);
                   console.log(`[WhatsApp] Food order alert sent to extra number: ${phone}`);
                 } catch (waErr: any) {
                   console.warn(`[WhatsApp] Failed to send to extra number ${phone}:`, waErr.message);

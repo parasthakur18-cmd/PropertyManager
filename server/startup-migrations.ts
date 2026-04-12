@@ -672,7 +672,7 @@ const DEFAULT_WA_ALERT_CONFIGS: Array<{
   {
     template_key: "food_order_staff_alert",
     template_name: "New Food Order Alert",
-    template_wid: "29652",
+    template_wid: "31524",
     description: "Sends an alert to staff when a customer places a food order via QR menu",
   },
 ];
@@ -684,7 +684,7 @@ async function seedWhatsappAlertConfigs(): Promise<void> {
       await client.query(
         `INSERT INTO whatsapp_alert_configs (template_key, template_name, template_wid, description, is_globally_enabled)
          VALUES ($1, $2, $3, $4, true)
-         ON CONFLICT (template_key) DO NOTHING`,
+         ON CONFLICT (template_key) DO UPDATE SET template_wid = EXCLUDED.template_wid, template_name = EXCLUDED.template_name, description = EXCLUDED.description`,
         [cfg.template_key, cfg.template_name, cfg.template_wid, cfg.description]
       );
     }
