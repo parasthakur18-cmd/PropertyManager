@@ -267,7 +267,7 @@ export default function CalendarView() {
     const rangeStart = format(startDate, "yyyy-MM-dd");
     const rangeEnd = format(addDays(startDate, 11), "yyyy-MM-dd");
     return bookings.filter(b => {
-      if (b.status === "cancelled" || b.status === "checked-out") return false;
+      if (b.status === "cancelled") return false;
       if (b.roomId != null) return false;
       if (b.roomIds && b.roomIds.length > 0) return false;
       if (selectedPropertyId !== "all" && b.propertyId !== selectedPropertyId) return false;
@@ -285,8 +285,8 @@ export default function CalendarView() {
       const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
       
-      // Hide cancelled and checked-out bookings — the room is free once a guest checks out
-      if (b.status === "cancelled" || b.status === "checked-out") return false;
+      // Hide cancelled bookings only; checked-out bookings remain visible in gray
+      if (b.status === "cancelled") return false;
       
       // Check date range
       return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
@@ -303,9 +303,9 @@ export default function CalendarView() {
       }
     });
     
-    // Also include group bookings that contain this room (exclude cancelled and checked-out)
+    // Also include group bookings that contain this room (exclude cancelled only)
     bookings.forEach(booking => {
-      if (booking.status === "cancelled" || booking.status === "checked-out") return;
+      if (booking.status === "cancelled") return;
       if (booking.roomIds && booking.roomIds.includes(roomId)) {
         // Check if this booking overlaps with our date range
         const bookingStart = new Date(booking.checkInDate);
@@ -328,7 +328,7 @@ export default function CalendarView() {
     return bookings.filter(b => {
       const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
-      if (b.status === "cancelled" || b.status === "checked-out") return false;
+      if (b.status === "cancelled") return false;
       
       return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
         format(new Date(b.checkOutDate), "yyyy-MM-dd") > dateStr;
