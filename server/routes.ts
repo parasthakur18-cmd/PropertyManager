@@ -2325,8 +2325,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const allRooms = await storage.getAllRooms();
       
       // Apply tenant-based room filtering
-      const rooms = filterByPropertyAccess(tenant, allRooms);
-      
+      let rooms = filterByPropertyAccess(tenant, allRooms);
+
+      // If a specific propertyId is requested, narrow to that property only
+      if (req.query.propertyId) {
+        const requestedPropId = parseInt(req.query.propertyId as string);
+        if (!isNaN(requestedPropId)) {
+          rooms = rooms.filter((r: any) => r.propertyId === requestedPropId);
+        }
+      }
+
       res.json(rooms);
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
