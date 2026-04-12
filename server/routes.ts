@@ -7925,7 +7925,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!bill) {
         return res.status(404).json({ message: "Bill not found" });
       }
-      
+
+      if (bill.paymentStatus === "paid") {
+        return res.status(400).json({ message: "Bill is already marked as paid" });
+      }
+
+      const pendingAmount = parseFloat(bill.balanceAmount || "0");
+
       // Update bill to paid status
       const updatedBill = await storage.updateBill(billId, {
         paymentStatus: "paid",
@@ -7933,7 +7939,31 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         paidAt: new Date(),
         balanceAmount: "0.00",
       });
-      
+
+      // Record payment to wallet (same as checkout payment flow)
+      if (pendingAmount > 0 && bill.bookingId) {
+        try {
+          const booking = await storage.getBooking(bill.bookingId);
+          const propertyId = booking?.propertyId;
+          if (propertyId) {
+            const guest = bill.guestId ? await storage.getGuest(bill.guestId) : null;
+            const guestName = guest?.fullName || "Guest";
+            await storage.recordBillPaymentToWallet(
+              propertyId,
+              billId,
+              pendingAmount,
+              paymentMethod,
+              `Pending payment collected - ${guestName} (Bill #${billId})`,
+              userId,
+              bill.bookingId
+            );
+            console.log(`[Wallet] Recorded pending bill #${billId} payment ₹${pendingAmount} to wallet`);
+          }
+        } catch (walletErr: any) {
+          console.warn(`[Wallet] Could not record bill payment to wallet:`, walletErr.message);
+        }
+      }
+
       res.json(updatedBill);
     } catch (error: any) {
       console.error("❌ ERROR marking bill as paid:", error.message);
