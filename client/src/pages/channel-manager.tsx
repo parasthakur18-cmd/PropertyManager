@@ -796,7 +796,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId && !!config,
   });
 
-  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string }[]>({
+  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string; totalBeds: number }[]>({
     queryKey: ["/api/rooms", { propertyId }],
     queryFn: async () => {
       const res = await fetch(`/api/rooms?propertyId=${propertyId}`, { credentials: "include" });
@@ -804,6 +804,14 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     },
     enabled: !!propertyId,
   });
+
+  const getRoomCount = (roomType: string | undefined) => {
+    if (!roomType) return 0;
+    const matching = allRooms.filter(r => r.roomType === roomType);
+    const isDorm = matching.some(r => (r.totalBeds || 1) > 1);
+    if (isDorm) return matching.reduce((sum, r) => sum + (r.totalBeds || 1), 0);
+    return matching.length;
+  };
 
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
 
@@ -893,7 +901,9 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
             <TableBody>
               {ratePlans.map(rp => {
                 const mapping = mappings.find(m => m.id === rp.roomMappingId);
-                const roomCount = allRooms.filter(r => r.roomType === mapping?.hostezeeRoomType).length;
+                const roomCount = getRoomCount(mapping?.hostezeeRoomType);
+                const matchingRooms = allRooms.filter(r => r.roomType === mapping?.hostezeeRoomType);
+                const isDorm = matchingRooms.some(r => (r.totalBeds || 1) > 1);
                 return (
                   <TableRow key={rp.id} data-testid={`row-push-rate-${rp.id}`}>
                     <TableCell className="font-medium">{mapping?.hostezeeRoomType || <span className="text-muted-foreground">—</span>}</TableCell>
@@ -909,7 +919,10 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                       <div className="text-xs text-muted-foreground">{rp.ratePlanCode}</div>
                     </TableCell>
                     <TableCell><Badge variant="outline">{rp.occupancy}</Badge></TableCell>
-                    <TableCell><Badge variant="secondary">{roomCount}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{roomCount}</Badge>
+                      {isDorm && <span className="ml-1 text-xs text-muted-foreground">beds</span>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{rp.baseRate || "—"}</TableCell>
                     <TableCell>
                       <Input
@@ -962,7 +975,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId,
   });
 
-  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string }[]>({
+  const { data: allRooms = [] } = useQuery<{ id: number; roomType: string; totalBeds: number }[]>({
     queryKey: ["/api/rooms", { propertyId }],
     queryFn: async () => {
       const res = await fetch(`/api/rooms?propertyId=${propertyId}`, { credentials: "include" });
@@ -970,6 +983,13 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
     },
     enabled: !!propertyId,
   });
+
+  const getRoomCount = (roomType: string) => {
+    const matching = allRooms.filter(r => r.roomType === roomType);
+    const isDorm = matching.some(r => (r.totalBeds || 1) > 1);
+    if (isDorm) return matching.reduce((sum, r) => sum + (r.totalBeds || 1), 0);
+    return matching.length;
+  };
 
   const [inventoryValues, setInventoryValues] = useState<Record<string, string>>({});
 
@@ -1044,12 +1064,17 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
             </TableHeader>
             <TableBody>
               {mappings.map(m => {
-                const roomCount = allRooms.filter(r => r.roomType === m.hostezeeRoomType).length;
+                const roomCount = getRoomCount(m.hostezeeRoomType);
+                const matchingRooms = allRooms.filter(r => r.roomType === m.hostezeeRoomType);
+                const isDorm = matchingRooms.some(r => (r.totalBeds || 1) > 1);
                 return (
                   <TableRow key={m.id} data-testid={`row-inventory-${m.id}`}>
                     <TableCell className="font-medium">{m.hostezeeRoomType}</TableCell>
                     <TableCell><Badge variant="outline">{m.aiosellRoomCode}</Badge></TableCell>
-                    <TableCell><Badge variant="secondary">{roomCount}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{roomCount}</Badge>
+                      {isDorm && <span className="ml-1 text-xs text-muted-foreground">beds</span>}
+                    </TableCell>
                     <TableCell>
                       <Input
                         data-testid={`input-inventory-${m.id}`}
