@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -200,6 +201,11 @@ export default function ActiveBookings() {
     advancePaid: number;
     nights: number;
   }> | null>(null);
+
+  // Per-card tab state: bookingId → active tab
+  const [cardTabs, setCardTabs] = useState<Record<number, string>>({});
+  const getCardTab = (id: number) => cardTabs[id] ?? "overview";
+  const setCardTab = (id: number, tab: string) => setCardTabs(prev => ({ ...prev, [id]: tab }));
 
   const [addServiceDialog, setAddServiceDialog] = useState<{ open: boolean; bookingId: number | null; guestName: string }>({
     open: false, bookingId: null, guestName: ""
@@ -899,11 +905,11 @@ export default function ActiveBookings() {
   if (isLoading) return <div className="flex items-center justify-center p-8">Loading active bookings...</div>;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Hotel className="h-8 w-8" />
+    <div className="space-y-4 p-3 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2">
+            <Hotel className="h-5 w-5 sm:h-6 sm:w-6" />
             Active Bookings
           </h1>
           <Dialog open={mergeDialogOpen} onOpenChange={setMergeDialogOpen}>
@@ -1061,66 +1067,121 @@ export default function ActiveBookings() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {activeFilteredBookings.map((booking) => (
+        <div className="grid gap-3">
+          {activeFilteredBookings.map((booking) => {
+            const roomLabel = booking.isGroupBooking && booking.rooms
+              ? booking.rooms.map(r => r.roomNumber).join(", ")
+              : booking.room?.roomNumber || "TBA";
+            const sourceLabel = booking.source?.startsWith("aiosell-")
+              ? (booking.source.toLowerCase().includes("booking") ? "Booking.com"
+                : booking.source.toLowerCase().includes("mmt") ? "MMT"
+                : booking.source.toLowerCase().includes("airbnb") ? "Airbnb"
+                : "OTA")
+              : (booking.source || "Walk-in");
+            const balance = parseFloat(booking.charges.subtotal) - parseFloat(booking.advanceAmount || "0");
+            return (
             <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}
-              className={isOverdueBooking(booking) ? "border-red-400 border-2" : ""}
+              className={`overflow-hidden ${isOverdueBooking(booking) ? "border-red-400 border-2" : ""}`}
             >
-              <CardHeader>
-                {isOverdueBooking(booking) && (
-                  <Alert className="mb-2 py-2 border-red-400 bg-red-50 dark:bg-red-950">
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                    <AlertDescription className="text-red-700 dark:text-red-300 text-xs font-semibold">
-                      Overdue Checkout — Checkout date was {format(new Date(booking.checkOutDate), "dd MMM yyyy")}. Please process checkout or extend stay.
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <User className="h-4 w-4" />
-                      <CardTitle>{booking.guest.fullName}</CardTitle>
+              {/* Overdue alert — compact */}
+              {isOverdueBooking(booking) && (
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-800 px-3 py-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                  <span className="text-red-700 dark:text-red-300 text-xs font-medium">
+                    Overdue — was due {format(new Date(booking.checkOutDate), "dd MMM")}. Process checkout or extend.
+                  </span>
+                </div>
+              )}
+              {booking.dataIssues && booking.dataIssues.length > 0 && (
+                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950 border-b border-red-200 px-3 py-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-600 shrink-0" />
+                  <span className="text-red-700 text-xs">{booking.dataIssues.join(", ")}</span>
+                </div>
+              )}
+
+              {/* Compact header */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-sm leading-tight">{booking.guest.fullName}</span>
+                      <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${getStatusBadge(booking.status).className}`}>
+                        {getStatusBadge(booking.status).label}
+                      </Badge>
                       {isOverdueBooking(booking) && (
-                        <Badge variant="destructive" className="text-xs flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Overdue
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4">
+                          <Clock className="h-2.5 w-2.5 mr-0.5" />Overdue
                         </Badge>
                       )}
                       {booking.isGroupBooking && (
-                        <Badge variant="secondary" className="bg-blue-500 text-white text-xs">
-                          Group
-                        </Badge>
-                      )}
-                      {booking.dataIssues && booking.dataIssues.length > 0 && (
-                        <Badge variant="destructive" className="text-xs flex items-center gap-1">
-                          <AlertCircle className="h-3 w-3" />
-                          Data Issue
-                        </Badge>
+                        <Badge className="bg-blue-500 text-white text-[10px] px-1.5 py-0 h-4">Group</Badge>
                       )}
                     </div>
-                    {booking.dataIssues && booking.dataIssues.length > 0 && (
-                      <Alert variant="destructive" className="mt-2 py-2">
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertDescription className="text-xs">
-                          {booking.dataIssues.join(", ")}
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                    <div className="flex gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {booking.guest.phone}
-                      </span>
-                      {booking.guest.email && <span>{booking.guest.email}</span>}
+                    <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
+                      <span className="font-medium text-foreground">Room {roomLabel}</span>
+                      <span>·</span>
+                      <span>{format(new Date(booking.checkInDate), "dd MMM")} → {format(new Date(booking.checkOutDate), "dd MMM")}</span>
+                      <span>·</span>
+                      <span>{booking.nightsStayed}N · {booking.numberOfGuests} guest{booking.numberOfGuests > 1 ? "s" : ""}</span>
                     </div>
                   </div>
-                  <div className="text-right space-y-1">
+                  <div className="text-right shrink-0">
+                    <div className="font-bold text-base leading-tight">₹{parseFloat(booking.charges.subtotal).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
+                    {parseFloat(booking.advanceAmount) > 0 && (
+                      <div className="text-[10px] text-muted-foreground">Adv ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
+                    )}
+                    {balance > 0 && (
+                      <div className="text-[10px] text-amber-600 font-medium">Bal ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tab strip */}
+              <Tabs value={getCardTab(booking.id)} onValueChange={(t) => setCardTab(booking.id, t)}>
+                <div className="px-3">
+                  <TabsList className="h-7 w-full bg-muted/60 p-0.5">
+                    <TabsTrigger value="overview" className="flex-1 text-xs h-6 data-[state=active]:shadow-sm">Details</TabsTrigger>
+                    <TabsTrigger value="billing" className="flex-1 text-xs h-6 data-[state=active]:shadow-sm">Billing</TabsTrigger>
+                    <TabsTrigger value="services" className="flex-1 text-xs h-6 data-[state=active]:shadow-sm">
+                      Services
+                      {(booking.orders?.length || 0) + (booking.extraServices?.length || 0) > 0 && (
+                        <span className="ml-1 bg-primary/20 text-primary rounded-full text-[9px] px-1 leading-3 py-0.5">
+                          {(booking.orders?.length || 0) + (booking.extraServices?.length || 0)}
+                        </span>
+                      )}
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+
+                {/* Details tab */}
+                <TabsContent value="overview" className="mt-0 px-3 py-2 space-y-2">
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Phone className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="font-medium">{booking.guest.phone}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Source: </span>
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{sourceLabel}</Badge>
+                    </div>
+                    {booking.guest.email && (
+                      <div className="col-span-2 text-muted-foreground truncate">{booking.guest.email}</div>
+                    )}
+                  </div>
+                  {booking.specialRequests && (
+                    <div className="flex items-start gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5 text-xs" data-testid={`text-special-requests-${booking.id}`}>
+                      <span className="text-amber-600 dark:text-amber-400 font-medium shrink-0">Requests:</span>
+                      <span className="text-amber-800 dark:text-amber-200">{booking.specialRequests}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-3 pt-0.5">
                     {booking.guest.idProofImage && (
                       <a
                         href={booking.guest.idProofImage}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline text-xs flex items-center justify-end gap-1"
+                        className="text-primary hover:underline text-xs flex items-center gap-1"
                         data-testid="link-view-id-proof"
                       >
                         <FileText className="h-3 w-3" />
@@ -1128,208 +1189,182 @@ export default function ActiveBookings() {
                       </a>
                     )}
                     <GuestIdsButton bookingId={booking.id} />
-                    <Badge variant="outline" className={`block text-right ${getStatusBadge(booking.status).className}`}>
-                      {getStatusBadge(booking.status).label}
-                    </Badge>
                   </div>
-                </div>
-              </CardHeader>
+                </TabsContent>
 
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Room</span>
-                    <div className="font-semibold">
-                      {booking.isGroupBooking && booking.rooms
-                        ? booking.rooms.map(r => r.roomNumber).join(", ")
-                        : booking.room?.roomNumber || "TBA"}
+                {/* Billing tab */}
+                <TabsContent value="billing" className="mt-0 px-3 py-2">
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Room charges</span>
+                      <span className="font-medium">₹{parseFloat(booking.charges.roomCharges).toLocaleString("en-IN")}</span>
                     </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Check-in</span>
-                    <div className="font-semibold">{format(new Date(booking.checkInDate), "MMM dd")}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Nights</span>
-                    <div className="font-semibold">{booking.nightsStayed}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Advance</span>
-                    <div className="font-semibold text-green-600">
-                      {parseFloat(booking.advanceAmount) > 0 ? `₹${booking.advanceAmount}` : "-"}
+                    {parseFloat(booking.charges.foodCharges) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Food orders</span>
+                        <span className="font-medium">₹{parseFloat(booking.charges.foodCharges).toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    {parseFloat(booking.charges.extraCharges) > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Extra services</span>
+                        <span className="font-medium">₹{parseFloat(booking.charges.extraCharges).toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t pt-1 mt-1 font-semibold">
+                      <span>Subtotal</span>
+                      <span>₹{parseFloat(booking.charges.subtotal).toLocaleString("en-IN")}</span>
                     </div>
+                    {parseFloat(booking.advanceAmount) > 0 && (
+                      <div className="flex justify-between text-green-600">
+                        <span>Advance paid</span>
+                        <span>−₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
+                    {balance > 0 && (
+                      <div className="flex justify-between text-amber-600 font-semibold">
+                        <span>Balance due</span>
+                        <span>₹{balance.toLocaleString("en-IN")}</span>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Source</span>
-                    <div className="font-semibold">
-                      <Badge variant="outline" className="text-xs">
-                        {booking.source?.startsWith("aiosell-")
-                          ? (booking.source.replace("aiosell-", "").toLowerCase().includes("booking") ? "Booking.com"
-                            : booking.source.replace("aiosell-", "").toLowerCase().includes("mmt") ? "MMT"
-                            : booking.source.replace("aiosell-", "").toLowerCase().includes("airbnb") ? "Airbnb"
-                            : "OTA")
-                          : (booking.source || "Walk-in")}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Guests</span>
-                    <div className="font-semibold">{booking.numberOfGuests}</div>
-                  </div>
-                </div>
+                </TabsContent>
 
-                {booking.specialRequests && (
-                  <div className="pt-3 border-t">
-                    <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2 text-sm" data-testid={`text-special-requests-${booking.id}`}>
-                      <span className="text-amber-600 dark:text-amber-400 font-medium shrink-0">Special Requests:</span>
-                      <span className="text-amber-800 dark:text-amber-200">{booking.specialRequests}</span>
+                {/* Services tab */}
+                <TabsContent value="services" className="mt-0 px-3 py-2 space-y-2">
+                  {booking.orders && booking.orders.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                        <UtensilsCrossed className="h-3 w-3" /> Food Orders
+                      </div>
+                      <div className="space-y-0.5">
+                        {booking.orders.map((order) => (
+                          <div key={order.id} className="flex justify-between items-center text-xs">
+                            <span className="text-muted-foreground">Order #{order.id}</span>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">{order.status}</Badge>
+                              <span className="font-medium">₹{order.totalAmount}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Room Charges</span>
-                    <div className="font-semibold">₹{booking.charges.roomCharges}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Food Orders</span>
-                    <div className="font-semibold">₹{booking.charges.foodCharges}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Extra Services</span>
-                    <div className="font-semibold">₹{booking.charges.extraCharges}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Total Bill</span>
-                    <div className="font-bold text-lg">₹{parseFloat(booking.charges.subtotal).toFixed(2)}</div>
-                  </div>
-                </div>
-
-                {booking.orders && booking.orders.length > 0 && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-semibold mb-2">Food Orders</div>
-                    <div className="space-y-1">
-                      {booking.orders.map((order) => (
-                        <div key={order.id} className="flex justify-between text-xs">
-                          <span className="text-muted-foreground">Order #{order.id}</span>
-                          <Badge variant="secondary" className="text-xs">{order.status}</Badge>
-                          <span className="font-medium whitespace-nowrap">₹{order.totalAmount}</span>
-                        </div>
-                      ))}
+                  )}
+                  {booking.extraServices && booking.extraServices.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-muted-foreground mb-1 flex items-center gap-1">
+                        <Wrench className="h-3 w-3" /> Extra Services
+                      </div>
+                      <div className="space-y-0.5">
+                        {booking.extraServices.map((service) => (
+                          <div key={service.id} className="flex justify-between items-center text-xs gap-1">
+                            <span className="text-muted-foreground truncate flex-1">{service.serviceName}</span>
+                            <span className="font-medium whitespace-nowrap">₹{service.amount}</span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0 text-muted-foreground hover:text-primary"
+                              data-testid={`button-edit-service-${service.id}`}
+                              onClick={() => {
+                                setEditServiceDialog({ open: true, service });
+                                setEditSvcName(service.serviceName);
+                                setEditSvcAmount(service.amount);
+                                setEditSvcDate(service.serviceDate ? service.serviceDate.split("T")[0] : new Date().toISOString().split("T")[0]);
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                  {!booking.orders?.length && !booking.extraServices?.length && (
+                    <p className="text-xs text-muted-foreground text-center py-2">No services added yet</p>
+                  )}
+                </TabsContent>
+              </Tabs>
 
-                {booking.extraServices && booking.extraServices.length > 0 && (
-                  <div className="pt-2 border-t">
-                    <div className="text-sm font-semibold mb-2">Extra Services</div>
-                    <div className="space-y-1">
-                      {booking.extraServices.map((service) => (
-                        <div key={service.id} className="flex justify-between items-center text-xs gap-1">
-                          <span className="text-muted-foreground truncate flex-1">{service.serviceName}</span>
-                          <span className="font-medium whitespace-nowrap">₹{service.amount}</span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 shrink-0 text-muted-foreground hover:text-primary"
-                            data-testid={`button-edit-service-${service.id}`}
-                            onClick={() => {
-                              setEditServiceDialog({ open: true, service });
-                              setEditSvcName(service.serviceName);
-                              setEditSvcAmount(service.amount);
-                              setEditSvcDate(service.serviceDate ? service.serviceDate.split("T")[0] : new Date().toISOString().split("T")[0]);
-                            }}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {booking.status === "pending_advance" && (
-                  <div className="pt-3 border-t space-y-2">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                        disabled={sendAdvancePaymentMutation.isPending}
-                        data-testid={`button-resend-payment-${booking.id}`}
-                      >
-                        <Phone className="h-4 w-4 mr-2" />
-                        {sendAdvancePaymentMutation.isPending ? "Sending..." : "Resend Link"}
-                      </Button>
-                      <Button
-                        variant="default"
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                        disabled={confirmAdvancePaymentMutation.isPending}
-                        data-testid={`button-confirm-payment-${booking.id}`}
-                      >
-                        <CreditCard className="h-4 w-4 mr-2" />
-                        {confirmAdvancePaymentMutation.isPending ? "Confirming..." : "Payment Received"}
-                      </Button>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-muted-foreground"
-                      onClick={() => confirmBookingMutation.mutate({ bookingId: booking.id })}
-                      disabled={confirmBookingMutation.isPending}
-                      data-testid={`button-skip-advance-${booking.id}`}
-                    >
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      {confirmBookingMutation.isPending ? "..." : "Skip Advance (Walk-in)"}
-                    </Button>
-                  </div>
-                )}
-
-                {booking.status === "confirmed" && (
-                  <div className="pt-3 border-t">
+              {/* Status-specific action rows */}
+              {booking.status === "pending_advance" && (
+                <div className="px-3 pb-2 pt-1 space-y-1.5 border-t">
+                  <div className="flex gap-2">
                     <Button
                       variant="outline"
-                      className="w-full"
+                      size="sm"
+                      className="flex-1 h-8 text-xs"
                       onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
                       disabled={sendAdvancePaymentMutation.isPending}
-                      data-testid={`button-send-payment-${booking.id}`}
+                      data-testid={`button-resend-payment-${booking.id}`}
                     >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      {sendAdvancePaymentMutation.isPending ? "Sending..." : "Send Payment Link"}
+                      <Phone className="h-3.5 w-3.5 mr-1" />
+                      {sendAdvancePaymentMutation.isPending ? "Sending..." : "Resend Link"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700"
+                      onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                      disabled={confirmAdvancePaymentMutation.isPending}
+                      data-testid={`button-confirm-payment-${booking.id}`}
+                    >
+                      <CreditCard className="h-3.5 w-3.5 mr-1" />
+                      {confirmAdvancePaymentMutation.isPending ? "Confirming..." : "Payment Received"}
                     </Button>
                   </div>
-                )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full h-7 text-xs text-muted-foreground"
+                    onClick={() => confirmBookingMutation.mutate({ bookingId: booking.id })}
+                    disabled={confirmBookingMutation.isPending}
+                    data-testid={`button-skip-advance-${booking.id}`}
+                  >
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    {confirmBookingMutation.isPending ? "..." : "Skip Advance (Walk-in)"}
+                  </Button>
+                </div>
+              )}
 
-                <div className="mt-auto pt-3 space-y-2">
+              {booking.status === "confirmed" && (
+                <div className="px-3 pb-2 pt-1 border-t">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
-                    onClick={() => setAddServiceDialog({ open: true, bookingId: booking.id, guestName: booking.guest.fullName })}
-                    data-testid={`button-add-service-${booking.id}`}
+                    className="w-full h-8 text-xs"
+                    onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                    disabled={sendAdvancePaymentMutation.isPending}
+                    data-testid={`button-send-payment-${booking.id}`}
                   >
-                    <Wrench className="h-4 w-4 mr-2" />
-                    Add Service
+                    <CreditCard className="h-3.5 w-3.5 mr-1" />
+                    {sendAdvancePaymentMutation.isPending ? "Sending..." : "Send Payment Link"}
                   </Button>
-                  <div className="flex gap-2">
-                  {booking.status !== "checked-out" && (
+                </div>
+              )}
+
+              {/* Primary action buttons */}
+              <div className="px-3 pb-3 pt-1 flex gap-2 border-t mt-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                  onClick={() => setAddServiceDialog({ open: true, bookingId: booking.id, guestName: booking.guest.fullName })}
+                  data-testid={`button-add-service-${booking.id}`}
+                >
+                  <Wrench className="h-3.5 w-3.5 mr-1" />
+                  Service
+                </Button>
+                {booking.status !== "checked-out" && (
                   <Button
-                    className="flex-1"
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
                     variant="default"
                     onClick={async () => {
-                      // Clear previous merged details
                       setMergedBookingDetails(null);
-                      
-                      // Fetch bill to check if it's a merged bill
                       try {
                         const billRes = await fetch(`/api/bills/booking/${booking.id}`);
                         if (billRes.ok) {
                           const bill = await billRes.json();
-                          // If bill has mergedBookingIds, use merged charges
                           if (bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
-                            // Fetch details for all merged bookings
                             const mergedDetails: Array<{
                               bookingId: number;
                               guestName: string;
@@ -1338,7 +1373,6 @@ export default function ActiveBookings() {
                               advancePaid: number;
                               nights: number;
                             }> = [];
-                            
                             for (const mergedBookingId of bill.mergedBookingIds) {
                               const bookingRes = await fetch(`/api/bookings/${mergedBookingId}`);
                               if (bookingRes.ok) {
@@ -1346,15 +1380,12 @@ export default function ActiveBookings() {
                                 const checkIn = new Date(mergedBooking.checkInDate);
                                 const checkOut = new Date(mergedBooking.checkOutDate);
                                 const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
-                                
-                                // Calculate room charges for this booking
                                 let roomCharges = 0;
                                 if (mergedBooking.customPrice) {
                                   roomCharges = parseFloat(mergedBooking.customPrice) * nights;
                                 } else if (mergedBooking.room) {
                                   roomCharges = parseFloat(mergedBooking.room.pricePerNight || 0) * nights;
                                 }
-                                
                                 mergedDetails.push({
                                   bookingId: mergedBooking.id,
                                   guestName: mergedBooking.guest?.fullName || "Guest",
@@ -1365,14 +1396,11 @@ export default function ActiveBookings() {
                                 });
                               }
                             }
-                            
                             setMergedBookingDetails(mergedDetails);
-                            
-                            // For merged bills, use the bill's totalAdvance which combines all booking advances
                             const mergedAdvance = parseFloat(String(bill.totalAdvance || bill.advancePaid || 0));
                             const mergedTotal = parseFloat(String(bill.totalAmount || 0));
-                            setCheckoutDialog({ 
-                              open: true, 
+                            setCheckoutDialog({
+                              open: true,
                               booking: {
                                 ...booking,
                                 charges: {
@@ -1400,27 +1428,26 @@ export default function ActiveBookings() {
                     }}
                     data-testid={`button-checkout-${booking.id}`}
                   >
-                    <LogOut className="h-4 w-4 mr-2" />
+                    <LogOut className="h-3.5 w-3.5 mr-1" />
                     Checkout
                   </Button>
-                  )}
-                  {booking.status === "checked-out" && isAdmin && (
-                    <Button
-                      className="flex-1 bg-teal-600 hover:bg-teal-700 text-white"
-                      variant="default"
-                      onClick={() => reopenBookingMutation.mutate(booking.id)}
-                      disabled={reopenBookingMutation.isPending}
-                      data-testid={`button-reopen-booking-${booking.id}`}
-                    >
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      {reopenBookingMutation.isPending ? "Reopening..." : "Re-open Booking"}
-                    </Button>
-                  )}
-                  </div>
-                </div>
-              </CardContent>
+                )}
+                {booking.status === "checked-out" && isAdmin && (
+                  <Button
+                    size="sm"
+                    className="flex-1 h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                    onClick={() => reopenBookingMutation.mutate(booking.id)}
+                    disabled={reopenBookingMutation.isPending}
+                    data-testid={`button-reopen-booking-${booking.id}`}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    {reopenBookingMutation.isPending ? "Reopening..." : "Re-open"}
+                  </Button>
+                )}
+              </div>
             </Card>
-          ))}
+          );
+          })}
         </div>
       )}
 
