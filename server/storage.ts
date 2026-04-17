@@ -185,6 +185,14 @@ export interface IStorage {
 
   // Booking operations
   getAllBookings(): Promise<Booking[]>;
+  getBookingsPaginated(params: {
+    limit: number;
+    offset: number;
+    statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
+    checkinDate?: string;
+    propertyIds?: number[];
+  }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }>;
+  getActiveBookingsRaw(propertyIds?: number[]): Promise<Booking[]>;
   getBooking(id: number): Promise<Booking | undefined>;
   getBookingsByRoom(roomId: number): Promise<Booking[]>;
   createBooking(booking: InsertBooking): Promise<Booking>;
@@ -915,6 +923,83 @@ export class DatabaseStorage implements IStorage {
     if (propertyIds.length === 0) return [];
     return await db.select().from(bookings)
       .where(inArray(bookings.propertyId, propertyIds))
+      .orderBy(desc(bookings.createdAt));
+  }
+
+  // Paginated + server-side-filtered bookings list for the bookings page
+  async getBookingsPaginated(params: {
+    limit: number;
+    offset: number;
+    statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
+    checkinDate?: string;
+    propertyIds?: number[];
+  }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }> {
+    const { limit, offset, statusFilter, checkinDate, propertyIds } = params;
+
+    // Build the row-filter conditions (status + date + tenant)
+    const rowConditions: any[] = [];
+    if (propertyIds && propertyIds.length > 0) {
+      rowConditions.push(inArray(bookings.propertyId, propertyIds));
+    }
+    if (statusFilter === 'active') {
+      rowConditions.push(inArray(bookings.status, ['confirmed', 'checked-in', 'pending', 'pending_advance']));
+    } else if (statusFilter === 'completed') {
+      rowConditions.push(sql`${bookings.status} = 'checked-out'`);
+    } else if (statusFilter === 'cancelled') {
+      rowConditions.push(sql`${bookings.status} = 'cancelled'`);
+    } else if (statusFilter === 'no_show') {
+      rowConditions.push(sql`${bookings.status} = 'no_show'`);
+    }
+    if (checkinDate) {
+      rowConditions.push(sql`${bookings.checkInDate}::text = ${checkinDate}`);
+    }
+    const rowWhere = rowConditions.length > 0 ? and(...rowConditions) : undefined;
+
+    // Tenant-only condition for counts (ignore status/date filter so all tabs show correct totals)
+    const tenantConditions: any[] = [];
+    if (propertyIds && propertyIds.length > 0) {
+      tenantConditions.push(inArray(bookings.propertyId, propertyIds));
+    }
+    const tenantWhere = tenantConditions.length > 0 ? and(...tenantConditions) : undefined;
+
+    const [dataRows, [{ total }], statusCounts] = await Promise.all([
+      db.select().from(bookings)
+        .where(rowWhere)
+        .orderBy(desc(bookings.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ total: sql<number>`count(*)::int` }).from(bookings).where(rowWhere),
+      db.select({ status: bookings.status, cnt: sql<number>`count(*)::int` })
+        .from(bookings)
+        .where(tenantWhere)
+        .groupBy(bookings.status),
+    ]);
+
+    const rawCounts = statusCounts.reduce((acc, r) => { acc[r.status] = r.cnt; return acc; }, {} as Record<string, number>);
+    const counts = {
+      active: (rawCounts['confirmed'] ?? 0) + (rawCounts['checked-in'] ?? 0) + (rawCounts['pending'] ?? 0) + (rawCounts['pending_advance'] ?? 0),
+      completed: rawCounts['checked-out'] ?? 0,
+      cancelled: rawCounts['cancelled'] ?? 0,
+      no_show: rawCounts['no_show'] ?? 0,
+    };
+
+    return { data: dataRows, total, counts };
+  }
+
+  // Fetch only active bookings (checked-in + today's checkouts) directly from DB
+  async getActiveBookingsRaw(propertyIds?: number[]): Promise<Booking[]> {
+    const todayStr = new Date().toISOString().slice(0, 10); // yyyy-MM-dd
+    const conditions: any[] = [
+      or(
+        sql`${bookings.status} = 'checked-in'`,
+        sql`(${bookings.status} = 'checked-out' AND ${bookings.checkOutDate}::text = ${todayStr})`
+      )!,
+    ];
+    if (propertyIds && propertyIds.length > 0) {
+      conditions.push(inArray(bookings.propertyId, propertyIds));
+    }
+    return await db.select().from(bookings)
+      .where(and(...conditions))
       .orderBy(desc(bookings.createdAt));
   }
 

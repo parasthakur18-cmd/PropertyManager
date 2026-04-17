@@ -127,6 +127,8 @@ export default function Bookings() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 50;
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [bookingType, setBookingType] = useState<"single" | "group" | "dormitory">("single");
@@ -189,11 +191,29 @@ export default function Bookings() {
     }
   }, [isDialogOpen]);
 
-  const { data: bookings, isLoading } = useQuery<Booking[]>({
-    queryKey: ["/api/bookings"],
+  // Reset to page 1 when the status tab or date filter changes
+  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter]);
+
+  type BookingCounts = { active: number; completed: number; cancelled: number; no_show: number };
+  type PaginatedBookingsResponse = { data: Booking[]; total: number; counts: BookingCounts };
+
+  const { data: bookingsResponse, isLoading, isFetching } = useQuery<PaginatedBookingsResponse>({
+    queryKey: ["/api/bookings", activeTab, checkinDateFilter, currentPage],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String((currentPage - 1) * PAGE_SIZE));
+      if (activeTab !== "all") params.set("status", activeTab);
+      if (checkinDateFilter) params.set("checkinDate", checkinDateFilter);
+      const res = await fetch(`/api/bookings?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch bookings");
+      return res.json();
+    },
     staleTime: 2 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
+    placeholderData: (prev) => prev,
   });
+  const bookings = bookingsResponse?.data;
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -1117,33 +1137,15 @@ export default function Bookings() {
     return map;
   }, [rooms]);
 
+  // Status + date filtering is now server-side; client-side search only applies to current page
   const filteredBookings = useMemo(() => {
-    return bookings?.filter((booking) => {
-      let tabMatch = true;
-      if (activeTab === "active") {
-        tabMatch = booking.status === "confirmed" || booking.status === "checked-in" || booking.status === "pending";
-      } else if (activeTab === "completed") {
-        tabMatch = booking.status === "checked-out";
-      } else if (activeTab === "cancelled") {
-        tabMatch = booking.status === "cancelled";
-      } else if (activeTab === "no_show") {
-        tabMatch = booking.status === "no_show";
-      }
-
-      if (!tabMatch) return false;
-
-      if (checkinDateFilter) {
-        const bookingCheckInDate = format(new Date(booking.checkInDate), "yyyy-MM-dd");
-        if (bookingCheckInDate !== checkinDateFilter) return false;
-      }
-
-      if (!debouncedSearch) return true;
-
-      const query = debouncedSearch.toLowerCase();
+    if (!bookings) return [];
+    if (!debouncedSearch) return bookings;
+    const query = debouncedSearch.toLowerCase();
+    return bookings.filter((booking) => {
       const property = propertyMap.get(booking.propertyId);
       const guest = booking.guestId ? guestMap.get(booking.guestId) : undefined;
       const room = booking.roomId ? roomMap.get(booking.roomId) : undefined;
-
       return (
         guest?.fullName?.toLowerCase().includes(query) ||
         guest?.phone?.toLowerCase().includes(query) ||
@@ -1152,23 +1154,42 @@ export default function Bookings() {
         booking.status?.toLowerCase().includes(query)
       );
     });
-  }, [bookings, activeTab, checkinDateFilter, debouncedSearch, guestMap, propertyMap, roomMap]);
+  }, [bookings, debouncedSearch, guestMap, propertyMap, roomMap]);
 
-  const bookingCounts = useMemo(() => ({
-    all: (bookings ?? []).length,
-    active: (bookings ?? []).filter(b => b.status === "confirmed" || b.status === "checked-in" || b.status === "pending").length,
-    completed: (bookings ?? []).filter(b => b.status === "checked-out").length,
-    cancelled: (bookings ?? []).filter(b => b.status === "cancelled").length,
-    no_show: (bookings ?? []).filter(b => b.status === "no_show").length,
-  }), [bookings]);
+  // Counts come from the server (across all pages, not just current page)
+  const bookingCounts = {
+    all: (bookingsResponse?.counts?.active ?? 0) + (bookingsResponse?.counts?.completed ?? 0) + (bookingsResponse?.counts?.cancelled ?? 0) + (bookingsResponse?.counts?.no_show ?? 0),
+    active: bookingsResponse?.counts?.active ?? 0,
+    completed: bookingsResponse?.counts?.completed ?? 0,
+    cancelled: bookingsResponse?.counts?.cancelled ?? 0,
+    no_show: bookingsResponse?.counts?.no_show ?? 0,
+  };
+  const totalPages = Math.ceil((bookingsResponse?.total ?? 0) / PAGE_SIZE);
 
   if (isLoading) {
     return (
       <div className="p-6 md:p-8">
-        <Skeleton className="h-10 w-64 mb-6" />
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
+        <div className="flex items-center justify-between mb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <div className="flex gap-2 mb-6">
+          {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-9 w-24 rounded-md" />)}
+        </div>
+        <div className="rounded-lg border overflow-hidden">
+          <Skeleton className="h-12 w-full" />
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="flex gap-4 px-4 py-3 border-t">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 flex-1" />
+            </div>
           ))}
         </div>
       </div>
@@ -2236,6 +2257,36 @@ export default function Bookings() {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination controls */}
+            {totalPages > 1 && (
+              <div className={`flex items-center justify-between px-4 py-3 border-t bg-muted/20 transition-opacity ${isFetching ? 'opacity-60' : 'opacity-100'}`}>
+                <p className="text-sm text-muted-foreground">
+                  Showing {((currentPage - 1) * PAGE_SIZE) + 1}–{Math.min(currentPage * PAGE_SIZE, bookingsResponse?.total ?? 0)} of {bookingsResponse?.total ?? 0} bookings
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1 || isFetching}
+                    className="px-3 py-1.5 text-sm rounded-md border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    data-testid="button-prev-page"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="text-sm font-medium px-2">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages || isFetching}
+                    className="px-3 py-1.5 text-sm rounded-md border bg-background hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    data-testid="button-next-page"
+                  >
+                    Next →
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
           )}
         </TabsContent>
@@ -3689,12 +3740,11 @@ function CheckoutBillSummary({
   const [cashSplit, setCashSplit] = useState<string>("");
   const [onlineSplit, setOnlineSplit] = useState<string>("");
 
-  // Fetch booking details
-  const { data: bookings } = useQuery<Booking[]>({
-    queryKey: ["/api/bookings"],
+  // Fetch this specific booking by ID (avoids loading the entire paginated list)
+  const { data: booking } = useQuery<Booking>({
+    queryKey: ["/api/bookings", bookingId],
+    enabled: !!bookingId,
   });
-
-  const booking = bookings?.find(b => b.id === bookingId);
 
   // Fetch related data
   const { data: properties } = useQuery<any[]>({

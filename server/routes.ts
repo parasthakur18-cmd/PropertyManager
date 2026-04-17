@@ -3006,19 +3006,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const tenant = getTenantContext(currentUser);
-      let result;
+      const propertyIds = tenant.hasUnlimitedAccess ? undefined : tenant.assignedPropertyIds;
 
+      // ── PAGINATED MODE (bookings list page) ──────────────────────────
+      // When the caller sends ?limit=N, return { data, total, counts }
+      if (req.query.limit !== undefined) {
+        const limit  = Math.min(parseInt(String(req.query.limit),  10) || 50,  200);
+        const offset = Math.max(parseInt(String(req.query.offset ?? 0), 10) || 0, 0);
+        const statusFilter = ['active','completed','cancelled','no_show'].includes(String(req.query.status ?? ''))
+          ? (req.query.status as 'active' | 'completed' | 'cancelled' | 'no_show')
+          : undefined;
+        const checkinDate = req.query.checkinDate ? String(req.query.checkinDate) : undefined;
+
+        if (!tenant.hasUnlimitedAccess && (tenant.assignedPropertyIds?.length ?? 0) === 0) {
+          return res.json({ data: [], total: 0, counts: { active: 0, completed: 0, cancelled: 0, no_show: 0 } });
+        }
+        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, propertyIds });
+        return res.json(result);
+      }
+
+      // ── LEGACY MODE (all other pages: dashboard, calendar, check-ins…) ─
+      // Return Booking[] so existing consumers are not broken.
+      let result: import("../shared/schema").Booking[];
       if (tenant.hasUnlimitedAccess) {
-        // Super-admin / owner: use shared in-memory cache (all bookings)
         result = await storage.getAllBookings();
       } else if (tenant.assignedPropertyIds.length > 0) {
-        // Manager / staff: query only their assigned properties directly from DB
-        // This avoids loading all bookings across all 12 properties just to filter in JS
         result = await storage.getBookingsByPropertyIds(tenant.assignedPropertyIds);
       } else {
         result = [];
       }
-
       res.json(result);
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
@@ -3039,41 +3055,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const tenant = getTenantContext(currentUser);
-      
-      // Get all checked-in bookings, plus any checked-out ones where checkout is today
-      // (so admins can see and re-open bookings that were auto-checked-out by mistake)
-      const todayActiveStr = format(new Date(), "yyyy-MM-dd");
-      const allBookings = await storage.getAllBookings();
-      let activeBookings = allBookings.filter(b => {
-        if (b.status === "checked-in") return true;
-        if (b.status === "checked-out" && b.checkOutDate === todayActiveStr) return true;
-        return false;
-      });
-      
+
+      // Get only checked-in + today's checked-out bookings directly from DB (no full-table scan)
+      const propertyIdsForActive = tenant.hasUnlimitedAccess ? undefined : tenant.assignedPropertyIds;
+      if (!tenant.hasUnlimitedAccess && (propertyIdsForActive?.length ?? 0) === 0) {
+        return res.json([]);
+      }
+      let activeBookings = await storage.getActiveBookingsRaw(propertyIdsForActive);
+
       // Get all related data
       const allGuests = await storage.getAllGuests();
       const allRooms = await storage.getAllRooms();
       const allProperties = await storage.getAllProperties();
-      
-      // Apply tenant-based property filtering
-      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
-        activeBookings = activeBookings.filter(booking => {
-          if (booking.roomId) {
-            const room = allRooms.find(r => r.id === booking.roomId);
-            if (!room) return false;
-            return tenant.assignedPropertyIds.includes(room.propertyId);
-          }
-          if (booking.roomIds && booking.roomIds.length > 0) {
-            const bookingRooms = booking.roomIds
-              .map(roomId => allRooms.find(r => r.id === roomId))
-              .filter((room): room is NonNullable<typeof room> => !!room);
-            return bookingRooms.some(room => tenant.assignedPropertyIds.includes(room.propertyId));
-          }
-          return false;
-        });
-      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
-        activeBookings = [];
-      }
       
       if (activeBookings.length === 0) {
         return res.json([]);
