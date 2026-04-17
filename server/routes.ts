@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { strictLimiter } from "./rate-limiters";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { randomUUID } from "crypto";
 import bcryptjs from "bcryptjs";
@@ -1203,7 +1204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Dashboard stats
-  app.get("/api/dashboard/stats", isAuthenticated, async (req: any, res) => {
+  app.get("/api/dashboard/stats", isAuthenticated, strictLimiter, async (req: any, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
@@ -1263,7 +1264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics
-  app.get("/api/analytics", isAuthenticated, async (req: any, res) => {
+  app.get("/api/analytics", isAuthenticated, strictLimiter, async (req: any, res) => {
     try {
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
@@ -2996,7 +2997,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   });
 
   // Bookings
-  app.get("/api/bookings", isAuthenticated, async (req: any, res) => {
+  app.get("/api/bookings", isAuthenticated, strictLimiter, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
@@ -3374,7 +3375,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.post("/api/bookings", isAuthenticated, async (req, res) => {
+  app.post("/api/bookings", isAuthenticated, strictLimiter, async (req, res) => {
     try {
       // Create input schema that coerces ISO date strings to Date objects
       const bookingInputSchema = insertBookingSchema.extend({

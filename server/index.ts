@@ -12,6 +12,7 @@ try {
 
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
+import { generalLimiter } from "./rate-limiters";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
@@ -21,6 +22,12 @@ const app = express();
 
 // Trust reverse proxy (nginx) so secure cookies work on HTTPS live servers
 app.set('trust proxy', 1);
+
+// General rate limiter: 300 req/min per IP (IPv6-safe).
+// This runs before authentication middleware, so req.user is not available here.
+// Per-user rate limiting is enforced by strictLimiter in routes.ts, which runs
+// after isAuthenticated on expensive endpoints.
+app.use("/api", generalLimiter);
 
 app.use(compression());
 
