@@ -18439,7 +18439,80 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const config = await getConfigForProperty(propertyId);
       if (!config) return res.status(404).json({ message: "AioSell not configured" });
       const result = await pushRates(config, updates);
+
+      // After a successful push, record each rate in aiosellRateUpdates for tracking
+      if (result.success) {
+        try {
+          for (const update of updates) {
+            for (const rateEntry of (update.rates || [])) {
+              // Look up ratePlanId from ratePlanCode
+              const [plan] = await db.select().from(aiosellRatePlans)
+                .where(and(
+                  eq(aiosellRatePlans.configId, config.id),
+                  eq(aiosellRatePlans.ratePlanCode, rateEntry.rateplanCode)
+                ));
+              // Look up roomMappingId from roomCode
+              const [mapping] = await db.select().from(aiosellRoomMappings)
+                .where(and(
+                  eq(aiosellRoomMappings.configId, config.id),
+                  eq(aiosellRoomMappings.aiosellRoomCode, rateEntry.roomCode)
+                ));
+              if (plan && mapping) {
+                await db.insert(aiosellRateUpdates).values({
+                  configId: config.id,
+                  propertyId,
+                  roomMappingId: mapping.id,
+                  ratePlanId: plan.id,
+                  startDate: update.startDate,
+                  endDate: update.endDate,
+                  rate: String(rateEntry.rate),
+                  isPushed: true,
+                  pushedAt: new Date(),
+                });
+              }
+            }
+          }
+        } catch (saveErr) {
+          console.error("[push-rates] Failed to save rate history:", saveErr);
+        }
+      }
+
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/aiosell/latest-rates — returns the most recently pushed rate per rate plan for a property
+  app.get("/api/aiosell/latest-rates", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updates = await db.select().from(aiosellRateUpdates)
+        .where(and(
+          eq(aiosellRateUpdates.propertyId, propertyId),
+          eq(aiosellRateUpdates.isPushed, true)
+        ))
+        .orderBy(desc(aiosellRateUpdates.createdAt));
+
+      // Return the latest pushed rate and push date per ratePlanId
+      const latest: Record<number, { rate: number; pushedAt: string | null; startDate: string; endDate: string }> = {};
+      for (const ru of updates) {
+        if (!latest[ru.ratePlanId]) {
+          latest[ru.ratePlanId] = {
+            rate: Number(ru.rate),
+            pushedAt: ru.pushedAt ? ru.pushedAt.toISOString() : ru.createdAt?.toISOString() || null,
+            startDate: ru.startDate,
+            endDate: ru.endDate,
+          };
+        }
+      }
+      res.json(latest);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

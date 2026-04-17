@@ -796,6 +796,15 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId && !!config,
   });
 
+  const { data: latestRates = {} } = useQuery<Record<string, { rate: number; pushedAt: string | null; startDate: string; endDate: string }>>({
+    queryKey: ["/api/aiosell/latest-rates", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/latest-rates?propertyId=${propertyId}`, { credentials: "include" });
+      return res.json();
+    },
+    enabled: !!propertyId && !!config,
+  });
+
   const { data: allRooms = [] } = useQuery<{ id: number; roomType: string; totalBeds: number }[]>({
     queryKey: ["/api/rooms", { propertyId }],
     queryFn: async () => {
@@ -838,6 +847,9 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
       setLastPushResult({ success: data.success, message: data.message });
       toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+      if (data.success) {
+        queryClient.invalidateQueries({ queryKey: ["/api/aiosell/latest-rates", { propertyId }] });
+      }
     },
     onError: (e: any) => {
       setLastPushResult({ success: false, message: e.message });
@@ -894,7 +906,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                 <TableHead>Rate Plan</TableHead>
                 <TableHead>Occupancy</TableHead>
                 <TableHead>Room Count</TableHead>
-                <TableHead>Base Rate</TableHead>
+                <TableHead>Last Pushed Rate</TableHead>
                 <TableHead>Rate to Push</TableHead>
               </TableRow>
             </TableHeader>
@@ -904,6 +916,9 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                 const roomCount = getRoomCount(mapping?.hostezeeRoomType);
                 const matchingRooms = allRooms.filter(r => r.roomType === mapping?.hostezeeRoomType);
                 const isDorm = matchingRooms.some(r => (r.totalBeds || 1) > 1);
+                const lastPushed = latestRates[String(rp.id)];
+                const newRate = parseFloat(rateValues[rp.ratePlanCode] || "");
+                const hasChange = lastPushed && !isNaN(newRate) && newRate !== lastPushed.rate;
                 return (
                   <TableRow key={rp.id} data-testid={`row-push-rate-${rp.id}`}>
                     <TableCell className="font-medium">{mapping?.hostezeeRoomType || <span className="text-muted-foreground">—</span>}</TableCell>
@@ -923,16 +938,39 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                       <Badge variant="secondary">{roomCount}</Badge>
                       {isDorm && <span className="ml-1 text-xs text-muted-foreground">beds</span>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{rp.baseRate || "—"}</TableCell>
                     <TableCell>
-                      <Input
-                        data-testid={`input-push-rate-${rp.id}`}
-                        type="number"
-                        className="w-28"
-                        placeholder={rp.baseRate || "0"}
-                        value={rateValues[rp.ratePlanCode] || ""}
-                        onChange={e => setRateValues({ ...rateValues, [rp.ratePlanCode]: e.target.value })}
-                      />
+                      {lastPushed ? (
+                        <div>
+                          <div className="font-semibold text-[#1E3A5F] dark:text-[#2BB6A8]">
+                            ₹{lastPushed.rate.toLocaleString("en-IN")}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            {lastPushed.pushedAt ? format(new Date(lastPushed.pushedAt), "dd MMM, HH:mm") : "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {lastPushed.startDate} → {lastPushed.endDate}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">Not pushed yet</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Input
+                          data-testid={`input-push-rate-${rp.id}`}
+                          type="number"
+                          className={`w-28 ${hasChange ? "border-amber-400 focus-visible:ring-amber-400" : ""}`}
+                          placeholder={lastPushed ? String(lastPushed.rate) : (rp.baseRate || "0")}
+                          value={rateValues[rp.ratePlanCode] || ""}
+                          onChange={e => setRateValues({ ...rateValues, [rp.ratePlanCode]: e.target.value })}
+                        />
+                        {hasChange && (
+                          <span className="text-xs text-amber-600 font-medium">
+                            {lastPushed.rate} → {newRate}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
