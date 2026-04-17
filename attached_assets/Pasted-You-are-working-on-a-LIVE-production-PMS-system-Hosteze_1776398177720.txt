@@ -1,0 +1,133 @@
+You are working on a LIVE production PMS system (Hostezee).
+
+Stack:
+
+* Node.js + Express + TypeScript
+* PostgreSQL + Drizzle ORM
+* React + TanStack React Query
+
+All previous optimizations (indexes, filtering, caching, lazy loading) are already implemented.
+
+Now we need to FIX the remaining bottleneck:
+👉 Slow Bookings page due to large data payload and heavy rendering
+
+---
+
+🎯 OBJECTIVE:
+Make the bookings page load instantly (<500ms perceived load)
+
+---
+
+## 🔴 TASK 1: Enforce Strict Pagination (MANDATORY)
+
+Ensure the bookings API ALWAYS uses pagination:
+
+* limit (default: 50, max: 100)
+* offset (default: 0)
+
+Reject or override requests that try to fetch unlimited data.
+
+Example:
+GET /api/bookings?propertyId=xxx&limit=50&offset=0
+
+---
+
+## 🔴 TASK 2: Reduce API Payload Size (VERY IMPORTANT)
+
+Currently full booking objects are returned.
+
+Optimize response:
+
+ONLY return required fields for listing page:
+
+* id
+* guestName
+* roomNumber / roomType
+* checkInDate
+* checkOutDate
+* status
+* totalAmount
+
+Avoid:
+
+* large nested objects
+* unnecessary metadata
+* audit fields unless needed
+
+---
+
+## 🔴 TASK 3: Add Response Projection in DB Query
+
+Use select() instead of returning full table rows.
+
+Example:
+select({
+id: bookings.id,
+guestName: guests.name,
+...
+})
+
+---
+
+## 🔴 TASK 4: Frontend List Optimization
+
+Bookings page:
+
+1. Implement pagination UI (page / next / previous)
+
+2. Prevent full re-render:
+
+   * Use React.memo for booking row component
+   * Use useMemo for computed data
+   * Use useCallback for handlers
+
+---
+
+## 🔴 TASK 5: Add List Virtualization (CRITICAL FOR SCALE)
+
+Use:
+
+* react-window OR react-virtualized
+
+Only render visible rows instead of full list.
+
+This is mandatory for long booking lists.
+
+---
+
+## 🟡 TASK 6: Improve Perceived Performance
+
+* Show skeleton loader instead of blank screen
+* Keep previous data while fetching next page (React Query keepPreviousData: true)
+
+---
+
+## 🟡 TASK 7: Optimize Active Bookings Separately
+
+Ensure:
+
+* Active bookings endpoint returns only current stays
+* Not full booking history
+
+---
+
+## ⚠️ RULES:
+
+* Do NOT break existing API contracts
+* Do NOT remove existing features
+* Do NOT modify database data
+* Only optimize performance
+
+---
+
+## ✅ EXPECTED RESULT:
+
+* Booking tab opens instantly
+* Pagination is smooth
+* No UI lag while scrolling
+* API responses are lightweight
+* System remains stable under scale
+
+---
+
+Implement clean, production-safe changes.
