@@ -10,90 +10,103 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ReportIssueButton } from "@/components/report-issue";
 import { useAuth } from "@/hooks/useAuth";
 import { connectToEventStream } from "@/lib/eventHandlers";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
+
+// Eager — always needed immediately (small / public / auth pages)
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Home from "@/pages/home";
-import Dashboard from "@/pages/dashboard";
-import Properties from "@/pages/properties";
-import Rooms from "@/pages/rooms";
-import Bookings from "@/pages/bookings";
-import Guests from "@/pages/guests/page";
-import Kitchen from "@/pages/restaurant";
-import Billing from "@/pages/billing";
-import Analytics from "@/pages/analytics";
-import Settings from "@/pages/settings";
-import WhatsappAlerts from "@/pages/whatsapp-alerts";
-import Menu from "@/pages/menu";
-import QuickOrder from "@/pages/quick-order";
-import NewEnquiry from "@/pages/new-enquiry";
-import Enquiries from "@/pages/enquiries";
-import Leases from "@/pages/leases";
-import Expenses from "@/pages/expenses";
-import Wallets from "@/pages/wallets";
-import Vendors from "@/pages/vendors";
-import Financials from "@/pages/financials";
-import PnLStatement from "@/pages/pnl-statement";
-import AddOnServices from "@/pages/addons";
-import ServicesReport from "@/pages/services-report";
-import MonthlyReport from "@/pages/monthly-report";
-import UsersManagement from "@/pages/users";
-import ActiveBookings from "@/pages/active-bookings";
-import CheckIns from "@/pages/check-ins";
-import CalendarView from "@/pages/calendar-view";
-import FoodOrdersReport from "@/pages/food-orders-report";
-import MenuManagement from "@/pages/menu-management";
-import EnhancedMenu from "@/pages/enhanced-menu";
-import CustomerMenu from "@/pages/customer-menu";
-import BookingAnalytics from "@/pages/booking-analytics";
-import QRCodes from "@/pages/qr-codes";
-import Salaries from "@/pages/salaries";
-import Attendance from "@/pages/attendance";
-import TravelAgents from "@/pages/travel-agents";
-import PendingPayments from "@/pages/pending-payments";
-import Performance from "@/pages/performance";
-import SuperAdmin from "@/pages/super-admin";
-import SuperAdminLogin from "@/pages/super-admin-login";
-import Features from "@/pages/features";
-import Security from "@/pages/security";
-import About from "@/pages/about";
-import Blog from "@/pages/blog";
-import ContactPage from "@/pages/contact";
-import Pricing from "@/pages/pricing";
+import Login from "@/pages/login";
+import Register from "@/pages/register";
 import ForgotPassword from "@/pages/forgot-password";
 import VerifyOTP from "@/pages/verify-otp";
 import ResetPassword from "@/pages/reset-password";
 import GuestSelfCheckin from "@/pages/guest-self-checkin";
 import GuestPreBill from "@/pages/guest-prebill";
-import AdminPortalLogin from "@/pages/admin-portal-login";
-import AdminPortalDashboard from "@/pages/admin-portal-dashboard";
-import AdminPortalPropertyDetails from "@/pages/admin-portal-property-details";
-import Onboarding from "@/pages/onboarding";
-import FAQ from "@/pages/faq";
-import Terms from "@/pages/terms";
-import Privacy from "@/pages/privacy";
-import ContactEnquiries from "@/pages/contact-enquiries";
-import Register from "@/pages/register";
-import Login from "@/pages/login";
-import ReportIssue from "@/pages/report-issue";
-import OtaIntegrations from "@/pages/ota-integrations";
-import ChannelManager from "@/pages/channel-manager";
-import AcceptInvite from "@/pages/accept-invite";
-import Notifications from "@/pages/notifications";
-import AuditLogs from "@/pages/audit-logs";
-import Tasks from "@/pages/tasks";
-import Architecture from "@/pages/architecture";
-import AdvancedFeatures from "@/pages/advanced-features";
-import FeatureSettings from "@/pages/feature-settings";
-import AnalyticsChat from "@/pages/analytics-chat";
+import Menu from "@/pages/menu";
+import CustomerMenu from "@/pages/customer-menu";
+
+// Lazy — only loaded when the user navigates to that page
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Properties = lazy(() => import("@/pages/properties"));
+const Rooms = lazy(() => import("@/pages/rooms"));
+const Bookings = lazy(() => import("@/pages/bookings"));
+const Guests = lazy(() => import("@/pages/guests/page"));
+const Kitchen = lazy(() => import("@/pages/restaurant"));
+const Billing = lazy(() => import("@/pages/billing"));
+const Analytics = lazy(() => import("@/pages/analytics"));
+const Settings = lazy(() => import("@/pages/settings"));
+const WhatsappAlerts = lazy(() => import("@/pages/whatsapp-alerts"));
+const QuickOrder = lazy(() => import("@/pages/quick-order"));
+const NewEnquiry = lazy(() => import("@/pages/new-enquiry"));
+const Enquiries = lazy(() => import("@/pages/enquiries"));
+const Leases = lazy(() => import("@/pages/leases"));
+const Expenses = lazy(() => import("@/pages/expenses"));
+const Wallets = lazy(() => import("@/pages/wallets"));
+const Vendors = lazy(() => import("@/pages/vendors"));
+const Financials = lazy(() => import("@/pages/financials"));
+const PnLStatement = lazy(() => import("@/pages/pnl-statement"));
+const AddOnServices = lazy(() => import("@/pages/addons"));
+const ServicesReport = lazy(() => import("@/pages/services-report"));
+const MonthlyReport = lazy(() => import("@/pages/monthly-report"));
+const UsersManagement = lazy(() => import("@/pages/users"));
+const ActiveBookings = lazy(() => import("@/pages/active-bookings"));
+const CheckIns = lazy(() => import("@/pages/check-ins"));
+const CalendarView = lazy(() => import("@/pages/calendar-view"));
+const FoodOrdersReport = lazy(() => import("@/pages/food-orders-report"));
+const MenuManagement = lazy(() => import("@/pages/menu-management"));
+const EnhancedMenu = lazy(() => import("@/pages/enhanced-menu"));
+const BookingAnalytics = lazy(() => import("@/pages/booking-analytics"));
+const QRCodes = lazy(() => import("@/pages/qr-codes"));
+const Salaries = lazy(() => import("@/pages/salaries"));
+const Attendance = lazy(() => import("@/pages/attendance"));
+const TravelAgents = lazy(() => import("@/pages/travel-agents"));
+const PendingPayments = lazy(() => import("@/pages/pending-payments"));
+const Performance = lazy(() => import("@/pages/performance"));
+const SuperAdmin = lazy(() => import("@/pages/super-admin"));
+const SuperAdminLogin = lazy(() => import("@/pages/super-admin-login"));
+const Features = lazy(() => import("@/pages/features"));
+const Security = lazy(() => import("@/pages/security"));
+const About = lazy(() => import("@/pages/about"));
+const Blog = lazy(() => import("@/pages/blog"));
+const ContactPage = lazy(() => import("@/pages/contact"));
+const Pricing = lazy(() => import("@/pages/pricing"));
+const AdminPortalLogin = lazy(() => import("@/pages/admin-portal-login"));
+const AdminPortalDashboard = lazy(() => import("@/pages/admin-portal-dashboard"));
+const AdminPortalPropertyDetails = lazy(() => import("@/pages/admin-portal-property-details"));
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const FAQ = lazy(() => import("@/pages/faq"));
+const Terms = lazy(() => import("@/pages/terms"));
+const Privacy = lazy(() => import("@/pages/privacy"));
+const ContactEnquiries = lazy(() => import("@/pages/contact-enquiries"));
+const ReportIssue = lazy(() => import("@/pages/report-issue"));
+const OtaIntegrations = lazy(() => import("@/pages/ota-integrations"));
+const ChannelManager = lazy(() => import("@/pages/channel-manager"));
+const AcceptInvite = lazy(() => import("@/pages/accept-invite"));
+const Notifications = lazy(() => import("@/pages/notifications"));
+const AuditLogs = lazy(() => import("@/pages/audit-logs"));
+const Tasks = lazy(() => import("@/pages/tasks"));
+const Architecture = lazy(() => import("@/pages/architecture"));
+const AdvancedFeatures = lazy(() => import("@/pages/advanced-features"));
+const FeatureSettings = lazy(() => import("@/pages/feature-settings"));
+const AnalyticsChat = lazy(() => import("@/pages/analytics-chat"));
 import { ErrorBoundary } from "@/components/error-boundary";
 
 import { CompletionNotifications } from "@/components/completion-notifications";
 import { NotificationCenter } from "@/components/notification-center";
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
+    </div>
+  );
+}
+
 function Router({ showDashboard }: { showDashboard: boolean }) {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Switch>
       {/* Public Routes - No Auth Required */}
       <Route path="/menu" component={Menu} />
@@ -182,6 +195,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
       )}
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 

@@ -3006,16 +3006,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const tenant = getTenantContext(currentUser);
-      let bookings = await storage.getAllBookings();
-      
-      if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
-        const allowedSet = new Set(tenant.assignedPropertyIds);
-        bookings = bookings.filter(b => b.propertyId && allowedSet.has(b.propertyId));
-      } else if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length === 0) {
-        bookings = [];
+      let result;
+
+      if (tenant.hasUnlimitedAccess) {
+        // Super-admin / owner: use shared in-memory cache (all bookings)
+        result = await storage.getAllBookings();
+      } else if (tenant.assignedPropertyIds.length > 0) {
+        // Manager / staff: query only their assigned properties directly from DB
+        // This avoids loading all bookings across all 12 properties just to filter in JS
+        result = await storage.getBookingsByPropertyIds(tenant.assignedPropertyIds);
+      } else {
+        result = [];
       }
-      
-      res.json(bookings);
+
+      res.json(result);
     } catch (error: any) {
       if (error instanceof TenantAccessError) {
         return res.status(error.statusCode).json({ message: error.message });

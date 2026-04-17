@@ -910,6 +910,14 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // Efficiently fetch bookings for a specific set of properties directly from DB
+  async getBookingsByPropertyIds(propertyIds: number[]): Promise<Booking[]> {
+    if (propertyIds.length === 0) return [];
+    return await db.select().from(bookings)
+      .where(inArray(bookings.propertyId, propertyIds))
+      .orderBy(desc(bookings.createdAt));
+  }
+
   async getBooking(id: number): Promise<Booking | undefined> {
     const [booking] = await db.select().from(bookings).where(eq(bookings.id, id));
     return booking;
@@ -1593,7 +1601,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   private _bookingsCache: { data: Booking[]; ts: number } | null = null;
-  private readonly _bookingsCacheTTL = 30 * 1000;
+  private readonly _bookingsCacheTTL = 2 * 60 * 1000; // 2 minutes
 
   invalidateBookingsCache() {
     this._bookingsCache = null;

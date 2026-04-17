@@ -574,6 +574,65 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    // Add performance indexes on the most-queried columns.
+    // Each statement runs in its own exception block so a missing column on
+    // one table never aborts the rest.  CREATE INDEX IF NOT EXISTS is
+    // completely safe — it never modifies data.
+    name: "add_performance_indexes",
+    async run() {
+      const indexes: Array<{ name: string; sql: string }> = [
+        // Bookings: most-hit table
+        { name: "idx_bookings_property_id",  sql: "CREATE INDEX IF NOT EXISTS idx_bookings_property_id   ON bookings (property_id)" },
+        { name: "idx_bookings_status",        sql: "CREATE INDEX IF NOT EXISTS idx_bookings_status        ON bookings (status)" },
+        { name: "idx_bookings_check_in",      sql: "CREATE INDEX IF NOT EXISTS idx_bookings_check_in      ON bookings (check_in_date)" },
+        { name: "idx_bookings_check_out",     sql: "CREATE INDEX IF NOT EXISTS idx_bookings_check_out     ON bookings (check_out_date)" },
+        { name: "idx_bookings_guest_id",      sql: "CREATE INDEX IF NOT EXISTS idx_bookings_guest_id      ON bookings (guest_id)" },
+        { name: "idx_bookings_created_at",    sql: "CREATE INDEX IF NOT EXISTS idx_bookings_created_at    ON bookings (created_at DESC)" },
+        // Rooms
+        { name: "idx_rooms_property_id",      sql: "CREATE INDEX IF NOT EXISTS idx_rooms_property_id      ON rooms (property_id)" },
+        { name: "idx_rooms_status",           sql: "CREATE INDEX IF NOT EXISTS idx_rooms_status           ON rooms (status)" },
+        // Guests
+        { name: "idx_guests_phone",           sql: "CREATE INDEX IF NOT EXISTS idx_guests_phone           ON guests (phone)" },
+        { name: "idx_guests_email",           sql: "CREATE INDEX IF NOT EXISTS idx_guests_email           ON guests (email)" },
+        // Bills — bills has no property_id; index only booking_id
+        { name: "idx_bills_booking_id",       sql: "CREATE INDEX IF NOT EXISTS idx_bills_booking_id       ON bills (booking_id)" },
+        // Orders
+        { name: "idx_orders_booking_id",      sql: "CREATE INDEX IF NOT EXISTS idx_orders_booking_id      ON orders (booking_id)" },
+        { name: "idx_orders_property_id",     sql: "CREATE INDEX IF NOT EXISTS idx_orders_property_id     ON orders (property_id)" },
+        { name: "idx_orders_status",          sql: "CREATE INDEX IF NOT EXISTS idx_orders_status          ON orders (status)" },
+        // Wallet transactions
+        { name: "idx_wallet_txn_wallet_id",   sql: "CREATE INDEX IF NOT EXISTS idx_wallet_txn_wallet_id   ON wallet_transactions (wallet_id)" },
+        { name: "idx_wallet_txn_created_at",  sql: "CREATE INDEX IF NOT EXISTS idx_wallet_txn_created_at  ON wallet_transactions (created_at DESC)" },
+        // Staff / HR
+        { name: "idx_salary_pay_staff_id",    sql: "CREATE INDEX IF NOT EXISTS idx_salary_pay_staff_id    ON salary_payments (staff_member_id)" },
+        { name: "idx_salary_pay_date",        sql: "CREATE INDEX IF NOT EXISTS idx_salary_pay_date        ON salary_payments (payment_date)" },
+        { name: "idx_salary_adv_staff_id",    sql: "CREATE INDEX IF NOT EXISTS idx_salary_adv_staff_id    ON salary_advances (staff_member_id)" },
+        { name: "idx_salary_adv_date",        sql: "CREATE INDEX IF NOT EXISTS idx_salary_adv_date        ON salary_advances (advance_date)" },
+        { name: "idx_attendance_staff_id",    sql: "CREATE INDEX IF NOT EXISTS idx_attendance_staff_id    ON attendance_records (staff_id)" },
+        { name: "idx_attendance_date",        sql: "CREATE INDEX IF NOT EXISTS idx_attendance_date        ON attendance_records (attendance_date)" },
+        { name: "idx_staff_members_prop_id",  sql: "CREATE INDEX IF NOT EXISTS idx_staff_members_prop_id  ON staff_members (property_id)" },
+        // Expenses
+        { name: "idx_expenses_property_id",   sql: "CREATE INDEX IF NOT EXISTS idx_expenses_property_id   ON property_expenses (property_id)" },
+        { name: "idx_expenses_date",          sql: "CREATE INDEX IF NOT EXISTS idx_expenses_date          ON property_expenses (expense_date)" },
+        // Activity logs
+        { name: "idx_activity_logs_created",  sql: "CREATE INDEX IF NOT EXISTS idx_activity_logs_created  ON activity_logs (created_at DESC)" },
+      ];
+
+      const client = await pool.connect();
+      try {
+        for (const idx of indexes) {
+          try {
+            await client.query(idx.sql);
+          } catch (_err) {
+            // Column or table doesn't exist — skip this index silently
+          }
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
