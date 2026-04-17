@@ -27,9 +27,6 @@ import {
   ChevronUp,
   Link2,
   AlertTriangle,
-  Lock,
-  Wrench,
-  CheckCircle2,
   MoreVertical,
   Hotel
 } from "lucide-react";
@@ -171,23 +168,6 @@ export default function CalendarView() {
     },
   });
 
-  const updateRoomStatusMutation = useMutation({
-    mutationFn: async ({ roomId, status }: { roomId: number; status: string }) => {
-      console.log("[MUTATION] Updating room status", { roomId, status });
-      const response = await apiRequest(`/api/rooms/${roomId}/status`, "PATCH", { status });
-      console.log("[MUTATION] Response:", response);
-      return response;
-    },
-    onSuccess: () => {
-      console.log("[MUTATION] Success!");
-      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      setActiveRoomMenu(null);
-    },
-    onError: (error) => {
-      console.log("[MUTATION] Error:", error);
-    },
-  });
 
   // Sync vertical scroll between sidebar and calendar
   // Re-run when rooms load to ensure refs are attached
@@ -595,7 +575,6 @@ export default function CalendarView() {
 
                 {/* Room Rows */}
                 {expandedTypes[type] && typeRooms.map(room => {
-                  const isLoading = updateRoomStatusMutation.isPending;
                   return (
                   <div
                     key={room.id}
@@ -611,56 +590,6 @@ export default function CalendarView() {
                       <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                     </div>
                     
-                    {/* Quick Action Buttons - Test with visible background */}
-                    <div className="flex items-center gap-1 flex-shrink-0 bg-blue-50 dark:bg-blue-950 p-1 rounded">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log("[BUTTON-CLICK] Available for room", room.id);
-                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "available" });
-                        }}
-                        disabled={isLoading}
-                        className="p-1 bg-green-500 hover:bg-green-600 rounded cursor-pointer text-white min-w-fit"
-                        title="Available"
-                        data-testid={`button-available-${room.id}`}
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log("[BUTTON-CLICK] Block for room", room.id);
-                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "blocked" });
-                        }}
-                        disabled={isLoading}
-                        className="p-1 bg-yellow-500 hover:bg-yellow-600 rounded cursor-pointer text-white min-w-fit"
-                        title="Block"
-                        data-testid={`button-block-${room.id}`}
-                      >
-                        <Lock className="h-3 w-3" />
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log("[BUTTON-CLICK] Out-of-service for room", room.id);
-                          updateRoomStatusMutation.mutate({ roomId: room.id, status: "out-of-service" });
-                        }}
-                        disabled={isLoading}
-                        className="p-1 bg-red-500 hover:bg-red-600 rounded cursor-pointer text-white min-w-fit"
-                        title="Out of Service"
-                        data-testid={`button-out-of-service-${room.id}`}
-                      >
-                        <Wrench className="h-3 w-3" />
-                      </button>
-                    </div>
                   </div>
                 );
                 })}
