@@ -402,9 +402,9 @@ export function AppSidebar() {
               <p className="text-xs text-muted-foreground capitalize truncate">{user?.role}</p>
             </div>
           </div>
-          <Link href="/api/logout" data-testid="link-logout">
+          <a href="/api/logout" data-testid="link-logout">
             <LogOut className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors" />
-          </Link>
+          </a>
         </div>
       </SidebarFooter>
     </Sidebar>
