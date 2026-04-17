@@ -633,6 +633,47 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    // Enable pg_trgm and add trigram GIN indexes on columns used in ILIKE booking
+    // searches so that full-table sequential scans are replaced with fast index
+    // lookups even with tens-of-thousands of rows.
+    name: "add_booking_search_trigram_indexes",
+    async run() {
+      const client = await pool.connect();
+      try {
+        await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+
+        const indexes: Array<{ name: string; sql: string }> = [
+          {
+            name: "idx_guests_full_name_trgm",
+            sql: "CREATE INDEX IF NOT EXISTS idx_guests_full_name_trgm ON guests USING GIN (full_name gin_trgm_ops)",
+          },
+          {
+            name: "idx_guests_phone_trgm",
+            sql: "CREATE INDEX IF NOT EXISTS idx_guests_phone_trgm ON guests USING GIN (phone gin_trgm_ops)",
+          },
+          {
+            name: "idx_rooms_room_number_trgm",
+            sql: "CREATE INDEX IF NOT EXISTS idx_rooms_room_number_trgm ON rooms USING GIN (room_number gin_trgm_ops)",
+          },
+          {
+            name: "idx_properties_name_trgm",
+            sql: "CREATE INDEX IF NOT EXISTS idx_properties_name_trgm ON properties USING GIN (name gin_trgm_ops)",
+          },
+        ];
+
+        for (const idx of indexes) {
+          try {
+            await client.query(idx.sql);
+          } catch (err: any) {
+            console.warn(`[MIGRATIONS] add_booking_search_trigram_indexes: skipped ${idx.name} — ${err.message}`);
+          }
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
