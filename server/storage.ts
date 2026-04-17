@@ -4155,200 +4155,203 @@ export class DatabaseStorage implements IStorage {
     const staffList = await db.select().from(staffMembers).where(
       and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true))
     );
-    
+
+    if (staffList.length === 0) return [];
+
+    const staffIds = staffList.map(s => s.id);
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
-    
-    const detailedSalaries = await Promise.all(
-      staffList.map(async (staff) => {
-        // Get attendance records for this staff member in this period
-        const attendanceList = await db
-          .select()
-          .from(attendanceRecords)
-          .where(
-            and(
-              eq(attendanceRecords.staffId, staff.id),
-              gte(attendanceRecords.attendanceDate, startDateStr),
-              lte(attendanceRecords.attendanceDate, endDateStr)
-            )
-          );
 
-        // Count attendance exceptions (exception-based system)
-        const absentDays = attendanceList.filter(a => a.status === 'absent').length;
-        const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
-        const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
+    // Batch-fetch all data in 4 queries total (1 staff + 3 data queries)
+    // Advances and payments are fetched in full (no date filter) and split in memory
+    const [
+      allAttendance,
+      allAdvances,
+      allPayments,
+    ] = await Promise.all([
+      db.select().from(attendanceRecords).where(
+        and(
+          inArray(attendanceRecords.staffId, staffIds),
+          gte(attendanceRecords.attendanceDate, startDateStr),
+          lte(attendanceRecords.attendanceDate, endDateStr)
+        )
+      ),
+      db.select().from(salaryAdvances).where(
+        inArray(salaryAdvances.staffMemberId, staffIds)
+      ),
+      db.select().from(salaryPayments).where(
+        inArray(salaryPayments.staffMemberId, staffIds)
+      ),
+    ]);
 
-        // CHANGE 1: Use actual calendar days (no Sunday exclusion — all 28/29/30/31 days)
-        let totalDays = 0;
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-          totalDays++;
-        }
+    // Group and split results by staffId for O(1) lookup
+    const attendanceByStaff = new Map<number, typeof allAttendance>();
+    for (const rec of allAttendance) {
+      const arr = attendanceByStaff.get(rec.staffId) ?? [];
+      arr.push(rec);
+      attendanceByStaff.set(rec.staffId, arr);
+    }
 
-        // Determine applicable days for mid-month joiners (also counts all calendar days)
-        let applicableDays = totalDays;
-        let isJoiningMonth = false;
-        if (staff.joiningDate) {
-          const joinDate = new Date(staff.joiningDate);
-          joinDate.setHours(0, 0, 0, 0);
-          const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-          if (joinDate > monthStart && joinDate <= endDate) {
-            isJoiningMonth = true;
-            applicableDays = 0;
-            for (let d = new Date(joinDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-              applicableDays++;
-            }
+    const currentAdvancesByStaff = new Map<number, typeof allAdvances>();
+    const previousAdvancesByStaff = new Map<number, typeof allAdvances>();
+    for (const adv of allAdvances) {
+      const advDate = adv.advanceDate instanceof Date ? adv.advanceDate : new Date(adv.advanceDate as string);
+      const isCurrent = advDate >= startDate && advDate <= endDate;
+      const map = isCurrent ? currentAdvancesByStaff : previousAdvancesByStaff;
+      const arr = map.get(adv.staffMemberId) ?? [];
+      arr.push(adv);
+      map.set(adv.staffMemberId, arr);
+    }
+
+    const currentPaymentsByStaff = new Map<number, typeof allPayments>();
+    const previousPaymentsByStaff = new Map<number, typeof allPayments>();
+    for (const pay of allPayments) {
+      const payDate = pay.paymentDate instanceof Date ? pay.paymentDate : new Date(pay.paymentDate as string);
+      const isCurrent = payDate >= startDate && payDate <= endDate;
+      const map = isCurrent ? currentPaymentsByStaff : previousPaymentsByStaff;
+      const arr = map.get(pay.staffMemberId) ?? [];
+      arr.push(pay);
+      map.set(pay.staffMemberId, arr);
+    }
+
+    // Pre-compute total calendar days (same for every staff in the same period)
+    let totalDays = 0;
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      totalDays++;
+    }
+
+    const detailedSalaries = staffList.map((staff) => {
+      const attendanceList = attendanceByStaff.get(staff.id) ?? [];
+      const currentAdvances = currentAdvancesByStaff.get(staff.id) ?? [];
+      const staffPaymentsThisMonth = currentPaymentsByStaff.get(staff.id) ?? [];
+      const previousAdvances = previousAdvancesByStaff.get(staff.id) ?? [];
+      const prevStaffPayments = previousPaymentsByStaff.get(staff.id) ?? [];
+
+      // Count attendance exceptions (exception-based system)
+      const absentDays = attendanceList.filter(a => a.status === 'absent').length;
+      const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
+      const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
+
+      // Determine applicable days for mid-month joiners (also counts all calendar days)
+      let applicableDays = totalDays;
+      let isJoiningMonth = false;
+      if (staff.joiningDate) {
+        const joinDate = new Date(staff.joiningDate);
+        joinDate.setHours(0, 0, 0, 0);
+        const monthStart = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        if (joinDate > monthStart && joinDate <= endDate) {
+          isJoiningMonth = true;
+          applicableDays = 0;
+          for (let d = new Date(joinDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            applicableDays++;
           }
         }
+      }
 
-        const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
+      const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
 
-        // Daily rate always based on full month calendar days (no rounding until final)
-        const dailyRate = totalDays > 0 ? baseSalaryNum / totalDays : 0;
+      // Daily rate always based on full month calendar days (no rounding until final)
+      const dailyRate = totalDays > 0 ? baseSalaryNum / totalDays : 0;
 
-        // Prorated base for mid-month joiners; full base for everyone else
-        const proratedBase = isJoiningMonth ? applicableDays * dailyRate : baseSalaryNum;
+      // Prorated base for mid-month joiners; full base for everyone else
+      const proratedBase = isJoiningMonth ? applicableDays * dailyRate : baseSalaryNum;
 
-        // CHANGE 2: New leave policy — first 2 leaves (absent + leave combined) are PAID
-        const totalLeave = absentDays + leaveDays;
-        const paidLeave = Math.min(2, totalLeave);       // first 2 always paid, no carry forward
-        const leaveWithoutPay = totalLeave - paidLeave;  // only these reduce salary
+      // New leave policy — first 2 leaves (absent + leave combined) are PAID
+      const totalLeave = absentDays + leaveDays;
+      const paidLeave = Math.min(2, totalLeave);
+      const leaveWithoutPay = totalLeave - paidLeave;
 
-        // CHANGE 3 & 4: Half days are SEPARATE (not part of paid leave), always deducted
-        const deduction = (leaveWithoutPay * dailyRate) + (halfDays * dailyRate * 0.5);
+      // Half days are SEPARATE (not part of paid leave), always deducted
+      const deduction = (leaveWithoutPay * dailyRate) + (halfDays * dailyRate * 0.5);
 
-        // Informational: present = applicable days minus all exceptions
-        const presentDays = Math.max(0, applicableDays - absentDays - leaveDays - halfDays);
+      // Informational: present = applicable days minus all exceptions
+      const presentDays = Math.max(0, applicableDays - absentDays - leaveDays - halfDays);
 
-        // Get all advances for this staff member in current period
-        const currentAdvances = await db
-          .select()
-          .from(salaryAdvances)
-          .where(
-            and(
-              eq(salaryAdvances.staffMemberId, staff.id),
-              gte(salaryAdvances.advanceDate, startDate),
-              lte(salaryAdvances.advanceDate, endDate)
-            )
-          );
+      // Separate regular and extra advances
+      const regularAdvances = currentAdvances.filter(a => !a.advanceType || a.advanceType === 'regular');
+      const extraAdvances = currentAdvances.filter(a => a.advanceType === 'extra');
 
-        // Separate regular and extra advances
-        const regularAdvances = currentAdvances.filter(a => !a.advanceType || a.advanceType === 'regular');
-        const extraAdvances = currentAdvances.filter(a => a.advanceType === 'extra');
-        
-        const totalRegularAdvances = regularAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
-        const totalExtraAdvances = extraAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
-        const totalAdvances = totalRegularAdvances + totalExtraAdvances;
+      const totalRegularAdvances = regularAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+      const totalExtraAdvances = extraAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+      const totalAdvances = totalRegularAdvances + totalExtraAdvances;
 
-        // Get payments in current period for this staff member
-        const staffPaymentsThisMonth = await db
-          .select()
-          .from(salaryPayments)
-          .where(
-            and(
-              eq(salaryPayments.staffMemberId, staff.id),
-              gte(salaryPayments.paymentDate, startDate),
-              lte(salaryPayments.paymentDate, endDate)
-            )
-          );
-        const totalPaymentsMade = staffPaymentsThisMonth.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
+      const totalPaymentsMade = staffPaymentsThisMonth.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
 
-        // === CARRY FORWARD CALCULATION ===
-        // Get all advances taken before current month
-        const previousAdvances = await db
-          .select()
-          .from(salaryAdvances)
-          .where(
-            and(
-              eq(salaryAdvances.staffMemberId, staff.id),
-              lt(salaryAdvances.advanceDate, startDate)
-            )
-          );
-        const totalPreviousAdvances = previousAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+      // === CARRY FORWARD CALCULATION ===
+      const totalPreviousAdvances = previousAdvances.reduce((sum, adv) => sum + parseFloat(adv.amount.toString()), 0);
+      const totalPreviousPayments = prevStaffPayments.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
 
-        // Get all payments made before current month for this staff member
-        const prevStaffPayments = await db
-          .select()
-          .from(salaryPayments)
-          .where(
-            and(
-              eq(salaryPayments.staffMemberId, staff.id),
-              lt(salaryPayments.paymentDate, startDate)
-            )
-          );
-        const totalPreviousPayments = prevStaffPayments.reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0);
+      // Calculate months of service before current month
+      const joiningDate = staff.joiningDate ? new Date(staff.joiningDate) : new Date(2024, 0, 1);
+      const monthsBeforeStart = Math.max(0,
+        (startDate.getFullYear() - joiningDate.getFullYear()) * 12 +
+        (startDate.getMonth() - joiningDate.getMonth())
+      );
 
-        // Calculate months of service before current month
-        const joiningDate = staff.joiningDate ? new Date(staff.joiningDate) : new Date(2024, 0, 1);
-        const monthsBeforeStart = Math.max(0, 
-          (startDate.getFullYear() - joiningDate.getFullYear()) * 12 + 
-          (startDate.getMonth() - joiningDate.getMonth())
-        );
-        
-        // Total salary owed before current month (based on base salary * months)
-        const totalPreviousSalaryOwed = monthsBeforeStart * baseSalaryNum;
-        
-        // Previous pending = what was owed - what was paid - advances already taken
-        const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
+      // Total salary owed before current month (based on base salary * months)
+      const totalPreviousSalaryOwed = monthsBeforeStart * baseSalaryNum;
 
-        // CHANGE 4 & 5: Gross → Net → Final (no double deductions, no rounding until final)
-        const grossSalary = Math.max(0, proratedBase - deduction);
-        const netSalary = grossSalary - totalAdvances;  // advances deducted ONCE here only
-        const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade);
+      // Previous pending = what was owed - what was paid - advances already taken
+      const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
 
-        return {
-          staffId: staff.id,
-          staffName: staff.name,
-          jobTitle: staff.jobTitle || 'N/A',
-          baseSalary: baseSalaryNum,
-          // Attendance breakdown
-          presentDays,
-          absentDays,
-          leaveDays,
-          halfDays,
-          // New leave policy fields
-          totalDays,
-          totalLeave,
-          paidLeave,
-          leaveWithoutPay,
-          // Financials (all rounded to 2dp only at return)
-          dailyRate: Math.round(dailyRate * 100) / 100,
-          deduction: Math.round(deduction * 100) / 100,
-          grossSalary: Math.round(grossSalary * 100) / 100,
-          netSalary: Math.round(netSalary * 100) / 100,
-          finalPayable: Math.round(finalPayable * 100) / 100,
-          // Advances breakdown
-          regularAdvances: Math.round(totalRegularAdvances * 100) / 100,
-          extraAdvances: Math.round(totalExtraAdvances * 100) / 100,
-          totalAdvances: Math.round(totalAdvances * 100) / 100,
-          advances: currentAdvances.map(a => ({
-            id: a.id,
-            amount: parseFloat(a.amount.toString()),
-            date: a.advanceDate,
-            reason: a.reason,
-            type: a.advanceType || 'regular',
-          })),
-          // Payments
-          paymentsMade: Math.round(totalPaymentsMade * 100) / 100,
-          payments: staffPaymentsThisMonth.map(p => ({
-            id: p.id,
-            amount: parseFloat(p.amount.toString()),
-            date: p.paymentDate,
-            method: p.paymentMethod,
-            reference: p.referenceNumber,
-          })),
-          // Carry forward
-          previousPending: Math.round(previousPending * 100) / 100,
-          // Backward-compatible aliases (so any existing code still works)
-          totalWorkingDays: totalDays,
-          attendanceDeductions: Math.round(deduction * 100) / 100,
-          currentMonthGross: Math.round(grossSalary * 100) / 100,
-          currentMonthNet: Math.round(netSalary * 100) / 100,
-          totalPayable: Math.round(finalPayable * 100) / 100,
-          finalSalary: Math.round(finalPayable * 100) / 100,
-          status: finalPayable <= 0 ? 'paid' : finalPayable < netSalary ? 'partial' : 'pending',
-        };
-      })
-    );
+      // Gross → Net → Final (no double deductions, no rounding until final)
+      const grossSalary = Math.max(0, proratedBase - deduction);
+      const netSalary = grossSalary - totalAdvances;
+      const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade);
+
+      return {
+        staffId: staff.id,
+        staffName: staff.name,
+        jobTitle: staff.jobTitle || 'N/A',
+        baseSalary: baseSalaryNum,
+        // Attendance breakdown
+        presentDays,
+        absentDays,
+        leaveDays,
+        halfDays,
+        // New leave policy fields
+        totalDays,
+        totalLeave,
+        paidLeave,
+        leaveWithoutPay,
+        // Financials (all rounded to 2dp only at return)
+        dailyRate: Math.round(dailyRate * 100) / 100,
+        deduction: Math.round(deduction * 100) / 100,
+        grossSalary: Math.round(grossSalary * 100) / 100,
+        netSalary: Math.round(netSalary * 100) / 100,
+        finalPayable: Math.round(finalPayable * 100) / 100,
+        // Advances breakdown
+        regularAdvances: Math.round(totalRegularAdvances * 100) / 100,
+        extraAdvances: Math.round(totalExtraAdvances * 100) / 100,
+        totalAdvances: Math.round(totalAdvances * 100) / 100,
+        advances: currentAdvances.map(a => ({
+          id: a.id,
+          amount: parseFloat(a.amount.toString()),
+          date: a.advanceDate,
+          reason: a.reason,
+          type: a.advanceType || 'regular',
+        })),
+        // Payments
+        paymentsMade: Math.round(totalPaymentsMade * 100) / 100,
+        payments: staffPaymentsThisMonth.map(p => ({
+          id: p.id,
+          amount: parseFloat(p.amount.toString()),
+          date: p.paymentDate,
+          method: p.paymentMethod,
+          reference: p.referenceNumber,
+        })),
+        // Carry forward
+        previousPending: Math.round(previousPending * 100) / 100,
+        // Backward-compatible aliases (so any existing code still works)
+        totalWorkingDays: totalDays,
+        attendanceDeductions: Math.round(deduction * 100) / 100,
+        currentMonthGross: Math.round(grossSalary * 100) / 100,
+        currentMonthNet: Math.round(netSalary * 100) / 100,
+        totalPayable: Math.round(finalPayable * 100) / 100,
+        finalSalary: Math.round(finalPayable * 100) / 100,
+        status: finalPayable <= 0 ? 'paid' : finalPayable < netSalary ? 'partial' : 'pending',
+      };
+    });
 
     return detailedSalaries.sort((a, b) => a.staffName.localeCompare(b.staffName));
   }
