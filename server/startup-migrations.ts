@@ -635,6 +635,42 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Composite indexes combining staff ID with date columns for salary history
+    // range queries.  These allow the query planner to resolve both the staff
+    // filter and the date range in a single index scan instead of two separate
+    // lookups, which becomes increasingly important as the HR tables grow.
+    name: "add_salary_history_composite_indexes",
+    async run() {
+      const indexes: Array<{ name: string; sql: string }> = [
+        {
+          name: "idx_attendance_staff_id_date",
+          sql: "CREATE INDEX IF NOT EXISTS idx_attendance_staff_id_date ON attendance_records (staff_id, attendance_date)",
+        },
+        {
+          name: "idx_salary_adv_staff_id_date",
+          sql: "CREATE INDEX IF NOT EXISTS idx_salary_adv_staff_id_date ON salary_advances (staff_member_id, advance_date)",
+        },
+        {
+          name: "idx_salary_pay_staff_id_date",
+          sql: "CREATE INDEX IF NOT EXISTS idx_salary_pay_staff_id_date ON salary_payments (staff_member_id, payment_date)",
+        },
+      ];
+
+      const client = await pool.connect();
+      try {
+        for (const idx of indexes) {
+          try {
+            await client.query(idx.sql);
+          } catch (err: any) {
+            console.warn(`[MIGRATIONS] add_salary_history_composite_indexes: skipped ${idx.name} — ${err.message}`);
+          }
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
+  {
     // Enable pg_trgm and add trigram GIN indexes on columns used in ILIKE booking
     // searches so that full-table sequential scans are replaced with fast index
     // lookups even with tens-of-thousands of rows.
