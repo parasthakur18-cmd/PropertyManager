@@ -3018,12 +3018,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           ? (req.query.status as 'active' | 'completed' | 'cancelled' | 'no_show')
           : undefined;
         const checkinDate = req.query.checkinDate ? String(req.query.checkinDate) : undefined;
+        const dateFrom = req.query.from ? String(req.query.from) : undefined;
+        const dateTo = req.query.to ? String(req.query.to) : undefined;
         const search = req.query.search ? String(req.query.search).trim() : undefined;
 
         if (!tenant.hasUnlimitedAccess && (tenant.assignedPropertyIds?.length ?? 0) === 0) {
           return res.json({ data: [], total: 0, counts: { active: 0, completed: 0, cancelled: 0, no_show: 0 } });
         }
-        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, propertyIds, search });
+        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, search });
         return res.json(result);
       }
 
@@ -18870,6 +18872,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           ? (parseFloat(amount?.amountAfterTax?.toString() || "0") / rooms_.length)
           : parseFloat(amount?.amountAfterTax?.toString() || "0");
 
+        // Track room IDs already assigned in this reservation to prevent the
+        // same physical room being assigned to multiple stays in one multi-room booking
+        const alreadyAssignedRoomIds = new Set<number>();
+
         for (const rd of rooms_) {
           const incomingRoomId = rd.roomId != null ? String(rd.roomId).trim() : null;
           const incomingRoomCode = rd.roomCode ? String(rd.roomCode).trim() : "";
@@ -18933,17 +18939,22 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           let assignedRoomId: number | null = null;
           let stayStatus: "confirmed" | "tbs" = "tbs";
 
-          if (mappedRoomRows.length > 0) {
-            assignedRoomId = mappedRoomRows[0].id;
+          // Pick the first available room that hasn't already been assigned to another
+          // stay in this same multi-room reservation
+          const candidateRoom = mappedRoomRows.find(r => !alreadyAssignedRoomIds.has(r.id));
+          if (candidateRoom) {
+            assignedRoomId = candidateRoom.id;
+            alreadyAssignedRoomIds.add(assignedRoomId);
             stayStatus = "confirmed";
             console.log("[AIOSELL] Assigned Room:", {
               roomId: assignedRoomId,
-              roomNumber: mappedRoomRows[0].roomNumber,
+              roomNumber: candidateRoom.roomNumber,
               roomType: mapping.hostezeeRoomType,
               totalAvailable: mappedRoomRows.length,
+              alreadyAssigned: alreadyAssignedRoomIds.size - 1,
             });
           } else {
-            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} → TBS`);
+            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} (already assigned: ${[...alreadyAssignedRoomIds].join(",")}) → TBS`);
           }
 
           resolvedRooms.push({

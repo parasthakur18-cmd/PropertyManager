@@ -146,6 +146,8 @@ export default function Bookings() {
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [qrBookingId, setQrBookingId] = useState<number | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [cancelBookingId, setCancelBookingId] = useState<number | null>(null);
@@ -192,19 +194,21 @@ export default function Bookings() {
   }, [isDialogOpen]);
 
   // Reset to page 1 when any filter changes
-  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter, debouncedSearch]);
+  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch]);
 
   type BookingCounts = { active: number; completed: number; cancelled: number; no_show: number };
   type PaginatedBookingsResponse = { data: Booking[]; total: number; counts: BookingCounts };
 
   const { data: bookingsResponse, isLoading, isFetching } = useQuery<PaginatedBookingsResponse>({
-    queryKey: ["/api/bookings", activeTab, checkinDateFilter, debouncedSearch, currentPage],
+    queryKey: ["/api/bookings", activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String((currentPage - 1) * PAGE_SIZE));
       if (activeTab !== "all") params.set("status", activeTab);
       if (checkinDateFilter) params.set("checkinDate", checkinDateFilter);
+      if (dateFrom) params.set("from", dateFrom);
+      if (dateTo) params.set("to", dateTo);
       if (debouncedSearch) params.set("search", debouncedSearch);
       const res = await fetch(`/api/bookings?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch bookings");
@@ -1236,10 +1240,53 @@ export default function Bookings() {
             )}
           </div>
 
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="date-from"
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="pl-9 h-9 w-[150px]"
+                data-testid="input-date-from-filter"
+                placeholder="From"
+                title="From date"
+              />
+            </div>
+            <span className="text-muted-foreground text-sm">–</span>
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="date-to"
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="pl-9 h-9 w-[150px]"
+                data-testid="input-date-to-filter"
+                placeholder="To"
+                title="To date"
+              />
+            </div>
+            {(dateFrom || dateTo) && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => { setDateFrom(""); setDateTo(""); }}
+                className="h-9 w-9"
+                data-testid="button-clear-date-range-filter"
+                title="Clear date range"
+              >
+                <span className="text-sm">✕</span>
+              </Button>
+            )}
+          </div>
+
           {/* Filter Badge */}
-          {(searchQuery || checkinDateFilter) && (
+          {(searchQuery || checkinDateFilter || dateFrom || dateTo) && (
             <Badge variant="secondary" className="h-7">
-              {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) !== 1 ? 's' : ''}
+              {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) !== 1 ? 's' : ''}
             </Badge>
           )}
         </div>

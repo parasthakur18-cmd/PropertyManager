@@ -10,7 +10,7 @@ import {
   type AiosellRoomMapping,
   type AiosellRatePlan,
 } from "@shared/schema";
-import { eq, and, desc, inArray, lte, gte, isNull } from "drizzle-orm";
+import { eq, and, desc, inArray, lte, gte, isNull, isNotNull } from "drizzle-orm";
 import { rooms, bookings, bookingRoomStays } from "@shared/schema";
 
 interface AiosellApiResponse {
@@ -421,6 +421,10 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
     // These represent rooms that are sold but not yet physically assigned
     const activeBookingIds = activeBookings.map(b => b.id);
     const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+    // Also fetch confirmed room stays (roomId NOT NULL) from booking_room_stays.
+    // These are extra rooms beyond the primary booking.roomId — present in multi-room
+    // OTA bookings and manual group bookings — and must be counted as booked inventory.
+    const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
     if (activeBookingIds.length > 0) {
       const tbsStays = await db.select({
         bookingId: bookingRoomStays.bookingId,
@@ -439,6 +443,24 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
         if (stay.aiosellRoomCode) {
           tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
         }
+      }
+
+      const confirmedStays = await db.select({
+        bookingId: bookingRoomStays.bookingId,
+        roomId: bookingRoomStays.roomId,
+      }).from(bookingRoomStays)
+        .where(
+          and(
+            inArray(bookingRoomStays.bookingId, activeBookingIds),
+            isNotNull(bookingRoomStays.roomId),
+          )
+        );
+      for (const stay of confirmedStays) {
+        if (stay.roomId == null) continue;
+        if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) {
+          confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
+        }
+        confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
       }
     }
 
@@ -531,6 +553,13 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
                 for (const rid of booking.roomIds) {
                   if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
                 }
+              }
+              // Also count rooms from booking_room_stays with an assigned roomId
+              // (covers multi-room OTA bookings and manual group bookings where
+              //  extra rooms are stored in stays rather than booking.roomIds)
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(booking.id) || [];
+              for (const rid of stayRoomIds) {
+                if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
               }
               const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
               for (const stay of tbsForBooking) {

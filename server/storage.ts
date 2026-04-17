@@ -190,6 +190,8 @@ export interface IStorage {
     offset: number;
     statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
     checkinDate?: string;
+    dateFrom?: string;
+    dateTo?: string;
     propertyIds?: number[];
     search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }>;
@@ -933,10 +935,12 @@ export class DatabaseStorage implements IStorage {
     offset: number;
     statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
     checkinDate?: string;
+    dateFrom?: string;
+    dateTo?: string;
     propertyIds?: number[];
     search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }> {
-    const { limit, offset, statusFilter, checkinDate, propertyIds, search } = params;
+    const { limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, search } = params;
 
     // Build the row-filter conditions (status + date + tenant + search)
     const rowConditions: any[] = [];
@@ -954,6 +958,13 @@ export class DatabaseStorage implements IStorage {
     }
     if (checkinDate) {
       rowConditions.push(sql`${bookings.checkInDate}::text = ${checkinDate}`);
+    }
+    if (dateFrom && dateTo) {
+      rowConditions.push(sql`${bookings.checkInDate}::text BETWEEN ${dateFrom} AND ${dateTo}`);
+    } else if (dateFrom) {
+      rowConditions.push(sql`${bookings.checkInDate}::text >= ${dateFrom}`);
+    } else if (dateTo) {
+      rowConditions.push(sql`${bookings.checkInDate}::text <= ${dateTo}`);
     }
     if (search && search.trim().length > 0) {
       const term = `%${search.trim()}%`;
