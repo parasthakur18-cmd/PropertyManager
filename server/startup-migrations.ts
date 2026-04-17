@@ -604,7 +604,8 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
         // Wallet transactions
         { name: "idx_wallet_txn_wallet_id",   sql: "CREATE INDEX IF NOT EXISTS idx_wallet_txn_wallet_id   ON wallet_transactions (wallet_id)" },
         { name: "idx_wallet_txn_created_at",  sql: "CREATE INDEX IF NOT EXISTS idx_wallet_txn_created_at  ON wallet_transactions (created_at DESC)" },
-        // Staff / HR
+        // Staff / HR — these three indexes are critical for salary lookup batch queries
+        // (getDetailedStaffSalaries uses IN-array filters on staff_member_id / staff_id)
         { name: "idx_salary_pay_staff_id",    sql: "CREATE INDEX IF NOT EXISTS idx_salary_pay_staff_id    ON salary_payments (staff_member_id)" },
         { name: "idx_salary_pay_date",        sql: "CREATE INDEX IF NOT EXISTS idx_salary_pay_date        ON salary_payments (payment_date)" },
         { name: "idx_salary_adv_staff_id",    sql: "CREATE INDEX IF NOT EXISTS idx_salary_adv_staff_id    ON salary_advances (staff_member_id)" },
