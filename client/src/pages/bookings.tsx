@@ -191,20 +191,21 @@ export default function Bookings() {
     }
   }, [isDialogOpen]);
 
-  // Reset to page 1 when the status tab or date filter changes
-  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter]);
+  // Reset to page 1 when any filter changes
+  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter, debouncedSearch]);
 
   type BookingCounts = { active: number; completed: number; cancelled: number; no_show: number };
   type PaginatedBookingsResponse = { data: Booking[]; total: number; counts: BookingCounts };
 
   const { data: bookingsResponse, isLoading, isFetching } = useQuery<PaginatedBookingsResponse>({
-    queryKey: ["/api/bookings", activeTab, checkinDateFilter, currentPage],
+    queryKey: ["/api/bookings", activeTab, checkinDateFilter, debouncedSearch, currentPage],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String((currentPage - 1) * PAGE_SIZE));
       if (activeTab !== "all") params.set("status", activeTab);
       if (checkinDateFilter) params.set("checkinDate", checkinDateFilter);
+      if (debouncedSearch) params.set("search", debouncedSearch);
       const res = await fetch(`/api/bookings?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch bookings");
       return res.json();
@@ -1137,24 +1138,10 @@ export default function Bookings() {
     return map;
   }, [rooms]);
 
-  // Status + date filtering is now server-side; client-side search only applies to current page
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
-    if (!debouncedSearch) return bookings;
-    const query = debouncedSearch.toLowerCase();
-    return bookings.filter((booking) => {
-      const property = propertyMap.get(booking.propertyId);
-      const guest = booking.guestId ? guestMap.get(booking.guestId) : undefined;
-      const room = booking.roomId ? roomMap.get(booking.roomId) : undefined;
-      return (
-        guest?.fullName?.toLowerCase().includes(query) ||
-        guest?.phone?.toLowerCase().includes(query) ||
-        property?.name?.toLowerCase().includes(query) ||
-        room?.roomNumber?.toLowerCase().includes(query) ||
-        booking.status?.toLowerCase().includes(query)
-      );
-    });
-  }, [bookings, debouncedSearch, guestMap, propertyMap, roomMap]);
+    return bookings;
+  }, [bookings]);
 
   // Counts come from the server (across all pages, not just current page)
   const bookingCounts = {

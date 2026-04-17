@@ -191,6 +191,7 @@ export interface IStorage {
     statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
     checkinDate?: string;
     propertyIds?: number[];
+    search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }>;
   getActiveBookingsRaw(propertyIds?: number[]): Promise<Booking[]>;
   getBooking(id: number): Promise<Booking | undefined>;
@@ -933,10 +934,11 @@ export class DatabaseStorage implements IStorage {
     statusFilter?: 'active' | 'completed' | 'cancelled' | 'no_show';
     checkinDate?: string;
     propertyIds?: number[];
+    search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }> {
-    const { limit, offset, statusFilter, checkinDate, propertyIds } = params;
+    const { limit, offset, statusFilter, checkinDate, propertyIds, search } = params;
 
-    // Build the row-filter conditions (status + date + tenant)
+    // Build the row-filter conditions (status + date + tenant + search)
     const rowConditions: any[] = [];
     if (propertyIds && propertyIds.length > 0) {
       rowConditions.push(inArray(bookings.propertyId, propertyIds));
@@ -952,6 +954,17 @@ export class DatabaseStorage implements IStorage {
     }
     if (checkinDate) {
       rowConditions.push(sql`${bookings.checkInDate}::text = ${checkinDate}`);
+    }
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim()}%`;
+      rowConditions.push(
+        or(
+          sql`EXISTS (SELECT 1 FROM ${guests} WHERE ${guests.id} = ${bookings.guestId} AND (${guests.fullName} ILIKE ${term} OR ${guests.phone} ILIKE ${term}))`,
+          sql`EXISTS (SELECT 1 FROM ${rooms} WHERE ${rooms.id} = ${bookings.roomId} AND ${rooms.roomNumber} ILIKE ${term})`,
+          sql`EXISTS (SELECT 1 FROM ${properties} WHERE ${properties.id} = ${bookings.propertyId} AND ${properties.name} ILIKE ${term})`,
+          sql`${bookings.status} ILIKE ${term}`
+        )!
+      );
     }
     const rowWhere = rowConditions.length > 0 ? and(...rowConditions) : undefined;
 

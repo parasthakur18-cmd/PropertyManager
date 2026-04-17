@@ -3017,11 +3017,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           ? (req.query.status as 'active' | 'completed' | 'cancelled' | 'no_show')
           : undefined;
         const checkinDate = req.query.checkinDate ? String(req.query.checkinDate) : undefined;
+        const search = req.query.search ? String(req.query.search).trim() : undefined;
 
         if (!tenant.hasUnlimitedAccess && (tenant.assignedPropertyIds?.length ?? 0) === 0) {
           return res.json({ data: [], total: 0, counts: { active: 0, completed: 0, cancelled: 0, no_show: 0 } });
         }
-        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, propertyIds });
+        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, propertyIds, search });
         return res.json(result);
       }
 
