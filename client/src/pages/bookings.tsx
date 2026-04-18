@@ -1216,7 +1216,7 @@ export default function Bookings() {
           {/* Check-in Date Filter */}
           <div className="flex items-center gap-1">
             <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 id="checkin-date"
                 type="date"
@@ -1243,7 +1243,7 @@ export default function Bookings() {
           {/* Date Range Filter */}
           <div className="flex items-center gap-1">
             <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 id="date-from"
                 type="date"
@@ -1257,7 +1257,7 @@ export default function Bookings() {
             </div>
             <span className="text-muted-foreground text-sm">–</span>
             <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
                 id="date-to"
                 type="date"

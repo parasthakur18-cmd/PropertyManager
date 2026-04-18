@@ -957,14 +957,14 @@ export class DatabaseStorage implements IStorage {
       rowConditions.push(sql`${bookings.status} = 'no_show'`);
     }
     if (checkinDate) {
-      rowConditions.push(sql`${bookings.checkInDate}::text = ${checkinDate}`);
+      rowConditions.push(sql`${bookings.checkInDate} = ${checkinDate}::date`);
     }
     if (dateFrom && dateTo) {
-      rowConditions.push(sql`${bookings.checkInDate}::text BETWEEN ${dateFrom} AND ${dateTo}`);
+      rowConditions.push(sql`${bookings.checkInDate} BETWEEN ${dateFrom}::date AND ${dateTo}::date`);
     } else if (dateFrom) {
-      rowConditions.push(sql`${bookings.checkInDate}::text >= ${dateFrom}`);
+      rowConditions.push(sql`${bookings.checkInDate} >= ${dateFrom}::date`);
     } else if (dateTo) {
-      rowConditions.push(sql`${bookings.checkInDate}::text <= ${dateTo}`);
+      rowConditions.push(sql`${bookings.checkInDate} <= ${dateTo}::date`);
     }
     if (search && search.trim().length > 0) {
       const term = `%${search.trim()}%`;
