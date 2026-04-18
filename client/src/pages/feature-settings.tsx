@@ -472,6 +472,75 @@ export default function FeatureSettings() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  // Daily Report
+  const [drPhoneInput, setDrPhoneInput] = useState("");
+  const [drSendDate, setDrSendDate] = useState(new Date().toISOString().split("T")[0]);
+  const [drPreview, setDrPreview] = useState<string | null>(null);
+  const [drPreviewLoading, setDrPreviewLoading] = useState(false);
+
+  const { data: drSettings, isLoading: drLoading } = useQuery<any>({
+    queryKey: ["/api/daily-report-settings"],
+  });
+
+  const drUpdateMutation = useMutation({
+    mutationFn: (updates: any) => apiRequest("/api/daily-report-settings", "PATCH", updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-report-settings"] });
+      toast({ title: "Saved", description: "Daily report settings updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const drSendNowMutation = useMutation({
+    mutationFn: (date: string) => apiRequest("/api/daily-report-settings/send-now", "POST", { date }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-report-settings"] });
+      toast({
+        title: data.success ? "Report Sent!" : "Partial Failure",
+        description: (data.details || []).join("\n") || data.message,
+        variant: data.success ? "default" : "destructive",
+      });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const loadDrPreview = async () => {
+    if (!drSettings?.propertyIds?.length) return;
+    setDrPreviewLoading(true);
+    setDrPreview(null);
+    try {
+      const ids = drSettings.propertyIds.join(",");
+      const res = await fetch(`/api/daily-report-settings/preview?date=${drSendDate}&propertyIds=${ids}`);
+      const json = await res.json();
+      setDrPreview(json.preview || json.message || "No preview");
+    } catch {
+      setDrPreview("Failed to load preview");
+    } finally {
+      setDrPreviewLoading(false);
+    }
+  };
+
+  const addDrPhone = () => {
+    const cleaned = drPhoneInput.trim().replace(/\s/g, "");
+    if (!cleaned) return;
+    const current = drSettings?.phoneNumbers || [];
+    if (!current.includes(cleaned)) {
+      drUpdateMutation.mutate({ phoneNumbers: [...current, cleaned] });
+    }
+    setDrPhoneInput("");
+  };
+
+  const removeDrPhone = (phone: string) => {
+    const current = drSettings?.phoneNumbers || [];
+    drUpdateMutation.mutate({ phoneNumbers: current.filter((p: string) => p !== phone) });
+  };
+
+  const toggleDrProperty = (pid: number) => {
+    const current: number[] = drSettings?.propertyIds || [];
+    const updated = current.includes(pid) ? current.filter((id: number) => id !== pid) : [...current, pid];
+    drUpdateMutation.mutate({ propertyIds: updated });
+  };
+
   const activeProperties = (properties as any[]).filter((p: any) => p.isActive !== false);
 
   if (!selectedProperty && !user?.assignedPropertyIds?.[0]) {
@@ -1090,6 +1159,154 @@ export default function FeatureSettings() {
                 <strong>How it works:</strong> If globally OFF, no message is sent. If globally ON, the system checks
                 the property rule. Use "Property contact number" to send to the number set under Properties → Edit → Contact Phone.
               </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Daily Report ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <TrendingUp className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+              <div>
+                <CardTitle>Daily Report (WhatsApp)</CardTitle>
+                <CardDescription>
+                  Sends a revenue summary via WhatsApp every night at 11 PM for selected properties.
+                </CardDescription>
+              </div>
+            </div>
+            {drLoading ? (
+              <Skeleton className="h-6 w-11" />
+            ) : (
+              <Switch
+                data-testid="toggle-daily-report"
+                checked={!!drSettings?.isEnabled}
+                onCheckedChange={(v) => drUpdateMutation.mutate({ isEnabled: v })}
+                disabled={drUpdateMutation.isPending}
+              />
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Properties */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Properties to include</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {activeProperties.map((prop: any) => (
+                <div key={prop.id} className="flex items-center gap-2 p-2 rounded-md border bg-muted/30">
+                  <Checkbox
+                    data-testid={`dr-property-${prop.id}`}
+                    id={`dr-prop-${prop.id}`}
+                    checked={(drSettings?.propertyIds || []).includes(prop.id)}
+                    onCheckedChange={() => toggleDrProperty(prop.id)}
+                    disabled={drUpdateMutation.isPending}
+                  />
+                  <label htmlFor={`dr-prop-${prop.id}`} className="text-sm cursor-pointer flex-1">{prop.name}</label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Phone Numbers */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">WhatsApp phone numbers (with country code)</Label>
+            <div className="flex gap-2">
+              <Input
+                data-testid="input-dr-phone"
+                placeholder="e.g. 919876543210"
+                value={drPhoneInput}
+                onChange={(e) => setDrPhoneInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addDrPhone()}
+                className="flex-1"
+              />
+              <Button data-testid="btn-dr-add-phone" size="sm" variant="outline" onClick={addDrPhone} disabled={!drPhoneInput.trim()}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(drSettings?.phoneNumbers || []).map((ph: string) => (
+                <Badge key={ph} variant="secondary" className="flex items-center gap-1 text-sm">
+                  <Phone className="h-3 w-3" />
+                  {ph}
+                  <button data-testid={`btn-dr-remove-phone-${ph}`} onClick={() => removeDrPhone(ph)} className="ml-1 hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+              {!(drSettings?.phoneNumbers?.length) && (
+                <p className="text-xs text-muted-foreground">No numbers added yet.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Template ID */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Authkey Template ID (WID)</Label>
+            <Input
+              data-testid="input-dr-template-id"
+              placeholder="e.g. 12345"
+              value={drSettings?.templateId || ""}
+              onChange={(e) => drUpdateMutation.mutate({ templateId: e.target.value })}
+              className="max-w-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Create a WhatsApp template in Authkey with one variable <code>{"{{1}}"}</code> — the full report text will be passed as that variable.
+            </p>
+          </div>
+
+          <Separator />
+
+          {/* Preview & Test Send */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Test / Preview</Label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                data-testid="input-dr-date"
+                type="date"
+                value={drSendDate}
+                onChange={(e) => { setDrSendDate(e.target.value); setDrPreview(null); }}
+                className="w-40"
+              />
+              <Button
+                data-testid="btn-dr-preview"
+                size="sm" variant="outline"
+                onClick={loadDrPreview}
+                disabled={drPreviewLoading || !(drSettings?.propertyIds?.length)}
+              >
+                {drPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Preview Message
+              </Button>
+              <Button
+                data-testid="btn-dr-send-now"
+                size="sm"
+                onClick={() => drSendNowMutation.mutate(drSendDate)}
+                disabled={drSendNowMutation.isPending || !drSettings?.isEnabled}
+              >
+                {drSendNowMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Send Now
+              </Button>
+            </div>
+            {drPreview && (
+              <pre className="bg-muted p-3 rounded-md text-xs whitespace-pre-wrap font-sans leading-relaxed border">
+                {drPreview}
+              </pre>
+            )}
+          </div>
+
+          {/* Last sent status */}
+          {drSettings?.lastSentAt && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {drSettings.lastSentStatus === "success" ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-destructive" />
+              )}
+              Last sent: {new Date(drSettings.lastSentAt).toLocaleString("en-IN")}
+              {drSettings.lastSentStatus !== "success" && drSettings.lastSentError && (
+                <span className="text-destructive"> — {drSettings.lastSentError}</span>
+              )}
             </div>
           )}
         </CardContent>

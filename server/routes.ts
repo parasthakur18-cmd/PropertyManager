@@ -68,7 +68,8 @@ import {
   sendFoodOrderStaffAlert,
   sendBookingConfirmedNotification
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings } from "@shared/schema";
+import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage } from "./daily-report";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -19427,6 +19428,65 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       res.status(500).json({ message: error.message });
     }
   });
+
+  // =====================================
+  // Daily Report Settings
+  // =====================================
+  app.get("/api/daily-report-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const [settings] = await db.select().from(dailyReportSettings).limit(1);
+      res.json(settings || { id: 1, isEnabled: false, phoneNumbers: [], propertyIds: [], templateId: "", lastSentAt: null, lastSentStatus: null, lastSentError: null });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/daily-report-settings", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { isEnabled, phoneNumbers, propertyIds, templateId } = req.body;
+      const update: any = { updatedAt: new Date() };
+      if (isEnabled !== undefined) update.isEnabled = isEnabled;
+      if (phoneNumbers !== undefined) update.phoneNumbers = phoneNumbers;
+      if (propertyIds !== undefined) update.propertyIds = propertyIds;
+      if (templateId !== undefined) update.templateId = templateId;
+      await db.update(dailyReportSettings).set(update).where(eq(dailyReportSettings.id, 1));
+      const [updated] = await db.select().from(dailyReportSettings).limit(1);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/daily-report-settings/send-now", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { date } = req.body;
+      const result = await sendDailyReport(date);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/daily-report-settings/preview", isAuthenticated, async (req: any, res) => {
+    try {
+      const dateParam = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      const propertyIdsParam = req.query.propertyIds as string;
+      const ids = propertyIdsParam ? propertyIdsParam.split(",").map(Number).filter(Boolean) : [];
+      if (ids.length === 0) return res.json({ message: "No properties selected", preview: "" });
+      const data = await getDailyReportData(dateParam, ids);
+      const preview = buildReportMessage(data);
+      res.json({ preview, data });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Start daily report cron
+  startDailyReportJob();
 
   const httpServer = createServer(app);
   return httpServer;
