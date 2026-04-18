@@ -792,6 +792,31 @@ export async function runStartupMigrations(): Promise<void> {
 }
 
 // ── Default WhatsApp Alert Configs ──────────────────────────────────────────
+  {
+    name: "create_daily_report_settings",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS daily_report_settings (
+          id SERIAL PRIMARY KEY,
+          is_enabled BOOLEAN NOT NULL DEFAULT false,
+          phone_numbers TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+          property_ids INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
+          template_id VARCHAR(50) DEFAULT '',
+          last_sent_at TIMESTAMP,
+          last_sent_status VARCHAR(20),
+          last_sent_error TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await runRaw(`
+        INSERT INTO daily_report_settings (id, is_enabled)
+        VALUES (1, false)
+        ON CONFLICT (id) DO NOTHING
+      `);
+    },
+  },
+
 // Add new staff-alert templates here. They will be auto-inserted on next
 // server start (ON CONFLICT DO NOTHING keeps existing enable/disable state).
 const DEFAULT_WA_ALERT_CONFIGS: Array<{

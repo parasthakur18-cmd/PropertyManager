@@ -1905,6 +1905,22 @@ export const aiosellInventoryRestrictions = pgTable("aiosell_inventory_restricti
 
 export type AiosellInventoryRestriction = typeof aiosellInventoryRestrictions.$inferSelect;
 
+// Daily Report Settings — global config for 11 PM WhatsApp summary
+export const dailyReportSettings = pgTable("daily_report_settings", {
+  id: serial("id").primaryKey(),
+  isEnabled: boolean("is_enabled").default(false).notNull(),
+  phoneNumbers: text("phone_numbers").array().notNull().default(sql`ARRAY[]::text[]`),
+  propertyIds: integer("property_ids").array().notNull().default(sql`ARRAY[]::integer[]`),
+  templateId: varchar("template_id", { length: 50 }).default(""),
+  lastSentAt: timestamp("last_sent_at"),
+  lastSentStatus: varchar("last_sent_status", { length: 20 }),
+  lastSentError: text("last_sent_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type DailyReportSettings = typeof dailyReportSettings.$inferSelect;
+
 // Push notification subscriptions (for PWA push notifications)
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),
