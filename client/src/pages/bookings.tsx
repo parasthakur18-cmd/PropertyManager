@@ -120,13 +120,6 @@ export default function Bookings() {
   const guestDataRef = useRef({ fullName: "", phone: "", email: "", idProofImage: "" });
   const guestInputResetKey = useRef(0);
   const bookingTableRef = useRef<HTMLDivElement>(null);
-  const checkinDateRef = useRef<HTMLInputElement>(null);
-  const dateFromRef = useRef<HTMLInputElement>(null);
-  const dateToRef = useRef<HTMLInputElement>(null);
-  const openDatePicker = (ref: React.RefObject<HTMLInputElement>) => {
-    if (!ref.current) return;
-    try { (ref.current as any).showPicker(); } catch { ref.current.focus(); ref.current.click(); }
-  };
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
@@ -1222,18 +1215,17 @@ export default function Bookings() {
           
           {/* Check-in Date Filter */}
           <div className="flex items-center gap-1">
-            <div className="relative cursor-pointer" onClick={() => openDatePicker(checkinDateRef)}>
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                ref={checkinDateRef}
+            <label htmlFor="checkin-date" className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background cursor-pointer hover:border-ring transition-colors">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
                 id="checkin-date"
                 type="date"
                 value={checkinDateFilter}
                 onChange={(e) => setCheckinDateFilter(e.target.value)}
-                className="pl-9 h-9 w-[150px] cursor-pointer"
+                className="border-none outline-none bg-transparent text-sm w-[110px] cursor-pointer"
                 data-testid="input-checkin-date-filter"
               />
-            </div>
+            </label>
             {checkinDateFilter && (
               <Button
                 size="icon"
@@ -1250,35 +1242,31 @@ export default function Bookings() {
 
           {/* Date Range Filter */}
           <div className="flex items-center gap-1">
-            <div className="relative cursor-pointer" onClick={() => openDatePicker(dateFromRef)}>
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                ref={dateFromRef}
+            <label htmlFor="date-from" className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background cursor-pointer hover:border-ring transition-colors">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
                 id="date-from"
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="pl-9 h-9 w-[150px] cursor-pointer"
+                className="border-none outline-none bg-transparent text-sm w-[110px] cursor-pointer"
                 data-testid="input-date-from-filter"
-                placeholder="From"
                 title="From date"
               />
-            </div>
+            </label>
             <span className="text-muted-foreground text-sm">–</span>
-            <div className="relative cursor-pointer" onClick={() => openDatePicker(dateToRef)}>
-              <Calendar className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                ref={dateToRef}
+            <label htmlFor="date-to" className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background cursor-pointer hover:border-ring transition-colors">
+              <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+              <input
                 id="date-to"
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="pl-9 h-9 w-[150px] cursor-pointer"
+                className="border-none outline-none bg-transparent text-sm w-[110px] cursor-pointer"
                 data-testid="input-date-to-filter"
-                placeholder="To"
                 title="To date"
               />
-            </div>
+            </label>
             {(dateFrom || dateTo) && (
               <Button
                 size="icon"
