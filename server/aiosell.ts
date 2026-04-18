@@ -90,6 +90,8 @@ async function makeAiosellRequest(
     requestPayload: payload,
   };
 
+  let httpStatus: number | undefined;
+
   try {
     const authHeader = config.pmsPassword
       ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
@@ -104,35 +106,52 @@ async function makeAiosellRequest(
       body: JSON.stringify(payload),
     });
 
-    const responseData = await response.json();
+    httpStatus = response.status;
+    let responseData: any;
 
-    logEntry.status = responseData.success ? "success" : "failed";
-    logEntry.responsePayload = responseData;
-    if (!responseData.success) {
-      logEntry.errorMessage = responseData.message || "Unknown error";
+    // Safely parse response — AioSell may return HTML on 500 errors
+    const rawText = await response.text();
+    try {
+      responseData = JSON.parse(rawText);
+    } catch {
+      // Non-JSON response (e.g. HTML error page from AioSell)
+      const snippet = rawText.slice(0, 300).replace(/\s+/g, " ");
+      logEntry.status = "error";
+      logEntry.errorMessage = `HTTP ${httpStatus} — non-JSON response: ${snippet}`;
+      logEntry.responsePayload = { httpStatus, rawSnippet: snippet };
+      await db.insert(aiosellSyncLogs).values(logEntry);
+      console.error(`[AIOSELL] ${syncType} — HTTP ${httpStatus}, non-JSON body: ${snippet}`);
+      return { success: false, message: `AioSell returned HTTP ${httpStatus} with a non-JSON response. Check AioSell credentials or contact AioSell support.` };
+    }
+
+    const isSuccess = responseData.success === true && response.ok;
+    logEntry.status = isSuccess ? "success" : "failed";
+    logEntry.responsePayload = { httpStatus, ...responseData };
+    if (!isSuccess) {
+      logEntry.errorMessage = `HTTP ${httpStatus} — ${responseData.message || "Unknown error"}`;
     }
 
     await db.insert(aiosellSyncLogs).values(logEntry);
 
-    if (responseData.success) {
+    if (isSuccess) {
       await db
         .update(aiosellConfigurations)
         .set({ lastSyncAt: new Date(), updatedAt: new Date() })
         .where(eq(aiosellConfigurations.id, config.id));
     }
 
-    console.log(`[AIOSELL] ${syncType} result: ${responseData.success ? "SUCCESS" : "FAILED"} - ${responseData.message || ""}`);
-    if (!responseData.success) {
-      console.error(`[AIOSELL PUSH] Rejected by AioSell — full response:`, JSON.stringify(responseData));
+    console.log(`[AIOSELL] ${syncType} HTTP ${httpStatus} result: ${isSuccess ? "SUCCESS" : "FAILED"} - ${responseData.message || ""}`);
+    if (!isSuccess) {
+      console.error(`[AIOSELL PUSH] Rejected by AioSell — HTTP ${httpStatus} — full response:`, JSON.stringify(responseData));
     }
-    return responseData;
+    return { success: isSuccess, message: responseData.message };
   } catch (error: any) {
     logEntry.status = "error";
-    logEntry.errorMessage = error.message;
+    logEntry.errorMessage = `Network error: ${error.message}`;
     await db.insert(aiosellSyncLogs).values(logEntry);
 
-    console.error(`[AIOSELL] ${syncType} error:`, error.message);
-    return { success: false, message: error.message };
+    console.error(`[AIOSELL] ${syncType} network error:`, error.message);
+    return { success: false, message: `Cannot reach AioSell: ${error.message}` };
   }
 }
 
@@ -238,15 +257,12 @@ export async function pushNoShow(
 }
 
 export async function testConnection(config: AiosellConfig): Promise<AiosellApiResponse> {
+  // Send a minimal inventory update payload — AioSell may return 500 for empty arrays,
+  // but any HTTP response means the server is reachable. Only a network error = no connection.
+  const today = new Date().toISOString().split("T")[0];
   const payload = {
     hotelCode: config.hotelCode,
-    updates: [
-      {
-        startDate: new Date().toISOString().split("T")[0],
-        endDate: new Date().toISOString().split("T")[0],
-        rooms: [],
-      },
-    ],
+    updates: [{ startDate: today, endDate: today, rooms: [] }],
   };
 
   try {
@@ -262,25 +278,42 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
       },
       body: JSON.stringify(payload),
     });
-    const data = await response.json();
+
+    const httpStatus = response.status;
+    const rawText = await response.text();
+    let data: any = null;
+    try { data = JSON.parse(rawText); } catch { /* non-JSON response */ }
+
+    // Any HTTP response means we successfully reached AioSell's server.
+    // 400/500 can mean invalid payload (e.g. empty rooms), NOT a connection failure.
+    // Only a network-level throw means the server is unreachable.
+    const connected = true; // we got a response
+    const logStatus = (response.ok && data?.success) ? "success" : httpStatus >= 500 ? "failed" : "success";
+    let message: string;
+    if (response.ok && data?.success) {
+      message = "Connection successful";
+    } else if (httpStatus === 401 || httpStatus === 403) {
+      message = `Authentication failed (HTTP ${httpStatus}) — check your PMS Name and PMS Password`;
+    } else if (httpStatus >= 500) {
+      message = `AioSell server error (HTTP ${httpStatus}) — the server is reachable but returned an error. This may be a temporary issue or an invalid payload format.`;
+    } else {
+      message = `Connected (HTTP ${httpStatus})${data?.message ? " — " + data.message : ""}`;
+    }
 
     await db.insert(aiosellSyncLogs).values({
       configId: config.id,
       propertyId: config.propertyId,
       syncType: "connection_test",
       direction: "outbound",
-      status: response.ok ? "success" : "failed",
+      status: logStatus,
       requestPayload: payload,
-      responsePayload: data,
-      errorMessage: response.ok ? null : (data.message || `HTTP ${response.status}`),
+      responsePayload: data ? { httpStatus, ...data } : { httpStatus, rawSnippet: rawText.slice(0, 200) },
+      errorMessage: logStatus !== "success" ? message : null,
     });
 
-    return {
-      success: response.ok,
-      message: response.ok ? "Connection successful" : (data.message || `HTTP ${response.status}`),
-    };
+    return { success: connected, message };
   } catch (error: any) {
-    return { success: false, message: `Connection failed: ${error.message}` };
+    return { success: false, message: `Cannot reach AioSell server: ${error.message}` };
   }
 }
 
