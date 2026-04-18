@@ -823,6 +823,23 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
   };
 
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
+  const [pushingSinglePlan, setPushingSinglePlan] = useState<string | null>(null);
+
+  const doApiPush = async (rates: { roomCode: string; rate: number; rateplanCode: string }[]) => {
+    if (rates.length === 0) throw new Error("Set at least one rate");
+    const res = await apiRequest("/api/aiosell/push-rates", "POST", {
+      propertyId,
+      updates: [{ startDate, endDate, rates }],
+    });
+    return res.json();
+  };
+
+  const onPushSuccess = (data: any) => {
+    setLastPushResult({ success: data.success, message: data.message });
+    toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
+    queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+    if (data.success) queryClient.invalidateQueries({ queryKey: ["/api/aiosell/latest-rates", { propertyId }] });
+  };
 
   const pushRatesMutation = useMutation({
     mutationFn: async () => {
@@ -836,26 +853,32 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
             rateplanCode: rp.ratePlanCode,
           };
         });
-      if (rates.length === 0) throw new Error("Set at least one rate");
-      const res = await apiRequest("/api/aiosell/push-rates", "POST", {
-        propertyId,
-        updates: [{ startDate, endDate, rates }],
-      });
-      return res.json();
+      return doApiPush(rates);
     },
-    onSuccess: (data: any) => {
-      setLastPushResult({ success: data.success, message: data.message });
-      toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
-      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
-      if (data.success) {
-        queryClient.invalidateQueries({ queryKey: ["/api/aiosell/latest-rates", { propertyId }] });
-      }
-    },
+    onSuccess: onPushSuccess,
     onError: (e: any) => {
       setLastPushResult({ success: false, message: e.message });
       toast({ title: "Push Error", description: e.message, variant: "destructive" });
     },
   });
+
+  const pushSingleRate = async (rp: RatePlan) => {
+    const mapping = mappings.find(m => m.id === rp.roomMappingId);
+    if (!mapping) { toast({ title: "Room not linked", description: "Link this room in the Rate Plans tab first.", variant: "destructive" }); return; }
+    const lastPushed = latestRates[String(rp.id)];
+    const rawValue = rateValues[rp.ratePlanCode];
+    const rateToUse = rawValue ? parseFloat(rawValue) : (lastPushed ? lastPushed.rate : parseFloat(rp.baseRate || "0"));
+    if (!rateToUse || isNaN(rateToUse)) { toast({ title: "No rate set", description: "Enter a rate in the input field first.", variant: "destructive" }); return; }
+    setPushingSinglePlan(rp.ratePlanCode);
+    try {
+      const data = await doApiPush([{ roomCode: mapping.aiosellRoomCode, rate: rateToUse, rateplanCode: rp.ratePlanCode }]);
+      onPushSuccess(data);
+    } catch (e: any) {
+      toast({ title: "Push Error", description: e.message, variant: "destructive" });
+    } finally {
+      setPushingSinglePlan(null);
+    }
+  };
 
   if (!config) {
     return (
@@ -908,6 +931,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                 <TableHead>Room Count</TableHead>
                 <TableHead>Last Pushed Rate</TableHead>
                 <TableHead>Rate to Push</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -971,6 +995,21 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
                           </span>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        data-testid={`button-push-single-rate-${rp.id}`}
+                        size="sm"
+                        variant="outline"
+                        className="whitespace-nowrap text-xs"
+                        disabled={pushingSinglePlan === rp.ratePlanCode || pushRatesMutation.isPending}
+                        onClick={() => { setLastPushResult(null); pushSingleRate(rp); }}
+                      >
+                        {pushingSinglePlan === rp.ratePlanCode
+                          ? <Loader2 className="h-3 w-3 animate-spin" />
+                          : <RefreshCw className="h-3 w-3 mr-1" />}
+                        {pushingSinglePlan === rp.ratePlanCode ? "Pushing…" : "Push This"}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
