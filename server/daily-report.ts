@@ -126,26 +126,30 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-IN");
 }
 
-export function buildReportMessage(data: DailyReportData): string {
+export function buildReportVariable(data: DailyReportData): string {
   const dateStr = new Date(data.date + "T00:00:00").toLocaleDateString("en-IN", {
     day: "2-digit", month: "long", year: "numeric",
   });
 
-  let msg = `📊 *Daily Report – The Pahadi Stays*\n📅 ${dateStr}\n`;
+  let body = `📅 ${dateStr}\n`;
 
   for (const p of data.properties) {
-    msg += `\n🏨 *${p.propertyName}*\n`;
-    msg += `• Rooms: ₹${fmt(p.roomRevenue)}\n`;
-    msg += `• Food: ₹${fmt(p.foodRevenue)}\n`;
-    msg += `• Extra Services: ₹${fmt(p.extraRevenue)}\n`;
+    body += `\n🏨 ${p.propertyName}\n`;
+    body += `• Rooms: ₹${fmt(p.roomRevenue)}\n`;
+    body += `• Food: ₹${fmt(p.foodRevenue)}\n`;
+    body += `• Extra: ₹${fmt(p.extraRevenue)}\n`;
+    body += `• Total: ₹${fmt(p.totalRevenue)}`;
   }
 
-  msg += `\n💰 *Total Business: ₹${fmt(data.grandTotal)}*\n`;
-  msg += `\n💳 Cash (All): ₹${fmt(data.cashTotal)}\n`;
-  msg += `📲 UPI (All): ₹${fmt(data.upiTotal)}\n`;
-  msg += `\n⏰ Auto @ 11 PM`;
+  body += `\n\n💰 Grand Total: ₹${fmt(data.grandTotal)}`;
+  body += `\n💳 Cash: ₹${fmt(data.cashTotal)}`;
+  body += `\n📲 UPI: ₹${fmt(data.upiTotal)}`;
 
-  return msg;
+  return body;
+}
+
+export function buildReportMessage(data: DailyReportData): string {
+  return buildReportVariable(data);
 }
 
 export async function sendDailyReport(targetDate?: string): Promise<{ success: boolean; message: string; details: string[] }> {
