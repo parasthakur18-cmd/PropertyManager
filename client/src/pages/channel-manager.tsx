@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -1555,6 +1555,7 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
     },
     enabled: !!propertyId,
   });
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   if (isLoading) return <div className="flex items-center justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
@@ -1599,7 +1600,7 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
         </CardHeader>
         <CardContent>
           <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg text-sm text-blue-800 dark:text-blue-200">
-            <strong>Note:</strong> Auto-Sync logs are created automatically whenever a booking is created, updated, or cancelled. Manual Push logs appear when you use the Push Rates or Push Inventory tabs. These are separate entries — a "Success" auto-sync log does not mean your manual push succeeded.
+            <strong>Note:</strong> Auto-Sync logs are created automatically whenever a booking is created, updated, or cancelled. Manual Push logs appear when you use the Push Rates or Push Inventory tabs. These are separate entries — a "Success" auto-sync log does not mean your manual push succeeded. <strong>Click any row to see the full request and response details.</strong>
           </div>
           {logs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
@@ -1614,22 +1615,58 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
                   <TableHead>Type</TableHead>
                   <TableHead>Direction</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Details</TableHead>
+                  <TableHead>AioSell Response</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.map(log => (
-                  <TableRow key={log.id} data-testid={`row-sync-log-${log.id}`}>
-                    <TableCell className="text-xs whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</TableCell>
-                    <TableCell>{getSyncTypeLabel(log.syncType)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{log.direction === "inbound" ? "Incoming" : "Outgoing"}</Badge>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(log.status)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
-                      {log.errorMessage || (log.responsePayload ? JSON.stringify(log.responsePayload).slice(0, 100) : "—")}
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    <TableRow
+                      key={log.id}
+                      data-testid={`row-sync-log-${log.id}`}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
+                    >
+                      <TableCell className="text-xs whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                      <TableCell>{getSyncTypeLabel(log.syncType)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{log.direction === "inbound" ? "Incoming" : "Outgoing"}</Badge>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(log.status)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[240px]">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate">
+                            {log.errorMessage || (log.responsePayload ? JSON.stringify(log.responsePayload) : "—")}
+                          </span>
+                          <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${expandedId === log.id ? "rotate-180" : ""}`} />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {expandedId === log.id && (
+                      <TableRow key={`${log.id}-detail`} className="bg-muted/30">
+                        <TableCell colSpan={5} className="py-3 px-4">
+                          <div className="space-y-3 text-xs font-mono">
+                            {log.requestPayload && (
+                              <div>
+                                <div className="font-semibold text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Request sent to AioSell</div>
+                                <pre className="bg-background rounded border p-2 overflow-x-auto whitespace-pre-wrap break-all text-[11px] max-h-[200px] overflow-y-auto">
+                                  {JSON.stringify(log.requestPayload, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {(log.responsePayload || log.errorMessage) && (
+                              <div>
+                                <div className="font-semibold text-[11px] uppercase tracking-wide text-muted-foreground mb-1">AioSell Response</div>
+                                <pre className={`rounded border p-2 overflow-x-auto whitespace-pre-wrap break-all text-[11px] max-h-[120px] overflow-y-auto ${log.status === "success" ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}`}>
+                                  {log.errorMessage || JSON.stringify(log.responsePayload, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
                 ))}
               </TableBody>
             </Table>
