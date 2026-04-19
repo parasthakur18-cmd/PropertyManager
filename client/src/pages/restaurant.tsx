@@ -623,7 +623,7 @@ export default function Kitchen() {
               <Input
                 id="popup-title"
                 data-testid="input-popup-title"
-                placeholder='e.g. "Today\'s Special 🍽️"'
+                placeholder='e.g. "Today\'s Special"'
                 value={popupForm.title}
                 onChange={(e) => setPopupForm(f => ({ ...f, title: e.target.value }))}
                 maxLength={100}
