@@ -69,7 +69,7 @@ import {
   sendBookingConfirmedNotification
 } from "./whatsapp";
 import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
-import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage } from "./daily-report";
+import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
@@ -19525,7 +19525,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!auth) return res.status(401).json({ message: "Not authenticated" });
       const { date, test } = req.body;
       // test=true bypasses the isEnabled check so you can verify the template works
-      const result = await sendDailyReport(date, { ignoreEnabled: !!test });
+      // isManual=true → window is 12 PM IST → current time
+      const result = await sendDailyReport(date, { ignoreEnabled: !!test, isManual: true });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -19534,11 +19535,16 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
   app.get("/api/daily-report-settings/preview", isAuthenticated, async (req: any, res) => {
     try {
-      const dateParam = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      const todayIST = istNow.toISOString().split("T")[0];
+      const dateParam = (req.query.date as string) || todayIST;
       const propertyIdsParam = req.query.propertyIds as string;
       const ids = propertyIdsParam ? propertyIdsParam.split(",").map(Number).filter(Boolean) : [];
       if (ids.length === 0) return res.json({ message: "No properties selected", preview: "" });
-      const data = await getDailyReportData(dateParam, ids);
+      // If previewing today → show 12 PM to now; past date → show 12 PM to 11:59 PM
+      const isToday = dateParam === todayIST;
+      const { fromTime, toTime } = getReportTimeRange(dateParam, isToday);
+      const data = await getDailyReportData(dateParam, ids, fromTime, toTime);
       const preview = buildReportMessage(data);
       res.json({ preview, data });
     } catch (error: any) {
