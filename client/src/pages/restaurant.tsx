@@ -734,7 +734,7 @@ export default function Kitchen() {
               <Button
                 data-testid="btn-save-popup"
                 onClick={() => savePopupMutation.mutate()}
-                disabled={savePopupMutation.isPending || !popupForm.message.trim()}
+                disabled={savePopupMutation.isPending}
               >
                 {savePopupMutation.isPending ? "Saving..." : "Save Popup"}
               </Button>
