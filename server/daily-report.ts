@@ -69,16 +69,20 @@ export async function getDailyReportData(
   try {
     const revenueSources = `('booking_payment','advance_payment','food_order_payment','extra_service_payment','addon_payment')`;
 
+    // Primary filter: transaction_date (always reliable, even if created_at is NULL on old records).
+    // Secondary filter: created_at time window — skipped gracefully when created_at IS NULL
+    // so that records inserted before the column existed are still included.
     const revenueResult = await client.query(`
       SELECT property_id, COALESCE(SUM(amount::numeric), 0) AS revenue
       FROM wallet_transactions
-      WHERE created_at >= $1 AND created_at <= $2
+      WHERE transaction_date = $1
         AND transaction_type = 'credit'
         AND (is_reversal IS NULL OR is_reversal = false)
         AND source IN ('booking_payment','advance_payment','food_order_payment','addon_payment','extra_service_payment')
-        AND property_id = ANY($3)
+        AND property_id = ANY($4)
+        AND (created_at IS NULL OR (created_at >= $2 AND created_at <= $3))
       GROUP BY property_id
-    `, [fromTime, toTime, propertyIds]);
+    `, [targetDate, fromTime, toTime, propertyIds]);
 
     const propResult = await client.query(`
       SELECT id, name FROM properties WHERE id = ANY($1)
@@ -88,25 +92,27 @@ export async function getDailyReportData(
       SELECT COALESCE(SUM(wt.amount::numeric), 0) AS total
       FROM wallet_transactions wt
       JOIN wallets w ON w.id = wt.wallet_id
-      WHERE wt.created_at >= $1 AND wt.created_at <= $2
+      WHERE wt.transaction_date = $1
         AND wt.transaction_type = 'credit'
         AND (wt.is_reversal IS NULL OR wt.is_reversal = false)
         AND w.type = 'cash'
         AND wt.source IN ${revenueSources}
-        AND wt.property_id = ANY($3)
-    `, [fromTime, toTime, propertyIds]);
+        AND wt.property_id = ANY($4)
+        AND (wt.created_at IS NULL OR (wt.created_at >= $2 AND wt.created_at <= $3))
+    `, [targetDate, fromTime, toTime, propertyIds]);
 
     const upiResult = await client.query(`
       SELECT COALESCE(SUM(wt.amount::numeric), 0) AS total
       FROM wallet_transactions wt
       JOIN wallets w ON w.id = wt.wallet_id
-      WHERE wt.created_at >= $1 AND wt.created_at <= $2
+      WHERE wt.transaction_date = $1
         AND wt.transaction_type = 'credit'
         AND (wt.is_reversal IS NULL OR wt.is_reversal = false)
         AND w.type = 'upi'
         AND wt.source IN ${revenueSources}
-        AND wt.property_id = ANY($3)
-    `, [fromTime, toTime, propertyIds]);
+        AND wt.property_id = ANY($4)
+        AND (wt.created_at IS NULL OR (wt.created_at >= $2 AND wt.created_at <= $3))
+    `, [targetDate, fromTime, toTime, propertyIds]);
 
     const revenueMap: Record<number, number> = {};
     revenueResult.rows.forEach(r => { revenueMap[r.property_id] = parseFloat(r.revenue); });
