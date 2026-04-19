@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft, Search, XCircle, Building2 } from "lucide-react";
+import { Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft, Search, XCircle, Building2, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type MenuItem } from "@shared/schema";
+import { type MenuItem, type MenuItemVariant } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface CartItem extends MenuItem {
   quantity: number;
+  cartKey: string;
+  selectedVariant?: { id: number; variantName: string; actualPrice: string; discountedPrice: string | null };
 }
 
 type OrderType = "room" | "restaurant" | null;
@@ -32,6 +35,7 @@ export default function QuickOrder() {
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
+  const [variantItem, setVariantItem] = useState<MenuItem | null>(null);
   const { toast } = useToast();
 
   // Global property selection — synced with dashboard via localStorage
@@ -52,6 +56,11 @@ export default function QuickOrder() {
     isError: roomsError 
   } = useQuery<any[]>({
     queryKey: ["/api/rooms/checked-in-guests"],
+  });
+
+  const { data: variants, isLoading: variantsLoading } = useQuery<MenuItemVariant[]>({
+    queryKey: [`/api/menu-items/${variantItem?.id}/variants`],
+    enabled: !!variantItem,
   });
 
   const orderMutation = useMutation({
@@ -83,36 +92,39 @@ export default function QuickOrder() {
     },
   });
 
-  const addToCart = (item: MenuItem) => {
-    const existing = cart.find((i) => i.id === item.id);
+  const addToCart = (item: MenuItem, variant?: { id: number; variantName: string; actualPrice: string; discountedPrice: string | null }) => {
+    const cartKey = variant ? `${item.id}-v${variant.id}` : `${item.id}`;
+    const price = variant
+      ? (variant.discountedPrice || variant.actualPrice)
+      : item.price;
+    const existing = cart.find((i) => i.cartKey === cartKey);
     if (existing) {
-      setCart(cart.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i)));
+      setCart(cart.map((i) => (i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i)));
     } else {
-      setCart([...cart, { ...item, quantity: 1 }]);
+      setCart([...cart, { ...item, price, quantity: 1, cartKey, selectedVariant: variant }]);
     }
   };
 
-  const updateQuantity = (id: number, change: number) => {
+  const updateQuantity = (cartKey: string, change: number) => {
     setCart((prev) => {
       const updated = prev.map((item) =>
-        item.id === id ? { ...item, quantity: Math.max(0, item.quantity + change) } : item
+        item.cartKey === cartKey ? { ...item, quantity: Math.max(0, item.quantity + change) } : item
       );
       return updated.filter((item) => item.quantity > 0);
     });
   };
 
-  const removeFromCart = (id: number) => {
-    setCart(cart.filter((item) => item.id !== id));
+  const removeFromCart = (cartKey: string) => {
+    setCart(cart.filter((item) => item.cartKey !== cartKey));
   };
 
   const calculateTotal = () => {
     return cart.reduce((sum, item) => sum + parseFloat(item.price as string) * item.quantity, 0);
   };
 
-  // Helper to get item quantity in cart
+  // Total quantity across all variants of an item
   const getItemQuantityInCart = (itemId: number) => {
-    const item = cart.find((i) => i.id === itemId);
-    return item ? item.quantity : 0;
+    return cart.filter((i) => i.id === itemId).reduce((sum, i) => sum + i.quantity, 0);
   };
 
   // Only menu items belonging to the selected property
@@ -645,41 +657,74 @@ export default function QuickOrder() {
                               className="flex items-center justify-between p-3 border rounded-lg hover-elevate"
                               data-testid={`quick-order-item-${item.id}`}
                             >
-                              <div className="flex-1">
+                              <div className="flex-1 min-w-0">
                                 <p className="font-medium">{item.name}</p>
-                                <p className="text-sm text-muted-foreground">₹{item.price}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm text-muted-foreground">
+                                    {item.hasVariants ? "Multiple sizes" : `₹${item.price}`}
+                                  </p>
+                                  {item.hasVariants && (
+                                    <Badge variant="outline" className="text-xs py-0">variants</Badge>
+                                  )}
+                                </div>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8"
-                                  onClick={() => {
-                                    if (quantity > 0) {
-                                      updateQuantity(item.id, -1);
-                                    }
-                                  }}
-                                  disabled={quantity === 0}
-                                  data-testid={`button-quick-decrease-${item.id}`}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="w-8 text-center font-mono text-sm">{quantity}</span>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8"
-                                  onClick={() => {
-                                    if (quantity > 0) {
-                                      updateQuantity(item.id, 1);
-                                    } else {
-                                      addToCart(item);
-                                    }
-                                  }}
-                                  data-testid={`button-quick-increase-${item.id}`}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
+                                {item.hasVariants ? (
+                                  // Variant items: show total qty + always open picker on +
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-8 w-8"
+                                      onClick={() => {
+                                        const entries = cart.filter(i => i.id === item.id);
+                                        if (entries.length > 0) {
+                                          updateQuantity(entries[entries.length - 1].cartKey, -1);
+                                        }
+                                      }}
+                                      disabled={quantity === 0}
+                                      data-testid={`button-quick-decrease-${item.id}`}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                    <span className="w-8 text-center font-mono text-sm">{quantity}</span>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-8 w-8"
+                                      onClick={() => setVariantItem(item)}
+                                      data-testid={`button-quick-increase-${item.id}`}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  // Non-variant items: normal +/-
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-8 w-8"
+                                      onClick={() => {
+                                        if (quantity > 0) updateQuantity(`${item.id}`, -1);
+                                      }}
+                                      disabled={quantity === 0}
+                                      data-testid={`button-quick-decrease-${item.id}`}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                    <span className="w-8 text-center font-mono text-sm">{quantity}</span>
+                                    <Button
+                                      size="icon"
+                                      variant="outline"
+                                      className="h-8 w-8"
+                                      onClick={() => addToCart(item)}
+                                      data-testid={`button-quick-increase-${item.id}`}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </div>
                           );
@@ -777,34 +822,37 @@ export default function QuickOrder() {
 
                 {/* Cart Items */}
                 <div className="border-t pt-4">
-                  <p className="text-sm font-medium mb-3">Items ({cart.length})</p>
+                  <p className="text-sm font-medium mb-3">Items ({cart.reduce((s, i) => s + i.quantity, 0)})</p>
                   {cart.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">No items added</p>
                   ) : (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                       {cart.map((item) => (
-                        <div key={item.id} className="flex items-center gap-2 text-sm">
-                          <div className="flex-1">
-                            <p className="font-medium">{item.name}</p>
+                        <div key={item.cartKey} className="flex items-start gap-2 text-sm">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium leading-tight">{item.name}</p>
+                            {item.selectedVariant && (
+                              <p className="text-xs text-muted-foreground">{item.selectedVariant.variantName}</p>
+                            )}
                             <p className="text-muted-foreground">₹{item.price}</p>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             <Button
                               size="icon"
                               variant="outline"
                               className="h-7 w-7"
-                              onClick={() => updateQuantity(item.id, -1)}
-                              data-testid={`button-quick-decrease-${item.id}`}
+                              onClick={() => updateQuantity(item.cartKey, -1)}
+                              data-testid={`button-quick-decrease-${item.cartKey}`}
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="w-8 text-center font-mono">{item.quantity}</span>
+                            <span className="w-6 text-center font-mono">{item.quantity}</span>
                             <Button
                               size="icon"
                               variant="outline"
                               className="h-7 w-7"
-                              onClick={() => updateQuantity(item.id, 1)}
-                              data-testid={`button-quick-increase-${item.id}`}
+                              onClick={() => updateQuantity(item.cartKey, 1)}
+                              data-testid={`button-quick-increase-${item.cartKey}`}
                             >
                               <Plus className="h-3 w-3" />
                             </Button>
@@ -812,8 +860,8 @@ export default function QuickOrder() {
                               size="icon"
                               variant="ghost"
                               className="h-7 w-7"
-                              onClick={() => removeFromCart(item.id)}
-                              data-testid={`button-quick-remove-${item.id}`}
+                              onClick={() => removeFromCart(item.cartKey)}
+                              data-testid={`button-quick-remove-${item.cartKey}`}
                             >
                               <X className="h-3 w-3" />
                             </Button>
@@ -872,6 +920,59 @@ export default function QuickOrder() {
           </div>
         </div>
       )}
+
+      {/* Variant Picker Dialog */}
+      <Dialog open={!!variantItem} onOpenChange={(open) => { if (!open) setVariantItem(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{variantItem?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 pt-1">
+            <p className="text-sm text-muted-foreground mb-3">Select a size or variant to add to cart:</p>
+            {variantsLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
+              </div>
+            ) : variants && variants.length > 0 ? (
+              variants.map((v) => {
+                const price = v.discountedPrice || v.actualPrice;
+                const hasDiscount = !!v.discountedPrice && v.discountedPrice !== v.actualPrice;
+                return (
+                  <button
+                    key={v.id}
+                    className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors text-left"
+                    onClick={() => {
+                      if (variantItem) {
+                        addToCart(variantItem, {
+                          id: v.id,
+                          variantName: v.variantName,
+                          actualPrice: v.actualPrice as string,
+                          discountedPrice: v.discountedPrice as string | null,
+                        });
+                      }
+                      setVariantItem(null);
+                    }}
+                    data-testid={`button-variant-select-${v.id}`}
+                  >
+                    <div>
+                      <p className="font-medium">{v.variantName}</p>
+                      {hasDiscount && (
+                        <p className="text-xs text-muted-foreground line-through">₹{v.actualPrice}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-sm">₹{price}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No variants found for this item.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
