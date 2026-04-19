@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { RestaurantPopup } from "@/components/restaurant-popup";
 import { ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed, Clock, Search, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,7 +75,7 @@ export default function Menu() {
       setRoomNumber(room);
     }
     
-    if (property && type === "room") {
+    if (property) {
       setPropertyId(property);
     }
   }, []);
@@ -994,6 +995,7 @@ export default function Menu() {
         </div>
       )}
 
+      <RestaurantPopup propertyId={propertyId || null} />
       <Toaster />
     </div>
   );

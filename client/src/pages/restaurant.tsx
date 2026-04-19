@@ -17,6 +17,8 @@ import { Slider } from "@/components/ui/slider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from "@/hooks/useAuth";
@@ -60,6 +62,10 @@ export default function Kitchen() {
   const [editedItems, setEditedItems] = useState<Array<{ name: string; quantity: number; price: string }>>([]);
   const [paymentDialog, setPaymentDialog] = useState<PaymentDialogState>({ open: false });
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"cash" | "upi">("cash");
+  const [showPopupSettings, setShowPopupSettings] = useState(false);
+  const [popupForm, setPopupForm] = useState({
+    isEnabled: false, title: "", message: "", showOrderButton: false, orderButtonText: "Order Now",
+  });
 
   // Global property selection — synced with dashboard via localStorage
   const {
@@ -68,6 +74,38 @@ export default function Kitchen() {
     availableProperties,
     showPropertySwitcher,
   } = usePropertyFilter();
+
+  // Restaurant popup settings
+  const { data: popupData, isLoading: popupLoading } = useQuery<any>({
+    queryKey: ["/api/restaurant-popup", selectedPropertyId],
+    enabled: !!selectedPropertyId,
+    queryFn: async () => {
+      const res = await fetch(`/api/restaurant-popup/${selectedPropertyId}`);
+      if (!res.ok) throw new Error("Failed to fetch popup settings");
+      return res.json();
+    },
+  });
+
+  useEffect(() => {
+    if (popupData) {
+      setPopupForm({
+        isEnabled: !!popupData.isEnabled,
+        title: popupData.title || "",
+        message: popupData.message || "",
+        showOrderButton: !!popupData.showOrderButton,
+        orderButtonText: popupData.orderButtonText || "Order Now",
+      });
+    }
+  }, [popupData]);
+
+  const savePopupMutation = useMutation({
+    mutationFn: () => apiRequest(`/api/restaurant-popup/${selectedPropertyId}`, "PUT", popupForm),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/restaurant-popup", selectedPropertyId] });
+      toast({ title: "Saved", description: "Popup message updated" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
 
   // Auto-prompt push subscription when the kitchen page loads
   useEffect(() => {
@@ -544,6 +582,126 @@ export default function Kitchen() {
           </span>
         </div>
       )}
+
+      {/* Popup Message Settings */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🍽️</span>
+              <CardTitle className="text-lg">Popup Message</CardTitle>
+              {popupForm.isEnabled && (
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400">Active</span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                data-testid="toggle-popup-enabled"
+                checked={popupForm.isEnabled}
+                onCheckedChange={(v) => setPopupForm(f => ({ ...f, isEnabled: v }))}
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowPopupSettings(!showPopupSettings)}
+                data-testid="button-popup-settings-toggle"
+              >
+                {showPopupSettings ? "Hide" : "Edit"}
+              </Button>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {selectedPropertyId
+              ? "Shows a branded popup to guests when they open the food ordering link."
+              : "Select a property above to manage its popup message."}
+          </p>
+        </CardHeader>
+        {showPopupSettings && selectedPropertyId && (
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="popup-title">Title <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                id="popup-title"
+                data-testid="input-popup-title"
+                placeholder='e.g. "Today\'s Special 🍽️"'
+                value={popupForm.title}
+                onChange={(e) => setPopupForm(f => ({ ...f, title: e.target.value }))}
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="popup-message">Message *</Label>
+              <Textarea
+                id="popup-message"
+                data-testid="input-popup-message"
+                placeholder={`e.g. "Kitchen open 8 AM – 10 PM\nToday's Special: Fresh Siddu – Must Try! 🏔️"`}
+                value={popupForm.message}
+                onChange={(e) => setPopupForm(f => ({ ...f, message: e.target.value }))}
+                rows={4}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground">Supports line breaks. Update this daily for specials and announcements.</p>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border">
+              <Switch
+                data-testid="toggle-popup-order-button"
+                id="popup-order-btn"
+                checked={popupForm.showOrderButton}
+                onCheckedChange={(v) => setPopupForm(f => ({ ...f, showOrderButton: v }))}
+              />
+              <div className="flex-1">
+                <Label htmlFor="popup-order-btn" className="cursor-pointer">Show "Order Now" button in popup</Label>
+                <p className="text-xs text-muted-foreground">Closes the popup and scrolls to the menu</p>
+              </div>
+            </div>
+
+            {popupForm.showOrderButton && (
+              <div className="space-y-2">
+                <Label htmlFor="popup-btn-text">Button text</Label>
+                <Input
+                  id="popup-btn-text"
+                  data-testid="input-popup-btn-text"
+                  placeholder="Order Now"
+                  value={popupForm.orderButtonText}
+                  onChange={(e) => setPopupForm(f => ({ ...f, orderButtonText: e.target.value }))}
+                  className="max-w-xs"
+                  maxLength={50}
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                data-testid="btn-save-popup"
+                onClick={() => savePopupMutation.mutate()}
+                disabled={savePopupMutation.isPending || !popupForm.message.trim()}
+              >
+                {savePopupMutation.isPending ? "Saving..." : "Save Popup"}
+              </Button>
+              {!popupForm.isEnabled && (
+                <Button
+                  variant="outline"
+                  data-testid="btn-save-and-enable-popup"
+                  onClick={() => {
+                    const updated = { ...popupForm, isEnabled: true };
+                    setPopupForm(updated);
+                    apiRequest(`/api/restaurant-popup/${selectedPropertyId}`, "PUT", updated)
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/restaurant-popup", selectedPropertyId] });
+                        toast({ title: "Saved", description: "Popup enabled and saved" });
+                      })
+                      .catch((e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }));
+                  }}
+                  disabled={savePopupMutation.isPending || !popupForm.message.trim()}
+                >
+                  Save & Enable
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       {showSettings && (
         <Card className="mb-6">

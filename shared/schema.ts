@@ -1922,6 +1922,20 @@ export const dailyReportSettings = pgTable("daily_report_settings", {
 
 export type DailyReportSettings = typeof dailyReportSettings.$inferSelect;
 
+// Restaurant popup messages (per-property, shown on public menu)
+export const restaurantPopup = pgTable("restaurant_popup", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().unique(),
+  isEnabled: boolean("is_enabled").default(false).notNull(),
+  title: varchar("title", { length: 100 }).default(""),
+  message: text("message").default(""),
+  showOrderButton: boolean("show_order_button").default(false).notNull(),
+  orderButtonText: varchar("order_button_text", { length: 50 }).default("Order Now"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type RestaurantPopup = typeof restaurantPopup.$inferSelect;
+
 // Push notification subscriptions (for PWA push notifications)
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id: serial("id").primaryKey(),

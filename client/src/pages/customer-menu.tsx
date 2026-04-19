@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { RestaurantPopup } from "@/components/restaurant-popup";
 import { Search, ShoppingCart, X, Plus, Minus, ChevronRight, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -801,6 +802,7 @@ export default function CustomerMenu() {
           </div>
         </div>
       )}
+      <RestaurantPopup propertyId={selectedPropertyId} />
     </div>
   );
 }

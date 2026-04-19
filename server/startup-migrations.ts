@@ -740,6 +740,23 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "create_restaurant_popup",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS restaurant_popup (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER NOT NULL UNIQUE,
+          is_enabled BOOLEAN NOT NULL DEFAULT false,
+          title VARCHAR(100) DEFAULT '',
+          message TEXT DEFAULT '',
+          show_order_button BOOLEAN NOT NULL DEFAULT false,
+          order_button_text VARCHAR(50) DEFAULT 'Order Now',
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

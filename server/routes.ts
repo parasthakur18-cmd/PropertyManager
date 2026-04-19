@@ -68,7 +68,7 @@ import {
   sendFoodOrderStaffAlert,
   sendBookingConfirmedNotification
 } from "./whatsapp";
-import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings } from "@shared/schema";
+import { preBills, beds24RoomMappings, rooms, guests, properties, otaIntegrations, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage } from "./daily-report";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
@@ -19424,6 +19424,66 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!config) return res.status(404).json({ message: "AioSell not configured" });
       const result = await pushNoShow(config, bookingId, partner);
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // =====================================
+  // Restaurant Popup (public + admin)
+  // =====================================
+  app.get("/api/public/restaurant-popup/:propertyId", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) return res.json(null);
+      const [popup] = await db.select().from(restaurantPopup).where(eq(restaurantPopup.propertyId, propertyId)).limit(1);
+      if (!popup || !popup.isEnabled) return res.json(null);
+      res.json(popup);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/restaurant-popup/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) return res.status(400).json({ message: "Invalid propertyId" });
+      const [popup] = await db.select().from(restaurantPopup).where(eq(restaurantPopup.propertyId, propertyId)).limit(1);
+      res.json(popup || { propertyId, isEnabled: false, title: "", message: "", showOrderButton: false, orderButtonText: "Order Now" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/restaurant-popup/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) return res.status(400).json({ message: "Invalid propertyId" });
+      if (!canAccessProperty(auth.tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const { isEnabled, title, message, showOrderButton, orderButtonText } = req.body;
+      await db.insert(restaurantPopup).values({
+        propertyId,
+        isEnabled: isEnabled ?? false,
+        title: title ?? "",
+        message: message ?? "",
+        showOrderButton: showOrderButton ?? false,
+        orderButtonText: orderButtonText ?? "Order Now",
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: restaurantPopup.propertyId,
+        set: {
+          isEnabled: isEnabled ?? false,
+          title: title ?? "",
+          message: message ?? "",
+          showOrderButton: showOrderButton ?? false,
+          orderButtonText: orderButtonText ?? "Order Now",
+          updatedAt: new Date(),
+        },
+      });
+      const [updated] = await db.select().from(restaurantPopup).where(eq(restaurantPopup.propertyId, propertyId)).limit(1);
+      res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

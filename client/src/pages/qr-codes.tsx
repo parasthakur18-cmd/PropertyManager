@@ -88,7 +88,7 @@ export default function QRCodes() {
   // Generate Café QR Code on mount
   useEffect(() => {
     const baseUrl = window.location.origin;
-    const cafeOrderUrl = `${baseUrl}/menu?type=restaurant`;
+    const cafeOrderUrl = `${baseUrl}/menu?type=restaurant${selectedPropertyId ? `&property=${selectedPropertyId}` : ""}`;
     
     if (cafeQRRef.current) {
       QRCodeGenerator.toCanvas(
@@ -107,7 +107,7 @@ export default function QRCodes() {
         }
       );
     }
-  }, []);
+  }, [selectedPropertyId]);
   
   const downloadQRCode = (canvasRef: React.RefObject<HTMLCanvasElement>, filename: string, roomInfo?: { propertyName: string; roomNumber: string }) => {
     if (!canvasRef.current) return;
