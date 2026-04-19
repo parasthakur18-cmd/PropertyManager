@@ -729,9 +729,14 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
         )
       `);
       await runRaw(`
-        INSERT INTO daily_report_settings (id, is_enabled)
-        VALUES (1, false)
+        INSERT INTO daily_report_settings (id, is_enabled, template_id)
+        VALUES (1, false, '32163')
         ON CONFLICT (id) DO NOTHING
+      `);
+      // Back-fill template_id if row exists but template_id is empty
+      await runRaw(`
+        UPDATE daily_report_settings SET template_id = '32163'
+        WHERE id = 1 AND (template_id IS NULL OR template_id = '')
       `);
     },
   },

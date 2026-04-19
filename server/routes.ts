@@ -19463,8 +19463,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     try {
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(401).json({ message: "Not authenticated" });
-      const { date } = req.body;
-      const result = await sendDailyReport(date);
+      const { date, test } = req.body;
+      // test=true bypasses the isEnabled check so you can verify the template works
+      const result = await sendDailyReport(date, { ignoreEnabled: !!test });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

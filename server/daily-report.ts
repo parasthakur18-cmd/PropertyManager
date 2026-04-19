@@ -1,14 +1,11 @@
 import { db, pool } from "./db";
-import { dailyReportSettings, properties } from "@shared/schema";
+import { dailyReportSettings } from "@shared/schema";
 import { sendWhatsAppMessage } from "./whatsapp";
 import { eq } from "drizzle-orm";
 
 export interface PropertyRevenue {
   propertyId: number;
   propertyName: string;
-  roomRevenue: number;
-  foodRevenue: number;
-  extraRevenue: number;
   totalRevenue: number;
 }
 
@@ -29,41 +26,19 @@ export async function getDailyReportData(targetDate: string, propertyIds: number
   try {
     const revenueSources = `('booking_payment','advance_payment','food_order_payment','extra_service_payment','addon_payment')`;
 
-    const roomResult = await client.query(`
+    const revenueResult = await client.query(`
       SELECT property_id, COALESCE(SUM(amount::numeric), 0) AS revenue
       FROM wallet_transactions
       WHERE transaction_date = $1
         AND transaction_type = 'credit'
         AND (is_reversal IS NULL OR is_reversal = false)
-        AND source IN ('booking_payment','advance_payment')
-        AND property_id = ANY($2)
-      GROUP BY property_id
-    `, [targetDate, propertyIds]);
-
-    const foodResult = await client.query(`
-      SELECT property_id, COALESCE(SUM(amount::numeric), 0) AS revenue
-      FROM wallet_transactions
-      WHERE transaction_date = $1
-        AND transaction_type = 'credit'
-        AND (is_reversal IS NULL OR is_reversal = false)
-        AND source IN ('food_order_payment','addon_payment')
-        AND property_id = ANY($2)
-      GROUP BY property_id
-    `, [targetDate, propertyIds]);
-
-    const extraResult = await client.query(`
-      SELECT property_id, COALESCE(SUM(amount::numeric), 0) AS revenue
-      FROM wallet_transactions
-      WHERE transaction_date = $1
-        AND transaction_type = 'credit'
-        AND (is_reversal IS NULL OR is_reversal = false)
-        AND source = 'extra_service_payment'
+        AND source IN ('booking_payment','advance_payment','food_order_payment','addon_payment','extra_service_payment')
         AND property_id = ANY($2)
       GROUP BY property_id
     `, [targetDate, propertyIds]);
 
     const propResult = await client.query(`
-      SELECT id, name FROM properties WHERE id = ANY($1) ORDER BY id
+      SELECT id, name FROM properties WHERE id = ANY($1)
     `, [propertyIds]);
 
     const cashResult = await client.query(`
@@ -90,25 +65,17 @@ export async function getDailyReportData(targetDate: string, propertyIds: number
         AND wt.property_id = ANY($2)
     `, [targetDate, propertyIds]);
 
-    const roomMap: Record<number, number> = {};
-    roomResult.rows.forEach(r => { roomMap[r.property_id] = parseFloat(r.revenue); });
-    const foodMap: Record<number, number> = {};
-    foodResult.rows.forEach(r => { foodMap[r.property_id] = parseFloat(r.revenue); });
-    const extraMap: Record<number, number> = {};
-    extraResult.rows.forEach(r => { extraMap[r.property_id] = parseFloat(r.revenue); });
+    const revenueMap: Record<number, number> = {};
+    revenueResult.rows.forEach(r => { revenueMap[r.property_id] = parseFloat(r.revenue); });
 
+    // Keep properties in the same order as propertyIds (user-configured order)
     const propsData: PropertyRevenue[] = propertyIds.map(pid => {
       const found = propResult.rows.find(r => r.id === pid);
-      const rooms = roomMap[pid] || 0;
-      const food = foodMap[pid] || 0;
-      const extra = extraMap[pid] || 0;
+      const total = revenueMap[pid] || 0;
       return {
         propertyId: pid,
         propertyName: found?.name || `Property #${pid}`,
-        roomRevenue: rooms,
-        foodRevenue: food,
-        extraRevenue: extra,
-        totalRevenue: rooms + food + extra,
+        totalRevenue: total,
       };
     });
 
@@ -126,36 +93,59 @@ function fmt(n: number): string {
   return Math.round(n).toLocaleString("en-IN");
 }
 
-export function buildReportVariable(data: DailyReportData): string {
+/**
+ * Returns the 7 template variables for WID 32163:
+ * {{1}} = date, {{2..N}} = per-property total, {{N+1}} = grand total, {{N+2}} = cash, {{N+3}} = UPI
+ * For 3 properties: [date, prop1, prop2, prop3, grandTotal, cash, upi]
+ */
+export function buildReportVariables(data: DailyReportData): string[] {
   const dateStr = new Date(data.date + "T00:00:00").toLocaleDateString("en-IN", {
     day: "2-digit", month: "long", year: "numeric",
   });
 
-  let body = `📅 ${dateStr}\n`;
-
+  const vars: string[] = [dateStr];
   for (const p of data.properties) {
-    body += `\n🏨 ${p.propertyName}\n`;
-    body += `• Rooms: ₹${fmt(p.roomRevenue)}\n`;
-    body += `• Food: ₹${fmt(p.foodRevenue)}\n`;
-    body += `• Extra: ₹${fmt(p.extraRevenue)}\n`;
-    body += `• Total: ₹${fmt(p.totalRevenue)}`;
+    vars.push(fmt(p.totalRevenue));
   }
+  vars.push(fmt(data.grandTotal));
+  vars.push(fmt(data.cashTotal));
+  vars.push(fmt(data.upiTotal));
 
-  body += `\n\n💰 Grand Total: ₹${fmt(data.grandTotal)}`;
-  body += `\n💳 Cash: ₹${fmt(data.cashTotal)}`;
-  body += `\n📲 UPI: ₹${fmt(data.upiTotal)}`;
-
-  return body;
+  return vars;
 }
 
+/**
+ * Renders the full message for preview (mimics what WhatsApp will show)
+ */
 export function buildReportMessage(data: DailyReportData): string {
-  return buildReportVariable(data);
+  const vars = buildReportVariables(data);
+  const date = vars[0];
+
+  let msg = `📊 *Daily Revenue Report – The Pahadi Stays*\n\n📅 ${date}\n`;
+
+  data.properties.forEach((p, i) => {
+    msg += `\n🏨 ${p.propertyName}: ₹${vars[i + 1]}`;
+  });
+
+  const offset = data.properties.length + 1;
+  msg += `\n\n💰 *Total Business:* ₹${vars[offset]}`;
+  msg += `\n\n💳 Cash: ₹${vars[offset + 1]}`;
+  msg += `\n📲 UPI: ₹${vars[offset + 2]}`;
+  msg += `\n\n⚙️ Auto-generated by Hostezee PMS`;
+
+  return msg;
 }
 
-export async function sendDailyReport(targetDate?: string): Promise<{ success: boolean; message: string; details: string[] }> {
+export async function sendDailyReport(
+  targetDate?: string,
+  opts: { ignoreEnabled?: boolean } = {}
+): Promise<{ success: boolean; message: string; details: string[] }> {
   const [settings] = await db.select().from(dailyReportSettings).limit(1);
 
-  if (!settings || !settings.isEnabled) {
+  if (!settings) {
+    return { success: false, message: "Daily report not configured", details: [] };
+  }
+  if (!opts.ignoreEnabled && !settings.isEnabled) {
     return { success: false, message: "Daily report is disabled", details: [] };
   }
   if (!settings.phoneNumbers || settings.phoneNumbers.length === 0) {
@@ -170,7 +160,7 @@ export async function sendDailyReport(targetDate?: string): Promise<{ success: b
 
   const date = targetDate || new Date().toISOString().split("T")[0];
   const data = await getDailyReportData(date, settings.propertyIds as number[]);
-  const messageBody = buildReportMessage(data);
+  const variables = buildReportVariables(data);
 
   const details: string[] = [];
   let anySuccess = false;
@@ -181,7 +171,7 @@ export async function sendDailyReport(targetDate?: string): Promise<{ success: b
       mobile: cleaned,
       countryCode: "91",
       templateId: settings.templateId!,
-      variables: [messageBody],
+      variables,
     });
     const icon = result.success ? "✅" : "❌";
     details.push(`${icon} ${phone}: ${result.success ? "Sent" : (result.error || "Failed")}`);
