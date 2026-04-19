@@ -3326,7 +3326,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       for (const b of overdueBookings) {
         // Tenant access check
         if (!canAccessProperty(tenant, b.propertyId)) continue;
-        const createdAt = b.createdAt ? new Date(b.createdAt) : now;
+        // If createdAt is NULL (old rows before column was added), treat as very old so they always appear
+        const createdAt = b.createdAt ? new Date(b.createdAt) : new Date(0);
         if (!isPreview && createdAt > cutoffTime) continue; // Less than 8h old (skip check in preview)
 
         // Guard all IDs against NaN, null, undefined before DB calls
@@ -3348,7 +3349,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           propertyName: property?.name || "Unknown Property",
           roomDisplay,
           totalAmount: b.totalAmount,
-          hoursOverdue: Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)),
+          hoursOverdue: b.createdAt ? Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60)) : 99,
         });
       }
       res.json(result);
