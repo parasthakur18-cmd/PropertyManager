@@ -757,6 +757,20 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_restaurant_popup_kitchen_timing",
+    async run() {
+      if (!(await columnExists("restaurant_popup", "opening_time"))) {
+        await runRaw(`ALTER TABLE restaurant_popup ADD COLUMN opening_time VARCHAR(5) DEFAULT '08:00'`);
+      }
+      if (!(await columnExists("restaurant_popup", "closing_time"))) {
+        await runRaw(`ALTER TABLE restaurant_popup ADD COLUMN closing_time VARCHAR(5) DEFAULT '22:00'`);
+      }
+      if (!(await columnExists("restaurant_popup", "pre_opening_message"))) {
+        await runRaw(`ALTER TABLE restaurant_popup ADD COLUMN pre_opening_message TEXT DEFAULT 'Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes.'`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

@@ -1931,6 +1931,10 @@ export const restaurantPopup = pgTable("restaurant_popup", {
   message: text("message").default(""),
   showOrderButton: boolean("show_order_button").default(false).notNull(),
   orderButtonText: varchar("order_button_text", { length: 50 }).default("Order Now"),
+  // Kitchen timing
+  openingTime: varchar("opening_time", { length: 5 }).default("08:00"),  // "HH:MM" 24h
+  closingTime: varchar("closing_time", { length: 5 }).default("22:00"),  // "HH:MM" 24h
+  preOpeningMessage: text("pre_opening_message").default("Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes."),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

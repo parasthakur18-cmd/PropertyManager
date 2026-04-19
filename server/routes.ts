@@ -19449,7 +19449,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const propertyId = parseInt(req.params.propertyId);
       if (isNaN(propertyId)) return res.status(400).json({ message: "Invalid propertyId" });
       const [popup] = await db.select().from(restaurantPopup).where(eq(restaurantPopup.propertyId, propertyId)).limit(1);
-      res.json(popup || { propertyId, isEnabled: false, title: "", message: "", showOrderButton: false, orderButtonText: "Order Now" });
+      res.json(popup || { propertyId, isEnabled: false, title: "", message: "", showOrderButton: false, orderButtonText: "Order Now", openingTime: "08:00", closingTime: "22:00", preOpeningMessage: "Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes." });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -19462,7 +19462,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const propertyId = parseInt(req.params.propertyId);
       if (isNaN(propertyId)) return res.status(400).json({ message: "Invalid propertyId" });
       if (!canAccessProperty(auth.tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
-      const { isEnabled, title, message, showOrderButton, orderButtonText } = req.body;
+      const { isEnabled, title, message, showOrderButton, orderButtonText, openingTime, closingTime, preOpeningMessage } = req.body;
       await db.insert(restaurantPopup).values({
         propertyId,
         isEnabled: isEnabled ?? false,
@@ -19470,6 +19470,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         message: message ?? "",
         showOrderButton: showOrderButton ?? false,
         orderButtonText: orderButtonText ?? "Order Now",
+        openingTime: openingTime ?? "08:00",
+        closingTime: closingTime ?? "22:00",
+        preOpeningMessage: preOpeningMessage ?? "Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes.",
         updatedAt: new Date(),
       }).onConflictDoUpdate({
         target: restaurantPopup.propertyId,
@@ -19479,6 +19482,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           message: message ?? "",
           showOrderButton: showOrderButton ?? false,
           orderButtonText: orderButtonText ?? "Order Now",
+          openingTime: openingTime ?? "08:00",
+          closingTime: closingTime ?? "22:00",
+          preOpeningMessage: preOpeningMessage ?? "Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes.",
           updatedAt: new Date(),
         },
       });

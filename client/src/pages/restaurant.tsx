@@ -64,7 +64,14 @@ export default function Kitchen() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"cash" | "upi">("cash");
   const [showPopupSettings, setShowPopupSettings] = useState(false);
   const [popupForm, setPopupForm] = useState({
-    isEnabled: false, title: "", message: "", showOrderButton: false, orderButtonText: "Order Now",
+    isEnabled: false,
+    title: "",
+    message: "",
+    showOrderButton: false,
+    orderButtonText: "Order Now",
+    openingTime: "08:00",
+    closingTime: "22:00",
+    preOpeningMessage: "Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes.",
   });
 
   // Global property selection — synced with dashboard via localStorage
@@ -94,6 +101,9 @@ export default function Kitchen() {
         message: popupData.message || "",
         showOrderButton: !!popupData.showOrderButton,
         orderButtonText: popupData.orderButtonText || "Order Now",
+        openingTime: popupData.openingTime || "08:00",
+        closingTime: popupData.closingTime || "22:00",
+        preOpeningMessage: popupData.preOpeningMessage || "Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes.",
       });
     }
   }, [popupData]);
@@ -641,6 +651,55 @@ export default function Kitchen() {
                 className="resize-none"
               />
               <p className="text-xs text-muted-foreground">Supports line breaks. Update this daily for specials and announcements.</p>
+            </div>
+
+            {/* Kitchen Hours Section */}
+            <div className="rounded-xl border bg-blue-50/50 dark:bg-blue-950/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base">⏰</span>
+                <span className="font-semibold text-sm">Kitchen Hours</span>
+                <span className="text-xs text-muted-foreground ml-1">(used for pre-opening popup)</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="popup-opening-time">Opening Time</Label>
+                  <Input
+                    id="popup-opening-time"
+                    data-testid="input-popup-opening-time"
+                    type="time"
+                    value={popupForm.openingTime}
+                    onChange={(e) => setPopupForm(f => ({ ...f, openingTime: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="popup-closing-time">Closing Time</Label>
+                  <Input
+                    id="popup-closing-time"
+                    data-testid="input-popup-closing-time"
+                    type="time"
+                    value={popupForm.closingTime}
+                    onChange={(e) => setPopupForm(f => ({ ...f, closingTime: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="popup-pre-opening-msg">
+                  Pre-opening Message
+                  <span className="text-muted-foreground text-xs font-normal ml-1">(shown before opening time)</span>
+                </Label>
+                <Textarea
+                  id="popup-pre-opening-msg"
+                  data-testid="input-popup-pre-opening-msg"
+                  placeholder="Kitchen opens at {{OPEN_TIME}}. Please wait for {{WAIT_TIME}} minutes."
+                  value={popupForm.preOpeningMessage}
+                  onChange={(e) => setPopupForm(f => ({ ...f, preOpeningMessage: e.target.value }))}
+                  rows={2}
+                  className="resize-none text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use <code className="bg-muted px-1 rounded">{"{{OPEN_TIME}}"}</code> and <code className="bg-muted px-1 rounded">{"{{WAIT_TIME}}"}</code> — they are replaced automatically.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 border">
