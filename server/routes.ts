@@ -19437,7 +19437,9 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const propertyId = parseInt(req.params.propertyId);
       if (isNaN(propertyId)) return res.json(null);
       const [popup] = await db.select().from(restaurantPopup).where(eq(restaurantPopup.propertyId, propertyId)).limit(1);
-      if (!popup || !popup.isEnabled) return res.json(null);
+      if (!popup) return res.json(null);
+      // Always return timing fields so the pre-opening popup works even when the main popup is disabled.
+      // The client uses isEnabled to decide whether to show the regular message popup.
       res.json(popup);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

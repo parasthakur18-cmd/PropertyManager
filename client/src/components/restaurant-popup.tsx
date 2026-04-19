@@ -3,6 +3,7 @@ import { X, UtensilsCrossed, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PopupData {
+  isEnabled?: boolean;
   title?: string | null;
   message?: string | null;
   showOrderButton?: boolean;
@@ -67,20 +68,20 @@ export function RestaurantPopup({ propertyId, onOrderNow }: RestaurantPopupProps
         const isAfterClose = now >= closeMin;
 
         if (isBeforeOpen) {
-          // Show pre-opening popup
+          // Pre-opening popup — always show if timing is configured (regardless of isEnabled)
           const wait = openMin - now;
           setWaitMins(wait);
           setOpenTimeLabel(fmt12(openTime));
           setPopup(data);
           setMode("pre-opening");
           setTimeout(() => setVisible(true), 3500);
-        } else if (!isAfterClose && data.message) {
-          // Within hours — show regular popup
+        } else if (!isAfterClose && data.isEnabled && data.message) {
+          // Within hours — only show regular popup if explicitly enabled AND has a message
           setPopup(data);
           setMode("regular");
           setTimeout(() => setVisible(true), 3500);
         }
-        // After close: no popup
+        // After close time: no popup shown
       })
       .catch(() => {});
   }, [propertyId]);
