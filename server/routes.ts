@@ -18878,6 +18878,35 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         // same physical room being assigned to multiple stays in one multi-room booking
         const alreadyAssignedRoomIds = new Set<number>();
 
+        // ── Build a set of room IDs that are already booked for overlapping dates ──
+        // This prevents the same physical room being double-booked by two OTA reservations
+        const checkInDate = new Date(checkin);
+        const checkOutDate = new Date(checkout);
+        const conflictingFromBookings = await db.select({ roomId: bookings.roomId })
+          .from(bookings)
+          .where(and(
+            eq(bookings.propertyId, config.propertyId),
+            not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+            lt(bookings.checkInDate, checkOutDate),
+            gt(bookings.checkOutDate, checkInDate),
+            isNotNull(bookings.roomId),
+          ));
+        const conflictingFromStays = await db.select({ roomId: bookingRoomStays.roomId })
+          .from(bookingRoomStays)
+          .innerJoin(bookings, eq(bookings.id, bookingRoomStays.bookingId))
+          .where(and(
+            eq(bookings.propertyId, config.propertyId),
+            not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+            lt(bookings.checkInDate, checkOutDate),
+            gt(bookings.checkOutDate, checkInDate),
+            isNotNull(bookingRoomStays.roomId),
+          ));
+        const overlappingRoomIds = new Set<number>([
+          ...conflictingFromBookings.map(b => b.roomId).filter((id): id is number => id !== null),
+          ...conflictingFromStays.map(s => s.roomId).filter((id): id is number => id !== null),
+        ]);
+        console.log(`[AIOSELL] Date overlap check: ${checkin}–${checkout}: ${overlappingRoomIds.size} room(s) already booked`);
+
         for (const rd of rooms_) {
           const incomingRoomId = rd.roomId != null ? String(rd.roomId).trim() : null;
           const incomingRoomCode = rd.roomCode ? String(rd.roomCode).trim() : "";
@@ -18941,9 +18970,12 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           let assignedRoomId: number | null = null;
           let stayStatus: "confirmed" | "tbs" = "tbs";
 
-          // Pick the first available room that hasn't already been assigned to another
-          // stay in this same multi-room reservation
-          const candidateRoom = mappedRoomRows.find(r => !alreadyAssignedRoomIds.has(r.id));
+          // Pick the first available room that:
+          //  1. Hasn't already been assigned to another stay in this same multi-room reservation
+          //  2. Doesn't have a conflicting booking for the same date range
+          const candidateRoom = mappedRoomRows.find(r =>
+            !alreadyAssignedRoomIds.has(r.id) && !overlappingRoomIds.has(r.id)
+          );
           if (candidateRoom) {
             assignedRoomId = candidateRoom.id;
             alreadyAssignedRoomIds.add(assignedRoomId);
@@ -18953,10 +18985,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               roomNumber: candidateRoom.roomNumber,
               roomType: mapping.hostezeeRoomType,
               totalAvailable: mappedRoomRows.length,
+              alreadyBooked: overlappingRoomIds.size,
               alreadyAssigned: alreadyAssignedRoomIds.size - 1,
             });
           } else {
-            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} (already assigned: ${[...alreadyAssignedRoomIds].join(",")}) → TBS`);
+            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} (already booked for dates: ${[...overlappingRoomIds].join(",")}, already assigned in this reservation: ${[...alreadyAssignedRoomIds].join(",")}) → TBS`);
           }
 
           resolvedRooms.push({
