@@ -1,0 +1,257 @@
+Upgrade the existing Hostezee room service ordering system with a premium, category-based UI and add a Customer Preview Mode.
+
+IMPORTANT:
+
+* Do NOT break existing backend logic (categories → items → variants → add-ons)
+* Ensure variants and add-ons continue working properly
+* Do NOT affect kitchen screen, billing, or WhatsApp notifications
+
+---
+
+CURRENT CONTEXT:
+
+* Menu works via /menu?property=X&type=room&room=101
+* Orders go to kitchen with statuses
+* Room service linked to billing
+* Variants and add-ons already implemented
+
+---
+
+GOALS:
+
+1. Improve customer UI (category-based, fast, clean)
+2. Fix kitchen timing logic
+3. Add Customer Preview Mode for admin/testing
+4. Maintain full compatibility with current system
+
+---
+
+========================
+FEATURE IMPLEMENTATION
+======================
+
+1. CATEGORY-BASED HOMEPAGE (REQUIRED)
+
+* Replace long list menu with category-first UI
+* Show categories as cards (2 per row mobile)
+
+Each category:
+
+* Image
+* Name
+* Item count
+
+Click → opens items list
+
+* Merge duplicate categories (same name)
+* Show only unique categories
+
+---
+
+2. “MOST ORDERED” SECTION
+
+* Show top 5–6 popular items at top
+* Allow quick add (+ button)
+
+---
+
+3. MENU ITEMS SCREEN (REQUIRED)
+
+Each item:
+
+* Name
+
+* Description
+
+* Price
+
+* Add button (+ / -)
+
+* Optional image
+
+* Do NOT require opening new page for simple items
+
+---
+
+4. VARIANTS + ADD-ONS (CRITICAL)
+
+* If item has variants or add-ons:
+  → Open bottom sheet/modal
+
+Modal must include:
+
+* Item name
+* Variant selection (radio buttons)
+* Add-ons (checkbox)
+* Quantity selector
+* Dynamic total price
+
+Add button:
+→ “Add ₹XXX”
+
+Ensure:
+
+* Price updates correctly
+* Existing logic is preserved
+
+---
+
+5. ROOM CONTEXT (REQUIRED)
+
+* Extract from URL:
+  ?property=X&type=room&room=101
+
+* Display at top:
+  “Room 101”
+
+---
+
+6. KITCHEN TIMING FIX (CRITICAL)
+
+* If kitchen is CLOSED:
+
+  * Do NOT allow ordering
+  * Disable Add to Cart
+
+* Show:
+  “Kitchen opens at 8:00 AM (in XX minutes)”
+
+* Menu can be visible but:
+
+  * Grey out items
+  * Disable buttons
+
+DO NOT use popup that allows bypass
+
+---
+
+7. STICKY CART
+
+* Always visible at bottom
+* Show:
+
+  * Total items
+  * Total price
+* Tap → open cart
+
+---
+
+8. SPECIAL INSTRUCTIONS
+
+* Add input field in cart:
+  “Add cooking instructions (optional)”
+
+---
+
+9. ORDER FLOW (UNCHANGED)
+
+* Keep existing:
+
+  * Order creation
+  * Kitchen flow
+  * WhatsApp notifications
+  * Billing integration
+
+---
+
+10. CUSTOMER PREVIEW MODE (NEW FEATURE)
+
+Add ability for admin/staff to view customer UI.
+
+---
+
+ENTRY:
+
+Add button in admin/dashboard:
+“Preview Customer Menu”
+
+Open:
+/menu?property={property_id}&type=room&room=101&preview=true
+
+---
+
+BEHAVIOR:
+
+If preview=true:
+
+* Load full customer UI
+* DO NOT create real orders
+* DO NOT trigger WhatsApp
+* DO NOT affect billing
+
+---
+
+UI:
+
+Show banner:
+“Preview Mode – Orders will not be placed”
+
+---
+
+ORDER ACTION IN PREVIEW:
+
+* Allow full flow (cart → place order)
+* Show success message
+* But DO NOT save to database
+
+---
+
+OPTIONAL:
+
+Add toggle in quick-order page:
+“Switch to Customer View”
+
+---
+
+11. UI/UX IMPROVEMENTS
+
+* Mobile-first design
+* Rounded cards
+* Clean spacing
+* Smooth transitions
+* Sticky cart
+* Fast interaction
+
+---
+
+12. PERFORMANCE
+
+* Lazy load items
+* Optimize images
+* Avoid unnecessary re-renders
+
+---
+
+13. SAFETY
+
+* Do NOT break:
+
+  * Variants
+  * Add-ons
+  * Kitchen system
+  * Existing APIs
+
+---
+
+FINAL USER FLOW:
+
+1. Guest opens menu
+2. Sees categories + popular items
+3. Clicks category
+4. Selects item (variant + add-ons if needed)
+5. Adds to cart
+6. Places order
+
+---
+
+FINAL ADMIN FLOW:
+
+1. Admin clicks “Preview Customer Menu”
+2. Sees exact customer UI
+3. Tests flow without placing real order
+
+---
+
+GOAL:
+
+Create a fast, premium, mobile-first room service ordering experience with full testing capability for admin.

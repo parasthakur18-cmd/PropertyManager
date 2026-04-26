@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { RestaurantPopup } from "@/components/restaurant-popup";
-import { ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed, Clock, Search, XCircle } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed,
+  Clock, Search, XCircle, ArrowLeft, ChevronRight, Eye,
+} from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,8 +22,9 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface CartAddOn {
   id: number;
@@ -41,32 +45,102 @@ interface CartItem extends MenuItem {
   cartAddOns?: CartAddOn[];
 }
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const KITCHEN_OPEN_HOUR = 8;
+const KITCHEN_CLOSE_HOUR = 22;
+
+const CATEGORY_GRADIENTS = [
+  "from-orange-400 to-amber-500",
+  "from-emerald-400 to-teal-500",
+  "from-blue-400 to-indigo-500",
+  "from-rose-400 to-pink-500",
+  "from-violet-400 to-purple-500",
+  "from-cyan-400 to-sky-500",
+  "from-yellow-400 to-orange-500",
+  "from-green-400 to-emerald-600",
+  "from-fuchsia-400 to-pink-600",
+  "from-sky-400 to-blue-600",
+];
+
+const CATEGORY_EMOJIS: Record<string, string> = {
+  breakfast: "🌅", snack: "🍿", beverage: "☕", drink: "🥤",
+  lunch: "🍱", dinner: "🍽️", chinese: "🥡", biryani: "🍚",
+  pizza: "🍕", salad: "🥗", dessert: "🍰", soup: "🍵",
+  starter: "🥙", "south indian": "🥘", "north indian": "🍛",
+  sandwich: "🥪", pasta: "🍝", burger: "🍔", noodle: "🍜",
+  juice: "🧃", coffee: "☕", tea: "🍵", shake: "🥤",
+  ice: "🍦", sweet: "🍭", bread: "🥐", egg: "🍳",
+};
+
+function getCategoryEmoji(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
+    if (lower.includes(key)) return emoji;
+  }
+  return "🍽️";
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function Menu() {
-  // Read URL params once synchronously so queries are property-scoped immediately
+  // Read URL params once — synchronous so queries are scoped immediately
   const urlParams = new URLSearchParams(window.location.search);
   const urlProperty = urlParams.get("property") || "";
   const urlType = urlParams.get("type");
   const urlRoom = urlParams.get("room") || "";
+  const isPreview = urlParams.get("preview") === "true";
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [screen, setScreen] = useState<"categories" | "items">("categories");
+  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [orderType, setOrderType] = useState<"room" | "restaurant">(
-    urlType === "room" ? "room" : "restaurant"
-  );
-  const [roomNumber, setRoomNumber] = useState(urlRoom);
-  const [propertyId, setPropertyId] = useState<string>(urlProperty);
+  const [orderType] = useState<"room" | "restaurant">(urlType === "room" ? "room" : "restaurant");
+  const [roomNumber] = useState(urlRoom);
+  const [propertyId] = useState(urlProperty);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<{id: number; variantName: string; actualPrice: string; discountedPrice: string | null} | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<{
+    id: number; variantName: string; actualPrice: string; discountedPrice: string | null;
+  } | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<{ id: number; name: string; price: string; quantity: number; }[]>([]);
   const [isAddOnsSheetOpen, setIsAddOnsSheetOpen] = useState(false);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [categoryInitialized, setCategoryInitialized] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+
   const { toast } = useToast();
 
+  // ── Kitchen status ─────────────────────────────────────────────────────────
+  const { isKitchenOpen, minutesUntilOpen, openTimeStr } = useMemo(() => {
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const open = h >= KITCHEN_OPEN_HOUR && h < KITCHEN_CLOSE_HOUR;
+    let mins = 0;
+    if (!open) {
+      if (h < KITCHEN_OPEN_HOUR) {
+        mins = (KITCHEN_OPEN_HOUR - h) * 60 - m;
+      } else {
+        mins = (24 - h + KITCHEN_OPEN_HOUR) * 60 - m;
+      }
+    }
+    const openStr = `${KITCHEN_OPEN_HOUR}:00 ${KITCHEN_OPEN_HOUR < 12 ? "AM" : "PM"}`;
+    return { isKitchenOpen: open, minutesUntilOpen: mins, openTimeStr: openStr };
+  }, []);
+
+  const closedLabel = useMemo(() => {
+    if (isKitchenOpen) return "";
+    if (minutesUntilOpen < 60) return `Kitchen opens at ${openTimeStr} (in ${minutesUntilOpen} min)`;
+    const h = Math.floor(minutesUntilOpen / 60);
+    const m = minutesUntilOpen % 60;
+    return `Kitchen opens at ${openTimeStr} (in ${h}h ${m > 0 ? `${m}m` : ""})`;
+  }, [isKitchenOpen, minutesUntilOpen, openTimeStr]);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
   const menuCategoriesUrl = urlProperty
     ? `/api/public/menu-categories?propertyId=${urlProperty}`
     : `/api/public/menu-categories`;
@@ -92,213 +166,175 @@ export default function Menu() {
     },
   });
 
-  // Fetch variants for selected item
-  const { data: variants } = useQuery<{ id: number; menuItemId: number; variantName: string; actualPrice: string; discountedPrice: string | null; }[]>({
+  const { data: variants } = useQuery<{
+    id: number; menuItemId: number; variantName: string;
+    actualPrice: string; discountedPrice: string | null;
+  }[]>({
     queryKey: [`/api/public/menu-items/${selectedItem?.id}/variants`],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/menu-items/${selectedItem!.id}/variants`);
+      return res.json();
+    },
     enabled: !!selectedItem,
   });
 
-  // Fetch add-ons for selected item
-  const { data: addOns } = useQuery<{ id: number; menuItemId: number; addOnName: string; addOnPrice: string; }[]>({
+  const { data: addOns } = useQuery<{
+    id: number; menuItemId: number; addOnName: string; addOnPrice: string;
+  }[]>({
     queryKey: [`/api/public/menu-items/${selectedItem?.id}/add-ons`],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/menu-items/${selectedItem!.id}/add-ons`);
+      return res.json();
+    },
     enabled: !!selectedItem,
   });
 
-  useEffect(() => {
-    if (!categoryInitialized && menuCategories && menuCategories.length > 0 && menuItems) {
-      const availableCategories = menuCategories.filter(cat => 
-        menuItems.some(item => item.categoryId === cat.id && item.isAvailable)
-      );
-      if (availableCategories.length > 0) {
-        setSelectedCategoryId(availableCategories[0].id);
-        setCategoryInitialized(true);
-      }
-    }
-  }, [menuCategories, menuItems, categoryInitialized]);
-
-  const isLoading = categoriesLoading || itemsLoading;
-
+  // ── Order mutation ─────────────────────────────────────────────────────────
   const orderMutation = useMutation({
     mutationFn: async (orderData: any) => {
+      if (isPreview) {
+        // Preview mode: simulate network delay, don't actually save
+        await new Promise(r => setTimeout(r, 600));
+        return { preview: true };
+      }
       return await apiRequest("/api/public/orders", "POST", orderData);
     },
     onSuccess: () => {
       toast({
-        title: "Order Placed!",
-        description: "Your order has been sent to the kitchen.",
+        title: isPreview ? "Preview: Order Simulated" : "Order Placed!",
+        description: isPreview
+          ? "This is preview mode — no real order was created."
+          : "Your order has been sent to the kitchen.",
       });
       setCart([]);
-      setRoomNumber("");
       setCustomerName("");
       setCustomerPhone("");
       setSpecialInstructions("");
       setIsCheckoutOpen(false);
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
-  const openAddOnsSheet = (item: MenuItem) => {
+  // ── Cart helpers ───────────────────────────────────────────────────────────
+  const getItemQtyInCart = useCallback((itemId: number) =>
+    cart.filter(c => c.id === itemId).reduce((s, c) => s + c.quantity, 0),
+    [cart]
+  );
+
+  const calculateTotal = useCallback(() =>
+    cart.reduce((sum, item) => {
+      const base = item.selectedVariant
+        ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
+        : parseFloat(item.price as string);
+      const addOnsTotal = item.cartAddOns
+        ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
+        : 0;
+      return sum + base * item.quantity + addOnsTotal;
+    }, 0),
+    [cart]
+  );
+
+  const totalItems = cart.reduce((s, c) => s + c.quantity, 0);
+
+  const updateQuantity = (cartId: string, delta: number) => {
+    setCart(prev => prev
+      .map(i => i.cartId === cartId ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)
+      .filter(i => i.quantity > 0)
+    );
+  };
+
+  const removeFromCart = (cartId: string) =>
+    setCart(prev => prev.filter(i => i.cartId !== cartId));
+
+  const updateCartAddOnQty = (cartId: string, addOnId: number, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.cartId === cartId && item.cartAddOns) {
+        return {
+          ...item,
+          cartAddOns: item.cartAddOns.map(a =>
+            a.id === addOnId ? { ...a, quantity: Math.max(1, a.quantity + delta) } : a
+          ),
+        };
+      }
+      return item;
+    }));
+  };
+
+  // ── Add to cart ────────────────────────────────────────────────────────────
+  const openItemSheet = (item: MenuItem) => {
     setSelectedItem(item);
     setSelectedVariant(null);
     setSelectedAddOns([]);
     setIsAddOnsSheetOpen(true);
   };
 
-  const toggleAddOn = (addOn: { id: number; addOnName: string; addOnPrice: string; }) => {
-    const existing = selectedAddOns.find(a => a.id === addOn.id);
-    if (existing) {
-      setSelectedAddOns(selectedAddOns.filter(a => a.id !== addOn.id));
-    } else {
-      setSelectedAddOns([...selectedAddOns, { id: addOn.id, name: addOn.addOnName, price: addOn.addOnPrice, quantity: 1 }]);
-    }
+  const addSimpleToCart = (item: MenuItem) => {
+    if (!isKitchenOpen) return;
+    const cartId = `${item.id}-novariant-${Date.now()}`;
+    setCart(prev => [...prev, { ...item, cartId, quantity: 1 }]);
+    toast({ title: "Added", description: item.name });
   };
 
-  const updateAddOnQuantity = (id: number, change: number) => {
-    setSelectedAddOns(prev => 
-      prev.map(addOn => 
-        addOn.id === id 
-          ? { ...addOn, quantity: Math.max(1, addOn.quantity + change) }
-          : addOn
-      )
-    );
+  const addToCart = (item: MenuItem) => {
+    if (!isKitchenOpen) return;
+    if (item.hasVariants || item.hasAddOns) openItemSheet(item);
+    else addSimpleToCart(item);
   };
 
-  const addToCartWithAddOns = () => {
+  const confirmAddToCart = () => {
     if (!selectedItem) return;
-    
-    // Generate unique cart ID for this combination
-    const cartId = `${selectedItem.id}-${selectedVariant?.id || 'novariant'}-${Date.now()}`;
-    
-    const cartItem: CartItem = {
+    const cartId = `${selectedItem.id}-${selectedVariant?.id || "nv"}-${Date.now()}`;
+    setCart(prev => [...prev, {
       ...selectedItem,
       cartId,
       quantity: 1,
-      selectedVariant: selectedVariant,
-      cartAddOns: selectedAddOns.length > 0 ? [...selectedAddOns] : undefined
-    };
-    
-    setCart([...cart, cartItem]);
-    
-    toast({
-      title: "Added to cart",
-      description: `${selectedItem.name} added${selectedAddOns.length > 0 ? ' with add-ons' : ''}`,
-    });
-    
+      selectedVariant: selectedVariant || undefined,
+      cartAddOns: selectedAddOns.length > 0 ? [...selectedAddOns] : undefined,
+    }]);
+    toast({ title: "Added", description: selectedItem.name });
     setIsAddOnsSheetOpen(false);
     setSelectedItem(null);
     setSelectedVariant(null);
     setSelectedAddOns([]);
   };
 
-  const addToCart = (item: MenuItem) => {
-    // Check if item has variants or add-ons
-    if (item.hasVariants || item.hasAddOns) {
-      openAddOnsSheet(item);
-    } else {
-      // Directly add to cart if no variants or add-ons
-      const cartId = `${item.id}-novariant-${Date.now()}`;
-      setCart([...cart, { ...item, cartId, quantity: 1 }]);
-      toast({
-        title: "Added to cart",
-        description: `${item.name} added`,
-      });
-    }
+  const toggleAddOn = (addOn: { id: number; addOnName: string; addOnPrice: string }) => {
+    const exists = selectedAddOns.find(a => a.id === addOn.id);
+    if (exists) setSelectedAddOns(prev => prev.filter(a => a.id !== addOn.id));
+    else setSelectedAddOns(prev => [...prev, { id: addOn.id, name: addOn.addOnName, price: addOn.addOnPrice, quantity: 1 }]);
   };
 
-  const updateQuantity = (cartId: string, change: number) => {
-    setCart((prev) => {
-      const updated = prev.map((item) =>
-        item.cartId === cartId ? { ...item, quantity: Math.max(0, item.quantity + change) } : item
-      );
-      return updated.filter((item) => item.quantity > 0);
-    });
-  };
+  const updateAddOnQty = (id: number, delta: number) =>
+    setSelectedAddOns(prev => prev.map(a => a.id === id ? { ...a, quantity: Math.max(1, a.quantity + delta) } : a));
 
-  const updateCartAddOnQuantity = (cartId: string, addOnId: number, change: number) => {
-    setCart((prev) =>
-      prev.map((item) => {
-        if (item.cartId === cartId && item.cartAddOns) {
-          return {
-            ...item,
-            cartAddOns: item.cartAddOns.map((addOn) =>
-              addOn.id === addOnId
-                ? { ...addOn, quantity: Math.max(1, addOn.quantity + change) }
-                : addOn
-            ),
-          };
-        }
-        return item;
-      })
-    );
-  };
-
-  const removeFromCart = (cartId: string) => {
-    setCart(cart.filter((item) => item.cartId !== cartId));
-  };
-
-  const calculateTotal = () => {
-    return cart.reduce((sum, item) => {
-      // Base price (variant or regular price)
-      const basePrice = item.selectedVariant 
-        ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
-        : parseFloat(item.price as string);
-      
-      // Add-ons total
-      const addOnsTotal = item.cartAddOns
-        ? item.cartAddOns.reduce((addOnSum, addOn) => 
-            addOnSum + (parseFloat(addOn.price) * addOn.quantity), 0)
-        : 0;
-      
-      // Item total = (base price * main quantity) + add-ons total
-      return sum + (basePrice * item.quantity) + addOnsTotal;
-    }, 0);
-  };
-
+  // ── Checkout ───────────────────────────────────────────────────────────────
   const handleCheckout = () => {
     if (orderType === "room" && !roomNumber) {
-      toast({
-        title: "Room Number Required",
-        description: "Please enter your room number",
-        variant: "destructive",
-      });
+      toast({ title: "Room Required", description: "Room number is missing", variant: "destructive" });
       return;
     }
-    
     if (orderType === "restaurant" && (!customerName || !customerPhone)) {
-      toast({
-        title: "Details Required",
-        description: "Please enter your name and phone number",
-        variant: "destructive",
-      });
+      toast({ title: "Details Required", description: "Enter name and phone", variant: "destructive" });
       return;
     }
 
     const orderData: any = {
       orderType,
       orderSource: "guest",
-      items: cart.map((item) => {
-        const basePrice = item.selectedVariant 
+      items: cart.map(item => {
+        const base = item.selectedVariant
           ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
           : parseFloat(item.price as string);
-        
-        const variantText = item.selectedVariant ? ` (${item.selectedVariant.variantName})` : '';
-        const addOnsText = item.cartAddOns && item.cartAddOns.length > 0
-          ? ` + ${item.cartAddOns.map(a => `${a.quantity}x ${a.name}`).join(', ')}`
-          : '';
-        
+        const variantText = item.selectedVariant ? ` (${item.selectedVariant.variantName})` : "";
+        const addOnsText = item.cartAddOns?.length
+          ? ` + ${item.cartAddOns.map(a => `${a.quantity}x ${a.name}`).join(", ")}`
+          : "";
         const addOnsTotal = item.cartAddOns
-          ? item.cartAddOns.reduce((sum, addOn) => 
-              sum + (parseFloat(addOn.price) * addOn.quantity), 0)
+          ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
           : 0;
-        
-        const totalPrice = (basePrice * item.quantity) + addOnsTotal;
-        
+        const totalPrice = base * item.quantity + addOnsTotal;
         return {
           id: item.id,
           name: item.name + variantText + addOnsText,
@@ -309,7 +345,7 @@ export default function Menu() {
       totalAmount: calculateTotal().toFixed(2),
       specialInstructions: specialInstructions || null,
     };
-    
+
     if (orderType === "room") {
       orderData.roomId = roomNumber;
       orderData.propertyId = propertyId;
@@ -321,686 +357,805 @@ export default function Menu() {
     orderMutation.mutate(orderData);
   };
 
-  // Helper function to get total quantity of an item in cart (across all variants)
-  const getItemQuantityInCart = (itemId: number) => {
-    return cart
-      .filter(cartItem => cartItem.id === itemId)
-      .reduce((sum, cartItem) => sum + cartItem.quantity, 0);
-  };
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const availableItems = useMemo(() =>
+    (menuItems || []).filter(i => i.isAvailable),
+    [menuItems]
+  );
 
-  // Helper function to check if item has variants or add-ons
-  const isComplexItem = (item: MenuItem) => {
-    return item.hasVariants || item.hasAddOns;
-  };
+  const popularItems = useMemo(() => availableItems.slice(0, 6), [availableItems]);
 
-  // Filter items by search term (name + description)
-  const filteredItems = useMemo(() => {
-    if (!menuItems) return [];
-    if (!searchTerm.trim()) return menuItems;
-    
-    const searchLower = searchTerm.toLowerCase().trim();
-    return menuItems.filter(item => 
-      item.name.toLowerCase().includes(searchLower) ||
-      (item.description && item.description.toLowerCase().includes(searchLower))
+  const categoriesWithCount = useMemo(() =>
+    (menuCategories || []).map((cat, idx) => ({
+      cat,
+      count: availableItems.filter(i => i.categoryId === cat.id).length,
+      gradient: CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length],
+      emoji: getCategoryEmoji(cat.name),
+    })).filter(c => c.count > 0),
+    [menuCategories, availableItems]
+  );
+
+  const activeCategory = menuCategories?.find(c => c.id === activeCategoryId);
+
+  const itemsInActiveCategory = useMemo(() => {
+    if (!activeCategoryId) return [];
+    const base = availableItems.filter(i => i.categoryId === activeCategoryId);
+    if (!searchTerm.trim()) return base;
+    const q = searchTerm.toLowerCase();
+    return base.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.description && i.description.toLowerCase().includes(q))
     );
-  }, [menuItems, searchTerm]);
+  }, [availableItems, activeCategoryId, searchTerm]);
 
-  const groupedByCategory = selectedCategoryId === null
-    ? []
-    : menuCategories
-        ?.filter((cat) => cat.id === selectedCategoryId)
-        .map((category) => ({
-          category,
-          items: filteredItems?.filter((item) => item.categoryId === category.id) || [],
-        }))
-        .filter(group => group.items.length > 0);
+  const searchResults = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+    const q = searchTerm.toLowerCase();
+    return availableItems.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.description && i.description.toLowerCase().includes(q))
+    );
+  }, [availableItems, searchTerm]);
 
+  const isLoading = categoriesLoading || itemsLoading;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Variant sheet price preview
+  const sheetTotal = useMemo(() => {
+    const base = selectedVariant
+      ? parseFloat(selectedVariant.discountedPrice || selectedVariant.actualPrice)
+      : parseFloat(selectedItem?.price as string || "0");
+    const extras = selectedAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0);
+    return (base + extras).toFixed(2);
+  }, [selectedVariant, selectedItem, selectedAddOns]);
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <Skeleton className="h-16 w-64 mb-8" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-64" />
-          ))}
+      <div className="min-h-screen bg-gray-50 p-4">
+        <Skeleton className="h-20 w-full rounded-2xl mb-4" />
+        <div className="grid grid-cols-2 gap-3">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}
         </div>
       </div>
     );
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-background border-b">
-        <div className="container mx-auto px-4 md:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold font-serif flex items-center gap-2">
-                <UtensilsCrossed className="h-8 w-8 text-primary" />
-                {orderType === "room" ? "Room Service Menu" : "Café Menu"}
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {orderType === "room" ? "Order directly to your room" : "Order from our café"}
-              </p>
-            </div>
-            <Sheet open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
-              <SheetTrigger asChild>
-                <Button size="lg" className="relative" data-testid="button-view-cart">
-                  <ShoppingCart className="h-5 w-5 mr-2" />
-                  Cart ({cart.length})
-                  {cart.length > 0 && (
-                    <Badge className="ml-2 bg-destructive text-destructive-foreground">
-                      ₹{calculateTotal().toFixed(0)}
-                    </Badge>
-                  )}
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-                <SheetHeader>
-                  <SheetTitle>Your Order</SheetTitle>
-                  <SheetDescription>Review and complete your order</SheetDescription>
-                </SheetHeader>
-                <div className="mt-6 space-y-4">
-                  {cart.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">Your cart is empty</p>
-                  ) : (
-                    <>
-                      {cart.map((item) => {
-                        const basePrice = item.selectedVariant 
-                          ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
-                          : parseFloat(item.price as string);
-                        
-                        return (
-                          <div key={item.cartId} className="p-3 border rounded-lg space-y-3">
-                            {/* Main Item */}
-                            <div className="flex items-start gap-3">
-                              <div className="flex-1">
-                                <p className="font-medium">
-                                  {item.name}
-                                  {item.selectedVariant && (
-                                    <span className="text-sm text-muted-foreground ml-1">
-                                      ({item.selectedVariant.variantName})
-                                    </span>
-                                  )}
-                                </p>
-                                <p className="text-sm text-muted-foreground font-mono">₹{basePrice.toFixed(2)} each</p>
-                              </div>
-                              <div className="flex items-center gap-2 flex-shrink-0">
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8"
-                                  onClick={() => updateQuantity(item.cartId, -1)}
-                                  data-testid={`button-decrease-${item.cartId}`}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="w-8 text-center font-mono">{item.quantity}</span>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-8 w-8"
-                                  onClick={() => updateQuantity(item.cartId, 1)}
-                                  data-testid={`button-increase-${item.cartId}`}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8"
-                                  onClick={() => removeFromCart(item.cartId)}
-                                  data-testid={`button-remove-${item.cartId}`}
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
+    <div className="min-h-screen bg-gray-50 pb-28 overflow-x-hidden">
 
-                            {/* Add-ons with Independent Controls */}
-                            {item.cartAddOns && item.cartAddOns.length > 0 && (
-                              <div className="pl-4 border-l-2 space-y-2">
-                                {item.cartAddOns.map((addOn) => (
-                                  <div key={addOn.id} className="flex items-center gap-3 text-sm">
-                                    <div className="flex-1">
-                                      <p className="text-muted-foreground">+ {addOn.name}</p>
-                                      <p className="text-xs text-muted-foreground font-mono">₹{addOn.price} each</p>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      <Button
-                                        size="icon"
-                                        variant="outline"
-                                        className="h-7 w-7"
-                                        onClick={() => updateCartAddOnQuantity(item.cartId, addOn.id, -1)}
-                                        data-testid={`button-decrease-addon-${item.cartId}-${addOn.id}`}
-                                      >
-                                        <Minus className="h-3 w-3" />
-                                      </Button>
-                                      <span className="w-6 text-center font-mono text-xs">{addOn.quantity}</span>
-                                      <Button
-                                        size="icon"
-                                        variant="outline"
-                                        className="h-7 w-7"
-                                        onClick={() => updateCartAddOnQuantity(item.cartId, addOn.id, 1)}
-                                        data-testid={`button-increase-addon-${item.cartId}-${addOn.id}`}
-                                      >
-                                        <Plus className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Item Total */}
-                            <div className="flex justify-between text-sm pt-2 border-t">
-                              <span className="text-muted-foreground">Subtotal</span>
-                              <span className="font-mono font-medium">
-                                ₹{(
-                                  (basePrice * item.quantity) + 
-                                  (item.cartAddOns?.reduce((sum, addOn) => 
-                                    sum + (parseFloat(addOn.price) * addOn.quantity), 0) || 0)
-                                ).toFixed(2)}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      <div className="border-t pt-4 space-y-3">
-                        {orderType === "room" ? (
-                          <>
-                            <div className="space-y-2">
-                              <Label htmlFor="room-number">Room Number *</Label>
-                              <Input
-                                id="room-number"
-                                placeholder="Enter your room number"
-                                value={roomNumber}
-                                onChange={(e) => setRoomNumber(e.target.value)}
-                                data-testid="input-room-number"
-                                readOnly={!!new URLSearchParams(window.location.search).get("room")}
-                                className={new URLSearchParams(window.location.search).get("room") ? "bg-muted" : ""}
-                              />
-                              {new URLSearchParams(window.location.search).get("room") && (
-                                <p className="text-xs text-muted-foreground">Room number auto-filled from QR code</p>
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="space-y-2">
-                              <Label htmlFor="customer-name">Name *</Label>
-                              <Input
-                                id="customer-name"
-                                placeholder="Enter your name"
-                                value={customerName}
-                                onChange={(e) => setCustomerName(e.target.value)}
-                                data-testid="input-customer-name"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="customer-phone">Phone Number *</Label>
-                              <Input
-                                id="customer-phone"
-                                type="tel"
-                                placeholder="Enter your phone number"
-                                value={customerPhone}
-                                onChange={(e) => setCustomerPhone(e.target.value)}
-                                data-testid="input-customer-phone"
-                              />
-                            </div>
-                          </>
-                        )}
-                        <div className="space-y-2">
-                          <Label htmlFor="special-instructions">Special Instructions (Optional)</Label>
-                          <Textarea
-                            id="special-instructions"
-                            placeholder="Any special requests or dietary requirements..."
-                            value={specialInstructions}
-                            onChange={(e) => setSpecialInstructions(e.target.value)}
-                            data-testid="input-special-instructions"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="border-t pt-4">
-                        <div className="flex justify-between text-lg font-bold mb-4">
-                          <span>Total</span>
-                          <span className="font-mono">₹{calculateTotal().toFixed(2)}</span>
-                        </div>
-                        <Button
-                          className="w-full"
-                          size="lg"
-                          onClick={handleCheckout}
-                          disabled={orderMutation.isPending || (orderType === "room" ? !roomNumber : (!customerName || !customerPhone))}
-                          data-testid="button-place-order"
-                        >
-                          <Check className="h-5 w-5 mr-2" />
-                          {orderMutation.isPending ? "Placing Order..." : "Place Order"}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </SheetContent>
-            </Sheet>
-          </div>
-        </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="border-b bg-background">
-        <div className="container mx-auto px-4 md:px-6 py-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search menu items..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-10"
-              aria-label="Search menu items"
-              data-testid="input-search-menu"
-            />
-            {searchTerm && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                onClick={() => setSearchTerm("")}
-                aria-label="Clear search"
-                data-testid="button-clear-search"
-              >
-                <XCircle className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Category Filter Tabs - Only tabs scroll */}
-      {menuCategories && menuCategories.length > 0 && (
-        <div className="border-b bg-background">
-          <div className="overflow-x-auto overflow-y-hidden px-4 py-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
-            <div className="flex gap-2 w-max">
-              {menuCategories.map((category) => {
-                const itemCount = filteredItems?.filter(
-                  (item) => item.categoryId === category.id && item.isAvailable
-                ).length || 0;
-                if (itemCount === 0) return null;
-                return (
-                  <Badge
-                    key={category.id}
-                    variant={selectedCategoryId === category.id ? "default" : "outline"}
-                    className="cursor-pointer hover-elevate whitespace-nowrap flex-shrink-0"
-                    onClick={() => setSelectedCategoryId(category.id)}
-                    data-testid={`badge-category-${category.id}`}
-                  >
-                    {category.name} ({itemCount})
-                  </Badge>
-                );
-              })}
-            </div>
-          </div>
+      {/* ── Preview Mode Banner ──────────────────────────────────────────── */}
+      {isPreview && (
+        <div className="bg-amber-400 text-amber-900 text-center py-2 px-4 text-sm font-semibold flex items-center justify-center gap-2 sticky top-0 z-50">
+          <Eye className="h-4 w-4 flex-shrink-0" />
+          Preview Mode — Orders will not be placed
         </div>
       )}
 
-      {/* Menu Items */}
-      <div className="container mx-auto px-4 py-6 pb-24">
-        {groupedByCategory?.map(({ category, items }) => (
-          <div key={category.id} className="mb-8">
-            <h2 className="text-xl font-bold mb-3">{category.name}</h2>
-            <div className="grid grid-cols-1 gap-3">
-              {items
-                .filter((item) => item.isAvailable)
-                .map((item) => (
-                  <Card key={item.id} className="hover-elevate" data-testid={`card-menu-item-${item.id}`}>
-                    <div className="flex gap-2 p-2.5">
-                      {/* Compact Image */}
-                      {item.imageUrl && (
-                        <div className="flex-shrink-0 w-16 h-16 overflow-hidden rounded bg-muted">
-                          <img 
-                            src={item.imageUrl} 
-                            alt={item.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        </div>
-                      )}
-                      
-                      {/* Item Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start gap-2 mb-0.5">
-                          <span className="text-xs flex-shrink-0">
-                            {item.foodType === "non-veg" ? "🔴" : "🟢"}
-                          </span>
-                          <h3 className="font-semibold text-sm leading-tight flex-1 min-w-0">{item.name}</h3>
-                          <Badge variant="secondary" className="font-mono text-xs px-1.5 py-0 h-5 flex-shrink-0">₹{item.price}</Badge>
-                        </div>
-                        {item.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 mb-1">{item.description}</p>
-                        )}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-1">
-                            {item.preparationTime && (
-                              <p className="text-xs text-muted-foreground">
-                                <Clock className="inline h-3 w-3 mr-1" />
-                                {item.preparationTime}min
-                              </p>
-                            )}
-                            {getItemQuantityInCart(item.id) > 0 && (
-                              <Badge variant="default" className="font-mono text-xs px-1.5 py-0 h-5">
-                                {getItemQuantityInCart(item.id)} in cart
-                              </Badge>
-                            )}
-                          </div>
-                          {isComplexItem(item) ? (
-                            getItemQuantityInCart(item.id) > 0 ? (
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7"
-                                  onClick={() => {
-                                    const cartItems = cart.filter(ci => ci.id === item.id);
-                                    if (cartItems.length > 0) updateQuantity(cartItems[cartItems.length - 1].cartId, -1);
-                                  }}
-                                  data-testid={`button-decrease-complex-${item.id}`}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-6 text-center font-mono text-xs font-semibold">{getItemQuantityInCart(item.id)}</span>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7"
-                                  onClick={() => {
-                                    const cartItems = cart.filter(ci => ci.id === item.id);
-                                    if (cartItems.length > 0) updateQuantity(cartItems[cartItems.length - 1].cartId, 1);
-                                  }}
-                                  data-testid={`button-increase-complex-${item.id}`}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => openAddOnsSheet(item)}
-                                data-testid={`button-add-complex-${item.id}`}
-                                className="h-7 px-4 text-xs font-bold tracking-wide"
-                              >
-                                ADD
-                              </Button>
-                            )
-                          ) : (
-                            getItemQuantityInCart(item.id) > 0 ? (
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7"
-                                  onClick={() => {
-                                    const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
-                                    if (cartItem) updateQuantity(cartItem.cartId, -1);
-                                  }}
-                                  data-testid={`button-decrease-main-${item.id}`}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-6 text-center font-mono text-xs font-semibold">{getItemQuantityInCart(item.id)}</span>
-                                <Button
-                                  size="icon"
-                                  variant="outline"
-                                  className="h-7 w-7"
-                                  onClick={() => {
-                                    const cartItem = cart.find(ci => ci.id === item.id && !ci.selectedVariant);
-                                    if (cartItem) updateQuantity(cartItem.cartId, 1);
-                                    else addToCart(item);
-                                  }}
-                                  data-testid={`button-increase-main-${item.id}`}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => addToCart(item)}
-                                data-testid={`button-add-simple-${item.id}`}
-                                className="h-7 px-4 text-xs font-bold tracking-wide"
-                              >
-                                ADD
-                              </Button>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="bg-white border-b sticky top-0 z-40 shadow-sm" style={{ top: isPreview ? 36 : 0 }}>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {screen === "items" && (
+                <button
+                  onClick={() => { setScreen("categories"); setSearchTerm(""); }}
+                  className="mr-1 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  data-testid="button-back-to-categories"
+                >
+                  <ArrowLeft className="h-5 w-5 text-gray-600" />
+                </button>
+              )}
+              <div>
+                <h1 className="font-bold text-base leading-tight text-gray-900">
+                  {screen === "items" && activeCategory
+                    ? activeCategory.name
+                    : orderType === "room" ? "Room Service" : "Café Menu"}
+                </h1>
+                {orderType === "room" && roomNumber && (
+                  <p className="text-xs text-[#2BB6A8] font-semibold">Room {roomNumber}</p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
 
-        {(!groupedByCategory || groupedByCategory.length === 0) && (
-          <Card className="p-12 text-center">
-            <div className="flex flex-col items-center gap-4">
-              <UtensilsCrossed className="h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold">No menu items available</h3>
-              <p className="text-muted-foreground">Please check back later</p>
+            {/* Cart trigger */}
+            {cart.length > 0 && (
+              <button
+                onClick={() => setIsCheckoutOpen(true)}
+                className="relative flex items-center gap-1 bg-[#1E3A5F] text-white px-3 py-1.5 rounded-full text-sm font-semibold"
+                data-testid="button-header-cart"
+              >
+                <ShoppingCart className="h-4 w-4" />
+                <span>{totalItems}</span>
+                <span className="text-xs opacity-80">· ₹{calculateTotal().toFixed(0)}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Kitchen closed banner */}
+          {!isKitchenOpen && (
+            <div className="mt-2 flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <Clock className="h-4 w-4 text-red-500 flex-shrink-0" />
+              <p className="text-xs text-red-600 font-medium">{closedLabel}</p>
             </div>
-          </Card>
-        )}
+          )}
+
+          {/* Kitchen open pill */}
+          {isKitchenOpen && (
+            <div className="mt-2 inline-flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+              <p className="text-xs text-green-700 font-medium">Kitchen Open · 8 AM – 10 PM</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Add-Ons Selection Sheet */}
-      <Sheet open={isAddOnsSheetOpen} onOpenChange={setIsAddOnsSheetOpen}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>{selectedItem?.name}</SheetTitle>
-            <SheetDescription>
-              {variants && variants.length > 0 
-                ? "Choose your size and customize with add-ons"
-                : "Customize your order with add-ons"
-              }
-            </SheetDescription>
+      {/* ── Categories Screen ────────────────────────────────────────────── */}
+      {screen === "categories" && (
+        <div className="px-4 pt-4 space-y-5">
+
+          {/* Search bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder="Search dishes..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10 rounded-xl bg-white border-gray-200"
+              data-testid="input-search-menu"
+            />
+            {searchTerm && (
+              <button
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+                onClick={() => setSearchTerm("")}
+                data-testid="button-clear-search"
+              >
+                <XCircle className="h-4 w-4 text-gray-400" />
+              </button>
+            )}
+          </div>
+
+          {/* ── Search results ───────────────────────────────────────────── */}
+          {searchTerm && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
+                {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
+              </p>
+              {searchResults.length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">No items found</p>
+                </div>
+              ) : (
+                searchResults.map(item => (
+                  <MenuItemRow
+                    key={item.id}
+                    item={item}
+                    qty={getItemQtyInCart(item.id)}
+                    isKitchenOpen={isKitchenOpen}
+                    onAdd={() => addToCart(item)}
+                    onIncrease={() => {
+                      const ci = cart.find(c => c.id === item.id);
+                      if (ci) updateQuantity(ci.cartId, 1);
+                      else addToCart(item);
+                    }}
+                    onDecrease={() => {
+                      const cis = cart.filter(c => c.id === item.id);
+                      if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
+                    }}
+                  />
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── Popular Items (only when not searching) ──────────────────── */}
+          {!searchTerm && popularItems.length > 0 && (
+            <div>
+              <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">
+                ⭐ Popular Items
+              </h2>
+              <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+                {popularItems.map(item => (
+                  <PopularCard
+                    key={item.id}
+                    item={item}
+                    qty={getItemQtyInCart(item.id)}
+                    isKitchenOpen={isKitchenOpen}
+                    onAdd={() => addToCart(item)}
+                    onIncrease={() => {
+                      const ci = cart.find(c => c.id === item.id);
+                      if (ci) updateQuantity(ci.cartId, 1);
+                      else addToCart(item);
+                    }}
+                    onDecrease={() => {
+                      const cis = cart.filter(c => c.id === item.id);
+                      if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Category Grid ─────────────────────────────────────────────── */}
+          {!searchTerm && (
+            <div>
+              <h2 className="text-sm font-bold text-gray-700 mb-3">Browse Menu</h2>
+              {categoriesWithCount.length === 0 ? (
+                <div className="text-center py-16 text-gray-400">
+                  <UtensilsCrossed className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p className="font-medium">Menu not available</p>
+                  <p className="text-sm mt-1">Please check back later</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {categoriesWithCount.map(({ cat, count, gradient, emoji }) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => { setActiveCategoryId(cat.id); setScreen("items"); }}
+                      className="relative rounded-2xl overflow-hidden h-36 text-left shadow-sm active:scale-95 transition-transform"
+                      data-testid={`button-category-${cat.id}`}
+                    >
+                      <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
+                      <div className="absolute inset-0 bg-black/10" />
+                      <div className="relative p-4 h-full flex flex-col justify-between">
+                        <span className="text-4xl">{emoji}</span>
+                        <div>
+                          <p className="font-bold text-white text-sm leading-tight">{cat.name}</p>
+                          <p className="text-white/80 text-xs mt-0.5">{count} item{count !== 1 ? "s" : ""}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Items Screen ─────────────────────────────────────────────────── */}
+      {screen === "items" && (
+        <div className="px-4 pt-4 space-y-3">
+          {/* Category search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              placeholder={`Search in ${activeCategory?.name || ""}...`}
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="pl-10 pr-10 rounded-xl bg-white border-gray-200"
+              data-testid="input-search-category"
+            />
+            {searchTerm && (
+              <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearchTerm("")}>
+                <XCircle className="h-4 w-4 text-gray-400" />
+              </button>
+            )}
+          </div>
+
+          {/* Items list */}
+          {itemsInActiveCategory.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">{searchTerm ? "No results" : "No items in this category"}</p>
+            </div>
+          ) : (
+            itemsInActiveCategory.map(item => (
+              <MenuItemRow
+                key={item.id}
+                item={item}
+                qty={getItemQtyInCart(item.id)}
+                isKitchenOpen={isKitchenOpen}
+                onAdd={() => addToCart(item)}
+                onIncrease={() => {
+                  const ci = cart.find(c => c.id === item.id);
+                  if (ci) updateQuantity(ci.cartId, 1);
+                  else addToCart(item);
+                }}
+                onDecrease={() => {
+                  const cis = cart.filter(c => c.id === item.id);
+                  if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
+                }}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Sticky Cart Bar ─────────────────────────────────────────────── */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4">
+          <button
+            onClick={() => setIsCheckoutOpen(true)}
+            className="w-full bg-[#1E3A5F] text-white rounded-2xl py-4 px-5 flex items-center justify-between shadow-2xl active:scale-98 transition-transform"
+            data-testid="button-sticky-cart"
+          >
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 rounded-full px-2 py-0.5 text-sm font-bold">
+                {totalItems}
+              </div>
+              <span className="font-semibold text-sm">View Cart</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="font-bold text-lg">₹{calculateTotal().toFixed(0)}</span>
+              <ChevronRight className="h-5 w-5 opacity-70" />
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* ── Variants / Add-ons Sheet ──────────────────────────────────────── */}
+      <Sheet open={isAddOnsSheetOpen} onOpenChange={open => { if (!open) { setIsAddOnsSheetOpen(false); setSelectedItem(null); } }}>
+        <SheetContent side="bottom" className="rounded-t-3xl max-h-[90vh] overflow-y-auto">
+          <SheetHeader className="pb-2">
+            <SheetTitle className="text-left text-lg">{selectedItem?.name}</SheetTitle>
+            {selectedItem?.description && (
+              <SheetDescription className="text-left text-sm text-gray-500">
+                {selectedItem.description}
+              </SheetDescription>
+            )}
           </SheetHeader>
-          
-          <div className="mt-6 space-y-6">
-            {/* Base Item Price - shows variant price when selected, otherwise item base price */}
-            <div className="flex items-center justify-between pb-4 border-b">
-              <span className="font-medium">{selectedVariant ? `Price (${selectedVariant.variantName})` : 'Base Price'}</span>
-              <span className="font-mono text-lg">
-                ₹{selectedVariant 
-                  ? (selectedVariant.discountedPrice || selectedVariant.actualPrice) 
+
+          <div className="space-y-5 py-3">
+            {/* Base price */}
+            <div className="flex items-center justify-between pb-3 border-b">
+              <span className="text-sm text-gray-500">
+                {selectedVariant ? `Price (${selectedVariant.variantName})` : "Base Price"}
+              </span>
+              <span className="font-bold text-lg">
+                ₹{selectedVariant
+                  ? (selectedVariant.discountedPrice || selectedVariant.actualPrice)
                   : selectedItem?.price}
               </span>
             </div>
 
-            {/* Variants Selection */}
+            {/* Variants */}
             {variants && variants.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-sm">Choose Variant *</h3>
-                {variants.map((variant) => (
-                  <Card
-                    key={variant.id}
-                    className={`p-3 cursor-pointer hover-elevate active-elevate-2 transition-all ${
-                      selectedVariant?.id === variant.id
-                        ? "border-2 border-primary bg-primary/10"
-                        : "border"
-                    }`}
-                    onClick={() => setSelectedVariant(variant)}
-                    data-testid={`card-variant-${variant.id}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-700">Choose Size / Variant <span className="text-red-500">*</span></p>
+                <div className="space-y-2">
+                  {variants.map(v => (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedVariant(v)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+                        selectedVariant?.id === v.id
+                          ? "border-[#1E3A5F] bg-[#1E3A5F]/5"
+                          : "border-gray-200 bg-white"
+                      }`}
+                      data-testid={`button-variant-${v.id}`}
+                    >
+                      <div className="flex items-center gap-3">
                         <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          selectedVariant?.id === variant.id 
-                            ? "border-primary bg-primary" 
-                            : "border-muted-foreground"
+                          selectedVariant?.id === v.id ? "border-[#1E3A5F]" : "border-gray-300"
                         }`}>
-                          {selectedVariant?.id === variant.id && (
-                            <div className="w-2 h-2 rounded-full bg-white"></div>
+                          {selectedVariant?.id === v.id && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#1E3A5F]" />
                           )}
                         </div>
-                        <span className="font-medium">{variant.variantName}</span>
+                        <span className="font-medium text-sm">{v.variantName}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {variant.discountedPrice && (
-                          <span className="text-sm text-muted-foreground line-through">
-                            ₹{variant.actualPrice}
-                          </span>
+                      <div className="flex items-center gap-1.5">
+                        {v.discountedPrice && (
+                          <span className="text-xs text-gray-400 line-through">₹{v.actualPrice}</span>
                         )}
-                        <span className="font-bold text-lg">
-                          ₹{variant.discountedPrice || variant.actualPrice}
-                        </span>
+                        <span className="font-bold text-sm">₹{v.discountedPrice || v.actualPrice}</span>
                       </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* Add-Ons List */}
-            {addOns && addOns.length > 0 ? (
-              <div className="space-y-4">
-                <h3 className="font-semibold text-sm">Available Add-Ons</h3>
-                {addOns.map((addOn) => {
-                  const isSelected = selectedAddOns.find(a => a.id === addOn.id);
-                  return (
-                    <div 
-                      key={addOn.id} 
-                      className="flex items-center justify-between gap-4 p-3 border rounded-lg hover-elevate"
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={!!isSelected}
-                            onChange={() => toggleAddOn(addOn)}
-                            className="h-4 w-4"
-                            data-testid={`checkbox-addon-${addOn.id}`}
-                          />
-                          <div>
-                            <p className="font-medium">{addOn.addOnName}</p>
-                            <p className="text-sm text-muted-foreground font-mono">+₹{addOn.addOnPrice}</p>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {isSelected && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8"
-                            onClick={() => updateAddOnQuantity(addOn.id, -1)}
-                            data-testid={`button-decrease-addon-${addOn.id}`}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <span className="w-8 text-center font-mono">{isSelected.quantity}</span>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8"
-                            onClick={() => updateAddOnQuantity(addOn.id, 1)}
-                            data-testid={`button-increase-addon-${addOn.id}`}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No add-ons available for this item</p>
-            )}
-
-            {/* Total Price Preview */}
-            <div className="pt-4 border-t">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm">{selectedVariant ? `${selectedVariant.variantName}` : 'Base Price'}</span>
-                <span className="font-mono">
-                  ₹{selectedVariant 
-                    ? (selectedVariant.discountedPrice || selectedVariant.actualPrice) 
-                    : (selectedItem?.price || "0")}
-                </span>
-              </div>
-              {selectedAddOns.length > 0 && (
-                <>
-                  {selectedAddOns.map(addOn => (
-                    <div key={addOn.id} className="flex items-center justify-between mb-2 text-sm">
-                      <span className="text-muted-foreground">{addOn.quantity}x {addOn.name}</span>
-                      <span className="font-mono">₹{(parseFloat(addOn.price) * addOn.quantity).toFixed(2)}</span>
-                    </div>
+                    </button>
                   ))}
-                </>
-              )}
-              <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                <span className="font-semibold">Total</span>
-                <span className="font-mono text-lg font-semibold">
-                  ₹{(() => {
-                    const basePrice = selectedVariant 
-                      ? parseFloat(selectedVariant.discountedPrice || selectedVariant.actualPrice)
-                      : parseFloat(selectedItem?.price as string || "0");
-                    const addOnsTotal = selectedAddOns.reduce((sum, a) => sum + (parseFloat(a.price) * a.quantity), 0);
-                    return (basePrice + addOnsTotal).toFixed(2);
-                  })()}
-                </span>
+                </div>
+              </div>
+            )}
+
+            {/* Add-ons */}
+            {addOns && addOns.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-700">Add-ons <span className="text-gray-400 font-normal">(optional)</span></p>
+                <div className="space-y-2">
+                  {addOns.map(addon => {
+                    const sel = selectedAddOns.find(a => a.id === addon.id);
+                    return (
+                      <div
+                        key={addon.id}
+                        className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${
+                          sel ? "border-[#2BB6A8] bg-[#2BB6A8]/5" : "border-gray-200 bg-white"
+                        }`}
+                      >
+                        <button
+                          className="flex items-center gap-3 flex-1 text-left"
+                          onClick={() => toggleAddOn(addon)}
+                          data-testid={`button-addon-${addon.id}`}
+                        >
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                            sel ? "border-[#2BB6A8] bg-[#2BB6A8]" : "border-gray-300"
+                          }`}>
+                            {sel && <Check className="h-3 w-3 text-white" />}
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{addon.addOnName}</p>
+                            <p className="text-xs text-[#2BB6A8] font-semibold">+₹{addon.addOnPrice}</p>
+                          </div>
+                        </button>
+                        {sel && (
+                          <div className="flex items-center gap-2 ml-3">
+                            <button
+                              onClick={() => updateAddOnQty(addon.id, -1)}
+                              className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center"
+                              data-testid={`button-addon-dec-${addon.id}`}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </button>
+                            <span className="w-5 text-center text-sm font-bold">{sel.quantity}</span>
+                            <button
+                              onClick={() => updateAddOnQty(addon.id, 1)}
+                              className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center"
+                              data-testid={`button-addon-inc-${addon.id}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Price summary */}
+            <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">{selectedVariant ? selectedVariant.variantName : "Base"}</span>
+                <span className="font-medium">₹{selectedVariant
+                  ? (selectedVariant.discountedPrice || selectedVariant.actualPrice)
+                  : selectedItem?.price}</span>
+              </div>
+              {selectedAddOns.map(a => (
+                <div key={a.id} className="flex justify-between text-sm">
+                  <span className="text-gray-500">{a.quantity}× {a.name}</span>
+                  <span className="font-medium">₹{(parseFloat(a.price) * a.quantity).toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="border-t pt-2 flex justify-between font-bold">
+                <span>Total</span>
+                <span className="text-[#1E3A5F]">₹{sheetTotal}</span>
               </div>
             </div>
 
-            {/* Add to Cart Button */}
-            <Button 
-              className="w-full" 
-              size="lg" 
-              onClick={addToCartWithAddOns}
-              disabled={variants && variants.length > 0 && !selectedVariant}
+            {/* Add to cart button */}
+            <button
+              onClick={confirmAddToCart}
+              disabled={!!(variants && variants.length > 0 && !selectedVariant)}
+              className={`w-full py-4 rounded-2xl font-bold text-white text-base transition-all ${
+                variants && variants.length > 0 && !selectedVariant
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-[#1E3A5F] active:scale-95"
+              }`}
               data-testid="button-confirm-add-to-cart"
             >
-              <ShoppingCart className="h-5 w-5 mr-2" />
-              {variants && variants.length > 0 && !selectedVariant 
-                ? "Select a variant first" 
-                : "Add to Cart"
-              }
-            </Button>
+              {variants && variants.length > 0 && !selectedVariant
+                ? "Select a variant to continue"
+                : `Add · ₹${sheetTotal}`}
+            </button>
           </div>
         </SheetContent>
       </Sheet>
 
-      {/* Fixed Checkout Button at Bottom */}
-      {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 bg-background border-t shadow-lg">
-          <div className="container mx-auto px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <p className="text-xs text-muted-foreground font-medium">
-                  {cart.reduce((sum, ci) => sum + ci.quantity, 0)} {cart.reduce((sum, ci) => sum + ci.quantity, 0) === 1 ? 'item' : 'items'} in cart
-                </p>
-                <p className="text-lg font-bold">₹{calculateTotal().toFixed(0)}</p>
+      {/* ── Checkout Sheet ────────────────────────────────────────────────── */}
+      <Sheet open={isCheckoutOpen} onOpenChange={setIsCheckoutOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl max-h-[92vh] overflow-y-auto">
+          <SheetHeader className="pb-3">
+            <SheetTitle className="text-left">Your Order</SheetTitle>
+            <SheetDescription className="text-left text-sm">Review and place your order</SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-3 py-2">
+            {cart.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Your cart is empty</p>
+                <p className="text-sm mt-1">Add items from the menu</p>
               </div>
-              <Button 
-                size="lg"
-                onClick={() => setIsCheckoutOpen(true)}
-                className="flex-shrink-0 gap-2"
-                data-testid="button-fixed-checkout"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                View Cart
-              </Button>
-            </div>
+            ) : (
+              <>
+                {/* Cart items */}
+                {cart.map(item => {
+                  const base = item.selectedVariant
+                    ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
+                    : parseFloat(item.price as string);
+                  const addOnsTotal = item.cartAddOns
+                    ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
+                    : 0;
+                  return (
+                    <div key={item.cartId} className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm leading-tight">
+                            {item.name}
+                            {item.selectedVariant && (
+                              <span className="text-gray-400 font-normal"> · {item.selectedVariant.variantName}</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">₹{base.toFixed(2)} each</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => updateQuantity(item.cartId, -1)}
+                            className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center bg-white"
+                            data-testid={`button-cart-dec-${item.cartId}`}
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-6 text-center font-bold text-sm">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.cartId, 1)}
+                            className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center"
+                            data-testid={`button-cart-inc-${item.cartId}`}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => removeFromCart(item.cartId)}
+                            className="w-8 h-8 rounded-full border border-red-200 text-red-400 flex items-center justify-center ml-1"
+                            data-testid={`button-cart-remove-${item.cartId}`}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {item.cartAddOns && item.cartAddOns.length > 0 && (
+                        <div className="pl-3 border-l-2 border-[#2BB6A8]/40 space-y-1">
+                          {item.cartAddOns.map(a => (
+                            <div key={a.id} className="flex items-center justify-between text-xs text-gray-500">
+                              <span>+ {a.name}</span>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => updateCartAddOnQty(item.cartId, a.id, -1)} className="w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-cart-addon-dec-${item.cartId}-${a.id}`}>
+                                  <Minus className="h-2.5 w-2.5" />
+                                </button>
+                                <span className="w-4 text-center font-semibold">{a.quantity}</span>
+                                <button onClick={() => updateCartAddOnQty(item.cartId, a.id, 1)} className="w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-cart-addon-inc-${item.cartId}-${a.id}`}>
+                                  <Plus className="h-2.5 w-2.5" />
+                                </button>
+                                <span className="text-gray-500">₹{(parseFloat(a.price) * a.quantity).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex justify-between text-xs text-gray-500 border-t pt-2">
+                        <span>Item total</span>
+                        <span className="font-semibold text-gray-700">
+                          ₹{(base * item.quantity + addOnsTotal).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Details */}
+                <div className="space-y-3 pt-2">
+                  {orderType === "room" ? (
+                    <div className="bg-[#1E3A5F]/5 rounded-xl p-3 flex items-center gap-2">
+                      <span className="text-xs font-medium text-[#1E3A5F]">Delivering to Room {roomNumber || "—"}</span>
+                      {roomNumber && <Badge variant="secondary" className="text-xs">Auto-filled</Badge>}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-gray-600">Your Name *</Label>
+                        <Input
+                          placeholder="Enter your name"
+                          value={customerName}
+                          onChange={e => setCustomerName(e.target.value)}
+                          className="rounded-xl"
+                          data-testid="input-customer-name"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-gray-600">Phone Number *</Label>
+                        <Input
+                          type="tel"
+                          placeholder="Enter your phone"
+                          value={customerPhone}
+                          onChange={e => setCustomerPhone(e.target.value)}
+                          className="rounded-xl"
+                          data-testid="input-customer-phone"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Special instructions */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-gray-600">Cooking Instructions <span className="text-gray-400">(optional)</span></Label>
+                    <Textarea
+                      placeholder="e.g. less spicy, no onions..."
+                      value={specialInstructions}
+                      onChange={e => setSpecialInstructions(e.target.value)}
+                      className="rounded-xl text-sm resize-none"
+                      rows={2}
+                      data-testid="input-special-instructions"
+                    />
+                  </div>
+                </div>
+
+                {/* Total + Place Order */}
+                <div className="border-t pt-4">
+                  <div className="flex justify-between text-lg font-bold mb-4">
+                    <span>Total</span>
+                    <span className="text-[#1E3A5F]">₹{calculateTotal().toFixed(2)}</span>
+                  </div>
+                  <button
+                    onClick={handleCheckout}
+                    disabled={
+                      orderMutation.isPending ||
+                      !isKitchenOpen ||
+                      (orderType === "room" ? !roomNumber : !customerName || !customerPhone)
+                    }
+                    className={`w-full py-4 rounded-2xl font-bold text-base transition-all ${
+                      orderMutation.isPending || !isKitchenOpen ||
+                      (orderType === "room" ? !roomNumber : !customerName || !customerPhone)
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-[#1E3A5F] text-white active:scale-95"
+                    }`}
+                    data-testid="button-place-order"
+                  >
+                    {orderMutation.isPending
+                      ? "Placing Order..."
+                      : !isKitchenOpen
+                      ? closedLabel
+                      : isPreview
+                      ? "Place Order (Preview)"
+                      : `Place Order · ₹${calculateTotal().toFixed(0)}`}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       <RestaurantPopup propertyId={propertyId || null} />
       <Toaster />
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+interface MenuItemRowProps {
+  item: MenuItem;
+  qty: number;
+  isKitchenOpen: boolean;
+  onAdd: () => void;
+  onIncrease: () => void;
+  onDecrease: () => void;
+}
+
+function MenuItemRow({ item, qty, isKitchenOpen, onAdd, onIncrease, onDecrease }: MenuItemRowProps) {
+  const price = item.discountedPrice || item.actualPrice || item.price;
+  const isDisabled = !isKitchenOpen;
+
+  return (
+    <div className={`bg-white rounded-2xl p-4 flex gap-3 shadow-sm transition-opacity ${isDisabled ? "opacity-50" : ""}`}
+      data-testid={`card-menu-item-${item.id}`}
+    >
+      {item.imageUrl && (
+        <img
+          src={item.imageUrl}
+          alt={item.name}
+          loading="lazy"
+          className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start gap-1 mb-1">
+          <span className="text-xs flex-shrink-0 mt-0.5">
+            {item.foodType === "non-veg" ? "🔴" : "🟢"}
+          </span>
+          <p className="font-semibold text-sm leading-tight text-gray-900">{item.name}</p>
+        </div>
+        {item.description && (
+          <p className="text-xs text-gray-500 line-clamp-2 mb-2">{item.description}</p>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            {item.discountedPrice && (
+              <span className="text-xs text-gray-400 line-through">₹{item.actualPrice}</span>
+            )}
+            <span className="font-bold text-sm text-gray-900">₹{price}</span>
+            {item.preparationTime && (
+              <span className="text-xs text-gray-400 flex items-center gap-0.5 ml-1">
+                <Clock className="h-3 w-3" />{item.preparationTime}m
+              </span>
+            )}
+          </div>
+          {isDisabled ? (
+            <span className="text-xs text-gray-400 italic">Closed</span>
+          ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onDecrease}
+                className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center"
+                data-testid={`button-dec-${item.id}`}
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-5 text-center font-bold text-sm">{qty}</span>
+              <button
+                onClick={onIncrease}
+                className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center"
+                data-testid={`button-inc-${item.id}`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onAdd}
+              className="bg-[#1E3A5F] text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-transform"
+              data-testid={`button-add-${item.id}`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {qty > 0 ? `${qty} added` : "ADD"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface PopularCardProps {
+  item: MenuItem;
+  qty: number;
+  isKitchenOpen: boolean;
+  onAdd: () => void;
+  onIncrease: () => void;
+  onDecrease: () => void;
+}
+
+function PopularCard({ item, qty, isKitchenOpen, onAdd }: PopularCardProps) {
+  const price = item.discountedPrice || item.actualPrice || item.price;
+  const isDisabled = !isKitchenOpen;
+
+  return (
+    <div
+      className={`bg-white rounded-2xl p-3 flex-shrink-0 w-36 shadow-sm transition-opacity ${isDisabled ? "opacity-50" : ""}`}
+      data-testid={`card-popular-${item.id}`}
+    >
+      {item.imageUrl ? (
+        <img
+          src={item.imageUrl}
+          alt={item.name}
+          loading="lazy"
+          className="w-full h-24 rounded-xl object-cover mb-2"
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      ) : (
+        <div className="w-full h-24 rounded-xl bg-gray-100 flex items-center justify-center mb-2 text-3xl">
+          {item.foodType === "non-veg" ? "🔴" : "🟢"}
+        </div>
+      )}
+      <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-xs font-bold text-gray-900">₹{price}</span>
+        {!isDisabled && (
+          <button
+            onClick={onAdd}
+            className={`rounded-lg p-1.5 transition-transform active:scale-95 ${
+              qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"
+            }`}
+            data-testid={`button-popular-add-${item.id}`}
+          >
+            {qty > 0 ? <span className="text-xs font-bold px-1">{qty}</span> : <Plus className="h-3.5 w-3.5" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
