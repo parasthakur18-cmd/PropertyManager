@@ -47,9 +47,6 @@ interface CartItem extends MenuItem {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const KITCHEN_OPEN_HOUR = 8;
-const KITCHEN_CLOSE_HOUR = 22;
-
 const CATEGORY_GRADIENTS = [
   "from-orange-400 to-amber-500", "from-emerald-400 to-teal-500",
   "from-blue-400 to-indigo-500", "from-rose-400 to-pink-500",
@@ -164,23 +161,51 @@ export default function Menu() {
 
   const { toast } = useToast();
 
+  // ── Popup / kitchen hours (fetched from settings) ─────────────────────────
+  const { data: popupSettings } = useQuery<{
+    openingTime?: string | null; closingTime?: string | null;
+  } | null>({
+    queryKey: [`/api/public/restaurant-popup/${urlProperty}`],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/restaurant-popup/${urlProperty}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!urlProperty,
+    staleTime: 60_000,
+  });
+
   // ── Kitchen status ─────────────────────────────────────────────────────────
   const { isKitchenOpen, minutesUntilOpen, openTimeStr } = useMemo(() => {
+    const parseHHMM = (str?: string | null) => {
+      if (!str) return null;
+      const [h, m] = str.split(":").map(Number);
+      return isNaN(h) ? null : { h, m: m || 0 };
+    };
+    const openParsed  = parseHHMM(popupSettings?.openingTime)  ?? { h: 8,  m: 0 };
+    const closeParsed = parseHHMM(popupSettings?.closingTime) ?? { h: 22, m: 0 };
+
     const now = new Date();
-    const h = now.getHours();
-    const m = now.getMinutes();
-    const open = h >= KITCHEN_OPEN_HOUR && h < KITCHEN_CLOSE_HOUR;
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const openMins  = openParsed.h  * 60 + openParsed.m;
+    const closeMins = closeParsed.h * 60 + closeParsed.m;
+    const open = nowMins >= openMins && nowMins < closeMins;
+
     let mins = 0;
     if (!open) {
-      if (h < KITCHEN_OPEN_HOUR) {
-        mins = (KITCHEN_OPEN_HOUR - h) * 60 - m;
+      if (nowMins < openMins) {
+        mins = openMins - nowMins;
       } else {
-        mins = (24 - h + KITCHEN_OPEN_HOUR) * 60 - m;
+        mins = 24 * 60 - nowMins + openMins;
       }
     }
-    const openStr = `${KITCHEN_OPEN_HOUR}:00 ${KITCHEN_OPEN_HOUR < 12 ? "AM" : "PM"}`;
+    const hh = openParsed.h;
+    const mm = openParsed.m;
+    const ampm = hh < 12 ? "AM" : "PM";
+    const hDisp = hh % 12 === 0 ? 12 : hh % 12;
+    const openStr = mm > 0 ? `${hDisp}:${String(mm).padStart(2,"0")} ${ampm}` : `${hDisp}:00 ${ampm}`;
     return { isKitchenOpen: open, minutesUntilOpen: mins, openTimeStr: openStr };
-  }, []);
+  }, [popupSettings]);
 
   const closedLabel = useMemo(() => {
     if (isKitchenOpen) return "";
