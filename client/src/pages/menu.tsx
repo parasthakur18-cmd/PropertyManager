@@ -51,16 +51,11 @@ const KITCHEN_OPEN_HOUR = 8;
 const KITCHEN_CLOSE_HOUR = 22;
 
 const CATEGORY_GRADIENTS = [
-  "from-orange-400 to-amber-500",
-  "from-emerald-400 to-teal-500",
-  "from-blue-400 to-indigo-500",
-  "from-rose-400 to-pink-500",
-  "from-violet-400 to-purple-500",
-  "from-cyan-400 to-sky-500",
-  "from-yellow-400 to-orange-500",
-  "from-green-400 to-emerald-600",
-  "from-fuchsia-400 to-pink-600",
-  "from-sky-400 to-blue-600",
+  "from-orange-400 to-amber-500", "from-emerald-400 to-teal-500",
+  "from-blue-400 to-indigo-500", "from-rose-400 to-pink-500",
+  "from-violet-400 to-purple-500", "from-cyan-400 to-sky-500",
+  "from-yellow-400 to-orange-500", "from-green-400 to-emerald-600",
+  "from-fuchsia-400 to-pink-600", "from-sky-400 to-blue-600",
 ];
 
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -73,12 +68,66 @@ const CATEGORY_EMOJIS: Record<string, string> = {
   ice: "🍦", sweet: "🍭", bread: "🥐", egg: "🍳",
 };
 
+const CATEGORY_STOCK_PHOTOS: Record<string, string> = {
+  biryani:       "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=480&q=75&auto=format&fit=crop",
+  rice:          "https://images.unsplash.com/photo-1516684732162-798a0062be99?w=480&q=75&auto=format&fit=crop",
+  breakfast:     "https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=480&q=75&auto=format&fit=crop",
+  beverage:      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=480&q=75&auto=format&fit=crop",
+  drink:         "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=480&q=75&auto=format&fit=crop",
+  coffee:        "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=480&q=75&auto=format&fit=crop",
+  tea:           "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=480&q=75&auto=format&fit=crop",
+  juice:         "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=480&q=75&auto=format&fit=crop",
+  shake:         "https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=480&q=75&auto=format&fit=crop",
+  "main course": "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=480&q=75&auto=format&fit=crop",
+  curry:         "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=480&q=75&auto=format&fit=crop",
+  "north indian":"https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=480&q=75&auto=format&fit=crop",
+  "south indian":"https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=480&q=75&auto=format&fit=crop",
+  dosa:          "https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=480&q=75&auto=format&fit=crop",
+  snack:         "https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?w=480&q=75&auto=format&fit=crop",
+  starter:       "https://images.unsplash.com/photo-1481070414801-51fd732d7184?w=480&q=75&auto=format&fit=crop",
+  appetizer:     "https://images.unsplash.com/photo-1481070414801-51fd732d7184?w=480&q=75&auto=format&fit=crop",
+  dessert:       "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=480&q=75&auto=format&fit=crop",
+  sweet:         "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=480&q=75&auto=format&fit=crop",
+  ice:           "https://images.unsplash.com/photo-1563805042-7684c019e1cb?w=480&q=75&auto=format&fit=crop",
+  soup:          "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=480&q=75&auto=format&fit=crop",
+  chinese:       "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=480&q=75&auto=format&fit=crop",
+  noodle:        "https://images.unsplash.com/photo-1569050467447-ce54b3bbc37d?w=480&q=75&auto=format&fit=crop",
+  pizza:         "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=480&q=75&auto=format&fit=crop",
+  burger:        "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=480&q=75&auto=format&fit=crop",
+  sandwich:      "https://images.unsplash.com/photo-1553909489-cd47e0907980?w=480&q=75&auto=format&fit=crop",
+  salad:         "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=480&q=75&auto=format&fit=crop",
+  pasta:         "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=480&q=75&auto=format&fit=crop",
+  bread:         "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=480&q=75&auto=format&fit=crop",
+  roti:          "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=480&q=75&auto=format&fit=crop",
+  egg:           "https://images.unsplash.com/photo-1506084868230-bb9d95c24759?w=480&q=75&auto=format&fit=crop",
+  seafood:       "https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?w=480&q=75&auto=format&fit=crop",
+  fish:          "https://images.unsplash.com/photo-1565058379802-bbe93b2f703a?w=480&q=75&auto=format&fit=crop",
+  lunch:         "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=480&q=75&auto=format&fit=crop",
+  dinner:        "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=480&q=75&auto=format&fit=crop",
+};
+
+function getCategoryPhoto(name: string): string | null {
+  const lower = name.toLowerCase();
+  for (const [key, url] of Object.entries(CATEGORY_STOCK_PHOTOS)) {
+    if (lower.includes(key)) return url;
+  }
+  return null;
+}
+
 function getCategoryEmoji(name: string): string {
   const lower = name.toLowerCase();
   for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
     if (lower.includes(key)) return emoji;
   }
   return "🍽️";
+}
+
+function getFoodEmoji(item: { foodType?: string | null; name?: string }): string {
+  const name = (item.name || "").toLowerCase();
+  for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
+    if (name.includes(key)) return emoji;
+  }
+  return item.foodType === "non-veg" ? "🍗" : "🥗";
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -95,6 +144,7 @@ export default function Menu() {
   const [screen, setScreen] = useState<"categories" | "items">("categories");
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [vegOnly, setVegOnly] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orderType] = useState<"room" | "restaurant">(urlType === "room" ? "room" : "restaurant");
@@ -365,12 +415,15 @@ export default function Menu() {
 
   const popularItems = useMemo(() => availableItems.slice(0, 6), [availableItems]);
 
+  const popularItemIds = useMemo(() => new Set(popularItems.map(i => i.id)), [popularItems]);
+
   const categoriesWithCount = useMemo(() =>
     (menuCategories || []).map((cat, idx) => ({
       cat,
       count: availableItems.filter(i => i.categoryId === cat.id).length,
       gradient: CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length],
       emoji: getCategoryEmoji(cat.name),
+      photo: cat.imageUrl || getCategoryPhoto(cat.name),
     })).filter(c => c.count > 0),
     [menuCategories, availableItems]
   );
@@ -379,14 +432,15 @@ export default function Menu() {
 
   const itemsInActiveCategory = useMemo(() => {
     if (!activeCategoryId) return [];
-    const base = availableItems.filter(i => i.categoryId === activeCategoryId);
+    let base = availableItems.filter(i => i.categoryId === activeCategoryId);
+    if (vegOnly) base = base.filter(i => i.foodType !== "non-veg");
     if (!searchTerm.trim()) return base;
     const q = searchTerm.toLowerCase();
     return base.filter(i =>
       i.name.toLowerCase().includes(q) ||
       (i.description && i.description.toLowerCase().includes(q))
     );
-  }, [availableItems, activeCategoryId, searchTerm]);
+  }, [availableItems, activeCategoryId, searchTerm, vegOnly]);
 
   const searchResults = useMemo(() => {
     if (!searchTerm.trim()) return [];
@@ -534,6 +588,7 @@ export default function Menu() {
                     item={item}
                     qty={getItemQtyInCart(item.id)}
                     isKitchenOpen={isKitchenOpen}
+                    isPopular={popularItemIds.has(item.id)}
                     onAdd={() => addToCart(item)}
                     onIncrease={() => {
                       const ci = cart.find(c => c.id === item.id);
@@ -591,19 +646,36 @@ export default function Menu() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  {categoriesWithCount.map(({ cat, count, gradient, emoji }) => (
+                  {categoriesWithCount.map(({ cat, count, gradient, emoji, photo }) => (
                     <button
                       key={cat.id}
-                      onClick={() => { setActiveCategoryId(cat.id); setScreen("items"); }}
-                      className="relative rounded-2xl overflow-hidden h-36 text-left shadow-sm active:scale-95 transition-transform"
+                      onClick={() => { setActiveCategoryId(cat.id); setScreen("items"); setVegOnly(false); }}
+                      className="relative rounded-2xl overflow-hidden h-40 text-left shadow-md active:scale-95 transition-transform"
                       data-testid={`button-category-${cat.id}`}
                     >
-                      <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
-                      <div className="absolute inset-0 bg-black/10" />
+                      {photo ? (
+                        <img
+                          src={photo}
+                          alt={cat.name}
+                          className="absolute inset-0 w-full h-full object-cover"
+                          loading="lazy"
+                          onError={e => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                            (e.target as HTMLImageElement).previousElementSibling?.classList.remove("hidden");
+                          }}
+                        />
+                      ) : null}
+                      {!photo && <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
                       <div className="relative p-4 h-full flex flex-col justify-between">
-                        <span className="text-4xl">{emoji}</span>
+                        <div className="flex items-start justify-between">
+                          <span className="text-3xl drop-shadow-sm">{emoji}</span>
+                          <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                            {count}
+                          </span>
+                        </div>
                         <div>
-                          <p className="font-bold text-white text-sm leading-tight">{cat.name}</p>
+                          <p className="font-bold text-white text-sm leading-tight drop-shadow">{cat.name}</p>
                           <p className="text-white/80 text-xs mt-0.5">{count} item{count !== 1 ? "s" : ""}</p>
                         </div>
                       </div>
@@ -636,11 +708,23 @@ export default function Menu() {
             )}
           </div>
 
+          {/* Veg filter toggle */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500">{itemsInActiveCategory.length} item{itemsInActiveCategory.length !== 1 ? "s" : ""}</p>
+            <button
+              onClick={() => setVegOnly(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all ${vegOnly ? "bg-green-500 border-green-500 text-white" : "bg-white border-gray-200 text-gray-600"}`}
+              data-testid="button-veg-filter"
+            >
+              <span className="text-sm">🟢</span> Veg Only
+            </button>
+          </div>
+
           {/* Items list */}
           {itemsInActiveCategory.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">{searchTerm ? "No results" : "No items in this category"}</p>
+              <p className="text-sm">{searchTerm ? "No results" : vegOnly ? "No veg items in this category" : "No items in this category"}</p>
             </div>
           ) : (
             itemsInActiveCategory.map(item => (
@@ -649,6 +733,7 @@ export default function Menu() {
                 item={item}
                 qty={getItemQtyInCart(item.id)}
                 isKitchenOpen={isKitchenOpen}
+                isPopular={popularItemIds.has(item.id)}
                 onAdd={() => addToCart(item)}
                 onIncrease={() => {
                   const ci = cart.find(c => c.id === item.id);
@@ -1030,80 +1115,97 @@ interface MenuItemRowProps {
   item: MenuItem;
   qty: number;
   isKitchenOpen: boolean;
+  isPopular?: boolean;
   onAdd: () => void;
   onIncrease: () => void;
   onDecrease: () => void;
 }
 
-function MenuItemRow({ item, qty, isKitchenOpen, onAdd, onIncrease, onDecrease }: MenuItemRowProps) {
+function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, onDecrease }: MenuItemRowProps) {
   const price = item.discountedPrice || item.actualPrice || item.price;
   const isDisabled = !isKitchenOpen;
+  const emoji = getFoodEmoji(item);
 
   return (
-    <div className={`bg-white rounded-2xl p-4 flex gap-3 shadow-sm transition-opacity ${isDisabled ? "opacity-50" : ""}`}
+    <div className={`bg-white rounded-2xl overflow-hidden shadow-sm transition-opacity ${isDisabled ? "opacity-50" : ""}`}
       data-testid={`card-menu-item-${item.id}`}
     >
-      {item.imageUrl && (
-        <img
-          src={item.imageUrl}
-          alt={item.name}
-          loading="lazy"
-          className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
-          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-      )}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-1 mb-1">
-          <span className="text-xs flex-shrink-0 mt-0.5">
-            {item.foodType === "non-veg" ? "🔴" : "🟢"}
-          </span>
-          <p className="font-semibold text-sm leading-tight text-gray-900">{item.name}</p>
-        </div>
-        {item.description && (
-          <p className="text-xs text-gray-500 line-clamp-2 mb-2">{item.description}</p>
-        )}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            {item.discountedPrice && (
-              <span className="text-xs text-gray-400 line-through">₹{item.actualPrice}</span>
-            )}
-            <span className="font-bold text-sm text-gray-900">₹{price}</span>
-            {item.preparationTime && (
-              <span className="text-xs text-gray-400 flex items-center gap-0.5 ml-1">
-                <Clock className="h-3 w-3" />{item.preparationTime}m
-              </span>
-            )}
+      <div className="flex gap-3 p-4">
+        {/* Image or gradient placeholder */}
+        <div className="flex-shrink-0 relative">
+          {item.imageUrl ? (
+            <img
+              src={item.imageUrl}
+              alt={item.name}
+              loading="lazy"
+              className="w-24 h-24 rounded-xl object-cover"
+              onError={e => {
+                const el = e.target as HTMLImageElement;
+                el.style.display = "none";
+                const next = el.nextElementSibling as HTMLElement;
+                if (next) next.style.display = "flex";
+              }}
+            />
+          ) : null}
+          <div
+            className={`w-24 h-24 rounded-xl flex items-center justify-center text-3xl bg-gradient-to-br from-orange-100 to-amber-200 ${item.imageUrl ? "hidden" : "flex"}`}
+            style={{ display: item.imageUrl ? "none" : "flex" }}
+          >
+            {emoji}
           </div>
-          {isDisabled ? (
-            <span className="text-xs text-gray-400 italic">Closed</span>
-          ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={onDecrease}
-                className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center"
-                data-testid={`button-dec-${item.id}`}
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <span className="w-5 text-center font-bold text-sm">{qty}</span>
-              <button
-                onClick={onIncrease}
-                className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center"
-                data-testid={`button-inc-${item.id}`}
+          {isPopular && (
+            <span className="absolute -top-1 -left-1 bg-amber-400 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full shadow-sm leading-tight">
+              ⭐ BEST
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-1 mb-1">
+            <span className="text-xs flex-shrink-0 mt-0.5">
+              {item.foodType === "non-veg" ? "🔴" : "🟢"}
+            </span>
+            <p className="font-semibold text-sm leading-tight text-gray-900">{item.name}</p>
+          </div>
+          {item.description && (
+            <p className="text-xs text-gray-500 line-clamp-2 mb-2">{item.description}</p>
+          )}
+          <div className="flex items-center justify-between gap-2 mt-auto">
+            <div>
+              <div className="flex items-center gap-1.5">
+                {item.discountedPrice && (
+                  <span className="text-xs text-gray-400 line-through">₹{item.actualPrice}</span>
+                )}
+                <span className="font-bold text-sm text-gray-900">₹{price}</span>
+              </div>
+              {item.preparationTime && (
+                <span className="text-xs text-gray-400 flex items-center gap-0.5 mt-0.5">
+                  <Clock className="h-3 w-3" />{item.preparationTime} min
+                </span>
+              )}
+            </div>
+            {isDisabled ? (
+              <span className="text-xs text-gray-400 italic">Closed</span>
+            ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
+              <div className="flex items-center gap-2">
+                <button onClick={onDecrease} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-dec-${item.id}`}>
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="w-5 text-center font-bold text-sm">{qty}</span>
+                <button onClick={onIncrease} className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center" data-testid={`button-inc-${item.id}`}>
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button onClick={onAdd}
+                className={`text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-transform ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`}
+                data-testid={`button-add-${item.id}`}
               >
                 <Plus className="h-3.5 w-3.5" />
+                {qty > 0 ? `${qty} added` : "ADD"}
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={onAdd}
-              className="bg-[#1E3A5F] text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-transform"
-              data-testid={`button-add-${item.id}`}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {qty > 0 ? `${qty} added` : "ADD"}
-            </button>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1122,39 +1224,52 @@ interface PopularCardProps {
 function PopularCard({ item, qty, isKitchenOpen, onAdd }: PopularCardProps) {
   const price = item.discountedPrice || item.actualPrice || item.price;
   const isDisabled = !isKitchenOpen;
+  const emoji = getFoodEmoji(item);
 
   return (
     <div
-      className={`bg-white rounded-2xl p-3 flex-shrink-0 w-36 shadow-sm transition-opacity ${isDisabled ? "opacity-50" : ""}`}
+      className={`bg-white rounded-2xl flex-shrink-0 w-40 shadow-sm overflow-hidden transition-opacity ${isDisabled ? "opacity-50" : ""}`}
       data-testid={`card-popular-${item.id}`}
     >
-      {item.imageUrl ? (
-        <img
-          src={item.imageUrl}
-          alt={item.name}
-          loading="lazy"
-          className="w-full h-24 rounded-xl object-cover mb-2"
-          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-      ) : (
-        <div className="w-full h-24 rounded-xl bg-gray-100 flex items-center justify-center mb-2 text-3xl">
-          {item.foodType === "non-veg" ? "🔴" : "🟢"}
+      <div className="relative">
+        {item.imageUrl ? (
+          <img
+            src={item.imageUrl}
+            alt={item.name}
+            loading="lazy"
+            className="w-full h-28 object-cover"
+            onError={e => {
+              const el = e.target as HTMLImageElement;
+              el.style.display = "none";
+              const next = el.nextElementSibling as HTMLElement;
+              if (next) next.style.display = "flex";
+            }}
+          />
+        ) : null}
+        <div
+          className={`w-full h-28 bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-200 items-center justify-center text-5xl ${item.imageUrl ? "hidden" : "flex"}`}
+          style={{ display: item.imageUrl ? "none" : "flex" }}
+        >
+          {emoji}
         </div>
-      )}
-      <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-xs font-bold text-gray-900">₹{price}</span>
-        {!isDisabled && (
-          <button
-            onClick={onAdd}
-            className={`rounded-lg p-1.5 transition-transform active:scale-95 ${
-              qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"
-            }`}
-            data-testid={`button-popular-add-${item.id}`}
-          >
-            {qty > 0 ? <span className="text-xs font-bold px-1">{qty}</span> : <Plus className="h-3.5 w-3.5" />}
-          </button>
-        )}
+        <span className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+          {item.foodType === "non-veg" ? "🔴 Non-Veg" : "🟢 Veg"}
+        </span>
+      </div>
+      <div className="p-2.5">
+        <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1.5">{item.name}</p>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-bold text-gray-900">₹{price}</span>
+          {!isDisabled && (
+            <button
+              onClick={onAdd}
+              className={`rounded-xl px-2.5 py-1 text-xs font-bold transition-transform active:scale-95 flex items-center gap-1 ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`}
+              data-testid={`button-popular-add-${item.id}`}
+            >
+              {qty > 0 ? <><span>{qty}</span><Check className="h-3 w-3" /></> : <><Plus className="h-3 w-3" /><span>Add</span></>}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

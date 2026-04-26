@@ -6497,6 +6497,57 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Auto-fill images for menu items using TheMealDB free API
+  app.post("/api/menu-items/auto-fill-images", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const { tenant } = auth;
+
+      const allItems = await storage.getAllMenuItems();
+      const targets = allItems.filter(item => {
+        if (!item.propertyId) return tenant.hasUnlimitedAccess;
+        return tenant.hasUnlimitedAccess || tenant.assignedPropertyIds.includes(item.propertyId);
+      }).filter(item => !item.imageUrl);
+
+      let filled = 0;
+      let failed = 0;
+
+      for (const item of targets) {
+        try {
+          const q = item.name.replace(/[^a-zA-Z0-9\s]/g, "").trim();
+          const r = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`);
+          const data = await r.json() as any;
+          if (data.meals && data.meals.length > 0 && data.meals[0].strMealThumb) {
+            await storage.updateMenuItem(item.id, { imageUrl: data.meals[0].strMealThumb + "/preview" });
+            filled++;
+          } else {
+            // Try with first word only
+            const firstWord = q.split(" ")[0];
+            if (firstWord && firstWord !== q) {
+              const r2 = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(firstWord)}`);
+              const data2 = await r2.json() as any;
+              if (data2.meals && data2.meals.length > 0 && data2.meals[0].strMealThumb) {
+                await storage.updateMenuItem(item.id, { imageUrl: data2.meals[0].strMealThumb + "/preview" });
+                filled++;
+              } else {
+                failed++;
+              }
+            } else {
+              failed++;
+            }
+          }
+        } catch {
+          failed++;
+        }
+      }
+
+      res.json({ filled, failed, total: targets.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Wand2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -374,6 +374,27 @@ export default function MenuManagement() {
     },
   });
 
+  // Auto-fill images from TheMealDB
+  const autoFillImagesMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("/api/menu-items/auto-fill-images", "POST", {});
+    },
+    onSuccess: (result: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+      toast({
+        title: "Images Updated",
+        description: `${result.updated || 0} item${result.updated !== 1 ? "s" : ""} got new images. ${result.notFound || 0} not found.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Auto-fill Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Reorder mutation for up/down buttons
   const reorderMutation = useMutation({
     mutationFn: async (data: { category: string; itemIds: number[] }) => {
@@ -553,6 +574,16 @@ export default function MenuManagement() {
           <Button variant="outline" onClick={() => setIsBulkImportOpen(true)} data-testid="button-bulk-import">
             <Upload className="h-4 w-4 mr-2" />
             Bulk Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => autoFillImagesMutation.mutate()}
+            disabled={autoFillImagesMutation.isPending}
+            data-testid="button-auto-fill-images"
+            title="Fetch food photos from TheMealDB for items without images"
+          >
+            <Wand2 className="h-4 w-4 mr-2" />
+            {autoFillImagesMutation.isPending ? "Fetching Images..." : "Auto-fill Images"}
           </Button>
           <Dialog open={isAddDialogOpen || !!editingItem} onOpenChange={(open) => {
             if (!open) {
