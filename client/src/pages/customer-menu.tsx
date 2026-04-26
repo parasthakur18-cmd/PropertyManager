@@ -36,12 +36,17 @@ interface CartItem {
 }
 
 export default function CustomerMenu() {
+  // Read property from URL synchronously so queries are scoped immediately
+  const urlProperty = new URLSearchParams(window.location.search).get("property") || "";
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | "none">("none");
-  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(
+    urlProperty ? parseInt(urlProperty) : null
+  );
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
@@ -70,14 +75,21 @@ export default function CustomerMenu() {
     return response.json();
   };
 
+  const categoriesUrl = urlProperty
+    ? `/api/public/menu-categories?propertyId=${urlProperty}`
+    : `/api/public/menu-categories`;
+  const menuUrl = urlProperty
+    ? `/api/public/menu?propertyId=${urlProperty}`
+    : `/api/public/menu`;
+
   const { data: categories, isLoading: categoriesLoading } = useQuery<MenuCategory[]>({
-    queryKey: ["/api/public/menu-categories"],
-    queryFn: () => publicFetch("/api/public/menu-categories"),
+    queryKey: [categoriesUrl],
+    queryFn: () => publicFetch(categoriesUrl),
   });
 
   const { data: menuItems, isLoading: itemsLoading } = useQuery<MenuItem[]>({
-    queryKey: ["/api/public/menu"],
-    queryFn: () => publicFetch("/api/public/menu"),
+    queryKey: [menuUrl],
+    queryFn: () => publicFetch(menuUrl),
   });
 
   const { data: allVariants } = useQuery<MenuItemVariant[]>({

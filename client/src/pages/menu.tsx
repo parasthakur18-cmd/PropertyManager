@@ -42,10 +42,18 @@ interface CartItem extends MenuItem {
 }
 
 export default function Menu() {
+  // Read URL params once synchronously so queries are property-scoped immediately
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlProperty = urlParams.get("property") || "";
+  const urlType = urlParams.get("type");
+  const urlRoom = urlParams.get("room") || "";
+
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [orderType, setOrderType] = useState<"room" | "restaurant">("restaurant");
-  const [roomNumber, setRoomNumber] = useState("");
-  const [propertyId, setPropertyId] = useState<string>("");
+  const [orderType, setOrderType] = useState<"room" | "restaurant">(
+    urlType === "room" ? "room" : "restaurant"
+  );
+  const [roomNumber, setRoomNumber] = useState(urlRoom);
+  const [propertyId, setPropertyId] = useState<string>(urlProperty);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
@@ -58,34 +66,30 @@ export default function Menu() {
   const [categoryInitialized, setCategoryInitialized] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
-  
-  // Detect order type, property, and room from URL query params
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const type = params.get("type");
-    const room = params.get("room");
-    const property = params.get("property");
-    
-    if (type === "room" || type === "restaurant") {
-      setOrderType(type);
-    }
-    
-    // Auto-fill room number and property ID if provided in URL (from QR code)
-    if (room && type === "room") {
-      setRoomNumber(room);
-    }
-    
-    if (property) {
-      setPropertyId(property);
-    }
-  }, []);
+
+  const menuCategoriesUrl = urlProperty
+    ? `/api/public/menu-categories?propertyId=${urlProperty}`
+    : `/api/public/menu-categories`;
+  const menuItemsUrl = urlProperty
+    ? `/api/public/menu?propertyId=${urlProperty}`
+    : `/api/public/menu`;
 
   const { data: menuCategories, isLoading: categoriesLoading } = useQuery<MenuCategory[]>({
-    queryKey: ["/api/public/menu-categories"],
+    queryKey: [menuCategoriesUrl],
+    queryFn: async () => {
+      const res = await fetch(menuCategoriesUrl);
+      if (!res.ok) throw new Error("Failed to fetch categories");
+      return res.json();
+    },
   });
 
   const { data: menuItems, isLoading: itemsLoading } = useQuery<MenuItem[]>({
-    queryKey: ["/api/public/menu"],
+    queryKey: [menuItemsUrl],
+    queryFn: async () => {
+      const res = await fetch(menuItemsUrl);
+      if (!res.ok) throw new Error("Failed to fetch menu items");
+      return res.json();
+    },
   });
 
   // Fetch variants for selected item

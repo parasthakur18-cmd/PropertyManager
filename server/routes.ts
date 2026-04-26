@@ -749,7 +749,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/public/menu-categories", async (req, res) => {
     try {
-      const categories = await storage.getAllMenuCategories();
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const categories = propertyId
+        ? await storage.getMenuCategoriesByProperty(propertyId)
+        : await storage.getAllMenuCategories();
       // Only return active categories
       const activeCategories = categories.filter(cat => cat.isActive);
       res.json(activeCategories);
@@ -761,7 +764,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public menu items (no auth required)
   app.get("/api/public/menu", async (req, res) => {
     try {
-      const items = await storage.getAllMenuItems();
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const items = propertyId
+        ? await storage.getMenuItemsByProperty(propertyId)
+        : await storage.getAllMenuItems();
       // Only return available items
       const availableItems = items.filter(item => item.isAvailable);
       res.json(availableItems);
