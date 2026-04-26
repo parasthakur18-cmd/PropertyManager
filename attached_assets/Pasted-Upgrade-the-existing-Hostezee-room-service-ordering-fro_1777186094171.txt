@@ -1,0 +1,136 @@
+Upgrade the existing Hostezee room service ordering frontend without breaking current backend logic (categories → items → variants → add-ons).
+
+IMPORTANT:
+
+* Variants and add-ons are already implemented — ensure they continue working properly after UI redesign.
+* Do NOT modify backend schema unless necessary.
+
+---
+
+REQUIREMENTS:
+
+1. CATEGORY-BASED HOMEPAGE (REQUIRED)
+
+* Replace current long list menu with category-first UI
+* Show categories as cards (2-column grid on mobile)
+
+Each category card:
+
+* Image
+* Name
+* Item count
+
+Click → open items of that category
+
+---
+
+2. MENU ITEMS SCREEN (REQUIRED)
+
+* Show items in clean list format
+
+* Each item must include:
+
+  * Name
+  * Price
+  * Short description
+  * Add button (+ / -)
+
+* DO NOT require opening new page for adding item
+
+---
+
+3. VARIANTS + ADD-ONS (CRITICAL)
+
+* When item has variants:
+  → Open bottom sheet/modal
+
+* When item has add-ons:
+  → Show checkbox selection
+
+* Flow:
+  Add item → open modal → select variant + add-ons → confirm → add to cart
+
+* Ensure pricing updates dynamically
+
+---
+
+4. ROOM CONTEXT (REQUIRED)
+
+* Extract from URL:
+  ?property=X&type=room&room=101
+
+* Show on top:
+  “Room 101”
+
+---
+
+5. KITCHEN TIMING FIX (CRITICAL)
+
+* If kitchen is closed:
+
+  * DO NOT allow ordering
+  * DO NOT allow add to cart
+
+* Instead show:
+  “Kitchen opens at 8:00 AM (in XX minutes)”
+
+* Menu can be visible but disabled (greyed out)
+
+---
+
+6. UI IMPROVEMENTS (REQUIRED)
+
+* Mobile-first design
+* Rounded cards
+* Clean spacing
+* Sticky cart bar at bottom
+* Smooth transitions
+
+---
+
+7. PERFORMANCE (REQUIRED)
+
+* Lazy load items
+* Optimize images
+* Avoid unnecessary re-renders
+
+---
+
+8. REMOVE DUPLICATE CATEGORIES
+
+* Merge categories with same name
+* Show only unique categories
+
+---
+
+9. UX IMPROVEMENTS
+
+* Add “Most Ordered” section on top
+* Add search bar
+* Add empty cart message
+
+---
+
+10. SAFE IMPLEMENTATION
+
+* Do NOT break:
+
+  * Existing order flow
+  * Kitchen screen
+  * WhatsApp notifications
+  * Billing system
+
+---
+
+FINAL GOAL:
+
+User flow:
+
+1. Open menu
+2. See categories
+3. Click category
+4. Select item (variant + add-ons if needed)
+5. Add to cart
+6. Place order
+
+Fast, clean, premium experience.
