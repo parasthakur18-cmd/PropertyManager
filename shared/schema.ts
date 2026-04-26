@@ -185,6 +185,7 @@ export const guests = pgTable("guests", {
   fullName: varchar("full_name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 20 }).notNull(),
+  whatsappPhone: varchar("whatsapp_phone", { length: 20 }),
   idProofType: varchar("id_proof_type", { length: 50 }),
   idProofNumber: varchar("id_proof_number", { length: 100 }),
   address: text("address"),

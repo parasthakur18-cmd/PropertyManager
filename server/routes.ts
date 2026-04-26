@@ -863,7 +863,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (orderType === "room" && orderData.guestId) {
           const guest = await storage.getGuest(orderData.guestId);
           if (guest?.phone) {
-            await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
+            const waPhone = (guest as any).whatsappPhone || guest.phone;
+            await sendFoodOrderReceived(waPhone, guest.fullName || "Guest");
             console.log(`[WhatsApp] Food order confirmation sent to guest ${guest.fullName} (room order #${order.id})`);
           }
         } else if (orderType === "restaurant" && customerPhone && customerName) {
@@ -3848,7 +3849,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             const bookingRef = `#${booking.id}`;
             
             await sendPaymentConfirmation(
-              guest.phone,
+              (guest as any).whatsappPhone || guest.phone,
               guestName,
               amountPaid,
               paymentDate,
@@ -4040,7 +4041,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
                 // Template 28769 → Woodpecker Inn ONLY | Template 29292 → all other properties
                 const isWoodpeckerProperty = propertyName.toLowerCase().includes("woodpecker");
                 const checkinTemplateId = isWoodpeckerProperty ? "28769" : "29292";
-                await sendCheckInNotification(guest.phone, guestName, propertyName, foodOrderLink, checkinTemplateId);
+                await sendCheckInNotification((guest as any).whatsappPhone || guest.phone, guestName, propertyName, foodOrderLink, checkinTemplateId);
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${checkinTemplateId}, property: ${propertyName})`);
               } else {
                 console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled`);
@@ -4069,7 +4070,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               }
               const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
               const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
-              await sendBookingConfirmedNotification(guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
+              await sendBookingConfirmedNotification((guest as any).whatsappPhone || guest.phone, guest.fullName || "Guest", propertyName, checkInFmt, checkOutFmt);
               console.log(`[WhatsApp] Booking #${booking.id} - Booking confirmed notification sent to ${guest.fullName} (template: 29294)`);
             }
           }
@@ -4799,7 +4800,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const checkoutDate = format(new Date(), "dd MMM yyyy");
           
           await sendCheckoutNotification(
-            guest.phone,
+            (guest as any).whatsappPhone || guest.phone,
             guestName,
             propertyName,
             totalAmountFormatted,
@@ -5158,11 +5159,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'pending_payment');
       const isTemplateEnabled = templateSetting?.isEnabled !== false;
       
-      if (isTemplateEnabled && guest.phone && isRealPhone(guest.phone)) {
+      const waPhoneForPayment = (guest as any).whatsappPhone || guest.phone;
+      if (isTemplateEnabled && guest.phone && isRealPhone(waPhoneForPayment)) {
         try {
-          console.log(`[WhatsApp] Sending initial payment request (WID 29779) for booking #${bookingId} to ${guest.phone}`);
+          console.log(`[WhatsApp] Sending initial payment request (WID 29779) for booking #${bookingId} to ${waPhoneForPayment}`);
           const waResult = await sendInitialPaymentRequest(
-            guest.phone,
+            waPhoneForPayment,
             guest.fullName || "Guest",
             property?.name || "Property",
             `₹${advanceAmount.toLocaleString('en-IN')}`,
@@ -5243,7 +5245,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       try {
         await sendSelfCheckinLink(
-          guest.phone,
+          (guest as any).whatsappPhone || guest.phone,
           guest.fullName || "Guest",
           property?.name || "Property",
           checkinLink,
@@ -17609,9 +17611,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         // ── Reminder 1: WID 29780 (+1h) ──────────────────────────────
         if (reminderCount === 0 && hoursSinceCreation >= 1 && hoursSinceCreation < 8) {
-          if (guest.phone && isRealPhone(guest.phone) && paymentUrl) {
+          const waPhone1 = (guest as any).whatsappPhone || guest.phone;
+          if (guest.phone && isRealPhone(waPhone1) && paymentUrl) {
             try {
-              await sendPaymentReminder1(guest.phone, guest.fullName || "Guest", paymentUrl);
+              await sendPaymentReminder1(waPhone1, guest.fullName || "Guest", paymentUrl);
               await db.update(bookings).set({ reminderCount: 1, lastReminderAt: now, updatedAt: now })
                 .where(eq(bookings.id, booking.id));
               storage.invalidateBookingsCache();
@@ -17626,9 +17629,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         // ── Final Reminder: WID 29781 (+3h) ──────────────────────────
         if (reminderCount === 1 && hoursSinceCreation >= 3 && hoursSinceCreation < 8) {
-          if (guest.phone && isRealPhone(guest.phone) && paymentUrl) {
+          const waPhone2 = (guest as any).whatsappPhone || guest.phone;
+          if (guest.phone && isRealPhone(waPhone2) && paymentUrl) {
             try {
-              await sendFinalPaymentReminder(guest.phone, guest.fullName || "Guest", paymentUrl);
+              await sendFinalPaymentReminder(waPhone2, guest.fullName || "Guest", paymentUrl);
               await db.update(bookings).set({ reminderCount: 2, lastReminderAt: now, updatedAt: now })
                 .where(eq(bookings.id, booking.id));
               storage.invalidateBookingsCache();

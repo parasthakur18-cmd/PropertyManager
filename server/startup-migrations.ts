@@ -771,6 +771,15 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "add_guest_whatsapp_phone",
+    async run() {
+      if (!(await tableExists("guests"))) return;
+      if (!(await columnExists("guests", "whatsapp_phone"))) {
+        await runRaw(`ALTER TABLE guests ADD COLUMN whatsapp_phone VARCHAR(20)`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

@@ -311,6 +311,7 @@ export default function Bookings() {
       bedsBooked: null as number | null,
       guestName: "",
       guestPhone: "",
+      guestWhatsappPhone: "",
     },
   });
 
@@ -1029,6 +1030,7 @@ export default function Bookings() {
       mealPlan: booking.mealPlan || "EP",
       guestName: guest?.fullName || "",
       guestPhone: guest?.phone || "",
+      guestWhatsappPhone: (guest as any)?.whatsappPhone || "",
     });
     setIsEditDialogOpen(true);
   };
@@ -1100,11 +1102,12 @@ export default function Bookings() {
       travelAgentId: data.travelAgentId || null,
     };
     
-    // Update guest details if name or phone changed
+    // Update guest details if name, phone, or whatsapp number changed
     if (editingBooking.guestId && (data.guestName || data.guestPhone)) {
       const guestPayload: any = {};
       if (data.guestName) guestPayload.fullName = data.guestName;
       if (data.guestPhone) guestPayload.phone = data.guestPhone;
+      guestPayload.whatsappPhone = data.guestWhatsappPhone || null;
       
       // Update guest first, then update booking
       apiRequest(`/api/guests/${editingBooking.guestId}`, "PATCH", guestPayload)
@@ -3256,6 +3259,27 @@ export default function Bookings() {
                             value={field.value || ""}
                             onChange={field.onChange}
                             data-testid="input-edit-guest-phone"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="guestWhatsappPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-1">
+                          WhatsApp Number
+                          <span className="text-xs text-muted-foreground font-normal">(if different)</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter WhatsApp number"
+                            value={field.value || ""}
+                            onChange={field.onChange}
+                            data-testid="input-edit-guest-whatsapp"
                           />
                         </FormControl>
                         <FormMessage />
