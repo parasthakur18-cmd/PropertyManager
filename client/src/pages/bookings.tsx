@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 
 const GuestInputFields = memo(function GuestInputFields({ 
@@ -839,6 +840,18 @@ export default function Bookings() {
         description: error.message || "Unable to send check-in link",
         variant: "destructive",
       });
+    },
+  });
+
+  const resendWaMutation = useMutation({
+    mutationFn: async ({ bookingId, type }: { bookingId: number; type: "confirmation" | "payment" | "checkin" }) => {
+      return await apiRequest(`/api/bookings/${bookingId}/resend-whatsapp`, "POST", { type });
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "WhatsApp Sent", description: data?.message || "Message sent successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Send Failed", description: error.message || "Could not send WhatsApp message", variant: "destructive" });
     },
   });
 
@@ -2260,6 +2273,42 @@ export default function Bookings() {
                               >
                                 <Send className="h-4 w-4" />
                               </Button>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8"
+                                    disabled={resendWaMutation.isPending}
+                                    title="Send WhatsApp message"
+                                    data-testid={`button-wa-menu-${booking.id}`}
+                                  >
+                                    <MessageSquare className="h-4 w-4 text-green-600" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuLabel className="text-xs">Send via WhatsApp</DropdownMenuLabel>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "confirmation" })}
+                                    data-testid={`btn-wa-confirmation-${booking.id}`}
+                                  >
+                                    Booking Confirmation
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "payment" })}
+                                    data-testid={`btn-wa-payment-${booking.id}`}
+                                  >
+                                    Payment Request
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "checkin" })}
+                                    data-testid={`btn-wa-checkin-${booking.id}`}
+                                  >
+                                    Check-in Link
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                               <Button
                                 size="icon"
                                 variant="ghost"

@@ -5271,6 +5271,67 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // POST /api/bookings/:id/resend-whatsapp  — resend any template to the guest's WA number
+  app.post("/api/bookings/:id/resend-whatsapp", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { type } = req.body as { type: "confirmation" | "payment" | "checkin" };
+      if (!type) return res.status(400).json({ message: "type is required" });
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) return res.status(400).json({ message: "Guest has no phone number" });
+
+      const waPhone = (guest as any).whatsappPhone || guest.phone;
+      if (!isRealPhone(waPhone)) return res.status(400).json({ message: "No valid phone number available" });
+
+      const property = await storage.getProperty(booking.propertyId);
+      const propertyName = property?.name || "Your Property";
+      const guestName = guest.fullName || "Guest";
+
+      if (type === "confirmation") {
+        const checkInFmt = format(new Date(booking.checkInDate), "dd MMM yyyy");
+        const checkOutFmt = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+        await sendBookingConfirmedNotification(waPhone, guestName, propertyName, checkInFmt, checkOutFmt);
+        console.log(`[RESEND-WA] Booking confirmation sent to ${guestName} (${waPhone}) for booking #${bookingId}`);
+        return res.json({ success: true, message: `Booking confirmation sent to ${waPhone}` });
+      }
+
+      if (type === "payment") {
+        if (!booking.paymentLinkUrl) {
+          return res.status(400).json({ message: "No payment link exists for this booking. Use 'Send Payment Link' to create one." });
+        }
+        const { sendInitialPaymentRequest } = await import("./authkey");
+        const advanceAmt = booking.advanceAmount ? `₹${parseFloat(booking.advanceAmount).toLocaleString("en-IN")}` : "advance amount";
+        await sendInitialPaymentRequest(waPhone, guestName, propertyName, advanceAmt, booking.paymentLinkUrl);
+        console.log(`[RESEND-WA] Payment request resent to ${guestName} (${waPhone}) for booking #${bookingId}`);
+        return res.json({ success: true, message: `Payment request sent to ${waPhone}` });
+      }
+
+      if (type === "checkin") {
+        const baseUrl = "https://hostezee.in";
+        const checkinLink = `${baseUrl}/guest-self-checkin?bookingId=${bookingId}`;
+        const checkInFormatted = format(new Date(booking.checkInDate), "dd MMM yyyy");
+        const checkOutFormatted = format(new Date(booking.checkOutDate), "dd MMM yyyy");
+        let roomNumber = "Your Room";
+        if (booking.roomId) {
+          const room = await storage.getRoom(booking.roomId);
+          roomNumber = room?.roomNumber || "Your Room";
+        }
+        await sendSelfCheckinLink(waPhone, guestName, propertyName, checkinLink, checkInFormatted, checkOutFormatted, roomNumber);
+        console.log(`[RESEND-WA] Check-in link resent to ${guestName} (${waPhone}) for booking #${bookingId}`);
+        return res.json({ success: true, message: `Check-in link sent to ${waPhone}` });
+      }
+
+      return res.status(400).json({ message: "Invalid type" });
+    } catch (error: any) {
+      console.error("[RESEND-WA] Error:", error.message);
+      res.status(500).json({ message: error.message || "Failed to send WhatsApp message" });
+    }
+  });
+
   // Manually confirm a booking (skip advance payment)
   app.post("/api/bookings/:id/confirm", isAuthenticated, async (req, res) => {
     try {
