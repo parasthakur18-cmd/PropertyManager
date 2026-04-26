@@ -1,6 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft, Search, XCircle, Building2, ChevronRight } from "lucide-react";
+import {
+  Plus, Minus, X, Check, Phone, Store, Hotel, ArrowRight, ArrowLeft,
+  Search, XCircle, Building2, ChevronRight, UtensilsCrossed, Clock,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,70 +12,117 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { type MenuItem, type MenuItemVariant } from "@shared/schema";
+import { type MenuItem, type MenuCategory } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CartAddOn { id: number; name: string; price: string; quantity: number; }
 
 interface CartItem extends MenuItem {
   quantity: number;
   cartKey: string;
   selectedVariant?: { id: number; variantName: string; actualPrice: string; discountedPrice: string | null };
+  cartAddOns?: CartAddOn[];
 }
 
 type OrderType = "room" | "restaurant" | null;
 type RestaurantCustomerType = "walk-in" | "in-house";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CATEGORY_GRADIENTS = [
+  "from-orange-400 to-amber-500", "from-emerald-400 to-teal-500",
+  "from-blue-400 to-indigo-500", "from-rose-400 to-pink-500",
+  "from-violet-400 to-purple-500", "from-cyan-400 to-sky-500",
+  "from-yellow-400 to-orange-500", "from-green-400 to-emerald-600",
+  "from-fuchsia-400 to-pink-600", "from-sky-400 to-blue-600",
+];
+
+const CATEGORY_EMOJIS: Record<string, string> = {
+  breakfast: "🌅", snack: "🍿", beverage: "☕", drink: "🥤",
+  lunch: "🍱", dinner: "🍽️", chinese: "🥡", biryani: "🍚",
+  pizza: "🍕", salad: "🥗", dessert: "🍰", soup: "🍵",
+  starter: "🥙", "south indian": "🥘", "north indian": "🍛",
+  sandwich: "🥪", pasta: "🍝", burger: "🍔", noodle: "🍜",
+  juice: "🧃", coffee: "☕", tea: "🍵", shake: "🥤",
+  ice: "🍦", sweet: "🍭", bread: "🥐", egg: "🍳",
+};
+
+function getCategoryEmoji(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
+    if (lower.includes(key)) return emoji;
+  }
+  return "🍽️";
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function QuickOrder() {
+  // ── Step state ─────────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [restaurantCustomerType, setRestaurantCustomerType] = useState<RestaurantCustomerType>("walk-in");
   const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [specialInstructions, setSpecialInstructions] = useState("");
+
+  // ── Step 3 menu UI state ───────────────────────────────────────────────────
+  const [menuScreen, setMenuScreen] = useState<"categories" | "items">("categories");
+  const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string | null>(null);
-  const [variantItem, setVariantItem] = useState<MenuItem | null>(null);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // ── Variants / add-ons sheet ───────────────────────────────────────────────
+  const [sheetItem, setSheetItem] = useState<MenuItem | null>(null);
+  const [sheetVariant, setSheetVariant] = useState<{ id: number; variantName: string; actualPrice: string; discountedPrice: string | null } | null>(null);
+  const [sheetAddOns, setSheetAddOns] = useState<CartAddOn[]>([]);
+
   const { toast } = useToast();
 
-  // Global property selection — synced with dashboard via localStorage
   const {
-    selectedPropertyId,
-    setSelectedPropertyId,
-    availableProperties,
-    showPropertySwitcher,
+    selectedPropertyId, setSelectedPropertyId,
+    availableProperties, showPropertySwitcher,
   } = usePropertyFilter();
 
+  // ── Data queries ───────────────────────────────────────────────────────────
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
     queryKey: ["/api/menu-items"],
   });
 
-  const { 
-    data: roomsWithGuests, 
-    isLoading: roomsLoading,
-    isError: roomsError 
-  } = useQuery<any[]>({
+  const { data: menuCategories } = useQuery<MenuCategory[]>({
+    queryKey: ["/api/menu-categories"],
+  });
+
+  const { data: roomsWithGuests, isLoading: roomsLoading, isError: roomsError } = useQuery<any[]>({
     queryKey: ["/api/rooms/checked-in-guests"],
   });
 
-  const { data: variants, isLoading: variantsLoading } = useQuery<MenuItemVariant[]>({
-    queryKey: [`/api/menu-items/${variantItem?.id}/variants`],
-    enabled: !!variantItem,
+  const { data: sheetVariants } = useQuery<{ id: number; menuItemId: number; variantName: string; actualPrice: string; discountedPrice: string | null }[]>({
+    queryKey: [`/api/menu-items/${sheetItem?.id}/variants`],
+    enabled: !!sheetItem,
   });
 
+  const { data: sheetAddOnOptions } = useQuery<{ id: number; menuItemId: number; addOnName: string; addOnPrice: string }[]>({
+    queryKey: [`/api/menu-items/${sheetItem?.id}/add-ons`],
+    enabled: !!sheetItem,
+  });
+
+  // ── Order mutation ─────────────────────────────────────────────────────────
   const orderMutation = useMutation({
     mutationFn: async (orderData: any) => {
       return await apiRequest("/api/orders", "POST", orderData);
     },
     onSuccess: () => {
-      toast({
-        title: "Order Created!",
-        description: "Order has been sent to the kitchen.",
-      });
-      // Reset everything
+      toast({ title: "Order Created!", description: "Order has been sent to the kitchen." });
       setStep(1);
       setOrderType(null);
       setCart([]);
@@ -80,196 +130,230 @@ export default function QuickOrder() {
       setCustomerName("");
       setCustomerPhone("");
       setSpecialInstructions("");
+      setMenuScreen("categories");
+      setActiveCategoryId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
     },
     onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
-  const addToCart = (item: MenuItem, variant?: { id: number; variantName: string; actualPrice: string; discountedPrice: string | null }) => {
-    const cartKey = variant ? `${item.id}-v${variant.id}` : `${item.id}`;
-    const price = variant
-      ? (variant.discountedPrice || variant.actualPrice)
-      : item.price;
-    const existing = cart.find((i) => i.cartKey === cartKey);
-    if (existing) {
-      setCart(cart.map((i) => (i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i)));
-    } else {
-      setCart([...cart, { ...item, price, quantity: 1, cartKey, selectedVariant: variant }]);
-    }
-  };
-
-  const updateQuantity = (cartKey: string, change: number) => {
-    setCart((prev) => {
-      const updated = prev.map((item) =>
-        item.cartKey === cartKey ? { ...item, quantity: Math.max(0, item.quantity + change) } : item
-      );
-      return updated.filter((item) => item.quantity > 0);
-    });
-  };
-
-  const removeFromCart = (cartKey: string) => {
-    setCart(cart.filter((item) => item.cartKey !== cartKey));
-  };
-
-  const calculateTotal = () => {
-    return cart.reduce((sum, item) => sum + parseFloat(item.price as string) * item.quantity, 0);
-  };
-
-  // Total quantity across all variants of an item
-  const getItemQuantityInCart = (itemId: number) => {
-    return cart.filter((i) => i.id === itemId).reduce((sum, i) => sum + i.quantity, 0);
-  };
-
-  // Only menu items belonging to the selected property
+  // ── Filtered menu items ────────────────────────────────────────────────────
   const propertyMenuItems = useMemo(() => {
     if (!menuItems) return [];
     if (!selectedPropertyId) return menuItems;
-    return menuItems.filter(item => item.propertyId === selectedPropertyId);
+    return menuItems.filter(i => i.propertyId === selectedPropertyId);
   }, [menuItems, selectedPropertyId]);
 
-  // Only rooms belonging to the selected property
+  const availableItems = useMemo(() =>
+    propertyMenuItems.filter(i => i.isAvailable),
+    [propertyMenuItems]
+  );
+
   const filteredRooms = useMemo(() => {
     if (!roomsWithGuests) return [];
     if (!selectedPropertyId) return roomsWithGuests;
     return roomsWithGuests.filter(r => r.propertyId === selectedPropertyId);
   }, [roomsWithGuests, selectedPropertyId]);
 
-  // Get unique categories from property-filtered menu items
-  const categories = useMemo(() => {
-    const uniqueCategories = Array.from(new Set(propertyMenuItems.map(item => item.category || "Uncategorized")));
-    return uniqueCategories.sort();
-  }, [propertyMenuItems]);
+  // ── Category data for grid ─────────────────────────────────────────────────
+  const categoriesWithCount = useMemo(() => {
+    if (!menuCategories) return [];
+    return menuCategories
+      .map((cat, idx) => ({
+        cat,
+        count: availableItems.filter(i => i.categoryId === cat.id).length,
+        gradient: CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length],
+        emoji: getCategoryEmoji(cat.name),
+      }))
+      .filter(c => c.count > 0 && (!selectedPropertyId || c.cat.propertyId === selectedPropertyId));
+  }, [menuCategories, availableItems, selectedPropertyId]);
 
-  // Filter menu items by search term and category, sort by sequence
-  const filteredMenuItems = useMemo(() => {
-    let filtered = propertyMenuItems;
-    
-    // Filter by category
-    if (selectedCategoryFilter) {
-      filtered = filtered.filter(item => (item.category || "Uncategorized") === selectedCategoryFilter);
-    }
-    
-    // Filter by search term
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(item => 
-        item.name.toLowerCase().includes(searchLower) ||
-        (item.description && item.description.toLowerCase().includes(searchLower))
-      );
-    }
-    
-    // Sort by displayOrder within each category
-    return filtered.sort((a, b) => {
-      const seqA = a.displayOrder ?? 9999;
-      const seqB = b.displayOrder ?? 9999;
-      return seqA - seqB;
-    });
-  }, [propertyMenuItems, searchTerm, selectedCategoryFilter]);
+  const activeCategory = menuCategories?.find(c => c.id === activeCategoryId);
 
+  const popularItems = useMemo(() => availableItems.slice(0, 6), [availableItems]);
+
+  const itemsInActiveCategory = useMemo(() => {
+    if (!activeCategoryId) return [];
+    const base = availableItems.filter(i => i.categoryId === activeCategoryId);
+    if (!searchTerm.trim()) return base;
+    const q = searchTerm.toLowerCase();
+    return base.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.description && i.description.toLowerCase().includes(q))
+    );
+  }, [availableItems, activeCategoryId, searchTerm]);
+
+  const searchResults = useMemo(() => {
+    if (!searchTerm.trim() || menuScreen !== "categories") return [];
+    const q = searchTerm.toLowerCase();
+    return availableItems.filter(i =>
+      i.name.toLowerCase().includes(q) ||
+      (i.description && i.description.toLowerCase().includes(q))
+    );
+  }, [availableItems, searchTerm, menuScreen]);
+
+  // ── Cart helpers ───────────────────────────────────────────────────────────
+  const getItemQtyInCart = useCallback((itemId: number) =>
+    cart.filter(c => c.id === itemId).reduce((s, c) => s + c.quantity, 0),
+    [cart]
+  );
+
+  const calculateTotal = useCallback(() =>
+    cart.reduce((sum, item) => {
+      const base = item.selectedVariant
+        ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
+        : parseFloat(item.price as string);
+      const addOnsTotal = item.cartAddOns
+        ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
+        : 0;
+      return sum + base * item.quantity + addOnsTotal;
+    }, 0),
+    [cart]
+  );
+
+  const totalItems = cart.reduce((s, c) => s + c.quantity, 0);
+
+  const updateQuantity = (cartKey: string, delta: number) => {
+    setCart(prev =>
+      prev.map(i => i.cartKey === cartKey ? { ...i, quantity: Math.max(0, i.quantity + delta) } : i)
+        .filter(i => i.quantity > 0)
+    );
+  };
+
+  const removeFromCart = (cartKey: string) =>
+    setCart(prev => prev.filter(i => i.cartKey !== cartKey));
+
+  const updateCartAddOnQty = (cartKey: string, addOnId: number, delta: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.cartKey !== cartKey || !item.cartAddOns) return item;
+      return {
+        ...item,
+        cartAddOns: item.cartAddOns.map(a =>
+          a.id === addOnId ? { ...a, quantity: Math.max(1, a.quantity + delta) } : a
+        ),
+      };
+    }));
+  };
+
+  // ── Add to cart ────────────────────────────────────────────────────────────
+  const openItemSheet = (item: MenuItem) => {
+    setSheetItem(item);
+    setSheetVariant(null);
+    setSheetAddOns([]);
+  };
+
+  const addSimpleToCart = (item: MenuItem) => {
+    const cartKey = `${item.id}-${Date.now()}`;
+    setCart(prev => [...prev, { ...item, cartKey, quantity: 1 }]);
+    toast({ title: "Added", description: item.name });
+  };
+
+  const addToCart = (item: MenuItem) => {
+    if (item.hasVariants || item.hasAddOns) openItemSheet(item);
+    else addSimpleToCart(item);
+  };
+
+  const confirmSheetAdd = () => {
+    if (!sheetItem) return;
+    const cartKey = `${sheetItem.id}-${sheetVariant?.id || "nv"}-${Date.now()}`;
+    setCart(prev => [...prev, {
+      ...sheetItem,
+      cartKey,
+      quantity: 1,
+      selectedVariant: sheetVariant || undefined,
+      cartAddOns: sheetAddOns.length > 0 ? [...sheetAddOns] : undefined,
+    }]);
+    toast({ title: "Added", description: sheetItem.name });
+    setSheetItem(null);
+    setSheetVariant(null);
+    setSheetAddOns([]);
+  };
+
+  const toggleSheetAddOn = (addon: { id: number; addOnName: string; addOnPrice: string }) => {
+    const exists = sheetAddOns.find(a => a.id === addon.id);
+    if (exists) setSheetAddOns(prev => prev.filter(a => a.id !== addon.id));
+    else setSheetAddOns(prev => [...prev, { id: addon.id, name: addon.addOnName, price: addon.addOnPrice, quantity: 1 }]);
+  };
+
+  const updateSheetAddOnQty = (id: number, delta: number) =>
+    setSheetAddOns(prev => prev.map(a => a.id === id ? { ...a, quantity: Math.max(1, a.quantity + delta) } : a));
+
+  const sheetTotal = useMemo(() => {
+    const base = sheetVariant
+      ? parseFloat(sheetVariant.discountedPrice || sheetVariant.actualPrice)
+      : parseFloat(sheetItem?.price as string || "0");
+    const extras = sheetAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0);
+    return (base + extras).toFixed(2);
+  }, [sheetVariant, sheetItem, sheetAddOns]);
+
+  // ── Step navigation ────────────────────────────────────────────────────────
   const handleNextStep = () => {
     if (step === 1 && !orderType) {
-      toast({
-        title: "Order Type Required",
-        description: "Please select Room Service or Restaurant",
-        variant: "destructive",
-      });
+      toast({ title: "Order Type Required", description: "Select Room Service or Restaurant", variant: "destructive" });
       return;
     }
-
     if (step === 2) {
       if (orderType === "room") {
-        if (!roomsWithGuests || roomsWithGuests.length === 0) {
-          toast({
-            title: "No Checked-In Guests",
-            description: "There are no rooms with checked-in guests. Please check in a guest first.",
-            variant: "destructive",
-          });
+        if (!filteredRooms || filteredRooms.length === 0) {
+          toast({ title: "No Checked-In Guests", description: "No rooms with checked-in guests.", variant: "destructive" });
           return;
         }
         if (!selectedRoom) {
-          toast({
-            title: "Room Required",
-            description: "Please select a room number",
-            variant: "destructive",
-          });
+          toast({ title: "Room Required", description: "Please select a room", variant: "destructive" });
           return;
         }
       }
       if (orderType === "restaurant") {
-        if (restaurantCustomerType === "walk-in") {
-          if (!customerName || !customerPhone) {
-            toast({
-              title: "Customer Info Required",
-              description: "Please enter customer name and phone",
-              variant: "destructive",
-            });
-            return;
-          }
-          if (!selectedPropertyId && availableProperties.length > 1) {
-            toast({
-              title: "Property Required",
-              description: "Please select a property using the selector above",
-              variant: "destructive",
-            });
-            return;
-          }
+        if (restaurantCustomerType === "walk-in" && (!customerName || !customerPhone)) {
+          toast({ title: "Customer Info Required", description: "Enter name and phone", variant: "destructive" });
+          return;
         }
         if (restaurantCustomerType === "in-house" && !selectedRoom) {
-          toast({
-            title: "Room Required",
-            description: "Please select the in-house guest's room",
-            variant: "destructive",
-          });
+          toast({ title: "Room Required", description: "Select the in-house guest's room", variant: "destructive" });
           return;
         }
       }
     }
-
     setStep(step + 1);
   };
 
+  // ── Order submission ───────────────────────────────────────────────────────
   const handleSubmitOrder = () => {
     if (cart.length === 0) {
-      toast({
-        title: "Cart Empty",
-        description: "Please add items to the order",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (orderType === "restaurant" && restaurantCustomerType === "walk-in" && !customerName.trim()) {
-      toast({
-        title: "Customer Name Required",
-        description: "Please enter the customer's name before submitting",
-        variant: "destructive",
-      });
+      toast({ title: "Cart Empty", description: "Add items before submitting", variant: "destructive" });
       return;
     }
 
     const orderData: any = {
-      items: cart.map((item) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-      })),
+      items: cart.map(item => {
+        const base = item.selectedVariant
+          ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
+          : parseFloat(item.price as string);
+        const variantText = item.selectedVariant ? ` (${item.selectedVariant.variantName})` : "";
+        const addOnsText = item.cartAddOns?.length
+          ? ` + ${item.cartAddOns.map(a => `${a.quantity}x ${a.name}`).join(", ")}`
+          : "";
+        const addOnsTotal = item.cartAddOns
+          ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
+          : 0;
+        return {
+          id: item.id,
+          name: item.name + variantText + addOnsText,
+          price: ((base * item.quantity + addOnsTotal) / item.quantity).toFixed(2),
+          quantity: item.quantity,
+        };
+      }),
       totalAmount: calculateTotal().toFixed(2),
       specialInstructions: specialInstructions || null,
       orderSource: "staff",
-      orderType: orderType,
+      orderType,
     };
 
     if (orderType === "room") {
       orderData.roomId = parseInt(selectedRoom);
-      // Also include guest name, phone, bookingId, and propertyId for room orders
       const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
       if (roomGuest) {
         orderData.propertyId = roomGuest.propertyId;
@@ -279,7 +363,6 @@ export default function QuickOrder() {
       }
     } else if (orderType === "restaurant") {
       if (restaurantCustomerType === "in-house") {
-        // In-house guest at café - link to their room bill
         orderData.roomId = parseInt(selectedRoom);
         const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
         if (roomGuest) {
@@ -289,7 +372,6 @@ export default function QuickOrder() {
           orderData.customerPhone = roomGuest.guestPhone || "";
         }
       } else {
-        // Walk-in customer — use globally selected property
         orderData.propertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
         orderData.customerName = customerName;
         orderData.customerPhone = customerPhone;
@@ -299,15 +381,12 @@ export default function QuickOrder() {
     orderMutation.mutate(orderData);
   };
 
-  // Group by category (using filtered items)
-  const categorizedItems = filteredMenuItems?.reduce((acc, item) => {
-    const category = item.category || "Uncategorized";
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(item);
-    return acc;
-  }, {} as Record<string, MenuItem[]>);
+  // ── Room label ─────────────────────────────────────────────────────────────
+  const selectedRoomLabel = useMemo(() => {
+    if (!selectedRoom) return null;
+    const r = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
+    return r ? `Room ${r.roomNumber} — ${r.guestName}` : `Room ${selectedRoom}`;
+  }, [selectedRoom, filteredRooms]);
 
   if (menuLoading) {
     return (
@@ -318,152 +397,122 @@ export default function QuickOrder() {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
-              <Phone className="h-8 w-8 text-primary" />
-              Quick Order Entry
-            </h1>
-            <p className="text-muted-foreground mt-1">Take orders from guests - Step {step} of 3</p>
-          </div>
-          {showPropertySwitcher && (
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <Select
-                value={selectedPropertyId?.toString() ?? ""}
-                onValueChange={(v) => {
-                  setSelectedPropertyId(v ? parseInt(v) : null);
-                  // Reset form when property changes
-                  setStep(1);
-                  setOrderType(null);
-                  setCart([]);
-                  setSelectedRoom("");
-                  setSelectedCategoryFilter(null);
-                  setSearchTerm("");
-                }}
-              >
-                <SelectTrigger className="w-52" data-testid="select-quick-order-property">
-                  <SelectValue placeholder="Select property" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableProperties.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()} data-testid={`select-quick-order-property-${p.id}`}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+
+      {/* ── Page header ────────────────────────────────────────────────────── */}
+      <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Phone className="h-6 w-6 text-primary" />
+            Quick Order
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Step {step} of 3 ·{" "}
+            {step === 1 ? "Select order type" : step === 2 ? "Customer details" : "Select items"}
+          </p>
         </div>
+        {showPropertySwitcher && (
+          <div className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <Select
+              value={selectedPropertyId?.toString() ?? ""}
+              onValueChange={v => {
+                setSelectedPropertyId(v ? parseInt(v) : null);
+                setStep(1); setOrderType(null); setCart([]);
+                setSelectedRoom(""); setMenuScreen("categories"); setSearchTerm("");
+              }}
+            >
+              <SelectTrigger className="w-52" data-testid="select-quick-order-property">
+                <SelectValue placeholder="Select property" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableProperties.map(p => (
+                  <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
-      {/* Step 1: Order Type Selection */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          STEP 1 — Order Type (unchanged)
+      ══════════════════════════════════════════════════════════════════════ */}
       {step === 1 && (
         <div className="max-w-2xl mx-auto">
           <Card>
-            <CardHeader>
-              <CardTitle>Step 1: Select Order Type</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Step 1: Select Order Type</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={() => setOrderType("room")}
-                  className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${
-                    orderType === "room" ? "border-primary bg-primary/5" : "border-border"
-                  }`}
+                  className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${orderType === "room" ? "border-primary bg-primary/5" : "border-border"}`}
                   data-testid="button-order-type-room"
                 >
                   <Hotel className="h-12 w-12 mx-auto mb-3 text-primary" />
                   <h3 className="font-semibold text-lg mb-2">Room Service</h3>
                   <p className="text-sm text-muted-foreground">Deliver to guest room</p>
                 </button>
-
                 <button
                   onClick={() => setOrderType("restaurant")}
-                  className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${
-                    orderType === "restaurant" ? "border-primary bg-primary/5" : "border-border"
-                  }`}
+                  className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${orderType === "restaurant" ? "border-primary bg-primary/5" : "border-border"}`}
                   data-testid="button-order-type-restaurant"
                 >
                   <Store className="h-12 w-12 mx-auto mb-3 text-primary" />
-                  <h3 className="font-semibold text-lg mb-2">Restaurant/Dine-in</h3>
+                  <h3 className="font-semibold text-lg mb-2">Restaurant / Dine-in</h3>
                   <p className="text-sm text-muted-foreground">Order for restaurant table</p>
                 </button>
               </div>
-
-              <Button
-                className="w-full mt-6"
-                size="lg"
-                onClick={handleNextStep}
-                disabled={!orderType}
-                data-testid="button-next-step-1"
-              >
-                Next: Customer Details
-                <ArrowRight className="h-5 w-5 ml-2" />
+              <Button className="w-full mt-6" size="lg" onClick={handleNextStep} disabled={!orderType} data-testid="button-next-step-1">
+                Next: Customer Details <ArrowRight className="h-5 w-5 ml-2" />
               </Button>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Step 2: Customer Details */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          STEP 2 — Customer Details (unchanged)
+      ══════════════════════════════════════════════════════════════════════ */}
       {step === 2 && (
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>
-                Step 2: {orderType === "room" ? "Select Room" : "Customer Information"}
-              </CardTitle>
+              <CardTitle>Step 2: {orderType === "room" ? "Select Room" : "Customer Information"}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {orderType === "room" ? (
                 <div>
                   <Label htmlFor="room-select">Room Number *</Label>
-                  {roomsLoading ? (
-                    <Skeleton className="h-10 w-full" />
-                  ) : roomsError ? (
-                    <div className="text-sm text-destructive p-3 border border-destructive rounded-md">
-                      Error loading rooms. Please try again.
-                    </div>
-                  ) : filteredRooms.length === 0 ? (
-                    <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                      No rooms with checked-in guests for this property.
-                    </div>
-                  ) : (
-                    <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                      <SelectTrigger id="room-select" data-testid="select-quick-order-room">
-                        <SelectValue placeholder="Select room with checked-in guest" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredRooms.map((room) => (
-                          <SelectItem key={room.roomId} value={room.roomId.toString()}>
-                            Room {room.roomNumber} - {room.guestName}
-                            {room.isGroupBooking ? " 🏨 Group" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  {roomsLoading ? <Skeleton className="h-10 w-full" />
+                    : roomsError ? <div className="text-sm text-destructive p-3 border border-destructive rounded-md">Error loading rooms. Please try again.</div>
+                    : filteredRooms.length === 0 ? <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">No rooms with checked-in guests for this property.</div>
+                    : (
+                      <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                        <SelectTrigger id="room-select" data-testid="select-quick-order-room">
+                          <SelectValue placeholder="Select room with checked-in guest" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredRooms.map(room => (
+                            <SelectItem key={room.roomId} value={room.roomId.toString()}>
+                              Room {room.roomNumber} — {room.guestName}{room.isGroupBooking ? " 🏨 Group" : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                 </div>
               ) : (
                 <>
-                  {/* Restaurant Customer Type Toggle */}
                   <div className="space-y-3">
                     <Label>Customer Type</Label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          setRestaurantCustomerType("walk-in");
-                          setSelectedRoom("");
-                        }}
-                        className={`p-4 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${
-                          restaurantCustomerType === "walk-in" ? "border-primary bg-primary/5" : "border-border"
-                        }`}
+                        onClick={() => { setRestaurantCustomerType("walk-in"); setSelectedRoom(""); }}
+                        className={`p-4 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${restaurantCustomerType === "walk-in" ? "border-primary bg-primary/5" : "border-border"}`}
                         data-testid="button-customer-type-walkin"
                       >
                         <Store className="h-6 w-6 mx-auto mb-2 text-primary" />
@@ -472,14 +521,8 @@ export default function QuickOrder() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setRestaurantCustomerType("in-house");
-                          setCustomerName("");
-                          setCustomerPhone("");
-                        }}
-                        className={`p-4 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${
-                          restaurantCustomerType === "in-house" ? "border-primary bg-primary/5" : "border-border"
-                        }`}
+                        onClick={() => { setRestaurantCustomerType("in-house"); setCustomerName(""); setCustomerPhone(""); }}
+                        className={`p-4 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${restaurantCustomerType === "in-house" ? "border-primary bg-primary/5" : "border-border"}`}
                         data-testid="button-customer-type-inhouse"
                       >
                         <Hotel className="h-6 w-6 mx-auto mb-2 text-primary" />
@@ -488,76 +531,45 @@ export default function QuickOrder() {
                       </button>
                     </div>
                   </div>
-
-                  {/* Show appropriate fields based on customer type */}
                   {restaurantCustomerType === "walk-in" ? (
                     <>
                       <div>
                         <Label htmlFor="customer-name">Customer Name *</Label>
-                        <Input
-                          id="customer-name"
-                          placeholder="Enter customer name"
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          data-testid="input-customer-name"
-                        />
+                        <Input id="customer-name" placeholder="Enter customer name" value={customerName} onChange={e => setCustomerName(e.target.value)} data-testid="input-customer-name" />
                       </div>
                       <div>
                         <Label htmlFor="customer-phone">Phone Number *</Label>
-                        <Input
-                          id="customer-phone"
-                          placeholder="Enter phone number"
-                          value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value)}
-                          data-testid="input-customer-phone"
-                        />
+                        <Input id="customer-phone" placeholder="Enter phone number" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} data-testid="input-customer-phone" />
                       </div>
                     </>
                   ) : (
                     <div>
                       <Label htmlFor="inhouse-room-select">Guest's Room Number *</Label>
-                      {roomsLoading ? (
-                        <Skeleton className="h-10 w-full" />
-                      ) : roomsError ? (
-                        <div className="text-sm text-destructive p-3 border border-destructive rounded-md">
-                          Error loading rooms. Please try again.
-                        </div>
-                      ) : filteredRooms.length === 0 ? (
-                        <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                          No checked-in guests for this property.
-                        </div>
-                      ) : (
-                        <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                          <SelectTrigger id="inhouse-room-select" data-testid="select-inhouse-guest-room">
-                            <SelectValue placeholder="Select guest's room" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {filteredRooms.map((room) => (
-                              <SelectItem key={room.roomId} value={room.roomId.toString()}>
-                                Room {room.roomNumber} - {room.guestName}
-                                {room.isGroupBooking ? " 🏨 Group" : ""}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-2">
-                        This order will be added to the guest's room bill
-                      </p>
+                      {roomsLoading ? <Skeleton className="h-10 w-full" />
+                        : roomsError ? <div className="text-sm text-destructive p-3 border border-destructive rounded-md">Error loading rooms.</div>
+                        : filteredRooms.length === 0 ? <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">No checked-in guests for this property.</div>
+                        : (
+                          <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                            <SelectTrigger id="inhouse-room-select" data-testid="select-inhouse-guest-room">
+                              <SelectValue placeholder="Select guest's room" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredRooms.map(room => (
+                                <SelectItem key={room.roomId} value={room.roomId.toString()}>
+                                  Room {room.roomNumber} — {room.guestName}{room.isGroupBooking ? " 🏨 Group" : ""}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      <p className="text-xs text-muted-foreground mt-2">Order will be added to guest's room bill</p>
                     </div>
                   )}
                 </>
               )}
-
               <div className="flex gap-3 mt-6">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(1)}
-                  className="flex-1"
-                  data-testid="button-back-step-2"
-                >
-                  <ArrowLeft className="h-5 w-5 mr-2" />
-                  Back
+                <Button variant="outline" onClick={() => setStep(1)} className="flex-1" data-testid="button-back-step-2">
+                  <ArrowLeft className="h-5 w-5 mr-2" /> Back
                 </Button>
                 <Button
                   className="flex-1"
@@ -565,8 +577,7 @@ export default function QuickOrder() {
                   disabled={orderType === "room" && (!roomsWithGuests || roomsWithGuests.length === 0 || roomsLoading)}
                   data-testid="button-next-step-2"
                 >
-                  Next: Select Items
-                  <ArrowRight className="h-5 w-5 ml-2" />
+                  Next: Select Items <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
               </div>
             </CardContent>
@@ -574,405 +585,491 @@ export default function QuickOrder() {
         </div>
       )}
 
-      {/* Step 3: Menu Selection */}
+      {/* ══════════════════════════════════════════════════════════════════════
+          STEP 3 — Menu (same look as customer menu)
+      ══════════════════════════════════════════════════════════════════════ */}
       {step === 3 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Menu Items - Left Side */}
-          <div className="lg:col-span-2 space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Step 3: Select Menu Items</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search menu items..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-10"
-                    aria-label="Search menu items"
-                    data-testid="input-quick-order-search"
-                  />
-                  {searchTerm && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                      onClick={() => setSearchTerm("")}
-                      aria-label="Clear search"
-                      data-testid="button-quick-order-clear-search"
-                    >
-                      <XCircle className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
+        <div className="pb-28">
 
-                {/* Quick Category Filter */}
-                {categories.length > 0 && (
-                  <div className="mt-4">
-                    <Label className="mb-2 block text-sm font-medium">Quick Category Filter</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        variant={selectedCategoryFilter === null ? "default" : "outline"}
-                        className="cursor-pointer hover-elevate"
-                        onClick={() => setSelectedCategoryFilter(null)}
-                        data-testid="badge-quick-category-all"
-                      >
-                        All Categories ({propertyMenuItems.length})
-                      </Badge>
-                      {categories.map((cat) => (
-                        <Badge
-                          key={cat}
-                          variant={selectedCategoryFilter === cat ? "default" : "outline"}
-                          className="cursor-pointer hover-elevate"
-                          onClick={() => setSelectedCategoryFilter(cat)}
-                          data-testid={`badge-quick-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
-                        >
-                          {cat} ({propertyMenuItems.filter(item => (item.category || "Uncategorized") === cat).length})
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+          {/* ── Sub-header with back + context ─────────────────────────────── */}
+          <div className="bg-white border rounded-2xl px-4 py-3 mb-4 flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              {menuScreen === "items" && (
+                <button
+                  onClick={() => { setMenuScreen("categories"); setSearchTerm(""); }}
+                  className="p-1.5 rounded-full hover:bg-gray-100 transition-colors mr-1"
+                  data-testid="button-back-to-categories"
+                >
+                  <ArrowLeft className="h-5 w-5 text-gray-600" />
+                </button>
+              )}
+              <div>
+                <p className="font-bold text-sm text-gray-900">
+                  {menuScreen === "items" && activeCategory ? activeCategory.name : "Browse Menu"}
+                </p>
+                {selectedRoomLabel && (
+                  <p className="text-xs text-[#2BB6A8] font-semibold">{selectedRoomLabel}</p>
                 )}
-              </CardContent>
-            </Card>
-
-            {categorizedItems && Object.keys(categorizedItems).length > 0 ? (
-              Object.entries(categorizedItems).map(([category, items]) => (
-                <Card key={category}>
-                  <CardHeader>
-                    <CardTitle className="capitalize text-lg">{category}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {items
-                        .filter((item) => item.isAvailable)
-                        .map((item) => {
-                          const quantity = getItemQuantityInCart(item.id);
-                          return (
-                            <div
-                              key={item.id}
-                              className="flex items-center justify-between p-3 border rounded-lg hover-elevate"
-                              data-testid={`quick-order-item-${item.id}`}
-                            >
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium">{item.name}</p>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm text-muted-foreground">
-                                    {item.hasVariants ? "Multiple sizes" : `₹${item.price}`}
-                                  </p>
-                                  {item.hasVariants && (
-                                    <Badge variant="outline" className="text-xs py-0">variants</Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {item.hasVariants ? (
-                                  // Variant items: show total qty + always open picker on +
-                                  <>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-8 w-8"
-                                      onClick={() => {
-                                        const entries = cart.filter(i => i.id === item.id);
-                                        if (entries.length > 0) {
-                                          updateQuantity(entries[entries.length - 1].cartKey, -1);
-                                        }
-                                      }}
-                                      disabled={quantity === 0}
-                                      data-testid={`button-quick-decrease-${item.id}`}
-                                    >
-                                      <Minus className="h-4 w-4" />
-                                    </Button>
-                                    <span className="w-8 text-center font-mono text-sm">{quantity}</span>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-8 w-8"
-                                      onClick={() => setVariantItem(item)}
-                                      data-testid={`button-quick-increase-${item.id}`}
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                    </Button>
-                                  </>
-                                ) : (
-                                  // Non-variant items: normal +/-
-                                  <>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-8 w-8"
-                                      onClick={() => {
-                                        if (quantity > 0) updateQuantity(`${item.id}`, -1);
-                                      }}
-                                      disabled={quantity === 0}
-                                      data-testid={`button-quick-decrease-${item.id}`}
-                                    >
-                                      <Minus className="h-4 w-4" />
-                                    </Button>
-                                    <span className="w-8 text-center font-mono text-sm">{quantity}</span>
-                                    <Button
-                                      size="icon"
-                                      variant="outline"
-                                      className="h-8 w-8"
-                                      onClick={() => addToCart(item)}
-                                      data-testid={`button-quick-increase-${item.id}`}
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : searchTerm && menuItems ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
-                  <p className="text-muted-foreground">No menu items found matching "{searchTerm}"</p>
-                  <Button
-                    variant="outline"
-                    onClick={() => setSearchTerm("")}
-                    className="mt-4"
-                    data-testid="button-clear-search-empty"
-                  >
-                    Clear Search
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {cart.length > 0 && (
+                <button
+                  onClick={() => setIsCartOpen(true)}
+                  className="flex items-center gap-1.5 bg-[#1E3A5F] text-white px-3 py-1.5 rounded-full text-sm font-semibold"
+                  data-testid="button-header-cart"
+                >
+                  <span className="bg-white/20 rounded-full px-1.5 text-xs font-bold">{totalItems}</span>
+                  ₹{calculateTotal().toFixed(0)}
+                </button>
+              )}
+              <Button variant="outline" size="sm" onClick={() => setStep(2)} data-testid="button-back-step-3" className="text-xs h-8">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back
+              </Button>
+            </div>
           </div>
 
-          {/* Order Summary - Right Side */}
-          <div className="space-y-4">
-            <Card className="sticky top-6">
-              <CardHeader>
-                <CardTitle>Order Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Order Details */}
-                <div className="p-3 bg-muted rounded-lg space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Type:</span>
-                    <span className="font-medium capitalize">{orderType}</span>
-                  </div>
-                  {orderType === "room" ? (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Room:</span>
-                        <span className="font-medium">
-                          {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Guest:</span>
-                        <span className="font-medium">
-                          {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
-                        </span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {restaurantCustomerType === "in-house" ? (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Customer:</span>
-                            <span className="font-medium">In-House Guest</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Room:</span>
-                            <span className="font-medium">
-                              {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.roomNumber || "-"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Guest:</span>
-                            <span className="font-medium">
-                              {filteredRooms.find(r => r.roomId === parseInt(selectedRoom))?.guestName || "-"}
-                            </span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Customer:</span>
-                            <span className="font-medium">Walk-in</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Name:</span>
-                            <span className="font-medium">{customerName}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Phone:</span>
-                            <span className="font-medium font-mono">{customerPhone}</span>
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
+          {/* ── Categories screen ─────────────────────────────────────────── */}
+          {menuScreen === "categories" && (
+            <div className="space-y-4">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search dishes..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-10 rounded-xl bg-white border-gray-200"
+                  data-testid="input-search-menu"
+                />
+                {searchTerm && (
+                  <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearchTerm("")}>
+                    <XCircle className="h-4 w-4 text-gray-400" />
+                  </button>
+                )}
+              </div>
 
-                {/* Cart Items */}
-                <div className="border-t pt-4">
-                  <p className="text-sm font-medium mb-3">Items ({cart.reduce((s, i) => s + i.quantity, 0)})</p>
-                  {cart.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">No items added</p>
-                  ) : (
-                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                      {cart.map((item) => (
-                        <div key={item.cartKey} className="flex items-start gap-2 text-sm">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium leading-tight">{item.name}</p>
-                            {item.selectedVariant && (
-                              <p className="text-xs text-muted-foreground">{item.selectedVariant.variantName}</p>
-                            )}
-                            <p className="text-muted-foreground">₹{item.price}</p>
-                          </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-7 w-7"
-                              onClick={() => updateQuantity(item.cartKey, -1)}
-                              data-testid={`button-quick-decrease-${item.cartKey}`}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="w-6 text-center font-mono">{item.quantity}</span>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-7 w-7"
-                              onClick={() => updateQuantity(item.cartKey, 1)}
-                              data-testid={`button-quick-increase-${item.cartKey}`}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => removeFromCart(item.cartKey)}
-                              data-testid={`button-quick-remove-${item.cartKey}`}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+              {/* Search results */}
+              {searchTerm && (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
+                  {searchResults.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400">
+                      <UtensilsCrossed className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No items found</p>
                     </div>
+                  ) : (
+                    searchResults.map(item => (
+                      <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
+                        onAdd={() => addToCart(item)}
+                        onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
+                        onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
+                      />
+                    ))
                   )}
                 </div>
+              )}
 
-                {/* Special Instructions */}
+              {/* Popular items */}
+              {!searchTerm && popularItems.length > 0 && (
                 <div>
-                  <Label htmlFor="special-instructions">Special Instructions</Label>
-                  <Textarea
-                    id="special-instructions"
-                    placeholder="Any special requests..."
-                    value={specialInstructions}
-                    onChange={(e) => setSpecialInstructions(e.target.value)}
-                    rows={3}
-                    data-testid="textarea-quick-order-instructions"
-                  />
-                </div>
-
-                {/* Total & Submit */}
-                {cart.length > 0 && (
-                  <div className="border-t pt-4 space-y-3">
-                    <div className="flex justify-between text-lg font-bold">
-                      <span>Total</span>
-                      <span className="font-mono">₹{calculateTotal().toFixed(2)}</span>
-                    </div>
+                  <h2 className="text-sm font-bold text-gray-700 mb-3">⭐ Popular Items</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+                    {popularItems.map(item => (
+                      <QOPopularCard key={item.id} item={item} qty={getItemQtyInCart(item.id)} onAdd={() => addToCart(item)} />
+                    ))}
                   </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => setStep(2)}
-                    className="flex-1"
-                    data-testid="button-back-step-3"
-                  >
-                    <ArrowLeft className="h-5 w-5 mr-2" />
-                    Back
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    onClick={handleSubmitOrder}
-                    disabled={orderMutation.isPending || cart.length === 0}
-                    data-testid="button-submit-quick-order"
-                  >
-                    <Check className="h-5 w-5 mr-2" />
-                    {orderMutation.isPending ? "Submitting..." : "Submit"}
-                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
+
+              {/* Category grid */}
+              {!searchTerm && (
+                <div>
+                  <h2 className="text-sm font-bold text-gray-700 mb-3">Categories</h2>
+                  {categoriesWithCount.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">No menu items available</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {categoriesWithCount.map(({ cat, count, gradient, emoji }) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => { setActiveCategoryId(cat.id); setMenuScreen("items"); }}
+                          className="relative rounded-2xl overflow-hidden h-36 text-left shadow-sm active:scale-95 transition-transform"
+                          data-testid={`button-category-${cat.id}`}
+                        >
+                          <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
+                          <div className="absolute inset-0 bg-black/10" />
+                          <div className="relative p-4 h-full flex flex-col justify-between">
+                            <span className="text-4xl">{emoji}</span>
+                            <div>
+                              <p className="font-bold text-white text-sm leading-tight">{cat.name}</p>
+                              <p className="text-white/80 text-xs mt-0.5">{count} item{count !== 1 ? "s" : ""}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Items screen ──────────────────────────────────────────────── */}
+          {menuScreen === "items" && (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder={`Search in ${activeCategory?.name || ""}...`}
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-10 rounded-xl bg-white border-gray-200"
+                  data-testid="input-search-category"
+                />
+                {searchTerm && (
+                  <button className="absolute right-3 top-1/2 -translate-y-1/2" onClick={() => setSearchTerm("")}>
+                    <XCircle className="h-4 w-4 text-gray-400" />
+                  </button>
+                )}
+              </div>
+              {itemsInActiveCategory.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <UtensilsCrossed className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">{searchTerm ? "No results" : "No items in this category"}</p>
+                </div>
+              ) : (
+                itemsInActiveCategory.map(item => (
+                  <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
+                    onAdd={() => addToCart(item)}
+                    onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
+                    onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
+                  />
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ── Sticky cart bar ────────────────────────────────────────────── */}
+          {cart.length > 0 && (
+            <div className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-4 pointer-events-none">
+              <div className="max-w-5xl mx-auto pointer-events-auto">
+                <button
+                  onClick={() => setIsCartOpen(true)}
+                  className="w-full bg-[#1E3A5F] text-white rounded-2xl py-4 px-5 flex items-center justify-between shadow-2xl active:scale-[0.98] transition-transform"
+                  data-testid="button-sticky-cart"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-white/20 rounded-full px-2 py-0.5 text-sm font-bold">{totalItems}</div>
+                    <span className="font-semibold text-sm">View Cart</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-lg">₹{calculateTotal().toFixed(0)}</span>
+                    <ChevronRight className="h-5 w-5 opacity-70" />
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Variant Picker Dialog */}
-      <Dialog open={!!variantItem} onOpenChange={(open) => { if (!open) setVariantItem(null); }}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{variantItem?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-2 pt-1">
-            <p className="text-sm text-muted-foreground mb-3">Select a size or variant to add to cart:</p>
-            {variantsLoading ? (
+      {/* ══════════════════════════════════════════════════════════════════════
+          VARIANTS / ADD-ONS SHEET
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Sheet open={!!sheetItem} onOpenChange={open => { if (!open) { setSheetItem(null); } }}>
+        <SheetContent side="bottom" className="rounded-t-3xl max-h-[90vh] overflow-y-auto">
+          <SheetHeader className="pb-2">
+            <SheetTitle className="text-left text-lg">{sheetItem?.name}</SheetTitle>
+            {sheetItem?.description && (
+              <SheetDescription className="text-left text-sm text-gray-500">{sheetItem.description}</SheetDescription>
+            )}
+          </SheetHeader>
+          <div className="space-y-5 py-3">
+            <div className="flex items-center justify-between pb-3 border-b">
+              <span className="text-sm text-gray-500">{sheetVariant ? `Price (${sheetVariant.variantName})` : "Base Price"}</span>
+              <span className="font-bold text-lg">₹{sheetVariant ? (sheetVariant.discountedPrice || sheetVariant.actualPrice) : sheetItem?.price}</span>
+            </div>
+
+            {sheetVariants && sheetVariants.length > 0 && (
               <div className="space-y-2">
-                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
-              </div>
-            ) : variants && variants.length > 0 ? (
-              variants.map((v) => {
-                const price = v.discountedPrice || v.actualPrice;
-                const hasDiscount = !!v.discountedPrice && v.discountedPrice !== v.actualPrice;
-                return (
-                  <button
-                    key={v.id}
-                    className="w-full flex items-center justify-between p-3 rounded-lg border hover:bg-muted transition-colors text-left"
-                    onClick={() => {
-                      if (variantItem) {
-                        addToCart(variantItem, {
-                          id: v.id,
-                          variantName: v.variantName,
-                          actualPrice: v.actualPrice as string,
-                          discountedPrice: v.discountedPrice as string | null,
-                        });
-                      }
-                      setVariantItem(null);
-                    }}
-                    data-testid={`button-variant-select-${v.id}`}
+                <p className="text-sm font-semibold text-gray-700">Choose Size / Variant <span className="text-red-500">*</span></p>
+                {sheetVariants.map(v => (
+                  <button key={v.id} onClick={() => setSheetVariant(v)}
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${sheetVariant?.id === v.id ? "border-[#1E3A5F] bg-[#1E3A5F]/5" : "border-gray-200 bg-white"}`}
+                    data-testid={`button-variant-${v.id}`}
                   >
-                    <div>
-                      <p className="font-medium">{v.variantName}</p>
-                      {hasDiscount && (
-                        <p className="text-xs text-muted-foreground line-through">₹{v.actualPrice}</p>
-                      )}
+                    <div className="flex items-center gap-3">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${sheetVariant?.id === v.id ? "border-[#1E3A5F]" : "border-gray-300"}`}>
+                        {sheetVariant?.id === v.id && <div className="w-2.5 h-2.5 rounded-full bg-[#1E3A5F]" />}
+                      </div>
+                      <span className="font-medium text-sm">{v.variantName}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-semibold text-sm">₹{price}</span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex items-center gap-1.5">
+                      {v.discountedPrice && <span className="text-xs text-gray-400 line-through">₹{v.actualPrice}</span>}
+                      <span className="font-bold text-sm">₹{v.discountedPrice || v.actualPrice}</span>
                     </div>
                   </button>
-                );
-              })
+                ))}
+              </div>
+            )}
+
+            {sheetAddOnOptions && sheetAddOnOptions.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-700">Add-ons <span className="text-gray-400 font-normal">(optional)</span></p>
+                {sheetAddOnOptions.map(addon => {
+                  const sel = sheetAddOns.find(a => a.id === addon.id);
+                  return (
+                    <div key={addon.id} className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${sel ? "border-[#2BB6A8] bg-[#2BB6A8]/5" : "border-gray-200 bg-white"}`}>
+                      <button className="flex items-center gap-3 flex-1 text-left" onClick={() => toggleSheetAddOn(addon)} data-testid={`button-addon-${addon.id}`}>
+                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${sel ? "border-[#2BB6A8] bg-[#2BB6A8]" : "border-gray-300"}`}>
+                          {sel && <Check className="h-3 w-3 text-white" />}
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">{addon.addOnName}</p>
+                          <p className="text-xs text-[#2BB6A8] font-semibold">+₹{addon.addOnPrice}</p>
+                        </div>
+                      </button>
+                      {sel && (
+                        <div className="flex items-center gap-2 ml-3">
+                          <button onClick={() => updateSheetAddOnQty(addon.id, -1)} className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center"><Minus className="h-3 w-3" /></button>
+                          <span className="w-5 text-center text-sm font-bold">{sel.quantity}</span>
+                          <button onClick={() => updateSheetAddOnQty(addon.id, 1)} className="w-7 h-7 rounded-full border border-gray-300 flex items-center justify-center"><Plus className="h-3 w-3" /></button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="bg-gray-50 rounded-xl p-4 space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">{sheetVariant ? sheetVariant.variantName : "Base"}</span>
+                <span className="font-medium">₹{sheetVariant ? (sheetVariant.discountedPrice || sheetVariant.actualPrice) : sheetItem?.price}</span>
+              </div>
+              {sheetAddOns.map(a => (
+                <div key={a.id} className="flex justify-between text-sm">
+                  <span className="text-gray-500">{a.quantity}× {a.name}</span>
+                  <span className="font-medium">₹{(parseFloat(a.price) * a.quantity).toFixed(2)}</span>
+                </div>
+              ))}
+              <div className="border-t pt-2 flex justify-between font-bold">
+                <span>Total</span>
+                <span className="text-[#1E3A5F]">₹{sheetTotal}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={confirmSheetAdd}
+              disabled={!!(sheetVariants && sheetVariants.length > 0 && !sheetVariant)}
+              className={`w-full py-4 rounded-2xl font-bold text-white text-base transition-all ${sheetVariants && sheetVariants.length > 0 && !sheetVariant ? "bg-gray-300 cursor-not-allowed" : "bg-[#1E3A5F] active:scale-95"}`}
+              data-testid="button-confirm-add-to-cart"
+            >
+              {sheetVariants && sheetVariants.length > 0 && !sheetVariant ? "Select a variant to continue" : `Add · ₹${sheetTotal}`}
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          CART SHEET
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl max-h-[92vh] overflow-y-auto">
+          <SheetHeader className="pb-3">
+            <SheetTitle className="text-left">Order Summary</SheetTitle>
+            <SheetDescription className="text-left text-sm">Review and place order</SheetDescription>
+          </SheetHeader>
+          <div className="space-y-3 py-2">
+            {cart.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Cart is empty</p>
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No variants found for this item.</p>
+              <>
+                {cart.map(item => {
+                  const base = item.selectedVariant
+                    ? parseFloat(item.selectedVariant.discountedPrice || item.selectedVariant.actualPrice)
+                    : parseFloat(item.price as string);
+                  const addOnsTotal = item.cartAddOns
+                    ? item.cartAddOns.reduce((s, a) => s + parseFloat(a.price) * a.quantity, 0)
+                    : 0;
+                  return (
+                    <div key={item.cartKey} className="bg-gray-50 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm leading-tight">
+                            {item.name}
+                            {item.selectedVariant && <span className="text-gray-400 font-normal"> · {item.selectedVariant.variantName}</span>}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">₹{base.toFixed(2)} each</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button onClick={() => updateQuantity(item.cartKey, -1)} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center bg-white" data-testid={`button-cart-dec-${item.cartKey}`}>
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-6 text-center font-bold text-sm">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.cartKey, 1)} className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center" data-testid={`button-cart-inc-${item.cartKey}`}>
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                          <button onClick={() => removeFromCart(item.cartKey)} className="w-8 h-8 rounded-full border border-red-200 text-red-400 flex items-center justify-center ml-1" data-testid={`button-cart-remove-${item.cartKey}`}>
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      {item.cartAddOns && item.cartAddOns.length > 0 && (
+                        <div className="pl-3 border-l-2 border-[#2BB6A8]/40 space-y-1">
+                          {item.cartAddOns.map(a => (
+                            <div key={a.id} className="flex items-center justify-between text-xs text-gray-500">
+                              <span>+ {a.name}</span>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => updateCartAddOnQty(item.cartKey, a.id, -1)} className="w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center"><Minus className="h-2.5 w-2.5" /></button>
+                                <span className="w-4 text-center font-semibold">{a.quantity}</span>
+                                <button onClick={() => updateCartAddOnQty(item.cartKey, a.id, 1)} className="w-5 h-5 rounded-full border border-gray-300 flex items-center justify-center"><Plus className="h-2.5 w-2.5" /></button>
+                                <span className="text-gray-500">₹{(parseFloat(a.price) * a.quantity).toFixed(2)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex justify-between text-xs text-gray-500 border-t pt-2">
+                        <span>Item total</span>
+                        <span className="font-semibold text-gray-700">₹{(base * item.quantity + addOnsTotal).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="space-y-3 pt-2">
+                  {/* Order context */}
+                  {selectedRoomLabel && (
+                    <div className="bg-[#1E3A5F]/5 rounded-xl p-3 flex items-center gap-2">
+                      <span className="text-xs font-medium text-[#1E3A5F]">{selectedRoomLabel}</span>
+                    </div>
+                  )}
+                  {orderType === "restaurant" && restaurantCustomerType === "walk-in" && (
+                    <div className="bg-gray-100 rounded-xl p-3 text-xs text-gray-600">
+                      <span className="font-semibold">{customerName}</span> · {customerPhone}
+                    </div>
+                  )}
+                  {/* Special instructions */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-gray-600">Cooking Instructions <span className="text-gray-400">(optional)</span></Label>
+                    <Textarea
+                      placeholder="e.g. less spicy, no onions..."
+                      value={specialInstructions}
+                      onChange={e => setSpecialInstructions(e.target.value)}
+                      className="rounded-xl text-sm resize-none"
+                      rows={2}
+                      data-testid="input-special-instructions"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <div className="flex justify-between text-lg font-bold mb-4">
+                    <span>Total</span>
+                    <span className="text-[#1E3A5F]">₹{calculateTotal().toFixed(2)}</span>
+                  </div>
+                  <button
+                    onClick={handleSubmitOrder}
+                    disabled={orderMutation.isPending}
+                    className={`w-full py-4 rounded-2xl font-bold text-base transition-all ${orderMutation.isPending ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-[#1E3A5F] text-white active:scale-95"}`}
+                    data-testid="button-place-order"
+                  >
+                    {orderMutation.isPending ? "Placing Order..." : `Place Order · ₹${calculateTotal().toFixed(0)}`}
+                  </button>
+                </div>
+              </>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function QOMenuItemRow({ item, qty, onAdd, onIncrease, onDecrease }: {
+  item: MenuItem; qty: number;
+  onAdd: () => void; onIncrease: () => void; onDecrease: () => void;
+}) {
+  const price = item.discountedPrice || item.actualPrice || item.price;
+  return (
+    <div className="bg-white rounded-2xl p-4 flex gap-3 shadow-sm" data-testid={`card-menu-item-${item.id}`}>
+      {item.imageUrl && (
+        <img src={item.imageUrl} alt={item.name} loading="lazy" className="w-20 h-20 rounded-xl object-cover flex-shrink-0"
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start gap-1 mb-1">
+          <span className="text-xs flex-shrink-0 mt-0.5">{item.foodType === "non-veg" ? "🔴" : "🟢"}</span>
+          <p className="font-semibold text-sm leading-tight text-gray-900">{item.name}</p>
+        </div>
+        {item.description && <p className="text-xs text-gray-500 line-clamp-2 mb-2">{item.description}</p>}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            {item.discountedPrice && <span className="text-xs text-gray-400 line-through">₹{item.actualPrice}</span>}
+            <span className="font-bold text-sm text-gray-900">₹{price}</span>
+            {item.preparationTime && (
+              <span className="text-xs text-gray-400 flex items-center gap-0.5 ml-1">
+                <Clock className="h-3 w-3" />{item.preparationTime}m
+              </span>
+            )}
+          </div>
+          {qty > 0 && !item.hasVariants && !item.hasAddOns ? (
+            <div className="flex items-center gap-2">
+              <button onClick={onDecrease} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-dec-${item.id}`}>
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-5 text-center font-bold text-sm">{qty}</span>
+              <button onClick={onIncrease} className="w-8 h-8 rounded-full bg-[#1E3A5F] text-white flex items-center justify-center" data-testid={`button-inc-${item.id}`}>
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <button onClick={onAdd}
+              className="bg-[#1E3A5F] text-white text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 active:scale-95 transition-transform"
+              data-testid={`button-add-${item.id}`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {qty > 0 ? `${qty} added` : "ADD"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QOPopularCard({ item, qty, onAdd }: { item: MenuItem; qty: number; onAdd: () => void; }) {
+  const price = item.discountedPrice || item.actualPrice || item.price;
+  return (
+    <div className="bg-white rounded-2xl p-3 flex-shrink-0 w-36 shadow-sm" data-testid={`card-popular-${item.id}`}>
+      {item.imageUrl ? (
+        <img src={item.imageUrl} alt={item.name} loading="lazy" className="w-full h-24 rounded-xl object-cover mb-2"
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+      ) : (
+        <div className="w-full h-24 rounded-xl bg-gray-100 flex items-center justify-center mb-2 text-3xl">
+          {item.foodType === "non-veg" ? "🔴" : "🟢"}
+        </div>
+      )}
+      <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1">{item.name}</p>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-xs font-bold text-gray-900">₹{price}</span>
+        <button onClick={onAdd}
+          className={`rounded-lg p-1.5 transition-transform active:scale-95 ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`}
+          data-testid={`button-popular-add-${item.id}`}
+        >
+          {qty > 0 ? <span className="text-xs font-bold px-1">{qty}</span> : <Plus className="h-3.5 w-3.5" />}
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone, Eye } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -1430,19 +1430,6 @@ export default function Dashboard() {
               <AlertTriangle className="h-4 w-4" />
               <span className="hidden sm:inline ml-1">Test Alert</span>
             </Button>
-            {selectedPropertyId && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => window.open(`/menu?property=${selectedPropertyId}&type=room&room=101&preview=true`, "_blank")}
-                className="h-8 border-teal-400 text-teal-600 hover:bg-teal-50"
-                data-testid="btn-preview-customer-menu"
-                title="Preview the customer-facing room service menu"
-              >
-                <Eye className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Preview Menu</span>
-              </Button>
-            )}
           </div>
         </div>
 
