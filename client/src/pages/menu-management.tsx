@@ -716,6 +716,38 @@ export default function MenuManagement() {
 
                 <FormField
                   control={form.control}
+                  name="imageUrl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Photo URL</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="https://example.com/dish-photo.jpg"
+                          data-testid="input-image-url"
+                        />
+                      </FormControl>
+                      {field.value && (
+                        <div className="mt-2 relative w-full h-32 rounded-lg overflow-hidden border bg-gray-50">
+                          <img
+                            src={field.value}
+                            alt="Preview"
+                            className="w-full h-full object-cover"
+                            onError={e => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                              const parent = (e.target as HTMLImageElement).parentElement;
+                              if (parent) parent.innerHTML = '<p class="text-xs text-center text-muted-foreground pt-12">Could not load image</p>';
+                            }}
+                          />
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="preparationTime"
                   render={({ field }) => (
                     <FormItem>
