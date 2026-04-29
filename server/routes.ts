@@ -3940,10 +3940,90 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           b.status === "checked-in"
         );
         
-        // Auto-checkout the previous booking(s)
+        // Auto-checkout the previous booking(s) — with full bill creation
         for (const oldBooking of otherCheckedInBookings) {
           console.log(`[Auto-Checkout] Checking out old booking ${oldBooking.id} for room ${roomId} before checking in booking ${bookingId}`);
-          await storage.updateBookingStatus(oldBooking.id, "checked-out");
+          try {
+            const checkInDate  = new Date(oldBooking.checkInDate);
+            const checkOutDate = new Date(oldBooking.checkOutDate);
+            const calculatedNights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
+            const nights = Math.max(1, calculatedNights);
+
+            // Room charges (group or single)
+            let roomCharges = 0;
+            if (oldBooking.isGroupBooking && oldBooking.roomIds && oldBooking.roomIds.length > 0) {
+              for (const rid of oldBooking.roomIds) {
+                const gr = await storage.getRoom(rid);
+                if (gr) {
+                  const pricePerNight = oldBooking.customPrice
+                    ? parseFloat(oldBooking.customPrice) / oldBooking.roomIds.length
+                    : parseFloat(gr.pricePerNight);
+                  roomCharges += pricePerNight * nights;
+                }
+              }
+            } else {
+              const oldRoom = oldBooking.roomId ? await storage.getRoom(oldBooking.roomId) : null;
+              const pricePerNight = oldBooking.customPrice
+                ? parseFloat(oldBooking.customPrice)
+                : (oldRoom ? parseFloat(oldRoom.pricePerNight) : 0);
+              roomCharges = pricePerNight * nights;
+            }
+
+            // Food charges from orders
+            const allOrders = await storage.getAllOrders();
+            const bookingOrders = allOrders.filter(o => o.bookingId === oldBooking.id);
+            const foodCharges = bookingOrders
+              .filter(o => o.status !== "rejected")
+              .reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
+
+            // Extra service charges
+            let extraCharges = 0;
+            try {
+              const extras = await storage.getExtraServicesByBooking(oldBooking.id);
+              extraCharges = extras.reduce((sum: number, e: any) => sum + parseFloat(e.amount || "0"), 0);
+            } catch {}
+
+            const subtotal           = roomCharges + foodCharges + extraCharges;
+            const gstAmount          = (roomCharges * 5) / 100;
+            const serviceChargeAmount = (roomCharges * 10) / 100;
+            const totalAmount        = subtotal + gstAmount + serviceChargeAmount;
+            const advancePaid        = parseFloat(oldBooking.advanceAmount || "0");
+            const balanceAmount      = totalAmount - advancePaid;
+
+            await storage.createOrUpdateBill({
+              bookingId:            oldBooking.id,
+              guestId:              oldBooking.guestId,
+              roomCharges:          roomCharges.toFixed(2),
+              foodCharges:          foodCharges.toFixed(2),
+              extraCharges:         extraCharges.toFixed(2),
+              subtotal:             subtotal.toFixed(2),
+              gstRate:              "5",
+              gstAmount:            gstAmount.toFixed(2),
+              serviceChargeRate:    "10",
+              serviceChargeAmount:  serviceChargeAmount.toFixed(2),
+              gstOnRooms:           true,
+              gstOnFood:            false,
+              includeServiceCharge: true,
+              discountType:         null,
+              discountValue:        null,
+              discountAmount:       "0",
+              totalAmount:          totalAmount.toFixed(2),
+              advancePaid:          advancePaid.toFixed(2),
+              balanceAmount:        balanceAmount.toFixed(2),
+              paymentStatus:        "pending",
+              paymentMethod:        null,
+              paidAt:               null,
+              dueDate:              null,
+              pendingReason:        "auto_checkout",
+            });
+
+            await storage.updateBookingStatus(oldBooking.id, "checked-out");
+            console.log(`[Auto-Checkout] Bill created for booking ${oldBooking.id} — room ₹${roomCharges.toFixed(2)}, food ₹${foodCharges.toFixed(2)}, extras ₹${extraCharges.toFixed(2)}, total ₹${totalAmount.toFixed(2)}`);
+          } catch (billErr: any) {
+            // Even if bill creation fails, still check out to avoid blocking the new check-in
+            console.error(`[Auto-Checkout] Bill creation failed for booking ${oldBooking.id}: ${billErr.message} — proceeding with status update`);
+            await storage.updateBookingStatus(oldBooking.id, "checked-out");
+          }
         }
       }
       
