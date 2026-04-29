@@ -3885,6 +3885,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     try {
       const { status } = req.body;
       const bookingId = parseInt(req.params.id);
+      const autoCheckedOutBookingIds: number[] = [];
       
       // Get current booking to validate status change
       const currentBooking = await storage.getBooking(bookingId);
@@ -3939,6 +3940,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           b.id !== bookingId && 
           b.status === "checked-in"
         );
+
+        autoCheckedOutBookingIds.push(...otherCheckedInBookings.map(b => b.id));
         
         // Auto-checkout the previous booking(s) — with full bill creation
         for (const oldBooking of otherCheckedInBookings) {
@@ -4170,7 +4173,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         syncWithRetry(booking.propertyId, "BOOKING_STATUS_CHANGED").catch(() => {});
       }
 
-      res.json(booking);
+      res.json({ ...booking, autoCheckedOutBookingIds });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

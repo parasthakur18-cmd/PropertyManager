@@ -506,15 +506,27 @@ export default function Bookings() {
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       return await apiRequest(`/api/bookings/${id}/status`, "PATCH", { status });
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms/availability"] });
-      toast({
-        title: "Success",
-        description: "Booking status updated",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+
+      if (data?.autoCheckedOutBookingIds?.length > 0) {
+        const oldId = data.autoCheckedOutBookingIds[0];
+        setCheckoutBookingId(oldId);
+        setCheckoutDialogOpen(true);
+        toast({
+          title: "Previous Guest Auto-Checked Out",
+          description: `Booking #${oldId} was automatically checked out. Please review and settle the bill.`,
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: "Booking status updated",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
