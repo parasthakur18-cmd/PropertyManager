@@ -288,7 +288,7 @@ export default function Bookings() {
       travelAgentId: null,
       mealPlan: "EP",
       advanceAmount: "",
-      advancePaymentMethod: "cash",
+      advancePaymentMethod: "upi",
       bedsBooked: null as number | null,
     },
   });
@@ -308,7 +308,7 @@ export default function Bookings() {
       travelAgentId: undefined as number | undefined,
       mealPlan: "EP",
       advanceAmount: "",
-      advancePaymentMethod: "cash",
+      advancePaymentMethod: "upi",
       bedsBooked: null as number | null,
       guestName: "",
       guestPhone: "",
@@ -332,6 +332,8 @@ export default function Bookings() {
   const checkOutDate = form.watch("checkOutDate");
   const editCheckInDate = editForm.watch("checkInDate");
   const editCheckOutDate = editForm.watch("checkOutDate");
+  const watchedCustomPrice = form.watch("customPrice");
+  const editWatchedCustomPrice = editForm.watch("customPrice");
 
   // Fetch room availability based on selected dates (for new booking)
   const { data: roomAvailability, isFetching: isAvailabilityFetching } = useQuery({
@@ -1683,11 +1685,17 @@ export default function Bookings() {
                       </div>
                       {selectedRoomIds.length > 0 && (() => {
                         const selectedRooms = rooms?.filter(r => selectedRoomIds.includes(r.id)) || [];
-                        const totalPrice = selectedRooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight.toString()), 0);
+                        const roomsTotal = selectedRooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight.toString()), 0);
+                        const cp = watchedCustomPrice ? parseFloat(String(watchedCustomPrice)) : null;
+                        const displayPrice = cp && cp > 0 ? cp : roomsTotal;
+                        const isCustom = cp && cp > 0;
                         return (
                           <div className="p-3 bg-muted/50 rounded-md text-sm">
                             <p className="font-medium">Group Booking Summary:</p>
-                            <p className="text-muted-foreground">{selectedRoomIds.length} rooms selected • Total: ₹{totalPrice}/night</p>
+                            <p className="text-muted-foreground">
+                              {selectedRoomIds.length} rooms selected • Total: ₹{displayPrice}/night
+                              {isCustom && <span className="ml-1 text-blue-600 dark:text-blue-400">(custom price)</span>}
+                            </p>
                           </div>
                         );
                       })()}
@@ -3165,11 +3173,17 @@ export default function Bookings() {
                     </div>
                     {editSelectedRoomIds.length > 0 && (() => {
                       const selectedRooms = rooms?.filter(r => editSelectedRoomIds.includes(r.id)) || [];
-                      const totalPrice = selectedRooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight.toString()), 0);
+                      const roomsTotal = selectedRooms.reduce((sum, r) => sum + parseFloat(r.pricePerNight.toString()), 0);
+                      const cp = editWatchedCustomPrice ? parseFloat(String(editWatchedCustomPrice)) : null;
+                      const displayPrice = cp && cp > 0 ? cp : roomsTotal;
+                      const isCustom = cp && cp > 0;
                       return (
                         <div className="p-3 bg-muted/50 rounded-md text-sm">
                           <p className="font-medium">Group Booking Summary:</p>
-                          <p className="text-muted-foreground">{editSelectedRoomIds.length} rooms selected • Total: ₹{totalPrice}/night</p>
+                          <p className="text-muted-foreground">
+                            {editSelectedRoomIds.length} rooms selected • Total: ₹{displayPrice}/night
+                            {isCustom && <span className="ml-1 text-blue-600 dark:text-blue-400">(custom price)</span>}
+                          </p>
                         </div>
                       );
                     })()}
