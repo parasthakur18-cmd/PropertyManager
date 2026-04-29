@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -103,6 +104,10 @@ export function CheckoutBillSummary({
   const bookingOrders = orders?.filter(o => o.bookingId === bookingId) || [];
   const bookingExtras = extraServices?.filter(e => e.bookingId === bookingId) || [];
 
+  const openOrders = bookingOrders.filter(o =>
+    o.status === "pending" || o.status === "preparing" || o.status === "ready"
+  );
+
   const checkInDate = new Date(booking.checkInDate);
   const checkOutDate = new Date(booking.checkOutDate);
   const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -183,6 +188,41 @@ export function CheckoutBillSummary({
           <span>{format(checkOutDate, "PPP")}</span>
         </div>
       </div>
+
+      {openOrders.length > 0 && (
+        <div className="border border-red-300 dark:border-red-700 rounded-lg p-4 bg-red-50 dark:bg-red-950/30 space-y-2" data-testid="alert-open-orders">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            Checkout Blocked — {openOrders.length} open food order{openOrders.length !== 1 ? "s" : ""}
+          </div>
+          <p className="text-sm text-red-600 dark:text-red-400">
+            All food orders must be delivered or cancelled before checkout.
+          </p>
+          <ul className="space-y-1 mt-1">
+            {openOrders.map((order: any) => (
+              <li key={order.id} className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
+                <span className="font-medium">Order #{order.id}</span>
+                <Badge
+                  className={
+                    order.status === "pending"
+                      ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                      : order.status === "preparing"
+                      ? "bg-blue-100 text-blue-800 border-blue-300"
+                      : "bg-green-100 text-green-800 border-green-300"
+                  }
+                  variant="outline"
+                >
+                  {order.status}
+                </Badge>
+                {order.items && <span className="text-muted-foreground truncate max-w-[200px]">{Array.isArray(order.items) ? order.items.map((i: any) => i.name || i.itemName).join(", ") : ""}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+            Go to the Restaurant section to mark these orders as delivered or cancel them.
+          </p>
+        </div>
+      )}
 
       <div className="border rounded-lg p-4 space-y-3">
         <h4 className="font-semibold mb-3">Bill Details</h4>
@@ -360,10 +400,11 @@ export function CheckoutBillSummary({
         </Button>
         <Button 
           onClick={handleCheckout} 
-          disabled={checkoutMutation.isPending}
+          disabled={checkoutMutation.isPending || openOrders.length > 0}
+          title={openOrders.length > 0 ? `${openOrders.length} food order(s) still open — resolve them first` : undefined}
           data-testid="button-confirm-checkout"
         >
-          {checkoutMutation.isPending ? "Processing..." : `Complete Checkout (₹${balanceAmount.toFixed(2)})`}
+          {checkoutMutation.isPending ? "Processing..." : openOrders.length > 0 ? `${openOrders.length} Order(s) Pending` : `Complete Checkout (₹${balanceAmount.toFixed(2)})`}
         </Button>
       </DialogFooter>
     </div>

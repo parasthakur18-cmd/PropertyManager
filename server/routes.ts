@@ -4563,16 +4563,17 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(404).json({ message: "Booking not found" });
       }
       
-      // Check for pending food orders (only block for truly pending/preparing orders, not ready/completed)
+      // Check for open food orders (pending, preparing, or ready but not yet delivered)
       const allOrders = await storage.getAllOrders();
       const bookingOrders = allOrders.filter(o => o.bookingId === bookingId);
-      const pendingOrders = bookingOrders.filter(order => 
-        order.status === "pending" || order.status === "preparing"
+      const openOrders = bookingOrders.filter(order => 
+        order.status === "pending" || order.status === "preparing" || order.status === "ready"
       );
       
-      if (pendingOrders.length > 0) {
+      if (openOrders.length > 0) {
+        const statusSummary = openOrders.map(o => `#${o.id} (${o.status})`).join(", ");
         return res.status(400).json({ 
-          message: `Checkout not allowed — ${pendingOrders.length} food order(s) are still pending.` 
+          message: `Checkout blocked — ${openOrders.length} food order(s) are still open: ${statusSummary}. Please complete or cancel them before checkout.`
         });
       }
 
