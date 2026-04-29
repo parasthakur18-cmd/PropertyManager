@@ -55,6 +55,8 @@ export default function Kitchen() {
   const [showSettings, setShowSettings] = useState(false);
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications(true);
   const [activeTab, setActiveTab] = useState("active");
+  const [completedSearch, setCompletedSearch] = useState("");
+  const [completedDate, setCompletedDate] = useState("");
   const [editDialog, setEditDialog] = useState<{ open: boolean; order: any | null }>({
     open: false,
     order: null,
@@ -286,7 +288,30 @@ export default function Kitchen() {
   const pendingOrders = filteredOrdersByProperty?.filter((order) => order.status === "pending") || [];
   const completedOrders = filteredOrdersByProperty?.filter((order) => order.status === "delivered") || [];
   const rejectedOrders = filteredOrdersByProperty?.filter((order) => order.status === "rejected") || [];
-  
+
+  // Apply search + date filters to completed orders
+  const filteredCompletedOrders = useMemo(() => {
+    let result = completedOrders;
+    if (completedDate) {
+      result = result.filter((o) => {
+        const d = o.createdAt ? new Date(o.createdAt) : null;
+        if (!d) return false;
+        return format(d, "yyyy-MM-dd") === completedDate;
+      });
+    }
+    if (completedSearch.trim()) {
+      const q = completedSearch.toLowerCase().trim();
+      result = result.filter((o) =>
+        (o.customerName && o.customerName.toLowerCase().includes(q)) ||
+        (o.roomNumber && String(o.roomNumber).toLowerCase().includes(q)) ||
+        (o.tableNumber && String(o.tableNumber).toLowerCase().includes(q)) ||
+        String(o.id).includes(q) ||
+        (Array.isArray(o.items) && o.items.some((i: any) => i.name && i.name.toLowerCase().includes(q)))
+      );
+    }
+    return result;
+  }, [completedOrders, completedSearch, completedDate]);
+
   // Calculate counts for badges
   const orderCounts = {
     active: allActiveOrders.length,
@@ -302,7 +327,7 @@ export default function Kitchen() {
   } else if (activeTab === "pending") {
     filteredOrders = pendingOrders;
   } else if (activeTab === "completed") {
-    filteredOrders = completedOrders;
+    filteredOrders = filteredCompletedOrders;
   } else if (activeTab === "rejected") {
     filteredOrders = rejectedOrders;
   }
@@ -901,11 +926,51 @@ export default function Kitchen() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Search + date filter — only shown on Completed tab */}
+              {activeTab === "completed" && (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="relative flex-1">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    <Input
+                      placeholder="Search by name, room, item..."
+                      value={completedSearch}
+                      onChange={e => setCompletedSearch(e.target.value)}
+                      className="pl-9"
+                      data-testid="input-completed-search"
+                    />
+                    {completedSearch && (
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setCompletedSearch("")}>
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="date"
+                      value={completedDate}
+                      onChange={e => setCompletedDate(e.target.value)}
+                      className="w-full sm:w-44"
+                      data-testid="input-completed-date"
+                    />
+                    {completedDate && (
+                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setCompletedDate("")}>
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {(completedSearch || completedDate) && (
+                    <div className="flex items-center text-sm text-muted-foreground self-center whitespace-nowrap">
+                      {filteredOrders.length} result{filteredOrders.length !== 1 ? "s" : ""}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {filteredOrders.length === 0 ? (
                 <Card className="p-12 text-center">
                   <p className="text-muted-foreground">
                     {activeTab === "pending" && "No pending orders"}
-                    {activeTab === "completed" && "No completed orders"}
+                    {activeTab === "completed" && (completedSearch || completedDate ? "No orders match your filters" : "No completed orders")}
                     {activeTab === "rejected" && "No rejected orders"}
                   </p>
                 </Card>
