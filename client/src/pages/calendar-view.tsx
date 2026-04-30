@@ -176,15 +176,23 @@ export default function CalendarView() {
     const sidebar = sidebarRef.current;
     if (!calendar || !sidebar) return;
 
+    let isSyncing = false;
+
     const handleCalendarScroll = () => {
+      if (isSyncing) return;
+      isSyncing = true;
       sidebar.scrollTop = calendar.scrollTop;
+      requestAnimationFrame(() => { isSyncing = false; });
     };
     const handleSidebarScroll = () => {
+      if (isSyncing) return;
+      isSyncing = true;
       calendar.scrollTop = sidebar.scrollTop;
+      requestAnimationFrame(() => { isSyncing = false; });
     };
 
-    calendar.addEventListener('scroll', handleCalendarScroll);
-    sidebar.addEventListener('scroll', handleSidebarScroll);
+    calendar.addEventListener('scroll', handleCalendarScroll, { passive: true });
+    sidebar.addEventListener('scroll', handleSidebarScroll, { passive: true });
     return () => {
       calendar.removeEventListener('scroll', handleCalendarScroll);
       sidebar.removeEventListener('scroll', handleSidebarScroll);
@@ -609,15 +617,18 @@ export default function CalendarView() {
               {dates.map((date, idx) => {
                 const dayName = format(date, "EEE");
                 const dayNum = format(date, "d");
+                const monthLabel = format(date, "MMM");
                 const occupancy = getOccupancyPercent(date);
                 const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                const showMonth = idx === 0 || format(date, "d") === "1";
                 
                 return (
                   <div
                     key={format(date, "yyyy-MM-dd")}
                     className={cn(
                       "border-r text-center flex-shrink-0 py-2",
-                      isToday && "bg-blue-50 dark:bg-blue-950/30"
+                      isToday && "bg-blue-50 dark:bg-blue-950/30",
+                      showMonth && idx !== 0 && "border-l-2 border-l-slate-300 dark:border-l-slate-600"
                     )}
                     style={{ width: CELL_WIDTH }}
                   >
@@ -628,13 +639,23 @@ export default function CalendarView() {
                       {dayName}
                     </div>
                     <div className={cn(
-                      "text-xl font-bold",
+                      "text-xl font-bold leading-tight",
                       isToday && "text-blue-600 dark:text-blue-400"
                     )}>
                       {dayNum}
                     </div>
                     <div className={cn(
-                      "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-1",
+                      "text-xs font-semibold leading-tight",
+                      showMonth
+                        ? isToday
+                          ? "text-blue-500 dark:text-blue-400"
+                          : "text-slate-500 dark:text-slate-400"
+                        : "text-transparent select-none"
+                    )}>
+                      {monthLabel}
+                    </div>
+                    <div className={cn(
+                      "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-0.5",
                       occupancy >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
                       occupancy >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
                       "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
