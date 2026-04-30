@@ -2431,19 +2431,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               )
         );
       
-      // Filter overlapping bookings using JavaScript Date comparison
-      // Overlap: booking.checkOut > requestCheckIn AND booking.checkIn < requestCheckOut
+      // Normalize any Date or ISO-string to a plain "YYYY-MM-DD" for timezone-safe comparison.
+      // Booking dates are stored as date-only strings ("2026-05-01").
+      // Request dates arrive as ISO timestamps ("2026-04-30T05:30:00.000Z" = 11 AM IST).
+      // Using new Date() on either side introduces UTC-vs-local skew that causes the last
+      // day of a request to falsely overlap with the first day of the next booking.
+      const toDateStr = (val: string | Date): string =>
+        (val instanceof Date ? val.toISOString() : String(val)).slice(0, 10);
+
+      const reqCheckInStr  = toDateStr(checkIn  as string);
+      const reqCheckOutStr = toDateStr(checkOut as string);
+
+      // Filter overlapping bookings using date-string comparison (lexicographic = chronological for YYYY-MM-DD)
+      // Overlap: bookingCheckOut > requestCheckIn AND bookingCheckIn < requestCheckOut
       let overlappingBookings = allBookings.filter(booking => {
-        // Skip bookings with invalid dates
         if (!booking.checkInDate || !booking.checkOutDate) return false;
-        
-        const bookingCheckOut = new Date(booking.checkOutDate);
-        const bookingCheckIn = new Date(booking.checkInDate);
-        
-        // Skip if dates are invalid
-        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
-        
-        return bookingCheckOut > requestCheckIn && bookingCheckIn < requestCheckOut;
+        const bIn  = toDateStr(booking.checkInDate  as any);
+        const bOut = toDateStr(booking.checkOutDate as any);
+        if (!bIn || !bOut) return false;
+        return bOut > reqCheckInStr && bIn < reqCheckOutStr;
       });
       
       // Filter out excluded booking if specified
@@ -2626,8 +2632,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
       
       // Parse dates
-      const checkInDate = new Date(checkIn as string);
-      const checkOutDate = new Date(checkOut as string);
+      // Use date-string comparison to avoid UTC-vs-local timezone skew
+      const toDateStrBed = (val: string | Date): string =>
+        (val instanceof Date ? val.toISOString() : String(val)).slice(0, 10);
+      const checkInStr  = toDateStrBed(checkIn  as string);
+      const checkOutStr = toDateStrBed(checkOut as string);
       
       // Get ALL non-cancelled bookings, then filter in JavaScript
       const { bookings: bookingsTable } = await import("@shared/schema");
@@ -2642,12 +2651,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         if (excludeBookingId && booking.id === parseInt(excludeBookingId as string)) {
           return false;
         }
-        
-        // Check if booking overlaps with requested dates
-        const bookingCheckOut = new Date(booking.checkOutDate);
-        const bookingCheckIn = new Date(booking.checkInDate);
-        
-        return bookingCheckOut > checkInDate && bookingCheckIn < checkOutDate;
+        const bIn  = toDateStrBed(booking.checkInDate  as any);
+        const bOut = toDateStrBed(booking.checkOutDate as any);
+        if (!bIn || !bOut) return false;
+        return bOut > checkInStr && bIn < checkOutStr;
       });
       
       // Filter for this specific room
@@ -8831,18 +8838,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         .from(bookings)
         .where(not(eq(bookings.status, "cancelled")));
       
-      // Filter overlapping bookings using JavaScript Date comparison
+      // Use date-string comparison to avoid UTC-vs-local timezone skew
+      const toDateStrCal = (val: string | Date): string =>
+        (val instanceof Date ? val.toISOString() : String(val)).slice(0, 10);
+      const startStr = toDateStrCal(start);
+      const endStr   = toDateStrCal(end);
+
       const overlappingBookings = allBookings.filter(booking => {
-        // Skip bookings with invalid dates
         if (!booking.checkInDate || !booking.checkOutDate) return false;
-        
-        const bookingCheckOut = new Date(booking.checkOutDate);
-        const bookingCheckIn = new Date(booking.checkInDate);
-        
-        // Skip if dates are invalid
-        if (isNaN(bookingCheckOut.getTime()) || isNaN(bookingCheckIn.getTime())) return false;
-        
-        return bookingCheckOut > start && bookingCheckIn < end;
+        const bIn  = toDateStrCal(booking.checkInDate  as any);
+        const bOut = toDateStrCal(booking.checkOutDate as any);
+        if (!bIn || !bOut) return false;
+        return bOut > startStr && bIn < endStr;
       });
       
       // Build calendar data
