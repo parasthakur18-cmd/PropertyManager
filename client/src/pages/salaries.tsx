@@ -81,13 +81,31 @@ export default function SalariesPage() {
   // Note: currentUser may be { user: {...}, verificationStatus: "..." } structure
   const userData = (currentUser as any)?.user || currentUser;
   const firstPropertyId = userData?.assignedPropertyIds?.[0];
-  const effectivePropertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null);
-  
+  // selectedPropertyId === -1 means "All Properties"
+  const isAllPropertiesMode = selectedPropertyId === -1;
+  const effectivePropertyId = isAllPropertiesMode
+    ? null
+    : (selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null));
 
-  // Fetch detailed staff salaries (active + inactive) - only when we have a valid property ID
+  // Fetch detailed staff salaries (active + inactive)
   const { data: allSalaries = [], isLoading, error } = useQuery({
-    queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, selectedMonth],
+    queryKey: ["/api/staff-salaries/detailed", isAllPropertiesMode ? "all" : effectivePropertyId, selectedMonth],
     queryFn: async () => {
+      if (isAllPropertiesMode) {
+        if (activeProperties.length === 0) return [];
+        const results = await Promise.all(
+          activeProperties.map(async (p: any) => {
+            const res = await fetch(
+              `/api/staff-salaries/detailed?propertyId=${p.id}&month=${selectedMonth}&includeInactive=true`,
+              { credentials: "include" }
+            );
+            if (!res.ok) return [];
+            const data = await res.json();
+            return data.map((s: any) => ({ ...s, propertyName: p.name }));
+          })
+        );
+        return results.flat();
+      }
       if (!effectivePropertyId) return [];
       const response = await fetch(
         `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&month=${selectedMonth}&includeInactive=true`,
@@ -107,7 +125,7 @@ export default function SalariesPage() {
       const data = await response.json();
       return data;
     },
-    enabled: !!effectivePropertyId && !userLoading,
+    enabled: (isAllPropertiesMode ? activeProperties.length > 0 : !!effectivePropertyId) && !userLoading,
   });
   
   // Use effectivePropertyId or fallback for display purposes
@@ -496,15 +514,17 @@ export default function SalariesPage() {
           
           {/* Action Buttons */}
           <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              onClick={() => markAllPresentMutation.mutate()}
-              disabled={markAllPresentMutation.isPending}
-              data-testid="button-mark-all-present"
-            >
-              <Check className="h-4 w-4 mr-2" />
-              {markAllPresentMutation.isPending ? "Marking..." : "Mark All Present"}
-            </Button>
+            {!isAllPropertiesMode && (
+              <Button
+                variant="outline"
+                onClick={() => markAllPresentMutation.mutate()}
+                disabled={markAllPresentMutation.isPending}
+                data-testid="button-mark-all-present"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                {markAllPresentMutation.isPending ? "Marking..." : "Mark All Present"}
+              </Button>
+            )}
             <Button variant="outline" onClick={exportSalaryReport} data-testid="button-export-report">
               <Download className="h-4 w-4 mr-2" />
               Export Report
@@ -711,14 +731,15 @@ export default function SalariesPage() {
           <div className="flex-1 min-w-[180px] max-w-xs">
             <Label htmlFor="property-select">Select Property</Label>
             <Select
-              value={selectedPropertyId ? String(selectedPropertyId) : (firstPropertyId ? String(firstPropertyId) : "")}
-              onValueChange={(val) => setSelectedPropertyId(parseInt(val))}
+              value={isAllPropertiesMode ? "all" : (selectedPropertyId ? String(selectedPropertyId) : (firstPropertyId ? String(firstPropertyId) : ""))}
+              onValueChange={(val) => setSelectedPropertyId(val === "all" ? -1 : parseInt(val))}
             >
               <SelectTrigger id="property-select" data-testid="select-salary-property">
                 <Building2 className="h-4 w-4 mr-2 text-muted-foreground" />
                 <SelectValue placeholder="Select property" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Properties</SelectItem>
                 {activeProperties.map((p: any) => (
                   <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                 ))}
@@ -893,7 +914,7 @@ export default function SalariesPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {salaries.map((staff: any) => (
                 <Card key={staff.staffId} className={`hover-elevate ${staff.employeeStatus !== 'active' ? 'border-amber-200 dark:border-amber-800' : ''}`} data-testid={`card-staff-${staff.staffId}`}>
                   <CardHeader>
@@ -908,7 +929,12 @@ export default function SalariesPage() {
                             </Badge>
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground">{staff.jobTitle}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {staff.jobTitle}
+                          {isAllPropertiesMode && staff.propertyName && (
+                            <span className="ml-1.5 text-xs text-primary font-medium">· {staff.propertyName}</span>
+                          )}
+                        </p>
                         {staff.employeeStatus !== 'active' && staff.leavingDate && (
                           <p className="text-xs text-amber-600 mt-0.5">
                             Last working: {format(new Date(staff.leavingDate), 'dd MMM yyyy')}
@@ -929,62 +955,30 @@ export default function SalariesPage() {
                       </Badge>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Salary Breakdown */}
-                    <div className="grid grid-cols-2 gap-4 pb-4 border-b">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Base Salary</p>
-                        <p className="font-semibold">
-                          ₹{staff.baseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Daily Rate</p>
-                        <p className="font-semibold">
-                          ₹{staff.dailyRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                        </p>
-                      </div>
+                  <CardContent className="space-y-3 pt-3">
+                    {/* Salary + Attendance compact row */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 pb-2 border-b text-sm">
+                      <span>
+                        <span className="text-muted-foreground text-xs">Base </span>
+                        <span className="font-semibold">₹{staff.baseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      </span>
+                      <span>
+                        <span className="text-muted-foreground text-xs">Daily </span>
+                        <span className="font-semibold">₹{staff.dailyRate.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      </span>
                     </div>
-
-                    {/* Attendance Summary */}
+                    {/* Attendance compact inline */}
                     <div>
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">Attendance ({staff.totalDays || 0} days)</p>
-                      <div className="grid grid-cols-4 gap-2 text-center mb-3">
-                        <div className="p-2 bg-green-50 rounded">
-                          <p className="text-sm font-bold text-green-700">{staff.presentDays}</p>
-                          <p className="text-xs text-muted-foreground">Present</p>
-                        </div>
-                        <div className="p-2 bg-red-50 rounded">
-                          <p className="text-sm font-bold text-red-700">{staff.absentDays}</p>
-                          <p className="text-xs text-muted-foreground">Absent</p>
-                        </div>
-                        <div className="p-2 bg-blue-50 rounded">
-                          <p className="text-sm font-bold text-blue-700">{staff.leaveDays}</p>
-                          <p className="text-xs text-muted-foreground">Leave</p>
-                        </div>
-                        <div className="p-2 bg-yellow-50 rounded">
-                          <p className="text-sm font-bold text-yellow-700">{staff.halfDays}</p>
-                          <p className="text-xs text-muted-foreground">Half-day</p>
-                        </div>
+                      <p className="text-xs text-muted-foreground mb-1">Attendance ({staff.totalDays || 0} days)</p>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="bg-green-50 dark:bg-green-950 text-green-700 dark:text-green-400 px-2 py-0.5 rounded font-semibold">{staff.presentDays} Present</span>
+                        <span className="bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-400 px-2 py-0.5 rounded font-semibold">{staff.absentDays} Absent</span>
+                        <span className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded font-semibold">{staff.leaveDays} Leave</span>
+                        <span className="bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded font-semibold">{staff.halfDays} Half-day</span>
                       </div>
-                      {/* Leave policy summary */}
-                      <div className="grid grid-cols-3 gap-2 text-center text-xs bg-muted/40 rounded p-2">
-                        <div>
-                          <p className="font-semibold">{staff.totalLeave || 0}</p>
-                          <p className="text-muted-foreground">Total Leave</p>
-                          <p className="text-muted-foreground">(Absent + Leave)</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-green-700">{staff.paidLeave || 0}</p>
-                          <p className="text-muted-foreground">Paid Leave</p>
-                          <p className="text-muted-foreground">(Free, max 2)</p>
-                        </div>
-                        <div>
-                          <p className="font-semibold text-red-700">{staff.leaveWithoutPay || 0}</p>
-                          <p className="text-muted-foreground">LWP</p>
-                          <p className="text-muted-foreground">(Deducted)</p>
-                        </div>
-                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Total leave: {staff.totalLeave || 0} &nbsp;|&nbsp; Free (max 2): {staff.paidLeave || 0} &nbsp;|&nbsp; <span className="text-red-600 font-medium">LWP: {staff.leaveWithoutPay || 0}</span>
+                      </p>
                     </div>
 
                     {/* Deductions & Advances */}
@@ -1059,32 +1053,36 @@ export default function SalariesPage() {
                     </div>
 
                     {/* Final Salary (Highlighted) */}
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-4 rounded-lg border-2 border-green-200 dark:border-green-800">
-                      <p className="text-xs font-semibold text-muted-foreground mb-1">FINAL PAYABLE</p>
-                      <p className="text-3xl font-bold text-green-700 dark:text-green-400" data-testid={`text-final-salary-${staff.staffId}`}>
-                        ₹{(staff.finalPayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        {staff.previousPending > 0 && `Previous: ₹${(staff.previousPending || 0).toLocaleString('en-IN')} + `}
-                        Net: ₹{(staff.netSalary || 0).toLocaleString('en-IN')}
-                        {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
-                      </p>
-                      
-                      {/* Pay Button */}
-                      {staff.finalPayable > 0 && (
-                        <Button 
-                          onClick={() => openPaymentDialog(staff)}
-                          className="w-full mt-4"
-                          data-testid={`button-pay-salary-${staff.staffId}`}
-                        >
-                          <CreditCard className="h-4 w-4 mr-2" />
-                          Pay Salary
-                        </Button>
-                      )}
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950 dark:to-emerald-950 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground">FINAL PAYABLE</p>
+                          <p className="text-xl font-bold text-green-700 dark:text-green-400" data-testid={`text-final-salary-${staff.staffId}`}>
+                            ₹{(staff.finalPayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {staff.previousPending > 0 && `Prev: ₹${(staff.previousPending || 0).toLocaleString('en-IN')} + `}
+                            Net: ₹{(staff.netSalary || 0).toLocaleString('en-IN')}
+                            {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
+                          </p>
+                        </div>
+                        {/* Pay Button */}
+                        {staff.finalPayable > 0 ? (
+                          <Button 
+                            onClick={() => openPaymentDialog(staff)}
+                            size="sm"
+                            className="shrink-0"
+                            data-testid={`button-pay-salary-${staff.staffId}`}
+                          >
+                            <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                            Pay
+                          </Button>
+                        ) : null}
+                      </div>
                       {staff.finalPayable <= 0 && (
-                        <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
-                          <Check className="h-5 w-5" />
-                          <span className="font-semibold">Fully Paid</span>
+                        <div className="mt-2 flex items-center gap-2 text-green-600">
+                          <Check className="h-4 w-4" />
+                          <span className="text-sm font-semibold">Fully Paid</span>
                         </div>
                       )}
                     </div>
@@ -1175,6 +1173,9 @@ export default function SalariesPage() {
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-3 font-semibold">Name</th>
                         <th className="text-left p-3 font-semibold">Job Title</th>
+                        {isAllPropertiesMode && (
+                          <th className="text-left p-3 font-semibold text-primary">Property</th>
+                        )}
                         {(staffFilter === 'inactive' || staffFilter === 'all') && (
                           <th className="text-left p-3 font-semibold text-amber-700">Last Working</th>
                         )}
@@ -1203,6 +1204,9 @@ export default function SalariesPage() {
                             </div>
                           </td>
                           <td className="p-3 text-muted-foreground">{staff.jobTitle}</td>
+                          {isAllPropertiesMode && (
+                            <td className="p-3 text-xs text-primary font-medium">{staff.propertyName || '—'}</td>
+                          )}
                           {(staffFilter === 'inactive' || staffFilter === 'all') && (
                             <td className="p-3 text-amber-700 text-xs">
                               {staff.leavingDate ? format(new Date(staff.leavingDate), 'dd MMM yyyy') : '-'}
@@ -1264,6 +1268,7 @@ export default function SalariesPage() {
                       {/* Totals Row */}
                       <tr className="bg-muted/50 font-bold border-t-2">
                         <td colSpan={2} className="p-3">TOTAL ({salaries.length})</td>
+                        {isAllPropertiesMode && <td />}
                         {(staffFilter === 'inactive' || staffFilter === 'all') && <td />}
                         <td className="text-right p-3">
                           ₹{totals.totalBaseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
