@@ -1,0 +1,147 @@
+✅ FINAL PROMPT FOR REPLIT (Salary + Wallet + PMS Integration)
+
+Build an advanced Salary Management System for my PMS (Hostezee) with compact UI, summary dashboard, Excel export, and full wallet integration.
+
+🎯 Objective
+Compact and clean employee salary UI
+One-page all employees summary dashboard
+Full wallet integration (auto debit/credit)
+All salary, advance, and payments must be auto-synced with PMS
+Export complete data in Excel
+🧩 Core Features
+1. 👤 Compact Employee Card UI
+Show:
+Employee Name
+Role
+Base Salary
+Attendance summary (Present / Leave / Absent)
+Final Payable
+Add expandable section (View Details) for:
+Attendance breakdown
+Deductions
+Advances
+Previous pending
+Payment history
+
+👉 Reduce card size by ~50% for better usability
+
+2. 📊 All Employees Summary Page (Main Dashboard)
+
+Create a table view with:
+
+Employee Name
+Role
+Base Salary
+Present Days
+Leave Days
+Deduction
+Advance
+Previous Pending
+Net Salary
+Paid This Month
+Total Payable
+
+👉 Features:
+
+Search + Sorting
+Filter (Month / Date range / Property)
+Highlight:
+🔴 High pending
+🟡 Partial
+🟢 Paid
+3. 📅 Filters
+Month selector (default current month)
+Custom date range (From – To)
+Property selector (multi-property support)
+
+All data should update dynamically.
+
+💰 4. WALLET INTEGRATION (VERY IMPORTANT)
+
+Create a central wallet system for PMS.
+
+Wallet Logic:
+Every salary payment → deduct from wallet
+Every advance given → deduct from wallet
+Every expense/payment in PMS → auto-update wallet
+Wallet Transactions:
+
+Maintain a wallet ledger:
+
+Date
+Type (Salary / Advance / Expense / Refund)
+Employee Name (if applicable)
+Amount
+Balance after transaction
+Salary Integration with Wallet:
+When clicking “Pay Salary”:
+Deduct amount from wallet
+Update “Paid This Month”
+Update ledger
+When giving Advance:
+Record advance
+Deduct from wallet
+Reflect in salary calculation
+PMS Auto Sync (Critical Requirement):
+All salary, advance, and payments must be automatically connected to PMS
+No manual mismatch allowed
+
+👉 Ensure:
+
+Wallet = Single source of truth
+Salary module always reflects real-time wallet balance
+📈 5. Salary Calculation Logic
+Final Payable = Previous Pending + Net Salary – Paid This Month
+Net Salary = Gross – Deductions – Advances
+Auto-update after every transaction
+📊 6. Excel Export Feature
+
+Add button: “Export Salary Report”
+
+Columns:
+
+Employee Name
+Role
+Property
+Base Salary
+Daily Rate
+Total Days
+Present
+Absent
+Leave
+Half Days
+Total Leave
+Paid Leave
+LWP Days
+Deduction Amount
+Advance Taken
+Advance Deduction
+Previous Pending
+Gross Salary
+Net Salary
+Paid This Month
+Final Payable
+Payment Status
+Remarks
+📌 Excel Top Summary:
+Total Staff
+Total Salary
+Total Paid
+Total Pending
+⚡ 7. UX + UI Improvements
+Clean modern UI
+Compact layout
+Fast loading
+Mobile responsive
+Sticky summary header
+🔗 8. System Integration (Important)
+Fully connected with:
+PMS bookings
+Expenses
+Reports
+Any financial action → auto-reflect everywhere
+🚀 Expected Output
+Accurate real-time salary system
+No mismatch between wallet & salary
+Easy to manage multiple employees
+Clear financial overview

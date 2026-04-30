@@ -11106,8 +11106,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
 
-      const detailedSalaries = await storage.getDetailedStaffSalaries(propId, start, end);
-      console.log(`[SALARY DEBUG] Returned ${detailedSalaries.length} staff salary records`);
+      const includeInactive = req.query.includeInactive === 'true';
+      const detailedSalaries = await storage.getDetailedStaffSalaries(propId, start, end, { includeInactive });
+      console.log(`[SALARY DEBUG] Returned ${detailedSalaries.length} staff salary records (includeInactive=${includeInactive})`);
       res.json(detailedSalaries);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -11902,19 +11903,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const advanceRows: string[] = [];
       const allAdvances = await storage.getAllAdvances();
 
-      salaryRows.push('Property,Staff Name,Role,Base Salary,Total Days,Present Days,Absent Days,Leave Days,Half Days,Daily Rate,Deduction,Regular Advances,Extra Advances,Total Advances,Gross Salary,Net Salary,Previous Pending,Payments Made,Final Payable');
-      advanceRows.push('Property,Staff Name,Date,Type,Amount,Payment Mode,Reason,Repayment Status');
+      salaryRows.push('Property,Staff Name,Role,Status,Base Salary,Total Days,Present Days,Absent Days,Leave Days,Half Days,Daily Rate,Deduction,Regular Advances,Extra Advances,Total Advances,Gross Salary,Net Salary,Previous Pending,Payments Made,Final Payable,Last Working Date');
+      advanceRows.push('Property,Staff Name,Status,Date,Type,Amount,Payment Mode,Reason,Repayment Status');
 
       for (const property of allProperties) {
-        const detailedSalaries = await storage.getDetailedStaffSalaries(property.id, monthStart, monthEnd);
+        const detailedSalaries = await storage.getDetailedStaffSalaries(property.id, monthStart, monthEnd, { includeInactive: true });
         const propertyStaffIds = new Set(detailedSalaries.map((s: any) => s.staffId));
 
-        // Salary summary rows
-        for (const s of detailedSalaries) {
+        // Salary summary rows (active first, then inactive)
+        const sorted = [...detailedSalaries].sort((a: any, b: any) => {
+          const order: Record<string, number> = { active: 0, inactive: 1, left: 2 };
+          return (order[a.employeeStatus] ?? 0) - (order[b.employeeStatus] ?? 0) || a.staffName.localeCompare(b.staffName);
+        });
+        for (const s of sorted) {
+          const statusLabel = s.employeeStatus === 'left' ? 'Left' : s.employeeStatus === 'inactive' ? 'Inactive' : 'Active';
+          const lastWorkingDate = s.leavingDate ? new Date(s.leavingDate).toLocaleDateString('en-IN') : '';
           salaryRows.push([
             escapeCsv(property.name),
             escapeCsv(s.staffName),
             escapeCsv(s.jobTitle),
+            escapeCsv(statusLabel),
             s.baseSalary.toFixed(2),
             s.totalDays || 0,
             (s.presentDays || 0).toFixed(1),
@@ -11931,19 +11939,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             (s.previousPending || 0).toFixed(2),
             (s.paymentsMade || 0).toFixed(2),
             (s.finalPayable || 0).toFixed(2),
+            escapeCsv(lastWorkingDate),
           ].join(','));
         }
 
         // Individual advance rows for this property's staff
         const propertyAdvances = allAdvances.filter((adv: any) => propertyStaffIds.has(adv.staffMemberId));
         const staffNameMap: Record<number, string> = {};
-        for (const s of detailedSalaries) staffNameMap[s.staffId] = s.staffName;
+        const staffStatusMap: Record<number, string> = {};
+        for (const s of sorted) {
+          staffNameMap[s.staffId] = s.staffName;
+          staffStatusMap[s.staffId] = s.employeeStatus === 'left' ? 'Left' : s.employeeStatus === 'inactive' ? 'Inactive' : 'Active';
+        }
 
         for (const adv of propertyAdvances) {
           const advDate = adv.advanceDate ? new Date(adv.advanceDate).toLocaleDateString('en-IN') : '';
           advanceRows.push([
             escapeCsv(property.name),
             escapeCsv(staffNameMap[adv.staffMemberId] || ''),
+            escapeCsv(staffStatusMap[adv.staffMemberId] || 'Active'),
             advDate,
             escapeCsv(adv.advanceType || 'regular'),
             parseFloat(String(adv.amount || 0)).toFixed(2),

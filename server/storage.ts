@@ -353,7 +353,7 @@ export interface IStorage {
   createSalary(salary: InsertStaffSalary): Promise<StaffSalary>;
   updateSalary(id: number, salary: Partial<InsertStaffSalary>): Promise<StaffSalary>;
   deleteSalary(id: number): Promise<void>;
-  getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]>;
+  getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date, options?: { includeInactive?: boolean }): Promise<any[]>;
 
   getAllSalaryPaymentsWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]>;
   getAllAdvancesWithStaff(fromDate?: Date, toDate?: Date): Promise<any[]>;
@@ -4162,9 +4162,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Get detailed staff salaries with attendance deductions and carry-forward
-  async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date): Promise<any[]> {
+  async getDetailedStaffSalaries(propertyId: number, startDate: Date, endDate: Date, options?: { includeInactive?: boolean }): Promise<any[]> {
+    const { includeInactive = false } = options || {};
     const staffList = await db.select().from(staffMembers).where(
-      and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true))
+      includeInactive
+        ? eq(staffMembers.propertyId, propertyId)
+        : and(eq(staffMembers.propertyId, propertyId), eq(staffMembers.isActive, true))
     );
 
     if (staffList.length === 0) return [];
@@ -4243,9 +4246,12 @@ export class DatabaseStorage implements IStorage {
       const leaveDays = attendanceList.filter(a => a.status === 'leave').length;
       const halfDays = attendanceList.filter(a => a.status === 'half-day').length;
 
-      // Determine applicable days for mid-month joiners (also counts all calendar days)
+      // Determine applicable days for mid-month joiners AND leavers
       let applicableDays = totalDays;
       let isJoiningMonth = false;
+      let isLeavingMonth = false;
+      let leavingDayInMonth = totalDays;
+
       if (staff.joiningDate) {
         const joinDate = new Date(staff.joiningDate);
         joinDate.setHours(0, 0, 0, 0);
@@ -4259,13 +4265,33 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      // For inactive (left) staff: prorate salary for the month they left
+      if (!staff.isActive && staff.leavingDate) {
+        const leaveDate = new Date(staff.leavingDate);
+        leaveDate.setHours(0, 0, 0, 0);
+        if (leaveDate < startDate) {
+          // Left before this month started — no new salary earned this month
+          isLeavingMonth = true;
+          leavingDayInMonth = 0;
+          applicableDays = 0;
+        } else if (leaveDate <= endDate) {
+          // Left during this month — prorate up to leaving date
+          isLeavingMonth = true;
+          leavingDayInMonth = 0;
+          for (let d = new Date(startDate); d <= leaveDate; d.setDate(d.getDate() + 1)) {
+            leavingDayInMonth++;
+          }
+          applicableDays = leavingDayInMonth;
+        }
+      }
+
       const baseSalaryNum = staff.baseSalary ? parseFloat(staff.baseSalary.toString()) : 0;
 
       // Daily rate always based on full month calendar days (no rounding until final)
       const dailyRate = totalDays > 0 ? baseSalaryNum / totalDays : 0;
 
-      // Prorated base for mid-month joiners; full base for everyone else
-      const proratedBase = isJoiningMonth ? applicableDays * dailyRate : baseSalaryNum;
+      // Prorated base for mid-month joiners/leavers; full base for everyone else
+      const proratedBase = (isJoiningMonth || isLeavingMonth) ? applicableDays * dailyRate : baseSalaryNum;
 
       // New leave policy — first 2 leaves (absent + leave combined) are PAID
       const totalLeave = absentDays + leaveDays;
@@ -4310,11 +4336,29 @@ export class DatabaseStorage implements IStorage {
       const netSalary = grossSalary - totalAdvances;
       const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade);
 
+      // Compute employee status and last salary month for display
+      const employeeStatus: 'active' | 'inactive' | 'left' = !staff.isActive
+        ? (staff.exitType === 'permanent' ? 'left' : 'inactive')
+        : 'active';
+
+      let lastSalaryMonth: string | null = null;
+      if (!staff.isActive && staff.leavingDate) {
+        const ld = new Date(staff.leavingDate);
+        lastSalaryMonth = `${ld.getFullYear()}-${String(ld.getMonth() + 1).padStart(2, '0')}`;
+      }
+
       return {
         staffId: staff.id,
         staffName: staff.name,
         jobTitle: staff.jobTitle || 'N/A',
+        staffRole: staff.role || 'N/A',
         baseSalary: baseSalaryNum,
+        // Employee lifecycle
+        isActive: staff.isActive,
+        exitType: staff.exitType,
+        leavingDate: staff.leavingDate,
+        employeeStatus,
+        lastSalaryMonth,
         // Attendance breakdown
         presentDays,
         absentDays,

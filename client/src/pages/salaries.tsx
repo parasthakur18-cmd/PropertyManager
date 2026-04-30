@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2, Trash2 } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2, Trash2, UserX, UserCheck } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,6 +40,9 @@ export default function SalariesPage() {
   
   // Payment history state
   const [expandedPaymentHistory, setExpandedPaymentHistory] = useState<number | null>(null);
+
+  // Staff filter toggle: active | inactive | all
+  const [staffFilter, setStaffFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   // Export All dialog state
   const [isExportAllDialogOpen, setIsExportAllDialogOpen] = useState(false);
@@ -81,13 +84,13 @@ export default function SalariesPage() {
   const effectivePropertyId = selectedPropertyId || (firstPropertyId ? parseInt(String(firstPropertyId), 10) : null);
   
 
-  // Fetch detailed staff salaries - only when we have a valid property ID
-  const { data: salaries = [], isLoading, error } = useQuery({
+  // Fetch detailed staff salaries (active + inactive) - only when we have a valid property ID
+  const { data: allSalaries = [], isLoading, error } = useQuery({
     queryKey: ["/api/staff-salaries/detailed", effectivePropertyId, selectedMonth],
     queryFn: async () => {
       if (!effectivePropertyId) return [];
       const response = await fetch(
-        `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&month=${selectedMonth}`,
+        `/api/staff-salaries/detailed?propertyId=${effectivePropertyId}&month=${selectedMonth}&includeInactive=true`,
         { credentials: "include" }
       );
       if (!response.ok) {
@@ -109,6 +112,16 @@ export default function SalariesPage() {
   
   // Use effectivePropertyId or fallback for display purposes
   const propertyId = effectivePropertyId || 1;
+
+  // Split all fetched salaries into active vs inactive/left
+  const activeSalaries = useMemo(() => allSalaries.filter((s: any) => s.employeeStatus === 'active'), [allSalaries]);
+  const inactiveSalaries = useMemo(() => allSalaries.filter((s: any) => s.employeeStatus !== 'active'), [allSalaries]);
+  // What the current table/cards/summary show — driven by filter toggle
+  const salaries = useMemo(() => {
+    if (staffFilter === 'active') return activeSalaries;
+    if (staffFilter === 'inactive') return inactiveSalaries;
+    return allSalaries;
+  }, [staffFilter, activeSalaries, inactiveSalaries, allSalaries]);
 
   // Fetch payment history for expanded staff member
   const { data: paymentHistory = [], isLoading: historyLoading } = useQuery({
@@ -315,6 +328,9 @@ export default function SalariesPage() {
     totalPaymentsMade: salaries.reduce((sum: number, s: any) => sum + (s.paymentsMade || 0), 0),
   };
 
+  // Total outstanding liability for inactive/left staff (shown in summary cards)
+  const inactivePendingLiability = inactiveSalaries.reduce((sum: number, s: any) => sum + (s.finalPayable || 0), 0);
+
   // Download Staff Funds Report (advances + salary payments + expenses)
   const exportFundsReport = async () => {
     setIsExportingFunds(true);
@@ -380,6 +396,8 @@ export default function SalariesPage() {
     const headers = [
       "Staff Name",
       "Job Title",
+      "Employee Status",
+      "Last Working Date",
       "Base Salary",
       "Total Days",
       "Present Days",
@@ -399,37 +417,45 @@ export default function SalariesPage() {
       "Previous Pending",
       "Payments Made",
       "Final Payable",
-      "Status"
+      "Payment Status"
     ];
 
-    const rows = salaries.map((s: any) => [
-      s.staffName,
-      s.jobTitle,
-      s.baseSalary,
-      s.totalDays || 0,
-      s.presentDays,
-      s.absentDays,
-      s.leaveDays || 0,
-      s.totalLeave || 0,
-      s.paidLeave || 0,
-      s.leaveWithoutPay || 0,
-      s.halfDays || 0,
-      s.dailyRate || 0,
-      s.deduction || 0,
-      s.grossSalary || 0,
-      s.regularAdvances || 0,
-      s.extraAdvances || 0,
-      s.totalAdvances,
-      s.netSalary || 0,
-      s.previousPending || 0,
-      s.paymentsMade || 0,
-      s.finalPayable || 0,
-      s.status
-    ]);
+    // Export all staff (active + inactive) for completeness
+    const exportData = staffFilter === 'all' ? allSalaries : salaries;
+    const rows = exportData.map((s: any) => {
+      const statusLabel = s.employeeStatus === 'left' ? 'Left' : s.employeeStatus === 'inactive' ? 'Inactive' : 'Active';
+      const lastWorkingDate = s.leavingDate ? format(new Date(s.leavingDate), 'dd/MM/yyyy') : '';
+      return [
+        s.staffName,
+        s.jobTitle,
+        statusLabel,
+        lastWorkingDate,
+        s.baseSalary,
+        s.totalDays || 0,
+        s.presentDays,
+        s.absentDays,
+        s.leaveDays || 0,
+        s.totalLeave || 0,
+        s.paidLeave || 0,
+        s.leaveWithoutPay || 0,
+        s.halfDays || 0,
+        s.dailyRate || 0,
+        s.deduction || 0,
+        s.grossSalary || 0,
+        s.regularAdvances || 0,
+        s.extraAdvances || 0,
+        s.totalAdvances,
+        s.netSalary || 0,
+        s.previousPending || 0,
+        s.paymentsMade || 0,
+        s.finalPayable || 0,
+        s.status,
+      ];
+    });
 
-    // Add totals row (matches 22-column layout)
+    // Add totals row (24-column layout: Name, JobTitle, EmployeeStatus, LastWorkingDate, BaseSalary, TotalDays, Present, Absent, Leave, TotalLeave, PaidLeave, LWP, HalfDays, DailyRate, Deduction, Gross, RegAdv, ExtraAdv, TotalAdv, Net, PrevPending, PaidAmount, FinalPayable, Status)
     rows.push([
-      "TOTAL", "", totals.totalBaseSalary,
+      "TOTAL", "", "", "", totals.totalBaseSalary,
       "", "", "", "", "", "", "", "", "",
       totals.totalDeductions, "", "", "", totals.totalAdvances, "",
       totals.totalPreviousPending, totals.totalPaymentsMade, totals.totalPayable, ""
@@ -511,9 +537,10 @@ export default function SalariesPage() {
                       <SelectValue placeholder="Select staff member" />
                     </SelectTrigger>
                     <SelectContent>
-                      {salaries.map((staff: any) => (
+                      {allSalaries.map((staff: any) => (
                         <SelectItem key={staff.staffId} value={String(staff.staffId)}>
                           {staff.staffName} - {staff.jobTitle}
+                          {staff.employeeStatus !== 'active' && ` (${staff.employeeStatus === 'left' ? 'Left' : 'Inactive'})`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -708,6 +735,36 @@ export default function SalariesPage() {
               data-testid="input-month-select"
             />
           </div>
+
+          {/* Staff Status Filter Toggle */}
+          <div>
+            <Label className="block mb-1">Show Staff</Label>
+            <div className="flex rounded-md border overflow-hidden">
+              <button
+                onClick={() => setStaffFilter('active')}
+                data-testid="filter-active-staff"
+                className={`px-3 py-2 text-sm flex items-center gap-1.5 transition-colors ${staffFilter === 'active' ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}
+              >
+                <UserCheck className="h-3.5 w-3.5" />
+                Active ({activeSalaries.length})
+              </button>
+              <button
+                onClick={() => setStaffFilter('inactive')}
+                data-testid="filter-inactive-staff"
+                className={`px-3 py-2 text-sm flex items-center gap-1.5 border-x transition-colors ${staffFilter === 'inactive' ? 'bg-amber-600 text-white' : 'bg-background hover:bg-muted'}`}
+              >
+                <UserX className="h-3.5 w-3.5" />
+                Inactive / Left ({inactiveSalaries.length})
+              </button>
+              <button
+                onClick={() => setStaffFilter('all')}
+                data-testid="filter-all-staff"
+                className={`px-3 py-2 text-sm flex items-center gap-1.5 transition-colors ${staffFilter === 'all' ? 'bg-secondary text-secondary-foreground' : 'bg-background hover:bg-muted'}`}
+              >
+                All ({allSalaries.length})
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -790,6 +847,21 @@ export default function SalariesPage() {
             <p className="text-xs text-muted-foreground">To be paid</p>
           </CardContent>
         </Card>
+
+        {inactiveSalaries.length > 0 && (
+          <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950 dark:to-orange-950 border-amber-200 dark:border-amber-800">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 gap-2">
+              <CardTitle className="text-sm font-medium text-amber-800 dark:text-amber-300">Inactive Liability</CardTitle>
+              <UserX className="h-4 w-4 text-amber-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold text-amber-700 dark:text-amber-400" data-testid="text-inactive-liability">
+                ₹{inactivePendingLiability.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </div>
+              <p className="text-xs text-amber-600 dark:text-amber-500">{inactiveSalaries.length} ex-employee(s)</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Tabs for different views */}
@@ -823,12 +895,25 @@ export default function SalariesPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-2">
               {salaries.map((staff: any) => (
-                <Card key={staff.staffId} className="hover-elevate" data-testid={`card-staff-${staff.staffId}`}>
+                <Card key={staff.staffId} className={`hover-elevate ${staff.employeeStatus !== 'active' ? 'border-amber-200 dark:border-amber-800' : ''}`} data-testid={`card-staff-${staff.staffId}`}>
                   <CardHeader>
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
                       <div>
-                        <CardTitle className="text-lg">{staff.staffName}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-lg">{staff.staffName}</CardTitle>
+                          {staff.employeeStatus !== 'active' && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs" data-testid={`badge-employee-status-${staff.staffId}`}>
+                              <UserX className="h-2.5 w-2.5 mr-1" />
+                              {staff.employeeStatus === 'left' ? 'Left' : 'Inactive'}
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-sm text-muted-foreground">{staff.jobTitle}</p>
+                        {staff.employeeStatus !== 'active' && staff.leavingDate && (
+                          <p className="text-xs text-amber-600 mt-0.5">
+                            Last working: {format(new Date(staff.leavingDate), 'dd MMM yyyy')}
+                          </p>
+                        )}
                       </div>
                       <Badge
                         variant={
@@ -1090,21 +1175,39 @@ export default function SalariesPage() {
                       <tr className="border-b bg-muted/50">
                         <th className="text-left p-3 font-semibold">Name</th>
                         <th className="text-left p-3 font-semibold">Job Title</th>
+                        {(staffFilter === 'inactive' || staffFilter === 'all') && (
+                          <th className="text-left p-3 font-semibold text-amber-700">Last Working</th>
+                        )}
                         <th className="text-right p-3 font-semibold">Base Salary</th>
                         <th className="text-center p-3 font-semibold">Present</th>
                         <th className="text-center p-3 font-semibold">Absent</th>
                         <th className="text-right p-3 font-semibold">Deductions</th>
                         <th className="text-right p-3 font-semibold">Advances</th>
-                        <th className="text-right p-3 font-semibold text-green-600">Final Salary</th>
-                        <th className="text-center p-3 font-semibold">Status</th>
+                        <th className="text-right p-3 font-semibold text-blue-600">Prev. Pending</th>
+                        <th className="text-right p-3 font-semibold text-green-600">Final Payable</th>
+                        <th className="text-center p-3 font-semibold">Pay Status</th>
                         <th className="text-center p-3 font-semibold">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {salaries.map((staff: any) => (
-                        <tr key={staff.staffId} className="border-b hover-elevate" data-testid={`row-staff-${staff.staffId}`}>
-                          <td className="p-3 font-medium">{staff.staffName}</td>
+                        <tr key={staff.staffId} className={`border-b hover-elevate ${staff.employeeStatus !== 'active' ? 'bg-amber-50/30 dark:bg-amber-950/20' : ''}`} data-testid={`row-staff-${staff.staffId}`}>
+                          <td className="p-3 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {staff.staffName}
+                              {staff.employeeStatus !== 'active' && (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs py-0 h-4">
+                                  {staff.employeeStatus === 'left' ? 'Left' : 'Inactive'}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
                           <td className="p-3 text-muted-foreground">{staff.jobTitle}</td>
+                          {(staffFilter === 'inactive' || staffFilter === 'all') && (
+                            <td className="p-3 text-amber-700 text-xs">
+                              {staff.leavingDate ? format(new Date(staff.leavingDate), 'dd MMM yyyy') : '-'}
+                            </td>
+                          )}
                           <td className="text-right p-3 font-semibold">
                             ₹{staff.baseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                           </td>
@@ -1119,6 +1222,9 @@ export default function SalariesPage() {
                           </td>
                           <td className="text-right p-3 text-orange-600 font-semibold">
                             -₹{staff.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                          </td>
+                          <td className="text-right p-3 text-blue-600 font-semibold">
+                            {(staff.previousPending || 0) > 0 ? `₹${(staff.previousPending || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : '-'}
                           </td>
                           <td className="text-right p-3 text-green-700 font-bold text-base">
                             ₹{(staff.finalPayable || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
@@ -1157,9 +1263,8 @@ export default function SalariesPage() {
                       ))}
                       {/* Totals Row */}
                       <tr className="bg-muted/50 font-bold border-t-2">
-                        <td colSpan={2} className="p-3">
-                          TOTAL
-                        </td>
+                        <td colSpan={2} className="p-3">TOTAL ({salaries.length})</td>
+                        {(staffFilter === 'inactive' || staffFilter === 'all') && <td />}
                         <td className="text-right p-3">
                           ₹{totals.totalBaseSalary.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
@@ -1169,6 +1274,9 @@ export default function SalariesPage() {
                         </td>
                         <td className="text-right p-3 text-orange-600">
                           -₹{totals.totalAdvances.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        </td>
+                        <td className="text-right p-3 text-blue-600">
+                          ₹{totals.totalPreviousPending.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                         </td>
                         <td className="text-right p-3 text-green-700 text-base">
                           ₹{totals.totalPayable.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
