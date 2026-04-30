@@ -28,6 +28,7 @@ import {
   vendors,
   vendorTransactions,
   attendanceRecords,
+  salaryCorrections,
   featureSettings,
   otaIntegrations,
   whatsappNotificationSettings,
@@ -4176,12 +4177,15 @@ export class DatabaseStorage implements IStorage {
     const startDateStr = startDate.toISOString().split('T')[0];
     const endDateStr = endDate.toISOString().split('T')[0];
 
-    // Batch-fetch all data in 4 queries total (1 staff + 3 data queries)
-    // Advances and payments are fetched in full (no date filter) and split in memory
+    // Compute the month key for this period (YYYY-MM)
+    const monthKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+
+    // Batch-fetch all data in 5 queries total
     const [
       allAttendance,
       allAdvances,
       allPayments,
+      allCorrections,
     ] = await Promise.all([
       db.select().from(attendanceRecords).where(
         and(
@@ -4196,7 +4200,21 @@ export class DatabaseStorage implements IStorage {
       db.select().from(salaryPayments).where(
         inArray(salaryPayments.staffMemberId, staffIds)
       ),
+      db.select().from(salaryCorrections).where(
+        and(
+          inArray(salaryCorrections.staffMemberId, staffIds),
+          eq(salaryCorrections.month, monthKey)
+        )
+      ),
     ]);
+
+    // Index corrections by staffId + field
+    const correctionsByStaff = new Map<number, typeof allCorrections>();
+    for (const corr of allCorrections) {
+      const arr = correctionsByStaff.get(corr.staffMemberId) ?? [];
+      arr.push(corr);
+      correctionsByStaff.set(corr.staffMemberId, arr);
+    }
 
     // Group and split results by staffId for O(1) lookup
     const attendanceByStaff = new Map<number, typeof allAttendance>();
@@ -4329,12 +4347,25 @@ export class DatabaseStorage implements IStorage {
       const totalPreviousSalaryOwed = monthsBeforeStart * baseSalaryNum;
 
       // Previous pending = what was owed - what was paid - advances already taken
-      const previousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
+      const computedPreviousPending = Math.max(0, totalPreviousSalaryOwed - totalPreviousPayments - totalPreviousAdvances);
+
+      // Apply corrections for this month
+      const staffCorrections = correctionsByStaff.get(staff.id) ?? [];
+      const prevPendingOverride = staffCorrections.find(c => c.field === 'previous_pending_override');
+      const paymentAdjustment = staffCorrections.find(c => c.field === 'payment_adjustment');
+
+      const previousPending = prevPendingOverride
+        ? parseFloat(prevPendingOverride.correctedValue.toString())
+        : computedPreviousPending;
+
+      const correctionPaymentAdj = paymentAdjustment
+        ? parseFloat(paymentAdjustment.correctedValue.toString())
+        : 0;
 
       // Gross → Net → Final (no double deductions, no rounding until final)
       const grossSalary = Math.max(0, proratedBase - deduction);
       const netSalary = grossSalary - totalAdvances;
-      const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade);
+      const finalPayable = Math.max(0, previousPending + netSalary - totalPaymentsMade + correctionPaymentAdj);
 
       // Compute employee status and last salary month for display
       const employeeStatus: 'active' | 'inactive' | 'left' = !staff.isActive
@@ -4397,6 +4428,18 @@ export class DatabaseStorage implements IStorage {
         })),
         // Carry forward
         previousPending: Math.round(previousPending * 100) / 100,
+        computedPreviousPending: Math.round(computedPreviousPending * 100) / 100,
+        // Active corrections for this month
+        corrections: staffCorrections.map(c => ({
+          id: c.id,
+          field: c.field,
+          correctedValue: parseFloat(c.correctedValue.toString()),
+          originalValue: c.originalValue ? parseFloat(c.originalValue.toString()) : null,
+          reason: c.reason,
+          correctedByName: c.correctedByName,
+          createdAt: c.createdAt,
+        })),
+        hasCorrections: staffCorrections.length > 0,
         // Backward-compatible aliases (so any existing code still works)
         totalWorkingDays: totalDays,
         attendanceDeductions: Math.round(deduction * 100) / 100,
@@ -6162,6 +6205,63 @@ export class DatabaseStorage implements IStorage {
       referenceNote || 'External funding (owner/investor)',
       null, transactionDate, createdBy
     );
+  }
+
+  // ─── Salary Corrections ───────────────────────────────────────────────────
+
+  async getSalaryCorrections(staffMemberId: number, month: string): Promise<any[]> {
+    return db.select().from(salaryCorrections).where(
+      and(
+        eq(salaryCorrections.staffMemberId, staffMemberId),
+        eq(salaryCorrections.month, month)
+      )
+    ).orderBy(desc(salaryCorrections.createdAt));
+  }
+
+  async createSalaryCorrection(data: {
+    staffMemberId: number;
+    propertyId: number;
+    month: string;
+    field: string;
+    correctedValue: number;
+    originalValue?: number | null;
+    reason: string;
+    correctedBy?: string | null;
+    correctedByName?: string | null;
+  }): Promise<any> {
+    // Upsert: replace any existing correction for same staff+month+field
+    await db.delete(salaryCorrections).where(
+      and(
+        eq(salaryCorrections.staffMemberId, data.staffMemberId),
+        eq(salaryCorrections.month, data.month),
+        eq(salaryCorrections.field, data.field)
+      )
+    );
+    const [created] = await db.insert(salaryCorrections).values({
+      staffMemberId: data.staffMemberId,
+      propertyId: data.propertyId,
+      month: data.month,
+      field: data.field,
+      correctedValue: data.correctedValue.toString(),
+      originalValue: data.originalValue != null ? data.originalValue.toString() : null,
+      reason: data.reason,
+      correctedBy: data.correctedBy || null,
+      correctedByName: data.correctedByName || null,
+    }).returning();
+    return created;
+  }
+
+  async deleteSalaryCorrection(id: number): Promise<void> {
+    await db.delete(salaryCorrections).where(eq(salaryCorrections.id, id));
+  }
+
+  async getSalaryCorrectionsForProperty(propertyId: number, month: string): Promise<any[]> {
+    return db.select().from(salaryCorrections).where(
+      and(
+        eq(salaryCorrections.propertyId, propertyId),
+        eq(salaryCorrections.month, month)
+      )
+    ).orderBy(desc(salaryCorrections.createdAt));
   }
 
   private _mapTransfer(row: any): PropertyTransfer {

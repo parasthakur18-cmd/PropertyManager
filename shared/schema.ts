@@ -1954,3 +1954,25 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type InsertPushSubscription = typeof pushSubscriptions.$inferInsert;
+
+// Salary Corrections — manual overrides with audit trail
+export const salaryCorrections = pgTable("salary_corrections", {
+  id: serial("id").primaryKey(),
+  staffMemberId: integer("staff_member_id").notNull().references(() => staffMembers.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  month: varchar("month", { length: 7 }).notNull(), // YYYY-MM
+  field: varchar("field", { length: 50 }).notNull(), // 'previous_pending_override', 'payment_adjustment'
+  correctedValue: decimal("corrected_value", { precision: 12, scale: 2 }).notNull(),
+  originalValue: decimal("original_value", { precision: 12, scale: 2 }),
+  reason: text("reason").notNull(),
+  correctedBy: varchar("corrected_by").references(() => users.id, { onDelete: 'set null' }),
+  correctedByName: varchar("corrected_by_name", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type SalaryCorrection = typeof salaryCorrections.$inferSelect;
+export const insertSalaryCorrectionSchema = createInsertSchema(salaryCorrections).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSalaryCorrection = z.infer<typeof insertSalaryCorrectionSchema>;

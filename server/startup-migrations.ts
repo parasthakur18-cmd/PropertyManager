@@ -780,6 +780,26 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "create_salary_corrections",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS salary_corrections (
+          id SERIAL PRIMARY KEY,
+          staff_member_id INTEGER NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          month VARCHAR(7) NOT NULL,
+          field VARCHAR(50) NOT NULL,
+          corrected_value DECIMAL(12,2) NOT NULL,
+          original_value DECIMAL(12,2),
+          reason TEXT NOT NULL,
+          corrected_by VARCHAR(255) REFERENCES users(id) ON DELETE SET NULL,
+          corrected_by_name VARCHAR(255),
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

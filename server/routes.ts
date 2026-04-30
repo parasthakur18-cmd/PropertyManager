@@ -10766,16 +10766,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const member = await storage.getStaffMember(parseInt(req.params.id));
       if (!member) return res.status(404).json({ message: "Staff member not found" });
 
-      const { exitType, exitReason } = req.body;
+      const { exitType, exitReason, leavingDate } = req.body;
       if (!exitType || !["temporary", "permanent"].includes(exitType)) {
         return res.status(400).json({ message: "exitType must be 'temporary' or 'permanent'" });
       }
+
+      const parsedLeavingDate = leavingDate ? new Date(leavingDate) : new Date();
 
       const updated = await storage.updateStaffMember(parseInt(req.params.id), {
         isActive: false,
         exitType,
         exitReason: exitReason || null,
-        leavingDate: new Date(),
+        leavingDate: parsedLeavingDate,
       });
 
       const label = exitType === "temporary" ? "Temporary (On Leave/Suspended)" : "Permanently Left Company";
@@ -11071,6 +11073,55 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.json(summaryData);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Salary Corrections ─────────────────────────────────────────────────────
+
+  // POST /api/salary-corrections - Create or update a salary correction
+  app.post("/api/salary-corrections", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isAdmin = user.role === 'admin' || user.role === 'super-admin' || user.role === 'manager';
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+
+      const { staffMemberId, propertyId, month, field, correctedValue, originalValue, reason } = req.body;
+      if (!staffMemberId || !propertyId || !month || !field || correctedValue == null || !reason) {
+        return res.status(400).json({ message: "staffMemberId, propertyId, month, field, correctedValue, reason are required" });
+      }
+      if (!['previous_pending_override', 'payment_adjustment'].includes(field)) {
+        return res.status(400).json({ message: "field must be 'previous_pending_override' or 'payment_adjustment'" });
+      }
+
+      const correction = await storage.createSalaryCorrection({
+        staffMemberId: parseInt(staffMemberId),
+        propertyId: parseInt(propertyId),
+        month,
+        field,
+        correctedValue: parseFloat(correctedValue),
+        originalValue: originalValue != null ? parseFloat(originalValue) : null,
+        reason,
+        correctedBy: user.id,
+        correctedByName: user.name || user.email || 'Unknown',
+      });
+
+      res.json({ success: true, correction });
+    } catch (err: any) {
+      console.error("[SALARY-CORRECTION] Create error:", err);
+      res.status(500).json({ message: err.message || "Failed to create correction" });
+    }
+  });
+
+  // DELETE /api/salary-corrections/:id - Remove a correction
+  app.delete("/api/salary-corrections/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isAdmin = user.role === 'admin' || user.role === 'super-admin' || user.role === 'manager';
+      if (!isAdmin) return res.status(403).json({ message: "Admin only" });
+      await storage.deleteSalaryCorrection(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete correction" });
     }
   });
 

@@ -72,6 +72,7 @@ export default function Attendance() {
   const [disablingStaff, setDisablingStaff] = useState<any>(null);
   const [disableType, setDisableType] = useState<"temporary" | "permanent">("temporary");
   const [disableReason, setDisableReason] = useState("");
+  const [disableLeavingDate, setDisableLeavingDate] = useState(new Date().toISOString().split('T')[0]);
 
   const { data: properties = [] } = useQuery<any[]>({
     queryKey: ["/api/properties"],
@@ -284,8 +285,8 @@ export default function Attendance() {
   });
 
   const disableStaffMutation = useMutation({
-    mutationFn: async ({ staffId, exitType, exitReason }: { staffId: number; exitType: string; exitReason: string }) => {
-      return await apiRequest(`/api/staff-members/${staffId}/disable`, "POST", { exitType, exitReason });
+    mutationFn: async ({ staffId, exitType, exitReason, leavingDate }: { staffId: number; exitType: string; exitReason: string; leavingDate: string }) => {
+      return await apiRequest(`/api/staff-members/${staffId}/disable`, "POST", { exitType, exitReason, leavingDate });
     },
     onSuccess: () => {
       refetchStaff();
@@ -294,6 +295,7 @@ export default function Attendance() {
       setDisablingStaff(null);
       setDisableReason("");
       setDisableType("temporary");
+      setDisableLeavingDate(new Date().toISOString().split('T')[0]);
       toast({ title: "Staff Disabled", description: `${disablingStaff?.name} has been marked as ${disableType === "temporary" ? "temporarily disabled" : "permanently left"}.` });
     },
     onError: (error: any) => {
@@ -827,6 +829,20 @@ export default function Attendance() {
               </div>
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Last Working Date
+                {disableType === 'permanent' && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              <Input
+                type="date"
+                value={disableLeavingDate}
+                onChange={(e) => setDisableLeavingDate(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+                data-testid="input-disable-leaving-date"
+              />
+              <p className="text-xs text-muted-foreground">The date this employee last worked or will last work.</p>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Reason <span className="text-muted-foreground">(optional)</span></label>
               <Input
                 value={disableReason}
@@ -849,7 +865,7 @@ export default function Attendance() {
                 disabled={disableStaffMutation.isPending}
                 onClick={() => {
                   if (disablingStaff) {
-                    disableStaffMutation.mutate({ staffId: disablingStaff.id, exitType: disableType, exitReason: disableReason });
+                    disableStaffMutation.mutate({ staffId: disablingStaff.id, exitType: disableType, exitReason: disableReason, leavingDate: disableLeavingDate });
                   }
                 }}
                 data-testid="button-confirm-disable"
@@ -1037,6 +1053,7 @@ export default function Attendance() {
                         setDisablingStaff(staff);
                         setDisableType("temporary");
                         setDisableReason("");
+                        setDisableLeavingDate(new Date().toISOString().split('T')[0]);
                         setIsDisableDialogOpen(true);
                       }}
                       data-testid={`button-disable-staff-${staff.id}`}

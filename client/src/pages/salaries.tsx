@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2, Trash2, UserX, UserCheck } from "lucide-react";
+import { Calendar, DollarSign, TrendingDown, Users, AlertCircle, Plus, CreditCard, Check, History, ChevronDown, ChevronUp, Download, FileSpreadsheet, Wallet, Banknote, Building2, Trash2, UserX, UserCheck, Pencil, RotateCcw, ClipboardList } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -56,7 +56,14 @@ export default function SalariesPage() {
   });
   const [fundsTo, setFundsTo] = useState(() => new Date().toISOString().split('T')[0]);
   const [isExportingFunds, setIsExportingFunds] = useState(false);
-  
+
+  // Salary Correction dialog state
+  const [isCorrectionDialogOpen, setIsCorrectionDialogOpen] = useState(false);
+  const [correctionStaff, setCorrectionStaff] = useState<any>(null);
+  const [correctionField, setCorrectionField] = useState<'previous_pending_override' | 'payment_adjustment'>('previous_pending_override');
+  const [correctionValue, setCorrectionValue] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
+
   const { toast } = useToast();
 
   // Parse selected month to get start and end dates
@@ -336,6 +343,41 @@ export default function SalariesPage() {
     },
   });
 
+  // Salary correction mutation
+  const correctionMutation = useMutation({
+    mutationFn: async (data: { staffMemberId: number; propertyId: number; month: string; field: string; correctedValue: number; originalValue: number | null; reason: string }) => {
+      return await apiRequest("/api/salary-corrections", "POST", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      setIsCorrectionDialogOpen(false);
+      setCorrectionStaff(null);
+      setCorrectionValue('');
+      setCorrectionReason('');
+      toast({ title: "Correction Saved", description: "Salary correction has been applied and will reflect in all reports." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message || "Failed to save correction", variant: "destructive" }),
+  });
+
+  const deleteCorrectionMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return await apiRequest(`/api/salary-corrections/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/staff-salaries/detailed"] });
+      toast({ title: "Correction Removed", description: "The correction has been deleted. Original values restored." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message || "Failed to remove correction", variant: "destructive" }),
+  });
+
+  const openCorrectionDialog = (staff: any) => {
+    setCorrectionStaff(staff);
+    const existing = staff.corrections?.find((c: any) => c.field === correctionField);
+    setCorrectionValue(existing ? String(existing.correctedValue) : String(staff.computedPreviousPending || staff.previousPending || 0));
+    setCorrectionReason('');
+    setIsCorrectionDialogOpen(true);
+  };
+
   // Calculate totals — all values come from backend, no recalculation here
   const totals = {
     totalBaseSalary: salaries.reduce((sum: number, s: any) => sum + (s.baseSalary || 0), 0),
@@ -441,7 +483,7 @@ export default function SalariesPage() {
     // Export all staff (active + inactive) for completeness
     const exportData = staffFilter === 'all' ? allSalaries : salaries;
     const rows = exportData.map((s: any) => {
-      const statusLabel = s.employeeStatus === 'left' ? 'Left' : s.employeeStatus === 'inactive' ? 'Inactive' : 'Active';
+      const statusLabel = s.employeeStatus === 'left' ? 'Left Company' : s.employeeStatus === 'inactive' ? 'Temporarily Disabled' : 'Active';
       const lastWorkingDate = s.leavingDate ? format(new Date(s.leavingDate), 'dd/MM/yyyy') : '';
       return [
         s.staffName,
@@ -560,7 +602,7 @@ export default function SalariesPage() {
                       {allSalaries.map((staff: any) => (
                         <SelectItem key={staff.staffId} value={String(staff.staffId)}>
                           {staff.staffName} - {staff.jobTitle}
-                          {staff.employeeStatus !== 'active' && ` (${staff.employeeStatus === 'left' ? 'Left' : 'Inactive'})`}
+                          {staff.employeeStatus !== 'active' && ` (${staff.employeeStatus === 'left' ? 'Left Company' : 'Temporarily Disabled'})`}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -923,9 +965,13 @@ export default function SalariesPage() {
                         <div className="flex items-center gap-2">
                           <CardTitle className="text-lg">{staff.staffName}</CardTitle>
                           {staff.employeeStatus !== 'active' && (
-                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs" data-testid={`badge-employee-status-${staff.staffId}`}>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs ${staff.employeeStatus === 'left' ? 'bg-red-50 text-red-700 border-red-300' : 'bg-amber-50 text-amber-700 border-amber-300'}`}
+                              data-testid={`badge-employee-status-${staff.staffId}`}
+                            >
                               <UserX className="h-2.5 w-2.5 mr-1" />
-                              {staff.employeeStatus === 'left' ? 'Left' : 'Inactive'}
+                              {staff.employeeStatus === 'left' ? 'Left Company' : 'Temporarily Disabled'}
                             </Badge>
                           )}
                         </div>
@@ -1066,18 +1112,29 @@ export default function SalariesPage() {
                             {staff.paymentsMade > 0 && ` - Paid: ₹${(staff.paymentsMade || 0).toLocaleString('en-IN')}`}
                           </p>
                         </div>
-                        {/* Pay Button */}
-                        {staff.finalPayable > 0 ? (
-                          <Button 
-                            onClick={() => openPaymentDialog(staff)}
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {staff.finalPayable > 0 ? (
+                            <Button
+                              onClick={() => openPaymentDialog(staff)}
+                              size="sm"
+                              data-testid={`button-pay-salary-${staff.staffId}`}
+                            >
+                              <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                              Pay
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
                             size="sm"
-                            className="shrink-0"
-                            data-testid={`button-pay-salary-${staff.staffId}`}
+                            onClick={() => openCorrectionDialog(staff)}
+                            title="Edit / correct salary figures"
+                            data-testid={`button-correct-card-${staff.staffId}`}
+                            className={staff.hasCorrections ? 'text-orange-600' : 'text-muted-foreground'}
                           >
-                            <CreditCard className="h-3.5 w-3.5 mr-1.5" />
-                            Pay
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                        ) : null}
+                        </div>
                       </div>
                       {staff.finalPayable <= 0 && (
                         <div className="mt-2 flex items-center gap-2 text-green-600">
@@ -1197,8 +1254,11 @@ export default function SalariesPage() {
                             <div className="flex items-center gap-1.5">
                               {staff.staffName}
                               {staff.employeeStatus !== 'active' && (
-                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs py-0 h-4">
-                                  {staff.employeeStatus === 'left' ? 'Left' : 'Inactive'}
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs py-0 h-4 ${staff.employeeStatus === 'left' ? 'bg-red-50 text-red-700 border-red-300' : 'bg-amber-50 text-amber-700 border-amber-300'}`}
+                                >
+                                  {staff.employeeStatus === 'left' ? 'Left Company' : 'Temp. Disabled'}
                                 </Badge>
                               )}
                             </div>
@@ -1247,21 +1307,33 @@ export default function SalariesPage() {
                             </Badge>
                           </td>
                           <td className="text-center p-3">
-                            {staff.finalPayable > 0 ? (
-                              <Button 
+                            <div className="flex items-center justify-center gap-1">
+                              {staff.finalPayable > 0 ? (
+                                <Button 
+                                  size="sm"
+                                  onClick={() => openPaymentDialog(staff)}
+                                  data-testid={`button-pay-table-${staff.staffId}`}
+                                >
+                                  <CreditCard className="h-3 w-3 mr-1" />
+                                  Pay
+                                </Button>
+                              ) : (
+                                <Badge variant="outline" className="bg-green-50 text-green-600">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  Paid
+                                </Badge>
+                              )}
+                              <Button
                                 size="sm"
-                                onClick={() => openPaymentDialog(staff)}
-                                data-testid={`button-pay-table-${staff.staffId}`}
+                                variant="ghost"
+                                onClick={() => openCorrectionDialog(staff)}
+                                title="Edit / Correct salary data"
+                                data-testid={`button-correct-table-${staff.staffId}`}
+                                className={staff.hasCorrections ? 'text-orange-600' : ''}
                               >
-                                <CreditCard className="h-3 w-3 mr-1" />
-                                Pay
+                                <Pencil className="h-3 w-3" />
                               </Button>
-                            ) : (
-                              <Badge variant="outline" className="bg-green-50 text-green-600">
-                                <Check className="h-3 w-3 mr-1" />
-                                Paid
-                              </Badge>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1389,6 +1461,147 @@ export default function SalariesPage() {
               {isExportingAll ? "Generating..." : "Download CSV"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Salary Correction Dialog */}
+      <Dialog open={isCorrectionDialogOpen} onOpenChange={(open) => { setIsCorrectionDialogOpen(open); if (!open) { setCorrectionStaff(null); setCorrectionValue(''); setCorrectionReason(''); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-orange-600" />
+              Edit Salary Data — {correctionStaff?.staffName}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedMonth} · Override computed values with correct figures. All changes are logged with a reason.
+            </DialogDescription>
+          </DialogHeader>
+
+          {correctionStaff && (
+            <div className="space-y-5">
+              {/* Field selector */}
+              <div className="space-y-2">
+                <Label>What to Correct</Label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCorrectionField('previous_pending_override');
+                      const existing = correctionStaff.corrections?.find((c: any) => c.field === 'previous_pending_override');
+                      setCorrectionValue(existing ? String(existing.correctedValue) : String(correctionStaff.computedPreviousPending ?? correctionStaff.previousPending ?? 0));
+                    }}
+                    className={`flex-1 border rounded-lg p-3 text-sm text-left transition-colors ${correctionField === 'previous_pending_override' ? 'border-orange-400 bg-orange-50 text-orange-800' : 'border-border hover:bg-muted'}`}
+                  >
+                    <div className="font-semibold">Previous Pending (Carry Forward)</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Auto-computed: ₹{(correctionStaff.computedPreviousPending ?? correctionStaff.previousPending ?? 0).toLocaleString('en-IN')}
+                      {correctionStaff.corrections?.find((c: any) => c.field === 'previous_pending_override') && (
+                        <span className="text-orange-600 ml-1">(overridden)</span>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCorrectionField('payment_adjustment');
+                      const existing = correctionStaff.corrections?.find((c: any) => c.field === 'payment_adjustment');
+                      setCorrectionValue(existing ? String(existing.correctedValue) : '0');
+                    }}
+                    className={`flex-1 border rounded-lg p-3 text-sm text-left transition-colors ${correctionField === 'payment_adjustment' ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-border hover:bg-muted'}`}
+                  >
+                    <div className="font-semibold">Payment Adjustment</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Add / subtract from final payable (+ reduces dues, - increases dues)</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Value input */}
+              <div className="space-y-1.5">
+                <Label htmlFor="correction-value">
+                  {correctionField === 'previous_pending_override' ? 'Correct Previous Pending Amount (₹)' : 'Adjustment Amount (₹, negative to increase dues)'}
+                </Label>
+                <Input
+                  id="correction-value"
+                  type="number"
+                  value={correctionValue}
+                  onChange={(e) => setCorrectionValue(e.target.value)}
+                  placeholder="Enter correct value"
+                  data-testid="input-correction-value"
+                />
+                {correctionField === 'previous_pending_override' && (
+                  <p className="text-xs text-muted-foreground">
+                    This will replace the auto-computed carry forward of ₹{(correctionStaff.computedPreviousPending ?? correctionStaff.previousPending ?? 0).toLocaleString('en-IN')}
+                  </p>
+                )}
+              </div>
+
+              {/* Reason */}
+              <div className="space-y-1.5">
+                <Label htmlFor="correction-reason">Reason for Correction <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="correction-reason"
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                  placeholder="e.g. Previous salary was paid outside system in Jan 2025, carry forward was overstated..."
+                  rows={2}
+                  data-testid="input-correction-reason"
+                />
+              </div>
+
+              {/* Existing corrections audit log */}
+              {correctionStaff.corrections?.length > 0 && (
+                <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Active Corrections</p>
+                  {correctionStaff.corrections.map((c: any) => (
+                    <div key={c.id} className="flex items-start justify-between gap-2 text-xs">
+                      <div>
+                        <p className="font-medium">{c.field === 'previous_pending_override' ? 'Carry Forward Override' : 'Payment Adjustment'}: ₹{c.correctedValue.toLocaleString('en-IN')}</p>
+                        <p className="text-muted-foreground">{c.reason}</p>
+                        <p className="text-muted-foreground/70">{c.correctedByName} · {c.createdAt ? format(new Date(c.createdAt), 'dd MMM yyyy HH:mm') : ''}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-500 shrink-0"
+                        onClick={() => deleteCorrectionMutation.mutate(c.id)}
+                        disabled={deleteCorrectionMutation.isPending}
+                        data-testid={`button-delete-correction-${c.id}`}
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Revert
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setIsCorrectionDialogOpen(false)}>Cancel</Button>
+                <Button
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                  disabled={correctionMutation.isPending || !correctionReason.trim() || correctionValue === ''}
+                  onClick={() => {
+                    if (!correctionStaff) return;
+                    const computedOriginal = correctionField === 'previous_pending_override'
+                      ? (correctionStaff.computedPreviousPending ?? correctionStaff.previousPending ?? 0)
+                      : 0;
+                    correctionMutation.mutate({
+                      staffMemberId: correctionStaff.staffId,
+                      propertyId: effectivePropertyId || correctionStaff.propertyId,
+                      month: selectedMonth,
+                      field: correctionField,
+                      correctedValue: parseFloat(correctionValue),
+                      originalValue: computedOriginal,
+                      reason: correctionReason,
+                    });
+                  }}
+                  data-testid="button-save-correction"
+                >
+                  {correctionMutation.isPending ? "Saving..." : "Save Correction"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
