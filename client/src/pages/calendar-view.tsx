@@ -169,6 +169,17 @@ export default function CalendarView() {
   });
 
 
+  // Lock the page scroll container so the calendar's internal grids handle all scrolling.
+  // Without this, the <main> element (overflow-y-auto) intercepts scroll events and the
+  // room-name sidebar (its own scroll container) never syncs, making rooms appear frozen.
+  useEffect(() => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    const prev = (main as HTMLElement).style.overflow;
+    (main as HTMLElement).style.overflow = 'hidden';
+    return () => { (main as HTMLElement).style.overflow = prev; };
+  }, []);
+
   // Sync vertical scroll between sidebar and calendar
   // Re-run when rooms load to ensure refs are attached
   useEffect(() => {
