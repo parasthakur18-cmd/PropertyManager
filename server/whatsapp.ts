@@ -390,22 +390,19 @@ export async function sendFoodOrderReceived(
  * Send new food order alert to property staff/admin
  * Template ID: 31524
  *
- * Template:
+ * Template (update on Authkey dashboard to include {{3}}):
  * 🎉 New Food Order Received
  * Guest: {{1}}
  * Room: {{2}}
  *
- * Please check the app for order details.
+ * View order: {{3}}
  *
  * ⚠️ Please prepare the order immediately.
  *
  * Template variables (in order):
  * 1. Guest Name
  * 2. Room Number / "Walk-in" / "Restaurant"
- *
- * Note: Order details and amount are no longer sent via WhatsApp —
- * staff should check the app for full details. This avoids message
- * failures caused by long dynamic content.
+ * 3. Direct link to the order in the app
  *
  * Recipient: property contactPhone (staff/admin)
  */
@@ -413,16 +410,22 @@ export async function sendFoodOrderStaffAlert(
   phoneNumber: string,
   guestName: string,
   room: string,
+  orderId?: number,
 ): Promise<WhatsAppResponse> {
   const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT || "31524";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
+  const appBaseUrl = process.env.APP_BASE_URL || "https://hostezee.in";
+  const orderLink = orderId
+    ? `${appBaseUrl}/restaurant?order=${orderId}`
+    : `${appBaseUrl}/restaurant`;
+
   return sendWhatsAppMessage({
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, room],
+    variables: [guestName, room, orderLink],
   });
 }
 

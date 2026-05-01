@@ -163,6 +163,36 @@ export default function Kitchen() {
     staleTime: 0, // Always consider data stale so it refetches
     refetchOnWindowFocus: true, // Refetch when switching to this tab
   });
+
+  // Handle ?order=ID link from WhatsApp — scroll to and highlight the order
+  const [highlightedOrderId, setHighlightedOrderId] = useState<number | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("order");
+    return id ? parseInt(id, 10) : null;
+  });
+
+  useEffect(() => {
+    if (!highlightedOrderId || !orders) return;
+    const targetOrder = orders.find(o => o.id === highlightedOrderId);
+    if (!targetOrder) return;
+    // Switch to the correct tab so the card is visible
+    const status = targetOrder.status as string;
+    if (status === "pending" || status === "preparing" || status === "ready") {
+      setActiveTab("active");
+    } else if (status === "delivered") {
+      setActiveTab("completed");
+    } else if (status === "rejected") {
+      setActiveTab("rejected");
+    }
+    // Scroll after a short delay so the tab content renders
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-testid="card-order-${highlightedOrderId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [highlightedOrderId, orders]);
   
   const { data: menuItems } = useQuery<any[]>({
     queryKey: ["/api/menu-items"],
@@ -363,7 +393,11 @@ export default function Kitchen() {
     const showRoomNumber = orderType !== "restaurant" && roomNumber;
     
     return (
-      <Card key={order.id} className="hover-elevate" data-testid={`card-order-${order.id}`}>
+      <Card
+        key={order.id}
+        className={`hover-elevate transition-all duration-500 ${highlightedOrderId === order.id ? "ring-2 ring-teal-500 ring-offset-2 shadow-lg" : ""}`}
+        data-testid={`card-order-${order.id}`}
+      >
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex-1">
