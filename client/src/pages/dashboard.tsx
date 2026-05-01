@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { format, isToday, addDays, isBefore, isAfter, startOfDay } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
@@ -89,6 +90,7 @@ interface CheckoutReminder {
   roomNumber: string;
   checkOutTime: string;
   hoursOverdue: number;
+  propertyId: number;
 }
 
 type MobileTab = "checkins" | "checkouts" | "inhouse" | "orders" | "upcoming";
@@ -549,16 +551,28 @@ export default function Dashboard() {
             if (!shownReminderIds.has(reminder.bookingId)) {
               console.log(`[CHECKOUT_REMINDER] Showing reminder for booking ${reminder.bookingId}`);
               
+              const overdueText = reminder.hoursOverdue > 0
+                ? `${reminder.hoursOverdue}h overdue`
+                : "due today";
+
               toast({
-                title: "Checkout Reminder",
-                description: `Guest ${reminder.guestName} in Room ${reminder.roomNumber} was due for checkout at ${reminder.checkOutTime} (${reminder.hoursOverdue}h ago). Please checkout manually.`,
-                duration: 10000,
+                title: `Checkout Reminder — Room ${reminder.roomNumber}`,
+                description: `${reminder.guestName} was due for checkout on ${reminder.checkOutTime} (${overdueText}). Please checkout manually.`,
+                duration: 15000,
+                action: (
+                  <ToastAction
+                    altText="View Booking"
+                    onClick={() => setLocation(`/bookings?highlight=${reminder.bookingId}`)}
+                  >
+                    View Booking
+                  </ToastAction>
+                ),
               });
               
               createNotification(
                 "checkout_reminder",
-                "Checkout Reminder",
-                `${reminder.guestName} (Room ${reminder.roomNumber}) overdue by ${reminder.hoursOverdue}h`,
+                `Checkout Reminder — Room ${reminder.roomNumber}`,
+                `${reminder.guestName} (Room ${reminder.roomNumber}) ${overdueText}`,
                 "warning"
               );
               

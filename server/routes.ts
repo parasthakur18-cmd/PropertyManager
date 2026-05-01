@@ -3310,28 +3310,36 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req, res) => {
+  app.get("/api/bookings/checkout-reminders", isAuthenticated, async (req: any, res) => {
     try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const allowedPropertyIds: number[] = tenant.assignedPropertyIds?.length
+        ? tenant.assignedPropertyIds
+        : (await db.select({ id: properties.id }).from(properties)).map((p: { id: number }) => p.id);
+
+      if (!allowedPropertyIds.length) return res.json([]);
+
       const { pool } = await import("./db");
+      const placeholders = allowedPropertyIds.map((_: number, i: number) => `$${i + 1}`).join(", ");
       const result = await pool.query(`
-        SELECT id, property_id,
-               CASE WHEN room_id::text ~ '^[0-9]+$' THEN room_id::integer ELSE NULL END as room_id,
-               CASE WHEN guest_id::text ~ '^[0-9]+$' THEN guest_id::integer ELSE NULL END as guest_id,
-               status, check_in_date, check_out_date,
-               number_of_guests as guests_count,
-               CASE WHEN total_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN total_amount::numeric ELSE 0 END as total_amount,
-               CASE WHEN advance_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN advance_amount::numeric ELSE 0 END as advance_paid,
-               CASE
-                 WHEN total_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$' AND advance_amount::text ~ '^-?[0-9]+(\\.[0-9]+)?$'
-                 THEN total_amount::numeric - advance_amount::numeric
-                 ELSE 0
-               END as balance_amount,
-               source as booking_source, special_requests, created_at, updated_at
-        FROM bookings
-        WHERE status = 'checked-in'
-          AND check_out_date IS NOT NULL
-          AND (check_out_date::date) = CURRENT_DATE
-      `);
+        SELECT
+          b.id                                                  AS "bookingId",
+          COALESCE(g.name, b.guest_name, 'Unknown Guest')      AS "guestName",
+          COALESCE(r.room_number, r.name, b.room_id::text, 'Unknown Room') AS "roomNumber",
+          TO_CHAR(b.check_out_date::date, 'DD Mon YYYY')       AS "checkOutTime",
+          GREATEST(0, EXTRACT(EPOCH FROM (NOW() - b.check_out_date::timestamp)) / 3600)::int AS "hoursOverdue",
+          b.property_id                                         AS "propertyId"
+        FROM bookings b
+        LEFT JOIN guests g  ON g.id = b.guest_id::integer
+        LEFT JOIN rooms  r  ON r.id = b.room_id::integer
+        WHERE b.status = 'checked-in'
+          AND b.check_out_date IS NOT NULL
+          AND b.check_out_date::date <= CURRENT_DATE
+          AND b.property_id = ANY(ARRAY[${placeholders}]::int[])
+        ORDER BY b.check_out_date ASC
+      `, allowedPropertyIds);
       return res.json(result.rows || []);
     } catch (error: any) {
       console.warn("[/api/bookings/checkout-reminders] Error:", error.message);
