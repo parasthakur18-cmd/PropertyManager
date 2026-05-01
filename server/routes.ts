@@ -3326,7 +3326,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const result = await pool.query(`
         SELECT
           b.id                                                  AS "bookingId",
-          COALESCE(g.name, b.guest_name, 'Unknown Guest')      AS "guestName",
+          COALESCE(g.full_name, b.guest_name, 'Unknown Guest')  AS "guestName",
           COALESCE(r.room_number, r.name, b.room_id::text, 'Unknown Room') AS "roomNumber",
           TO_CHAR(b.check_out_date::date, 'DD Mon YYYY')       AS "checkOutTime",
           GREATEST(0, EXTRACT(EPOCH FROM (NOW() - b.check_out_date::timestamp)) / 3600)::int AS "hoursOverdue",

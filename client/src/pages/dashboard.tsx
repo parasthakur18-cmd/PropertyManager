@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone, Share2, Link2, MessageCircle, Copy } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone, Copy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -262,19 +262,9 @@ export default function Dashboard() {
   const [sameDayBookingId, setSameDayBookingId] = useState<number | null>(null);
   const [extendCheckoutDate, setExtendCheckoutDate] = useState<Date | null>(null);
   
-  // Test: overdue alert preview
-  const [testOverdueOpen, setTestOverdueOpen] = useState(false);
-
   // Quick expense dialog
   const [quickExpenseOpen, setQuickExpenseOpen] = useState(false);
   const [quickBookingOpen, setQuickBookingOpen] = useState(false);
-  const [shareAccessOpen, setShareAccessOpen] = useState(false);
-  const [shareEmail, setShareEmail] = useState("");
-  const [sharePhone, setSharePhone] = useState("");
-  const [shareRole, setShareRole] = useState("staff");
-  const [sharePropertyId, setSharePropertyId] = useState<number | null>(null);
-  const [shareInviteLink, setShareInviteLink] = useState<string | null>(null);
-  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState("");
   const [expenseDescription, setExpenseDescription] = useState("");
@@ -379,46 +369,6 @@ export default function Dashboard() {
         : Promise.resolve({ totalBalance: 0, wallets: [] }),
     enabled: !!selectedPropertyId,
   });
-
-  const shareInviteMutation = useMutation({
-    mutationFn: async (data: { email: string; propertyId: number; role: string; phone?: string }) => {
-      return await apiRequest("/api/staff-invitations", "POST", data);
-    },
-    onSuccess: (result: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/staff-invitations"] });
-      if (result?.inviteUrl) setShareInviteLink(result.inviteUrl);
-    },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message || "Failed to create invitation", variant: "destructive" });
-    },
-  });
-
-  const resetShareDialog = () => {
-    setShareAccessOpen(false);
-    setShareEmail("");
-    setSharePhone("");
-    setShareRole("staff");
-    setSharePropertyId(null);
-    setShareInviteLink(null);
-    setShareLinkCopied(false);
-  };
-
-  const handleShareCopyLink = () => {
-    if (shareInviteLink) {
-      navigator.clipboard.writeText(shareInviteLink);
-      setShareLinkCopied(true);
-      setTimeout(() => setShareLinkCopied(false), 2000);
-    }
-  };
-
-  const handleShareWhatsApp = () => {
-    if (!shareInviteLink) return;
-    const property = (availableProperties as any[])?.find((p: any) => p.id === sharePropertyId);
-    const msg = encodeURIComponent(
-      `Hi! You've been invited to join ${property?.name || "a property"} on Hostezee as ${shareRole}.\n\nClick the link below to accept your invitation:\n${shareInviteLink}\n\nThe link is valid for 7 days.`
-    );
-    window.open(`https://wa.me/${sharePhone.replace(/\D/g, "") || ""}?text=${msg}`, "_blank");
-  };
 
   const createExpenseMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1483,30 +1433,6 @@ export default function Dashboard() {
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline ml-1">Booking</span>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setTestOverdueOpen(true)}
-              className="h-8 border-amber-400 text-amber-600 hover:bg-amber-50"
-              data-testid="btn-test-overdue-alert"
-              title="Preview the overdue payment alert popup"
-            >
-              <AlertTriangle className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">Test Alert</span>
-            </Button>
-            {(user?.role === "admin" || user?.role === "super-admin" || user?.role === "super_admin") && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShareAccessOpen(true)}
-                className="h-8 border-teal-400 text-teal-700 hover:bg-teal-50 dark:border-teal-600 dark:text-teal-400 dark:hover:bg-teal-950/30"
-                data-testid="btn-share-access"
-                title="Grant access to a new staff member"
-              >
-                <Share2 className="h-4 w-4" />
-                <span className="hidden sm:inline ml-1">Share Access</span>
-              </Button>
-            )}
           </div>
         </div>
 
@@ -2456,9 +2382,6 @@ export default function Dashboard() {
       </Dialog>
 
       <PendingOverdueAlert />
-      {testOverdueOpen && (
-        <PendingOverdueAlert testMode onClose={() => setTestOverdueOpen(false)} />
-      )}
 
       <OnboardingWizard
         isOpen={showOnboarding}
@@ -2487,136 +2410,6 @@ export default function Dashboard() {
       )}
 
       <NewBookingDialog open={quickBookingOpen} onOpenChange={setQuickBookingOpen} />
-
-      {/* Share Access Dialog */}
-      <Dialog open={shareAccessOpen} onOpenChange={(open) => { if (!open) resetShareDialog(); else setShareAccessOpen(true); }}>
-        <DialogContent className="max-w-md" data-testid="dialog-share-access">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Share2 className="h-5 w-5 text-teal-600" />
-              {shareInviteLink ? "Invitation Ready" : "Share Access"}
-            </DialogTitle>
-            <DialogDescription>
-              {shareInviteLink
-                ? "Copy the link or share directly via WhatsApp."
-                : "Invite a new staff member to Hostezee. They get an email and a shareable link."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {!shareInviteLink ? (
-            <>
-              <div className="space-y-3 py-1">
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Email Address <span className="text-destructive">*</span></Label>
-                  <Input
-                    type="email"
-                    placeholder="staff@example.com"
-                    value={shareEmail}
-                    onChange={(e) => setShareEmail(e.target.value)}
-                    data-testid="input-share-email"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                    WhatsApp Number <span className="text-xs text-muted-foreground">(optional, for sharing the link)</span>
-                  </Label>
-                  <Input
-                    type="tel"
-                    placeholder="+91 98765 43210"
-                    value={sharePhone}
-                    onChange={(e) => setSharePhone(e.target.value)}
-                    data-testid="input-share-phone"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Role</Label>
-                    <Select value={shareRole} onValueChange={setShareRole}>
-                      <SelectTrigger data-testid="select-share-role">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="kitchen">Kitchen</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm">Property</Label>
-                    <Select value={sharePropertyId?.toString() || ""} onValueChange={(v) => setSharePropertyId(parseInt(v))}>
-                      <SelectTrigger data-testid="select-share-property">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(availableProperties as any[]).map((p: any) => (
-                          <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={resetShareDialog}>Cancel</Button>
-                <Button
-                  onClick={() => {
-                    if (shareEmail && sharePropertyId) {
-                      shareInviteMutation.mutate({
-                        email: shareEmail,
-                        propertyId: sharePropertyId,
-                        role: shareRole,
-                        phone: sharePhone || undefined,
-                      });
-                    }
-                  }}
-                  disabled={!shareEmail || !sharePropertyId || shareInviteMutation.isPending}
-                  data-testid="button-generate-share-invite"
-                >
-                  {shareInviteMutation.isPending ? "Generating..." : "Generate Invite Link"}
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <div className="space-y-4 py-1">
-                <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 text-center">
-                  <Check className="h-8 w-8 text-green-600 mx-auto mb-2" />
-                  <p className="text-sm font-medium text-green-800 dark:text-green-300">Invitation created!</p>
-                  <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">Email sent to {shareEmail}. Link is valid for 7 days.</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-sm flex items-center gap-1.5">
-                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    Invite Link
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input readOnly value={shareInviteLink} className="text-xs font-mono bg-muted" data-testid="input-share-invite-link" />
-                    <Button size="icon" variant="outline" onClick={handleShareCopyLink} title="Copy link" data-testid="button-copy-share-link">
-                      {shareLinkCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-
-                <Button
-                  className="w-full bg-[#25D366] hover:bg-[#20ba58] text-white gap-2"
-                  onClick={handleShareWhatsApp}
-                  data-testid="button-share-whatsapp-dashboard"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  Share on WhatsApp
-                </Button>
-                <p className="text-xs text-center text-muted-foreground">Opens WhatsApp Web with the message pre-filled. Just press send.</p>
-              </div>
-              <DialogFooter>
-                <Button onClick={resetShareDialog} data-testid="button-done-share">Done</Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
