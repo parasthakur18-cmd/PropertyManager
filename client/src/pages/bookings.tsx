@@ -370,6 +370,9 @@ export default function Bookings() {
         available: number;
         totalBeds?: number;
         remainingBeds?: number;
+        conflictBookingId?: number | null;
+        conflictCheckIn?: string | null;
+        conflictCheckOut?: string | null;
       }>>;
     },
   });
@@ -2991,14 +2994,32 @@ export default function Bookings() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {/* Show available non-dormitory rooms from the same property plus the currently selected room */}
+                            {/* Show ALL non-dormitory rooms: available ones selectable, conflicted ones disabled with reason */}
                             {(() => {
                               const availableRooms = getRoomsForBookingType("single", { isEditMode: true, propertyId: editSelectedPropertyId });
                               const currentRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
-                              const roomsToShow = currentRoom && !availableRooms.find(r => r.id === currentRoom.id)
-                                ? [currentRoom, ...availableRooms]
-                                : availableRooms;
-                              if (roomsToShow.length === 0) {
+
+                              // Also collect unavailable (conflicted) rooms for this property
+                              const allPropertyRooms = rooms?.filter(r =>
+                                r.roomCategory !== "dormitory" &&
+                                (!editSelectedPropertyId || r.propertyId === editSelectedPropertyId)
+                              ) ?? [];
+                              const conflictMap = new Map(
+                                (editRoomAvailability ?? [])
+                                  .filter(a => a.available === 0 && a.conflictBookingId)
+                                  .map(a => [a.roomId, a])
+                              );
+                              const unavailableRooms = allPropertyRooms.filter(r =>
+                                !availableRooms.find(a => a.id === r.id) &&
+                                r.id !== currentRoom?.id
+                              );
+
+                              const roomsToShow = [
+                                ...(currentRoom && !availableRooms.find(r => r.id === currentRoom.id) ? [currentRoom] : []),
+                                ...availableRooms,
+                              ];
+
+                              if (roomsToShow.length === 0 && unavailableRooms.length === 0) {
                                 const dormRoomsExist = editSelectedPropertyId
                                   ? rooms?.some(r => r.propertyId === editSelectedPropertyId && r.roomCategory === "dormitory")
                                   : false;
@@ -3007,23 +3028,52 @@ export default function Bookings() {
                                     <p>No single rooms available for this property.</p>
                                     {dormRoomsExist && (
                                       <p className="font-medium text-primary cursor-pointer" onClick={() => setEditBookingType("dormitory")}>
-                                        → Switch to Dormitory tab
+                                        Switch to Dormitory tab
                                       </p>
                                     )}
                                   </div>
                                 );
                               }
-                              return roomsToShow.map((room) => {
-                                const property = properties?.find(p => p.id === room.propertyId);
-                                const isCurrentRoom = editingBooking?.roomId === room.id;
-                                const roomDescription = room.roomType || "Standard";
-                                return (
-                                  <SelectItem key={room.id} value={room.id.toString()}>
-                                    {property?.name} - Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
-                                    {isCurrentRoom && " (Current)"}
-                                  </SelectItem>
-                                );
-                              });
+                              return (
+                                <>
+                                  {roomsToShow.map((room) => {
+                                    const property = properties?.find(p => p.id === room.propertyId);
+                                    const isCurrentRoom = editingBooking?.roomId === room.id;
+                                    const roomDescription = room.roomType || "Standard";
+                                    return (
+                                      <SelectItem key={room.id} value={room.id.toString()}>
+                                        {property?.name} - Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
+                                        {isCurrentRoom && " (Current)"}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                  {unavailableRooms.length > 0 && (
+                                    <>
+                                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">
+                                        Occupied / Unavailable
+                                      </div>
+                                      {unavailableRooms.map((room) => {
+                                        const property = properties?.find(p => p.id === room.propertyId);
+                                        const conflict = conflictMap.get(room.id);
+                                        const roomDescription = room.roomType || "Standard";
+                                        const conflictLabel = conflict
+                                          ? `Booked ${conflict.conflictCheckIn ? String(conflict.conflictCheckIn).slice(0, 10) : ''} – ${conflict.conflictCheckOut ? String(conflict.conflictCheckOut).slice(0, 10) : ''}`
+                                          : "Unavailable";
+                                        return (
+                                          <SelectItem
+                                            key={room.id}
+                                            value={room.id.toString()}
+                                            disabled
+                                            className="opacity-50 text-muted-foreground"
+                                          >
+                                            Room {room.roomNumber} ({roomDescription}) — {conflictLabel}
+                                          </SelectItem>
+                                        );
+                                      })}
+                                    </>
+                                  )}
+                                </>
+                              );
                             })()}
                           </SelectContent>
                         </Select>

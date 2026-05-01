@@ -800,6 +800,23 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_menu_display_order_columns",
+    async run() {
+      if (await tableExists("menu_categories") && !(await columnExists("menu_categories", "display_order"))) {
+        await runRaw(`ALTER TABLE menu_categories ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (await tableExists("menu_items") && !(await columnExists("menu_items", "display_order"))) {
+        await runRaw(`ALTER TABLE menu_items ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (await tableExists("menu_item_variants") && !(await columnExists("menu_item_variants", "display_order"))) {
+        await runRaw(`ALTER TABLE menu_item_variants ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (await tableExists("menu_item_add_ons") && !(await columnExists("menu_item_add_ons", "display_order"))) {
+        await runRaw(`ALTER TABLE menu_item_add_ons ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

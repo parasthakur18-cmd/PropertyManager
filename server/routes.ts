@@ -2486,18 +2486,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           };
         }
         
-        const hasOverlap = overlappingBookings.some(b => 
+        const conflictBooking = overlappingBookings.find(b => 
           b.roomId === room.id || b.roomIds?.includes(room.id)
         );
+        const hasOverlap = !!conflictBooking;
 
         const available = hasOverlap ? 0 : 1;
         if (available === 0) {
-          console.log(`[AVAILABILITY_CHECK] room=${room.roomNumber ?? room.id} available=false reason=booking_overlap`);
+          console.log(`[AVAILABILITY_CHECK] room=${room.roomNumber ?? room.id} available=false reason=booking_overlap bookingId=${conflictBooking?.id} guestId=${conflictBooking?.guestId} checkIn=${conflictBooking?.checkInDate} checkOut=${conflictBooking?.checkOutDate}`);
         }
         
         return {
           roomId: room.id,
-          available
+          available,
+          conflictBookingId: conflictBooking?.id ?? null,
+          conflictCheckIn: conflictBooking?.checkInDate ?? null,
+          conflictCheckOut: conflictBooking?.checkOutDate ?? null,
         };
       });
       
@@ -3938,8 +3942,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           });
         }
         
-        // Auto-checkout any previous bookings for the same room to prevent duplicate check-ins
-        // This ensures only one booking can be checked-in per room at a time
+        // Block check-in if the room already has another guest currently checked in
         const allBookings = await storage.getAllBookings();
         const roomId = currentBooking.roomId;
         const otherCheckedInBookings = allBookings.filter(b => 
@@ -3948,9 +3951,20 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           b.status === "checked-in"
         );
 
+        if (otherCheckedInBookings.length > 0) {
+          const occupantBooking = otherCheckedInBookings[0];
+          const occupantGuest = await storage.getGuest(occupantBooking.guestId);
+          const guestName = occupantGuest?.fullName || "Another Guest";
+          return res.status(409).json({
+            message: `Room is already occupied — ${guestName} is currently checked in (Booking #${occupantBooking.id}). Please check them out first before checking in a new guest.`,
+            conflictBookingId: occupantBooking.id,
+            conflictGuestName: guestName,
+          });
+        }
+
         autoCheckedOutBookingIds.push(...otherCheckedInBookings.map(b => b.id));
         
-        // Auto-checkout the previous booking(s) — with full bill creation
+        // (No auto-checkout — handled above by blocking. This loop is now a no-op kept for safety)
         for (const oldBooking of otherCheckedInBookings) {
           console.log(`[Auto-Checkout] Checking out old booking ${oldBooking.id} for room ${roomId} before checking in booking ${bookingId}`);
           try {
