@@ -363,81 +363,78 @@ export default function CalendarView() {
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-background overflow-hidden">
-      {/* Header */}
-      <div className="border-b bg-white dark:bg-card p-3 flex-shrink-0 space-y-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap md:flex-nowrap">
-          <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
-            <Button 
-              size="icon" 
-              variant="ghost"
-              onClick={() => setShowRoomSidebar(!showRoomSidebar)}
-              data-testid="button-toggle-room-sidebar"
-              className="hidden md:flex"
-            >
-              {showRoomSidebar ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-            </Button>
-            <CalendarIcon className="h-5 w-5 text-primary flex-shrink-0" />
-            <h1 className="text-base md:text-lg font-bold truncate">Room Calendar</h1>
-          </div>
-          <div className="flex gap-1">
-            <Button size="sm" variant="ghost" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
-              {format(addMonths(startDate, -1), "MMM")}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setStartDate(today)} data-testid="button-today">
-              Today
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
-              {format(addMonths(startDate, 1), "MMM")}
-            </Button>
-          </div>
-        </div>
+      {/* Header — single compact row */}
+      <div className="border-b bg-white dark:bg-card px-2 py-1.5 flex-shrink-0 flex items-center gap-2 min-w-0">
+        {/* Sidebar toggle + title */}
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setShowRoomSidebar(!showRoomSidebar)}
+          data-testid="button-toggle-room-sidebar"
+          className="h-7 w-7 flex-shrink-0 hidden md:flex"
+        >
+          {showRoomSidebar ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+        </Button>
+        <CalendarIcon className="h-4 w-4 text-primary flex-shrink-0" />
+        <span className="font-bold text-sm truncate flex-shrink-0 hidden sm:block">Room Calendar</span>
 
-        <div className="flex items-center gap-2 md:gap-3 flex-wrap md:flex-nowrap">
-          <div className="flex-1 min-w-0 md:max-w-md">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <Input
-                placeholder="Search..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 bg-slate-50 dark:bg-background border-slate-200 text-sm md:text-base"
-                data-testid="input-search-calendar"
-              />
-            </div>
-          </div>
-          <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
-            <SelectTrigger className="w-auto md:w-44 bg-white dark:bg-card text-sm md:text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Properties</SelectItem>
-              {properties.map(p => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="icon" variant="ghost" data-testid="button-view-settings" className="flex-shrink-0">
-            <Settings className="h-4 w-4" />
+        {/* Date navigation */}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, -1))} title="Previous Month" data-testid="button-prev-month">
+            {format(addMonths(startDate, -1), "MMM")}
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, -7))} data-testid="button-prev-week">
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setStartDate(today)} data-testid="button-today">
+            Today
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setStartDate(addDays(startDate, 7))} data-testid="button-next-week">
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setStartDate(addMonths(startDate, 1))} title="Next Month" data-testid="button-next-month">
+            {format(addMonths(startDate, 1), "MMM")}
           </Button>
         </div>
+
+        {/* Search */}
+        <div className="relative flex-1 min-w-0 max-w-xs">
+          <Search className="absolute left-2 top-1.5 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search rooms..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-7 h-7 text-xs bg-slate-50 dark:bg-background border-slate-200"
+            data-testid="input-search-calendar"
+          />
+        </div>
+
+        {/* Property selector */}
+        <Select value={String(selectedPropertyId)} onValueChange={(v) => setSelectedPropertyId(v === "all" ? "all" : parseInt(v))}>
+          <SelectTrigger className="h-7 w-auto max-w-[160px] text-xs flex-shrink-0 bg-white dark:bg-card">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Properties</SelectItem>
+            {properties.map(p => (
+              <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button size="icon" variant="ghost" className="h-7 w-7 flex-shrink-0" data-testid="button-view-settings">
+          <Settings className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
-      {/* Unassigned OTA Bookings Banner */}
+      {/* Unassigned OTA Bookings — compact single-line strip */}
       {unassignedBookings.length > 0 && (
-        <div className="border-b bg-amber-50 dark:bg-amber-950/30 px-4 py-2 flex-shrink-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-              {unassignedBookings.length} Unassigned OTA Booking{unassignedBookings.length > 1 ? "s" : ""} — room not yet assigned
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
+        <div className="border-b bg-amber-50 dark:bg-amber-950/30 px-3 py-1 flex-shrink-0 flex items-center gap-2 min-w-0 overflow-x-auto">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex-shrink-0">
+            {unassignedBookings.length} Unassigned:
+          </span>
+          <div className="flex items-center gap-1.5 overflow-x-auto">
             {unassignedBookings.map(b => {
               const guest = guests.find(g => g.id === b.guestId);
               const guestName = guest?.fullName || "Unknown Guest";
@@ -446,20 +443,13 @@ export default function CalendarView() {
               return (
                 <button
                   key={b.id}
-                  className="flex items-center gap-2 bg-white dark:bg-card border border-amber-200 dark:border-amber-800 rounded-md px-3 py-1.5 text-xs hover:shadow-md transition-shadow cursor-pointer"
+                  className="flex items-center gap-1.5 bg-white dark:bg-card border border-amber-200 dark:border-amber-800 rounded px-2 py-0.5 text-xs hover:shadow-sm transition-shadow cursor-pointer flex-shrink-0"
                   onClick={() => navigate(`/bookings/${b.id}`)}
                   data-testid={`unassigned-booking-${b.id}`}
                 >
                   <span className="font-semibold text-foreground">{guestName}</span>
-                  <span className="text-muted-foreground">
-                    {format(new Date(b.checkInDate), "d MMM")} – {format(new Date(b.checkOutDate), "d MMM")}
-                  </span>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}
-                  >
-                    {b.status}
-                  </span>
-                  <span className="text-muted-foreground italic">{source}</span>
+                  <span className="text-muted-foreground">{format(new Date(b.checkInDate), "d MMM")}–{format(new Date(b.checkOutDate), "d MMM")}</span>
+                  <span className={`rounded px-1 py-0.5 text-xs font-medium ${statusStyle.bg} ${statusStyle.text}`}>{b.status}</span>
                 </button>
               );
             })}
@@ -506,23 +496,27 @@ export default function CalendarView() {
                 <div
                   key={format(date, "yyyy-MM-dd")}
                   className={cn(
-                    "border-r text-center flex-shrink-0 py-2",
+                    "border-r text-center flex-shrink-0 py-1",
                     isToday && "bg-blue-50 dark:bg-blue-950/30",
                     showMonth && idx !== 0 && "border-l-2 border-l-slate-300 dark:border-l-slate-600"
                   )}
                   style={{ width: CELL_WIDTH }}
                 >
-                  <div className={cn("text-xs font-medium text-muted-foreground", isToday && "text-blue-600 dark:text-blue-400")}>{dayName}</div>
-                  <div className={cn("text-xl font-bold leading-tight", isToday && "text-blue-600 dark:text-blue-400")}>{dayNum}</div>
+                  {/* Day name + number on one line */}
+                  <div className={cn("text-xs font-semibold leading-tight", isToday ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
+                    {dayName} {dayNum}
+                  </div>
+                  {/* Month label — only when month changes */}
                   <div className={cn(
-                    "text-xs font-semibold leading-tight",
-                    showMonth ? (isToday ? "text-blue-500 dark:text-blue-400" : "text-slate-500 dark:text-slate-400") : "text-transparent select-none"
+                    "text-xs leading-tight",
+                    showMonth ? (isToday ? "text-blue-400 dark:text-blue-300" : "text-muted-foreground") : "text-transparent select-none"
                   )}>{monthLabel}</div>
+                  {/* Occupancy badge */}
                   <div className={cn(
-                    "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-0.5",
-                    occupancy >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                    occupancy >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
-                    "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                    "text-xs font-medium",
+                    occupancy >= 80 ? "text-green-700 dark:text-green-400" :
+                    occupancy >= 50 ? "text-yellow-700 dark:text-yellow-400" :
+                    "text-slate-500 dark:text-slate-400"
                   )}>{occupancy}%</div>
                 </div>
               );

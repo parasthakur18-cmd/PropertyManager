@@ -2414,7 +2414,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
       
       // Get all active bookings and filter in JavaScript (historical working solution)
-      const { bookings } = await import("@shared/schema");
+      const { bookings, guests } = await import("@shared/schema");
       
       // Fetch all active bookings for the property (exclude cancelled + checked-out, same as conflict check)
       const allBookings = await db
@@ -2461,7 +2461,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           overlappingBookings = overlappingBookings.filter(b => b.id !== excludeId);
         }
       }
-      
+
+      // Fetch guest names for conflict bookings so the frontend can display "Occupied by: Guest Name"
+      const conflictGuestIds = [...new Set(overlappingBookings.map(b => b.guestId).filter((id): id is number => !!id))];
+      const guestNameMap: Record<number, string> = {};
+      if (conflictGuestIds.length > 0) {
+        const guestRows = await db.select({ id: guests.id, fullName: guests.fullName }).from(guests)
+          .where(inArray(guests.id, conflictGuestIds));
+        guestRows.forEach(g => { if (g.id && g.fullName) guestNameMap[g.id] = g.fullName; });
+      }
+
       // Calculate availability for each room
       const availability = allRooms.map(room => {
         // Rooms in maintenance / out-of-order / blocked are never bookable regardless of dates
@@ -2504,6 +2513,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           available,
           reason: hasOverlap ? "booking_conflict" : undefined,
           conflictBookingId: conflictBooking?.id ?? null,
+          conflictGuestName: conflictBooking?.guestId ? (guestNameMap[conflictBooking.guestId] ?? null) : null,
           conflictCheckIn: conflictBooking?.checkInDate ?? null,
           conflictCheckOut: conflictBooking?.checkOutDate ?? null,
         };

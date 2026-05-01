@@ -379,6 +379,7 @@ export default function Bookings() {
         totalBeds?: number;
         remainingBeds?: number;
         conflictBookingId?: number | null;
+        conflictGuestName?: string | null;
         conflictCheckIn?: string | null;
         conflictCheckOut?: string | null;
       }>>;
@@ -3357,9 +3358,12 @@ export default function Bookings() {
                                     <td className="p-2 text-sm font-medium">{priceText}</td>
                                     <td className="p-2">
                                       {isConflict && (
-                                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full">
+                                        <span
+                                          className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-2 py-0.5 rounded-full"
+                                          title={avail?.conflictGuestName ? `Booked by: ${avail.conflictGuestName}` : "This room has a booking conflict for the selected dates"}
+                                        >
                                           <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-                                          Occupied
+                                          {avail?.conflictGuestName ? `Occupied · ${avail.conflictGuestName}` : "Occupied"}
                                         </span>
                                       )}
                                       {isMaintenance && (
