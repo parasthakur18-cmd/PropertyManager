@@ -390,29 +390,34 @@ export async function sendFoodOrderReceived(
  * Send new food order alert to property staff/admin
  * Template ID: 31524
  *
- * Template (update on Authkey dashboard to include {{3}}):
+ * Template WID 33130:
  * 🎉 New Food Order Received
  * Guest: {{1}}
- * Room: {{2}}
+ * Property: {{2}}
+ * Room: {{3}}
  *
- * View order: {{3}}
+ * Please check the app for order details.
  *
- * ⚠️ Please prepare the order immediately.
+ * 🔗 View Order: {{4}}
+ *
+ * ⚠️ Kindly prepare the order immediately.
  *
  * Template variables (in order):
  * 1. Guest Name
- * 2. Room Number / "Walk-in" / "Restaurant"
- * 3. Direct link to the order in the app
+ * 2. Property Name
+ * 3. Room Number / "Walk-in" / "Restaurant"
+ * 4. Direct link to the order in the app
  *
  * Recipient: property contactPhone (staff/admin)
  */
 export async function sendFoodOrderStaffAlert(
   phoneNumber: string,
   guestName: string,
+  propertyName: string,
   room: string,
   orderId?: number,
 ): Promise<WhatsAppResponse> {
-  const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT || "31524";
+  const templateId = process.env.AUTHKEY_WA_FOOD_ORDER_STAFF_ALERT || "33130";
   const cleanedPhone = cleanIndianPhoneNumber(phoneNumber);
   const countryCode = "91";
 
@@ -425,7 +430,7 @@ export async function sendFoodOrderStaffAlert(
     countryCode,
     mobile: cleanedPhone,
     templateId,
-    variables: [guestName, room, orderLink],
+    variables: [guestName, propertyName, room, orderLink],
   });
 }
 

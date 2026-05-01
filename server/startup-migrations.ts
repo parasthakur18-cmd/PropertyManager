@@ -914,7 +914,7 @@ const DEFAULT_WA_ALERT_CONFIGS: Array<{
   {
     template_key: "food_order_staff_alert",
     template_name: "New Food Order Alert",
-    template_wid: "31524",
+    template_wid: "33130",
     description: "Sends an alert to staff when a customer places a food order via QR menu",
   },
 ];
