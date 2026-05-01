@@ -19161,6 +19161,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           adults: number;
           children: number;
           amount: number;
+          bedsBooked?: number;
         }
         const resolvedRooms: ResolvedRoom[] = [];
         const rooms_ = Array.isArray(roomsData) ? roomsData : [];
@@ -19249,41 +19250,86 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             continue;
           }
 
-          // ── Safety check: find ALL available rooms of the mapped type ────
+          // ── Safety check: find ALL rooms of the mapped type ────
           const matchedByField = incomingRoomId && mapping.aiosellRoomId === incomingRoomId
             ? `roomId=${incomingRoomId}` : `roomCode=${incomingRoomCode}`;
           console.log(`[AIOSELL] Mapped via ${matchedByField} → Hostezee type "${mapping.hostezeeRoomType}" (configId ${config.id})`);
+
+          // For dormitory rooms fetch ALL rooms regardless of status (occupancy is
+          // bed-based; the room itself should never be treated as "full" until all
+          // beds are taken).  For regular rooms, keep the original "available" filter.
+          const isDormMapping = (rd.roomTypeName || "").toLowerCase().includes("dorm")
+            || (incomingRoomCode || "").toLowerCase().includes("dorm")
+            || (mapping.aiosellRoomCode || "").toLowerCase().includes("dorm");
 
           const mappedRoomRows = await db.select().from(rooms)
             .where(and(
               eq(rooms.propertyId, config.propertyId),
               eq(rooms.roomType, mapping.hostezeeRoomType),
-              eq(rooms.status, "available"),
+              ...(isDormMapping ? [] : [eq(rooms.status, "available")]),
             ));
+
+          // Determine true dormitory rooms by roomCategory
+          const isDormitory = mappedRoomRows.some(r => r.roomCategory === "dormitory");
 
           let assignedRoomId: number | null = null;
           let stayStatus: "confirmed" | "tbs" = "tbs";
+          let bedsBookedForThisStay = 1;
 
-          // Pick the first available room that:
-          //  1. Hasn't already been assigned to another stay in this same multi-room reservation
-          //  2. Doesn't have a conflicting booking for the same date range
-          const candidateRoom = mappedRoomRows.find(r =>
-            !alreadyAssignedRoomIds.has(r.id) && !overlappingRoomIds.has(r.id)
-          );
-          if (candidateRoom) {
-            assignedRoomId = candidateRoom.id;
-            alreadyAssignedRoomIds.add(assignedRoomId);
-            stayStatus = "confirmed";
-            console.log("[AIOSELL] Assigned Room:", {
-              roomId: assignedRoomId,
-              roomNumber: candidateRoom.roomNumber,
-              roomType: mapping.hostezeeRoomType,
-              totalAvailable: mappedRoomRows.length,
-              alreadyBooked: overlappingRoomIds.size,
-              alreadyAssigned: alreadyAssignedRoomIds.size - 1,
-            });
+          if (isDormitory) {
+            // For dorm rooms: pick the room that still has remaining bed capacity
+            // (totalBeds minus beds already booked for the overlap window)
+            for (const dormRoom of mappedRoomRows) {
+              const totalBeds = dormRoom.totalBeds || 6;
+              // Count beds already booked for this room and these dates
+              const existingDormBookings = await db.select({
+                bedsBooked: bookings.bedsBooked,
+              }).from(bookings).where(
+                and(
+                  eq(bookings.roomId, dormRoom.id),
+                  not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+                  lt(bookings.checkInDate, checkOutDate),
+                  gt(bookings.checkOutDate, checkInDate),
+                )
+              );
+              const bedsUsed = existingDormBookings.reduce((s, b) => s + (b.bedsBooked || 1), 0);
+              if (bedsUsed < totalBeds) {
+                assignedRoomId = dormRoom.id;
+                stayStatus = "confirmed";
+                bedsBookedForThisStay = 1;
+                console.log("[AIOSELL] Assigned dorm bed:", {
+                  roomId: assignedRoomId,
+                  roomNumber: dormRoom.roomNumber,
+                  totalBeds,
+                  bedsUsed,
+                  remaining: totalBeds - bedsUsed,
+                });
+                break;
+              }
+            }
+            if (!assignedRoomId) {
+              console.warn(`[AIOSELL] Dorm fully booked for type "${mapping.hostezeeRoomType}" dates ${checkin}–${checkout} → TBS`);
+            }
           } else {
-            console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} (already booked for dates: ${[...overlappingRoomIds].join(",")}, already assigned in this reservation: ${[...alreadyAssignedRoomIds].join(",")}) → TBS`);
+            // Regular room: pick first room not already assigned/booked in this window
+            const candidateRoom = mappedRoomRows.find(r =>
+              !alreadyAssignedRoomIds.has(r.id) && !overlappingRoomIds.has(r.id)
+            );
+            if (candidateRoom) {
+              assignedRoomId = candidateRoom.id;
+              alreadyAssignedRoomIds.add(assignedRoomId);
+              stayStatus = "confirmed";
+              console.log("[AIOSELL] Assigned Room:", {
+                roomId: assignedRoomId,
+                roomNumber: candidateRoom.roomNumber,
+                roomType: mapping.hostezeeRoomType,
+                totalAvailable: mappedRoomRows.length,
+                alreadyBooked: overlappingRoomIds.size,
+                alreadyAssigned: alreadyAssignedRoomIds.size - 1,
+              });
+            } else {
+              console.warn(`[AIOSELL] No available rooms for type "${mapping.hostezeeRoomType}" in property ${config.propertyId} → TBS`);
+            }
           }
 
           resolvedRooms.push({
@@ -19295,6 +19341,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             adults: rd.occupancy?.adults || 1,
             children: rd.occupancy?.children || 0,
             amount: amountPerRoom,
+            bedsBooked: isDormitory ? bedsBookedForThisStay : undefined,
           });
         }
 
@@ -19313,12 +19360,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             b.externalBookingId === cmBookingId
           );
           if (existingBooking) {
+            const modifyPrimaryResolved = resolvedRooms.find(r => r.roomId !== null);
+            const modifyBedsBooked = modifyPrimaryResolved?.bedsBooked ?? null;
             await db.update(bookings).set({
               checkInDate: new Date(checkin),
               checkOutDate: new Date(checkout),
               totalAmount: amount?.amountAfterTax?.toString() || "0",
               numberOfGuests: totalAdults + totalChildren,
               ...(primaryAssignedRoomId ? { roomId: primaryAssignedRoomId } : {}),
+              ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
               updatedAt: new Date(),
             }).where(eq(bookings.id, existingBooking.id));
             // Update room stays: delete old ones and re-insert
@@ -19350,6 +19400,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         const totalAmount = amount?.amountAfterTax?.toString() || "0";
 
+        // For dorm bookings, carry forward the bedsBooked count from the primary resolved room
+        const primaryResolvedRoom = resolvedRooms.find(r => r.roomId !== null);
+        const primaryBedsBooked = primaryResolvedRoom?.bedsBooked ?? null;
+
         const [newBooking] = await db.insert(bookings).values({
           propertyId: config.propertyId,
           roomId: primaryAssignedRoomId,
@@ -19362,6 +19416,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           source: `aiosell-${channel}`,
           externalBookingId: bookingId,
           externalSource: `aiosell-${channel}`,
+          ...(primaryBedsBooked !== null ? { bedsBooked: primaryBedsBooked } : {}),
         }).returning();
         storage.invalidateBookingsCache();
 

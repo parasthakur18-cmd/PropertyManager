@@ -439,6 +439,7 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       checkInDate: bookings.checkInDate,
       checkOutDate: bookings.checkOutDate,
       status: bookings.status,
+      bedsBooked: bookings.bedsBooked,
     }).from(bookings).where(
       and(
         eq(bookings.propertyId, propertyId),
@@ -551,7 +552,8 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             cin.setHours(0, 0, 0, 0);
             cout.setHours(0, 0, 0, 0);
             if (cin <= date && date < cout) {
-              const beds = (booking as any).bedsBooked || 1;
+              // Use the stored bedsBooked value; default to 1 (each OTA dorm booking = 1 bed)
+              const beds = booking.bedsBooked || 1;
               const bRoomId = booking.roomId;
               if (bRoomId && activeRoomIds.includes(bRoomId)) {
                 bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
@@ -566,8 +568,23 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             }
           }
 
+          // Also count TBS dorm stays (no roomId assigned yet) by aiosellRoomCode
+          let tbsDormBeds = 0;
+          for (const booking of activeBookings) {
+            const cin = new Date(booking.checkInDate);
+            const cout = new Date(booking.checkOutDate);
+            cin.setHours(0, 0, 0, 0);
+            cout.setHours(0, 0, 0, 0);
+            if (cin <= date && date < cout && !booking.roomId) {
+              const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
+              for (const stay of tbsForBooking) {
+                if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++;
+              }
+            }
+          }
+
           const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
-          const available = Math.max(0, totalBeds - bedsBooked);
+          const available = Math.max(0, totalBeds - bedsBooked - tbsDormBeds);
           dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
         } else {
           // For regular rooms: push count of rooms NOT booked on this date

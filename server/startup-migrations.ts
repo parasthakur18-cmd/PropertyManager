@@ -822,9 +822,12 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
 async function reconcileRoomStatuses(): Promise<void> {
   const client = await pool.connect();
   try {
+    // ── Regular (non-dormitory) rooms ───────────────────────────────────────
+    // A room is occupied when ANY checked-in guest is using it today.
     const markOccupied = await client.query(`
       UPDATE rooms SET status = 'occupied'
-      WHERE id IN (
+      WHERE room_category != 'dormitory'
+      AND id IN (
         SELECT DISTINCT rid FROM (
           SELECT room_id AS rid FROM bookings
           WHERE status = 'checked-in' AND room_id IS NOT NULL
@@ -840,7 +843,8 @@ async function reconcileRoomStatuses(): Promise<void> {
 
     const markAvailable = await client.query(`
       UPDATE rooms SET status = 'available'
-      WHERE status = 'occupied'
+      WHERE room_category != 'dormitory'
+      AND status = 'occupied'
       AND id NOT IN (
         SELECT DISTINCT rid FROM (
           SELECT room_id AS rid FROM bookings
@@ -854,9 +858,39 @@ async function reconcileRoomStatuses(): Promise<void> {
       )
     `);
 
-    const fixed = (markOccupied.rowCount || 0) + (markAvailable.rowCount || 0);
+    // ── Dormitory rooms ─────────────────────────────────────────────────────
+    // A dorm room is only fully "occupied" when checked-in beds ≥ total_beds.
+    // Otherwise keep it "available" so new bed bookings can still be assigned.
+    const markDormOccupied = await client.query(`
+      UPDATE rooms SET status = 'occupied'
+      WHERE room_category = 'dormitory'
+      AND status != 'occupied'
+      AND (
+        SELECT COALESCE(SUM(COALESCE(b.beds_booked, 1)), 0)
+        FROM bookings b
+        WHERE b.room_id = rooms.id
+          AND b.status = 'checked-in'
+          AND b.check_in_date <= CURRENT_DATE AND b.check_out_date >= CURRENT_DATE
+      ) >= COALESCE(rooms.total_beds, 6)
+    `);
+
+    const markDormAvailable = await client.query(`
+      UPDATE rooms SET status = 'available'
+      WHERE room_category = 'dormitory'
+      AND status = 'occupied'
+      AND (
+        SELECT COALESCE(SUM(COALESCE(b.beds_booked, 1)), 0)
+        FROM bookings b
+        WHERE b.room_id = rooms.id
+          AND b.status = 'checked-in'
+          AND b.check_in_date <= CURRENT_DATE AND b.check_out_date >= CURRENT_DATE
+      ) < COALESCE(rooms.total_beds, 6)
+    `);
+
+    const fixed = (markOccupied.rowCount || 0) + (markAvailable.rowCount || 0)
+                + (markDormOccupied.rowCount || 0) + (markDormAvailable.rowCount || 0);
     if (fixed > 0) {
-      console.log(`[ROOM-SYNC] Reconciled ${markOccupied.rowCount} rooms → occupied, ${markAvailable.rowCount} rooms → available`);
+      console.log(`[ROOM-SYNC] Reconciled ${markOccupied.rowCount} rooms → occupied, ${markAvailable.rowCount} rooms → available, ${markDormOccupied.rowCount} dorms → occupied, ${markDormAvailable.rowCount} dorms → available`);
     } else {
       console.log(`[ROOM-SYNC] All room statuses are in sync`);
     }
