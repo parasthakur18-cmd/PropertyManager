@@ -5,7 +5,7 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { db } from "./db";
-import { users } from "@shared/schema";
+import { users, staffInvitations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 // IP Geolocation helper - uses free ip-api.com service
@@ -347,14 +347,21 @@ export async function setupAuth(app: Express) {
       }
     }));
     
-    app.get('/api/auth/google', passport.authenticate('google', {
-      scope: ['profile', 'email'],
-      prompt: 'select_account',
-    }));
+    app.get('/api/auth/google', (req: any, res, next) => {
+      // If coming from an invite link, save the token so we can process it after OAuth
+      const inviteToken = req.query.inviteToken as string;
+      if (inviteToken) {
+        req.session.pendingInviteToken = inviteToken;
+      }
+      passport.authenticate('google', {
+        scope: ['profile', 'email'],
+        prompt: 'select_account',
+      })(req, res, next);
+    });
     
     app.get('/api/auth/google/callback', passport.authenticate('google', {
       failureRedirect: '/login?error=google_auth_failed',
-    }), async (req, res) => {
+    }), async (req: any, res) => {
       try {
         const user = req.user as any;
         const userId = user?.claims?.sub;
@@ -403,6 +410,48 @@ export async function setupAuth(app: Express) {
           }
           
           console.log(`[GOOGLE-AUTH] Login successful for user ${userId}`);
+
+          // --- Invite processing ---
+          const pendingInviteToken = req.session?.pendingInviteToken as string | undefined;
+          if (pendingInviteToken) {
+            delete req.session.pendingInviteToken;
+            try {
+              const [invitation] = await db.select().from(staffInvitations)
+                .where(eq(staffInvitations.inviteToken, pendingInviteToken));
+
+              if (invitation && invitation.status === 'pending' && new Date(invitation.expiresAt) >= new Date()) {
+                const googleEmail = user?.claims?.email || dbUser?.email || '';
+                if (googleEmail.toLowerCase() !== invitation.email.toLowerCase()) {
+                  console.warn(`[GOOGLE-AUTH] Invite email mismatch: invited ${invitation.email}, signed in as ${googleEmail}`);
+                  return res.redirect(`/accept-invite?token=${pendingInviteToken}&error=email_mismatch`);
+                }
+
+                // Apply invite: set role and property access on the user
+                const currentProps: string[] = dbUser?.assignedPropertyIds ?? [];
+                const propIdStr = String(invitation.propertyId);
+                const updatedProps = currentProps.includes(propIdStr)
+                  ? currentProps
+                  : [...currentProps, propIdStr];
+
+                await db.update(users)
+                  .set({
+                    role: invitation.role as any,
+                    assignedPropertyIds: updatedProps,
+                    status: 'active',
+                    verificationStatus: 'approved',
+                  })
+                  .where(eq(users.id, userId));
+
+                await db.update(staffInvitations)
+                  .set({ status: 'accepted' })
+                  .where(eq(staffInvitations.id, invitation.id));
+
+                console.log(`[GOOGLE-AUTH] Invite accepted via Google for user ${userId}, property ${invitation.propertyId}, role ${invitation.role}`);
+              }
+            } catch (inviteErr) {
+              console.error('[GOOGLE-AUTH] Error processing invite:', inviteErr);
+            }
+          }
         }
         
         res.redirect('/');
