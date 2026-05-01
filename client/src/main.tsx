@@ -2,6 +2,29 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+function isChunkLoadError(message: string): boolean {
+  return (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Loading chunk') ||
+    message.includes('Loading CSS chunk') ||
+    message.includes('error loading dynamically imported module')
+  );
+}
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const msg = reason?.message ?? String(reason ?? '');
+  if (isChunkLoadError(msg)) {
+    const key = 'chunk_reload_attempted';
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      window.location.reload();
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  }
+});
+
 const rootElement = document.getElementById("root");
 
 if (rootElement) {
