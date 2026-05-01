@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare, FileEdit } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -125,6 +125,8 @@ export default function Bookings() {
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [checkoutBookingId, setCheckoutBookingId] = useState<number | null>(null);
   const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [billCorrectionBookingId, setBillCorrectionBookingId] = useState<number | null>(null);
+  const [billCorrectionOpen, setBillCorrectionOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -2450,6 +2452,21 @@ export default function Bookings() {
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
+                              {booking.status === "checked-out" && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => {
+                                    setBillCorrectionBookingId(booking.id);
+                                    setBillCorrectionOpen(true);
+                                  }}
+                                  title="Correct Bill"
+                                  data-testid={`button-correct-bill-${booking.id}`}
+                                >
+                                  <FileEdit className="h-4 w-4 text-blue-500" />
+                                </Button>
+                              )}
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -3877,6 +3894,30 @@ export default function Bookings() {
         </DialogContent>
       </Dialog>
 
+      {/* Bill Correction Dialog */}
+      <Dialog open={billCorrectionOpen} onOpenChange={(open) => {
+        setBillCorrectionOpen(open);
+        if (!open) setBillCorrectionBookingId(null);
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Correct Bill</DialogTitle>
+            <DialogDescription>
+              Adjust the final bill for this checked-out booking. All changes are logged for audit.
+            </DialogDescription>
+          </DialogHeader>
+          {billCorrectionBookingId && (
+            <BillCorrectionForm
+              bookingId={billCorrectionBookingId}
+              onClose={() => {
+                setBillCorrectionOpen(false);
+                setBillCorrectionBookingId(null);
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Check-in ID Verification Dialog */}
       <Dialog open={checkinDialogOpen} onOpenChange={(open) => {
         setCheckinDialogOpen(open);
@@ -4558,6 +4599,182 @@ function CheckoutBillSummary({
           data-testid="button-confirm-checkout"
         >
           {checkoutMutation.isPending ? "Processing..." : `Complete Checkout (₹${balanceAmount.toFixed(2)})`}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose: () => void }) {
+  const { toast } = useToast();
+
+  const { data: bill, isLoading } = useQuery<Bill>({
+    queryKey: ["/api/bills/booking", bookingId],
+    queryFn: () => fetch(`/api/bills/booking/${bookingId}`).then(r => r.json()),
+  });
+
+  const [correctedTotal, setCorrectedTotal] = useState("");
+  const [correctedBalance, setCorrectedBalance] = useState("");
+  const [correctedPaymentStatus, setCorrectedPaymentStatus] = useState("paid");
+  const [correctionNote, setCorrectionNote] = useState("");
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (bill && !initialized) {
+      setCorrectedTotal(bill.totalAmount ?? "0");
+      setCorrectedBalance(bill.balanceAmount ?? "0");
+      setCorrectedPaymentStatus(bill.paymentStatus ?? "paid");
+      setInitialized(true);
+    }
+  }, [bill, initialized]);
+
+  const correctionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest(`/api/bills/${(bill as any).id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          totalAmount: correctedTotal,
+          balanceAmount: correctedBalance,
+          paymentStatus: correctedPaymentStatus,
+          pendingReason: correctionNote,
+        }),
+      });
+      return response;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bills"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bills/booking", bookingId] });
+      toast({ title: "Bill corrected", description: "The bill has been updated successfully." });
+      onClose();
+    },
+    onError: (err: any) => {
+      toast({ title: "Correction failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return <div className="py-8 text-center text-sm text-muted-foreground">Loading bill...</div>;
+  if (!bill) return <div className="py-8 text-center text-sm text-muted-foreground">No bill found for this booking. Complete checkout first to generate a bill.</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg bg-muted/50 p-3 space-y-1.5 text-sm">
+        <p className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-2">Current Bill Breakdown</p>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Room Charges</span>
+          <span className="font-mono">₹{parseFloat(bill.roomCharges ?? "0").toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Food Charges</span>
+          <span className="font-mono">₹{parseFloat(bill.foodCharges ?? "0").toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Extra Charges</span>
+          <span className="font-mono">₹{parseFloat(bill.extraCharges ?? "0").toFixed(2)}</span>
+        </div>
+        {parseFloat(bill.discountAmount ?? "0") > 0 && (
+          <div className="flex justify-between text-green-600">
+            <span>Discount</span>
+            <span className="font-mono">-₹{parseFloat(bill.discountAmount ?? "0").toFixed(2)}</span>
+          </div>
+        )}
+        {parseFloat(bill.gstAmount ?? "0") > 0 && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">GST</span>
+            <span className="font-mono">₹{parseFloat(bill.gstAmount ?? "0").toFixed(2)}</span>
+          </div>
+        )}
+        {parseFloat(bill.serviceChargeAmount ?? "0") > 0 && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Service Charge</span>
+            <span className="font-mono">₹{parseFloat(bill.serviceChargeAmount ?? "0").toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between border-t pt-1.5 font-semibold">
+          <span>Original Total</span>
+          <span className="font-mono">₹{parseFloat(bill.totalAmount ?? "0").toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-muted-foreground text-xs">
+          <span>Advance Paid</span>
+          <span className="font-mono">₹{parseFloat(bill.advancePaid ?? "0").toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-muted-foreground text-xs">
+          <span>Balance Due</span>
+          <span className="font-mono">₹{parseFloat(bill.balanceAmount ?? "0").toFixed(2)}</span>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Corrected Total (₹)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={correctedTotal}
+              onChange={(e) => {
+                setCorrectedTotal(e.target.value);
+                const newTotal = parseFloat(e.target.value) || 0;
+                const advance = parseFloat(bill.advancePaid ?? "0");
+                setCorrectedBalance(Math.max(0, newTotal - advance).toFixed(2));
+              }}
+              data-testid="input-corrected-total"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Balance Due (₹)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={correctedBalance}
+              onChange={(e) => setCorrectedBalance(e.target.value)}
+              data-testid="input-corrected-balance"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Payment Status</label>
+          <select
+            className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={correctedPaymentStatus}
+            onChange={(e) => setCorrectedPaymentStatus(e.target.value)}
+            data-testid="select-corrected-payment-status"
+          >
+            <option value="paid">Paid — fully settled</option>
+            <option value="pending">Pending — balance still due</option>
+            <option value="partial">Partial — partially paid</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">
+            Reason for Correction <span className="text-destructive">*</span>
+          </label>
+          <textarea
+            className="mt-1 flex min-h-[72px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={correctionNote}
+            onChange={(e) => setCorrectionNote(e.target.value)}
+            placeholder="e.g., Incorrect room charges, wrong discount applied, food charge missed..."
+            data-testid="input-correction-note"
+          />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose} data-testid="button-cancel-correction">
+          Cancel
+        </Button>
+        <Button
+          onClick={() => correctionMutation.mutate()}
+          disabled={correctionMutation.isPending || !correctionNote.trim()}
+          data-testid="button-save-correction"
+        >
+          {correctionMutation.isPending ? "Saving..." : "Save Correction"}
         </Button>
       </DialogFooter>
     </div>
