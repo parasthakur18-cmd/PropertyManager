@@ -352,6 +352,9 @@ export default function Bookings() {
         available: number;
         totalBeds?: number;
         remainingBeds?: number;
+        conflictBookingId?: number | null;
+        conflictCheckIn?: string | null;
+        conflictCheckOut?: string | null;
       }>>;
     },
   });
@@ -1459,7 +1462,11 @@ export default function Bookings() {
                         const availableSingleRooms = getRoomsForBookingType("single", { isEditMode: false });
                         const datesSelected = !!(checkInDate && checkOutDate && checkInDate < checkOutDate);
                         const loadingAvailability = datesSelected && isAvailabilityFetching;
-                        const noRoomsAvailable = datesSelected && !isAvailabilityFetching && roomAvailability && availableSingleRooms.length === 0;
+                        const allSingleRoomsForProperty = rooms?.filter(r =>
+                          r.roomCategory !== "dormitory" &&
+                          (!selectedPropertyId || r.propertyId === selectedPropertyId)
+                        ) ?? [];
+                        const noRoomsAvailable = datesSelected && !isAvailabilityFetching && roomAvailability && availableSingleRooms.length === 0 && allSingleRoomsForProperty.length === 0;
                         return (
                           <FormItem>
                             <FormLabel>Room</FormLabel>
@@ -1487,14 +1494,57 @@ export default function Bookings() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  {availableSingleRooms.map((room) => {
-                                    const roomDescription = room.roomType || "Standard";
-                                    return (
-                                      <SelectItem key={room.id} value={room.id.toString()}>
-                                        Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
-                                      </SelectItem>
+                                  {(() => {
+                                    const datesSet = !!(checkInDate && checkOutDate && checkInDate < checkOutDate);
+                                    const conflictMap = new Map(
+                                      (roomAvailability ?? [])
+                                        .filter(a => a.available === 0 && a.conflictBookingId)
+                                        .map(a => [a.roomId, a])
                                     );
-                                  })}
+                                    const allPropertySingleRooms = rooms?.filter(r =>
+                                      r.roomCategory !== "dormitory" &&
+                                      (!selectedPropertyId || r.propertyId === selectedPropertyId)
+                                    ) ?? [];
+                                    const unavailableRooms = datesSet
+                                      ? allPropertySingleRooms.filter(r => !availableSingleRooms.find(a => a.id === r.id))
+                                      : [];
+                                    return (
+                                      <>
+                                        {availableSingleRooms.map((room) => {
+                                          const roomDescription = room.roomType || "Standard";
+                                          return (
+                                            <SelectItem key={room.id} value={room.id.toString()}>
+                                              Room {room.roomNumber} ({roomDescription}) - ₹{room.pricePerNight}/night
+                                            </SelectItem>
+                                          );
+                                        })}
+                                        {unavailableRooms.length > 0 && (
+                                          <>
+                                            <div className="px-2 py-1 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">
+                                              Occupied / Unavailable
+                                            </div>
+                                            {unavailableRooms.map((room) => {
+                                              const conflict = conflictMap.get(room.id);
+                                              const roomDescription = room.roomType || "Standard";
+                                              const conflictLabel = conflict
+                                                ? `Booked ${conflict.conflictCheckIn ? String(conflict.conflictCheckIn).slice(0, 10) : ''} – ${conflict.conflictCheckOut ? String(conflict.conflictCheckOut).slice(0, 10) : ''}`
+                                                : "Unavailable";
+                                              return (
+                                                <SelectItem
+                                                  key={room.id}
+                                                  value={room.id.toString()}
+                                                  disabled
+                                                  className="opacity-50 text-muted-foreground"
+                                                >
+                                                  Room {room.roomNumber} ({roomDescription}) — {conflictLabel}
+                                                </SelectItem>
+                                              );
+                                            })}
+                                          </>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
                                 </SelectContent>
                               </Select>
                             )}
