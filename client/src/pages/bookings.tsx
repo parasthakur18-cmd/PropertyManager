@@ -1265,8 +1265,45 @@ export default function Bookings() {
               </SelectContent>
             </Select>
           )}
+
+          {/* Quick Date Hotkeys */}
+          {(() => {
+            const todayStr = format(new Date(), "yyyy-MM-dd");
+            const tomorrowStr = format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
+            const setQuickDate = (d: string) => {
+              if (checkinDateFilter === d) {
+                setCheckinDateFilter("");
+              } else {
+                setCheckinDateFilter(d);
+                setDateFrom("");
+                setDateTo("");
+              }
+            };
+            return (
+              <>
+                <Button
+                  size="sm"
+                  variant={checkinDateFilter === todayStr ? "default" : "outline"}
+                  onClick={() => setQuickDate(todayStr)}
+                  className="h-9 px-3 text-xs font-medium"
+                  data-testid="button-filter-today"
+                >
+                  Today
+                </Button>
+                <Button
+                  size="sm"
+                  variant={checkinDateFilter === tomorrowStr ? "default" : "outline"}
+                  onClick={() => setQuickDate(tomorrowStr)}
+                  className="h-9 px-3 text-xs font-medium"
+                  data-testid="button-filter-tomorrow"
+                >
+                  Tomorrow
+                </Button>
+              </>
+            );
+          })()}
           
-          {/* Check-in Date Filter */}
+          {/* Check-in Date Filter (calendar picker) */}
           <div className="flex items-center gap-1">
             <label htmlFor="checkin-date" className="flex items-center gap-2 h-9 px-3 rounded-md border border-input bg-background cursor-pointer hover:border-ring transition-colors">
               <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -1274,7 +1311,7 @@ export default function Bookings() {
                 id="checkin-date"
                 type="date"
                 value={checkinDateFilter}
-                onChange={(e) => setCheckinDateFilter(e.target.value)}
+                onChange={(e) => { setCheckinDateFilter(e.target.value); setDateFrom(""); setDateTo(""); }}
                 className="border-none outline-none bg-transparent text-sm w-[110px] cursor-pointer"
                 data-testid="input-checkin-date-filter"
               />
