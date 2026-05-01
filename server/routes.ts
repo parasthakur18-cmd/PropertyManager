@@ -2467,9 +2467,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         // Rooms in maintenance / out-of-order / blocked are never bookable regardless of dates
         if (BLOCKING_STATUSES.includes(room.status ?? "")) {
           if (room.roomCategory === "dormitory") {
-            return { roomId: room.id, available: 0, totalBeds: room.totalBeds || 6, remainingBeds: 0 };
+            return { roomId: room.id, available: 0, reason: "maintenance", roomStatus: room.status, totalBeds: room.totalBeds || 6, remainingBeds: 0 };
           }
-          return { roomId: room.id, available: 0 };
+          return { roomId: room.id, available: 0, reason: "maintenance", roomStatus: room.status };
         }
 
         if (room.roomCategory === "dormitory") {
@@ -2483,6 +2483,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           return {
             roomId: room.id,
             available: remainingBeds > 0 ? 1 : 0,
+            reason: remainingBeds > 0 ? undefined : "booking_conflict",
             totalBeds,
             remainingBeds
           };
@@ -2501,6 +2502,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return {
           roomId: room.id,
           available,
+          reason: hasOverlap ? "booking_conflict" : undefined,
           conflictBookingId: conflictBooking?.id ?? null,
           conflictCheckIn: conflictBooking?.checkInDate ?? null,
           conflictCheckOut: conflictBooking?.checkOutDate ?? null,
