@@ -15,6 +15,18 @@ import hostezeeLogo from "@assets/hostezee_logo_transparent_1773119386285.png";
 export default function Login() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // After login, redirect to the page the user originally tried to visit (e.g. a
+  // WhatsApp order link like /restaurant?order=63), falling back to /dashboard.
+  const redirectAfterLogin = () => {
+    const intended = sessionStorage.getItem('hostezee_intended_url');
+    if (intended) {
+      sessionStorage.removeItem('hostezee_intended_url');
+      setLocation(intended);
+    } else {
+      setLocation("/dashboard");
+    }
+  };
   
   // Email/Password state
   const [email, setEmail] = useState("");
@@ -77,7 +89,7 @@ export default function Login() {
         description: "Welcome back!",
       });
       
-      setLocation("/dashboard");
+      redirectAfterLogin();
     } catch (err: any) {
       setEmailError(err.message || "Connection error. Please try again.");
       console.error(err);
@@ -183,7 +195,7 @@ export default function Login() {
         description: "Welcome to Hostezee!",
       });
       
-      setLocation("/dashboard");
+      redirectAfterLogin();
     } catch (err: any) {
       setPhoneError(err.message || "Connection error. Please try again.");
       console.error(err);

@@ -265,6 +265,30 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Save intended URL when unauthenticated user hits a protected route,
+  // then redirect to login so they land on the right page after signing in.
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      const publicPaths = [
+        '/', '/login', '/signup', '/register', '/forgot-password',
+        '/verify-otp', '/reset-password', '/accept-invite', '/report-issue',
+        '/menu', '/customer-menu', '/qr-codes',
+        '/guest-self-checkin', '/guest/prebill',
+        '/admin-portal', '/super-admin-login', '/super-admin',
+        '/features', '/security', '/about', '/blog', '/contact',
+        '/pricing', '/onboarding', '/faq', '/terms', '/privacy',
+        '/contact-enquiries',
+      ];
+      const path = window.location.pathname;
+      const isPublic = publicPaths.some(p => path === p || path.startsWith(p + '/'));
+      if (!isPublic && path !== '/') {
+        // Save full URL (including query string like ?order=63) for post-login redirect
+        sessionStorage.setItem('hostezee_intended_url', window.location.pathname + window.location.search);
+        setLocation('/login');
+      }
+    }
+  }, [isLoading, isAuthenticated, setLocation]);
+
   // Calculate showDashboard once here to pass to Router
   const showDashboard = isAuthenticated && !isLoading;
 
