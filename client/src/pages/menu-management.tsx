@@ -528,14 +528,15 @@ export default function MenuManagement() {
 
   const filteredItems = menuItems?.filter((item) =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.category.toLowerCase().includes(searchQuery.toLowerCase())
+    (item.category ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const groupedItems = filteredItems?.reduce((acc, item) => {
-    if (!acc[item.category]) {
-      acc[item.category] = [];
+    const cat = item.category ?? "Uncategorized";
+    if (!acc[cat]) {
+      acc[cat] = [];
     }
-    acc[item.category].push(item);
+    acc[cat].push(item);
     return acc;
   }, {} as Record<string, MenuItem[]>);
 

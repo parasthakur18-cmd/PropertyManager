@@ -6572,12 +6572,15 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!Array.isArray(updates)) {
         return res.status(400).json({ message: "Updates array is required" });
       }
-      for (const update of updates) {
-        await storage.updateMenuItem(Number(update.id), { displayOrder: Number(update.displayOrder) });
-      }
+      const normalized = updates.map(u => ({
+        id: Number(u.id),
+        displayOrder: Number(u.displayOrder),
+      })).filter(u => !isNaN(u.id) && !isNaN(u.displayOrder));
+      await storage.reorderMenuItems(normalized);
       res.status(200).json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[REORDER-PATCH] Error:", error);
+      res.status(500).json({ message: error.message || "Reorder failed" });
     }
   });
 

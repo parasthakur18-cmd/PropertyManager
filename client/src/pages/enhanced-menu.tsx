@@ -159,6 +159,9 @@ export default function EnhancedMenu() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-categories"] });
     },
+    onError: (error: Error) => {
+      toast({ title: "Reorder Failed", description: error.message, variant: "destructive" });
+    },
   });
 
   const reorderItemsMutation = useMutation({
@@ -167,6 +170,9 @@ export default function EnhancedMenu() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Reorder Failed", description: error.message, variant: "destructive" });
     },
   });
 
