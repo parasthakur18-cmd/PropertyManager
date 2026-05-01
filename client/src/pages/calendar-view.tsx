@@ -120,7 +120,6 @@ export default function CalendarView() {
     date: Date | null;
   }>({ isOpen: false, room: null, bookings: [], date: null });
   const calendarRef = useRef<HTMLDivElement>(null);
-  const sidebarRef = useRef<HTMLDivElement>(null);
   
   const endDate = addDays(startDate, 11);
   const dates = eachDayOfInterval({ start: startDate, end: endDate });
@@ -169,9 +168,7 @@ export default function CalendarView() {
   });
 
 
-  // Lock the page scroll container so the calendar's internal grids handle all scrolling.
-  // Without this, the <main> element (overflow-y-auto) intercepts scroll events and the
-  // room-name sidebar (its own scroll container) never syncs, making rooms appear frozen.
+  // Lock the page scroll so our single calendar scroll container handles all scrolling.
   useEffect(() => {
     const main = document.querySelector('main');
     if (!main) return;
@@ -179,36 +176,6 @@ export default function CalendarView() {
     (main as HTMLElement).style.overflow = 'hidden';
     return () => { (main as HTMLElement).style.overflow = prev; };
   }, []);
-
-  // Sync vertical scroll between sidebar and calendar
-  // Re-run when rooms load to ensure refs are attached
-  useEffect(() => {
-    const calendar = calendarRef.current;
-    const sidebar = sidebarRef.current;
-    if (!calendar || !sidebar) return;
-
-    let isSyncing = false;
-
-    const handleCalendarScroll = () => {
-      if (isSyncing) return;
-      isSyncing = true;
-      sidebar.scrollTop = calendar.scrollTop;
-      requestAnimationFrame(() => { isSyncing = false; });
-    };
-    const handleSidebarScroll = () => {
-      if (isSyncing) return;
-      isSyncing = true;
-      calendar.scrollTop = sidebar.scrollTop;
-      requestAnimationFrame(() => { isSyncing = false; });
-    };
-
-    calendar.addEventListener('scroll', handleCalendarScroll, { passive: true });
-    sidebar.addEventListener('scroll', handleSidebarScroll, { passive: true });
-    return () => {
-      calendar.removeEventListener('scroll', handleCalendarScroll);
-      sidebar.removeEventListener('scroll', handleSidebarScroll);
-    };
-  }, [rooms.length, selectedPropertyId]);
 
   // Initialize all types as expanded
   useEffect(() => {
@@ -500,238 +467,131 @@ export default function CalendarView() {
         </div>
       )}
 
-      {/* Calendar Content */}
-      <div className="flex-1 overflow-hidden flex">
-        {/* Left Sidebar */}
-        <div className={cn(
-          "border-r bg-white dark:bg-card transition-all duration-300 flex-shrink-0 flex flex-col overflow-hidden",
-          showRoomSidebar ? "md:w-[220px] sm:w-[180px] w-[150px]" : "md:flex w-0"
-        )}>
-          {/* Toolbar */}
-          <div className="flex items-center gap-1 p-2 border-b bg-slate-50 dark:bg-muted/30">
-            <Button size="icon" variant="ghost" className="h-8 w-8">
-              <List className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8">
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8">
-              <Search className="h-4 w-4" />
-            </Button>
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              className="h-8 w-8"
-              onClick={() => setShowCreateBooking(true)}
-              data-testid="button-create-booking"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+      {/* Calendar Content — single scroll container with sticky room-name column */}
+      <div
+        ref={calendarRef}
+        className="flex-1 overflow-auto"
+      >
+        <div style={{ minWidth: `${(showRoomSidebar ? SIDEBAR_WIDTH : 0) + dates.length * CELL_WIDTH}px` }}>
 
-          {/* All Accommodations Header */}
-          <div className="flex items-center justify-between px-3 py-2 bg-white dark:bg-card border-b font-semibold text-sm">
-            <span>All Accommodations</span>
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-          </div>
-
-          {/* Room Types & Rooms */}
-          <div 
-            ref={sidebarRef}
-            className="flex-1 overflow-y-auto overflow-x-visible"
-          >
-            {/* Unassigned OTA Bookings Section */}
-            {unassignedBookings.length > 0 && (
-              <div>
-                <div
-                  className="flex items-center gap-2 px-3 border-b bg-amber-50 dark:bg-amber-950/30"
-                  style={{ height: TYPE_ROW_HEIGHT }}
+          {/* ── Sticky date-header row ───────────────────────────────────── */}
+          <div className="sticky top-0 z-30 flex bg-white dark:bg-card border-b">
+            {/* Top-left corner: sticky on both axes */}
+            {showRoomSidebar && (
+              <div
+                className="sticky left-0 z-40 bg-white dark:bg-card border-r flex items-center justify-between px-2 flex-shrink-0"
+                style={{ width: SIDEBAR_WIDTH }}
+              >
+                <span className="font-semibold text-xs text-muted-foreground truncate">All Rooms</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 flex-shrink-0"
+                  onClick={() => setShowCreateBooking(true)}
+                  data-testid="button-create-booking"
                 >
-                  <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-                  <span className="font-semibold text-xs text-amber-800 dark:text-amber-300 truncate">
-                    Unassigned ({unassignedBookings.length})
-                  </span>
-                </div>
-                {unassignedBookings.map(b => {
-                  const guest = guests.find(g => g.id === b.guestId);
-                  const guestName = guest?.fullName || "OTA Guest";
-                  const source = b.source || b.externalSource || "OTA";
-                  return (
-                    <div
-                      key={b.id}
-                      className="flex items-center justify-between px-2 border-b hover:bg-amber-50 dark:hover:bg-amber-950/20 cursor-pointer transition-colors"
-                      style={{ height: ROW_HEIGHT }}
-                      onClick={() => navigate(`/bookings/${b.id}`)}
-                      data-testid={`unassigned-sidebar-${b.id}`}
-                    >
-                      <div className="flex flex-col min-w-0">
-                        <span className="font-medium text-xs truncate">{guestName}</span>
-                        <span className="text-xs text-muted-foreground truncate italic">{source}</span>
-                      </div>
-                      <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 ml-1" />
-                    </div>
-                  );
-                })}
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
               </div>
             )}
-
-            {Object.entries(roomsByType).map(([type, typeRooms]) => (
-              <div key={type}>
-                {/* Room Type Header */}
+            {/* Date columns */}
+            {dates.map((date, idx) => {
+              const dayName = format(date, "EEE");
+              const dayNum = format(date, "d");
+              const monthLabel = format(date, "MMM");
+              const occupancy = getOccupancyPercent(date);
+              const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+              const showMonth = idx === 0 || format(date, "d") === "1";
+              return (
                 <div
-                  className="flex items-center justify-between px-3 border-b bg-slate-50 dark:bg-muted/20 cursor-pointer hover:bg-slate-100 dark:hover:bg-muted/30 transition-colors"
-                  style={{ height: TYPE_ROW_HEIGHT }}
-                  onClick={() => toggleType(type)}
+                  key={format(date, "yyyy-MM-dd")}
+                  className={cn(
+                    "border-r text-center flex-shrink-0 py-2",
+                    isToday && "bg-blue-50 dark:bg-blue-950/30",
+                    showMonth && idx !== 0 && "border-l-2 border-l-slate-300 dark:border-l-slate-600"
+                  )}
+                  style={{ width: CELL_WIDTH }}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm truncate">{type}</span>
-                    <ChevronDown className={cn(
-                      "h-3 w-3 text-muted-foreground transition-transform",
-                      !expandedTypes[type] && "-rotate-90"
-                    )} />
-                  </div>
+                  <div className={cn("text-xs font-medium text-muted-foreground", isToday && "text-blue-600 dark:text-blue-400")}>{dayName}</div>
+                  <div className={cn("text-xl font-bold leading-tight", isToday && "text-blue-600 dark:text-blue-400")}>{dayNum}</div>
+                  <div className={cn(
+                    "text-xs font-semibold leading-tight",
+                    showMonth ? (isToday ? "text-blue-500 dark:text-blue-400" : "text-slate-500 dark:text-slate-400") : "text-transparent select-none"
+                  )}>{monthLabel}</div>
+                  <div className={cn(
+                    "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-0.5",
+                    occupancy >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                    occupancy >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
+                    "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                  )}>{occupancy}%</div>
                 </div>
-
-                {/* Room Rows */}
-                {expandedTypes[type] && typeRooms.map(room => {
-                  return (
-                  <div
-                    key={room.id}
-                    className="flex items-center justify-between px-2 border-b hover:bg-slate-50 dark:hover:bg-muted/10 group transition-colors relative"
-                    style={{ height: ROW_HEIGHT }}
-                    data-testid={`room-row-${room.id}`}
-                  >
-                    <div 
-                      className="flex items-center gap-1 cursor-pointer flex-1 min-w-0"
-                      onClick={() => navigate(`/rooms/${room.id}`)}
-                    >
-                      <span className="font-medium text-sm truncate">{room.roomNumber}</span>
-                      <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                    </div>
-                    
-                  </div>
-                );
-                })}
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
 
-        {/* Calendar Grid */}
-        <div 
-          ref={calendarRef}
-          className="flex-1 overflow-auto"
-        >
-          <div className="min-w-max">
-            {/* Date Headers Row */}
-            <div className="sticky top-0 z-20 bg-white dark:bg-card border-b flex">
-              {dates.map((date, idx) => {
-                const dayName = format(date, "EEE");
-                const dayNum = format(date, "d");
-                const monthLabel = format(date, "MMM");
-                const occupancy = getOccupancyPercent(date);
-                const isToday = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
-                const showMonth = idx === 0 || format(date, "d") === "1";
-                
-                return (
+          {/* ── Unassigned OTA Bookings ──────────────────────────────────── */}
+          {unassignedBookings.length > 0 && (
+            <>
+              {/* Section header row */}
+              <div className="flex border-b bg-amber-50 dark:bg-amber-950/30">
+                {showRoomSidebar && (
                   <div
-                    key={format(date, "yyyy-MM-dd")}
-                    className={cn(
-                      "border-r text-center flex-shrink-0 py-2",
-                      isToday && "bg-blue-50 dark:bg-blue-950/30",
-                      showMonth && idx !== 0 && "border-l-2 border-l-slate-300 dark:border-l-slate-600"
-                    )}
-                    style={{ width: CELL_WIDTH }}
+                    className="sticky left-0 z-10 bg-amber-50 dark:bg-amber-950/30 border-r flex items-center gap-2 px-3 flex-shrink-0"
+                    style={{ width: SIDEBAR_WIDTH, height: TYPE_ROW_HEIGHT }}
                   >
-                    <div className={cn(
-                      "text-xs font-medium text-muted-foreground",
-                      isToday && "text-blue-600 dark:text-blue-400"
-                    )}>
-                      {dayName}
-                    </div>
-                    <div className={cn(
-                      "text-xl font-bold leading-tight",
-                      isToday && "text-blue-600 dark:text-blue-400"
-                    )}>
-                      {dayNum}
-                    </div>
-                    <div className={cn(
-                      "text-xs font-semibold leading-tight",
-                      showMonth
-                        ? isToday
-                          ? "text-blue-500 dark:text-blue-400"
-                          : "text-slate-500 dark:text-slate-400"
-                        : "text-transparent select-none"
-                    )}>
-                      {monthLabel}
-                    </div>
-                    <div className={cn(
-                      "inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-0.5",
-                      occupancy >= 80 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                      occupancy >= 50 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
-                      "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
-                    )}>
-                      {occupancy}%
-                    </div>
+                    <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <span className="font-semibold text-xs text-amber-800 dark:text-amber-300 truncate">
+                      Unassigned ({unassignedBookings.length})
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                )}
+                {dates.map(date => (
+                  <div key={`ua-hdr-${format(date, "yyyy-MM-dd")}`} className="border-r flex-shrink-0"
+                    style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }} />
+                ))}
+              </div>
 
-            {/* Unassigned OTA Bookings rows */}
-            {unassignedBookings.length > 0 && (
-              <div>
-                {/* Amber header row — matches sidebar TYPE_ROW_HEIGHT */}
-                <div className="flex border-b bg-amber-50 dark:bg-amber-950/30">
-                  {dates.map(date => (
-                    <div
-                      key={`unassigned-hdr-${format(date, "yyyy-MM-dd")}`}
-                      className="border-r flex-shrink-0"
-                      style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
-                    />
-                  ))}
-                </div>
-
-                {/* One row per unassigned booking */}
-                {unassignedBookings.map(b => {
-                  const checkInDate = startOfDay(new Date(b.checkInDate));
-                  const checkOutDate = startOfDay(new Date(b.checkOutDate));
-                  const rangeStart = startOfDay(startDate);
-
-                  const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-                  const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-
-                  const visibleStartIdx = Math.max(0, checkInDaysDiff);
-                  const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
-
-                  let leftPx = visibleStartIdx * CELL_WIDTH;
-                  let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
-
-                  if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) {
-                    leftPx += CELL_WIDTH / 2;
-                    widthPx -= CELL_WIDTH / 2;
-                  }
-                  if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) {
-                    widthPx -= CELL_WIDTH / 2;
-                  }
-
-                  const guestName = guests.find(g => g.id === b.guestId)?.fullName || "OTA Guest";
-                  const statusStyle = STATUS_COLORS[b.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
-
-                  return (
-                    <div key={`unassigned-row-${b.id}`} className="relative border-b bg-white dark:bg-card">
-                      {/* Background date cells */}
-                      <div className="flex" style={{ height: ROW_HEIGHT }}>
+              {/* One row per unassigned booking */}
+              {unassignedBookings.map(b => {
+                const checkInDate = startOfDay(new Date(b.checkInDate));
+                const checkOutDate = startOfDay(new Date(b.checkOutDate));
+                const rangeStart = startOfDay(startDate);
+                const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                const visibleStartIdx = Math.max(0, checkInDaysDiff);
+                const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
+                let leftPx = visibleStartIdx * CELL_WIDTH;
+                let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
+                if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) { leftPx += CELL_WIDTH / 2; widthPx -= CELL_WIDTH / 2; }
+                if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
+                const guestName = guests.find(g => g.id === b.guestId)?.fullName || "OTA Guest";
+                const source = b.source || b.externalSource || "OTA";
+                const statusStyle = STATUS_COLORS[b.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                return (
+                  <div key={`ua-row-${b.id}`} className="flex border-b bg-white dark:bg-card">
+                    {showRoomSidebar && (
+                      <div
+                        className="sticky left-0 z-10 bg-amber-50/60 dark:bg-amber-950/20 border-r flex items-center justify-between px-2 flex-shrink-0 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors"
+                        style={{ width: SIDEBAR_WIDTH, height: ROW_HEIGHT }}
+                        onClick={() => navigate(`/bookings/${b.id}`)}
+                        data-testid={`unassigned-sidebar-${b.id}`}
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium text-xs truncate">{guestName}</span>
+                          <span className="text-xs text-muted-foreground truncate italic">{source}</span>
+                        </div>
+                        <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 ml-1" />
+                      </div>
+                    )}
+                    {/* Date cells + booking bar */}
+                    <div className="relative flex-shrink-0" style={{ width: dates.length * CELL_WIDTH, height: ROW_HEIGHT }}>
+                      <div className="flex h-full">
                         {dates.map(date => (
-                          <div
-                            key={`unassigned-cell-${b.id}-${format(date, "yyyy-MM-dd")}`}
+                          <div key={`ua-cell-${b.id}-${format(date,"yyyy-MM-dd")}`}
                             className="border-r flex-shrink-0 bg-amber-50/40 dark:bg-amber-950/10"
-                            style={{ width: CELL_WIDTH }}
-                          />
+                            style={{ width: CELL_WIDTH }} />
                         ))}
                       </div>
-
-                      {/* Booking bar */}
                       {widthPx > 0 && checkOutDaysDiff > 0 && checkInDaysDiff < dates.length && (
                         <div className="absolute inset-0 pointer-events-none py-1.5">
                           <div
@@ -752,182 +612,152 @@ export default function CalendarView() {
                         </div>
                       )}
                     </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* ── Room Types + Room Rows ───────────────────────────────────── */}
+          {Object.entries(roomsByType).map(([type, typeRooms]) => (
+            <div key={type}>
+              {/* Type header / price row */}
+              <div className="flex border-b bg-slate-50 dark:bg-muted/10">
+                {showRoomSidebar && (
+                  <div
+                    className="sticky left-0 z-10 bg-slate-50 dark:bg-muted/20 border-r flex items-center justify-between px-3 flex-shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-muted/30 transition-colors"
+                    style={{ width: SIDEBAR_WIDTH, height: TYPE_ROW_HEIGHT }}
+                    onClick={() => toggleType(type)}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-sm truncate">{type}</span>
+                      <ChevronDown className={cn("h-3 w-3 text-muted-foreground transition-transform flex-shrink-0", !expandedTypes[type] && "-rotate-90")} />
+                    </div>
+                  </div>
+                )}
+                {dates.map((date) => {
+                  const available = getAvailableRoomsForType(typeRooms, date);
+                  const price = getPriceForType(typeRooms);
+                  return (
+                    <div
+                      key={`type-${type}-${format(date, "yyyy-MM-dd")}`}
+                      className="border-r text-center flex flex-col items-center justify-center flex-shrink-0"
+                      style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
+                    >
+                      <div className="text-xs text-muted-foreground">{available}</div>
+                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{price}</div>
+                    </div>
                   );
                 })}
               </div>
-            )}
 
-            {/* Room Type Rows with Price Headers + Room Rows */}
-            {Object.entries(roomsByType).map(([type, typeRooms]) => (
-              <div key={type}>
-                {/* Room Type Price Row */}
-                <div className="flex border-b bg-slate-50 dark:bg-muted/10">
-                  {dates.map((date, idx) => {
-                    const available = getAvailableRoomsForType(typeRooms, date);
-                    const price = getPriceForType(typeRooms);
-                    
-                    return (
-                      <div
-                        key={`type-${type}-${format(date, "yyyy-MM-dd")}`}
-                        className="border-r text-center flex flex-col items-center justify-center flex-shrink-0"
-                        style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
-                      >
-                        <div className="text-xs text-muted-foreground">{available}</div>
-                        <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{price}</div>
-                      </div>
-                    );
-                  })}
-                </div>
+              {/* Individual room rows */}
+              {expandedTypes[type] && typeRooms.map(room => {
+                const isDorm = isDormitoryRoom(room);
+                const roomBookings = isDorm
+                  ? getAllDormitoryBookingsInRange(room.id)
+                  : getBookingsForRoom(room.id);
 
-                {/* Individual Room Rows */}
-                {expandedTypes[type] && typeRooms.map(room => {
-                  const isDorm = isDormitoryRoom(room);
-                  const roomBookings = isDorm 
-                    ? getAllDormitoryBookingsInRange(room.id)
-                    : getBookingsForRoom(room.id);
-                  
-                  // For dormitory rooms, prepare display data with overlapping booking info
-                  const getDormitoryDisplayBookings = () => {
-                    return roomBookings.map(booking => {
-                      if (!isDorm) return { booking, allBookings: [booking], additionalBeds: 0 };
-                      
-                      // Find all bookings that overlap with this one (including this booking)
-                      const overlapping = roomBookings.filter(other => {
-                        const bookingStart = new Date(booking.checkInDate);
-                        const bookingEnd = new Date(booking.checkOutDate);
-                        const otherStart = new Date(other.checkInDate);
-                        const otherEnd = new Date(other.checkOutDate);
-                        return bookingStart < otherEnd && bookingEnd > otherStart;
-                      });
-                      
-                      // Calculate total beds from OTHER overlapping bookings
-                      const otherBeds = overlapping
-                        .filter(b => b.id !== booking.id)
-                        .reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-                      
-                      // Also include extra beds from this booking itself (bedsBooked - 1)
-                      // Example: If booking has 2 beds, show "+1", if 5 beds show "+4"
-                      const thisBookingExtraBeds = Math.max(0, (booking.bedsBooked || 1) - 1);
-                      
-                      return {
-                        booking,
-                        allBookings: overlapping,
-                        additionalBeds: otherBeds + thisBookingExtraBeds
-                      };
+                const getDormitoryDisplayBookings = () => {
+                  return roomBookings.map(booking => {
+                    if (!isDorm) return { booking, allBookings: [booking], additionalBeds: 0 };
+                    const overlapping = roomBookings.filter(other => {
+                      const bookingStart = new Date(booking.checkInDate);
+                      const bookingEnd = new Date(booking.checkOutDate);
+                      const otherStart = new Date(other.checkInDate);
+                      const otherEnd = new Date(other.checkOutDate);
+                      return bookingStart < otherEnd && bookingEnd > otherStart;
                     });
-                  };
-                  
-                  const displayBookings = getDormitoryDisplayBookings();
-                  
-                  return (
-                    <div key={room.id} className="relative border-b bg-white dark:bg-card">
-                      {/* Background cells */}
-                      <div className="flex" style={{ height: ROW_HEIGHT }}>
-                        {dates.map((date) => {
-                          const dateStr = format(date, "yyyy-MM-dd");
-                          return (
-                            <div
-                              key={`${room.id}-${dateStr}`}
-                              className="border-r flex-shrink-0"
-                              style={{ width: CELL_WIDTH }}
-                              data-testid={`calendar-cell-${room.id}-${dateStr}`}
-                            />
-                          );
-                        })}
+                    const otherBeds = overlapping.filter(b => b.id !== booking.id).reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+                    const thisBookingExtraBeds = Math.max(0, (booking.bedsBooked || 1) - 1);
+                    return { booking, allBookings: overlapping, additionalBeds: otherBeds + thisBookingExtraBeds };
+                  });
+                };
+
+                const displayBookings = getDormitoryDisplayBookings();
+
+                return (
+                  <div key={room.id} className="flex border-b bg-white dark:bg-card" data-testid={`room-row-${room.id}`}>
+                    {/* Sticky room name cell */}
+                    {showRoomSidebar && (
+                      <div
+                        className="sticky left-0 z-10 bg-white dark:bg-card border-r flex items-center justify-between px-2 flex-shrink-0 group hover:bg-slate-50 dark:hover:bg-muted/10 transition-colors"
+                        style={{ width: SIDEBAR_WIDTH, height: ROW_HEIGHT }}
+                      >
+                        <div
+                          className="flex items-center gap-1 cursor-pointer min-w-0 flex-1"
+                          onClick={() => navigate(`/rooms/${room.id}`)}
+                        >
+                          <span className="font-medium text-sm truncate">{room.roomNumber}</span>
+                          <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Date cells + booking bars (self-contained relative context) */}
+                    <div className="relative flex-shrink-0" style={{ width: dates.length * CELL_WIDTH, height: ROW_HEIGHT }}>
+                      {/* Background grid cells */}
+                      <div className="flex h-full">
+                        {dates.map((date) => (
+                          <div
+                            key={`${room.id}-${format(date, "yyyy-MM-dd")}`}
+                            className="border-r flex-shrink-0"
+                            style={{ width: CELL_WIDTH }}
+                            data-testid={`calendar-cell-${room.id}-${format(date, "yyyy-MM-dd")}`}
+                          />
+                        ))}
                       </div>
 
-                      {/* Booking bars overlay */}
+                      {/* Booking bars */}
                       <div className="absolute inset-0 pointer-events-none py-1.5">
                         {displayBookings.map(({ booking, allBookings, additionalBeds }) => {
                           const checkInDate = startOfDay(new Date(booking.checkInDate));
                           const checkOutDate = startOfDay(new Date(booking.checkOutDate));
                           const rangeStart = startOfDay(startDate);
-                          
                           const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
                           const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-                          
                           if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
-                          
                           const visibleStartIdx = Math.max(0, checkInDaysDiff);
                           const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
-                          
                           let leftPx = visibleStartIdx * CELL_WIDTH;
                           let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
-                          
-                          if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) {
-                            leftPx += CELL_WIDTH / 2;
-                            widthPx -= CELL_WIDTH / 2;
-                          }
-                          
-                          if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) {
-                            widthPx -= CELL_WIDTH / 2;
-                          }
-
+                          if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) { leftPx += CELL_WIDTH / 2; widthPx -= CELL_WIDTH / 2; }
+                          if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
                           if (widthPx <= 0) return null;
-
                           const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
                           const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
                           const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
-                          
-                          // Display name with "+X" for dormitory with multiple bookings
-                          const displayName = isDorm && additionalBeds > 0 
-                            ? `${guestName} +${additionalBeds}`
-                            : guestName;
-                          
+                          const displayName = isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds}` : guestName;
                           const handleClick = () => {
-                            // Always open popup for all bookings to show details
-                            setDormitoryPopup({
-                              isOpen: true,
-                              room,
-                              bookings: isDorm ? allBookings : [booking],
-                              date: checkInDate
-                            });
+                            setDormitoryPopup({ isOpen: true, room, bookings: isDorm ? allBookings : [booking], date: checkInDate });
                           };
-
                           return (
                             <div
                               key={`booking-${booking.id}`}
                               className="absolute pointer-events-auto cursor-pointer group"
-                              style={{
-                                left: `${leftPx}px`,
-                                width: `${widthPx}px`,
-                                top: '4px',
-                                bottom: '4px',
-                              }}
+                              style={{ left: `${leftPx}px`, width: `${widthPx}px`, top: '4px', bottom: '4px' }}
                               onClick={handleClick}
                               data-testid={`booking-bar-${booking.id}`}
                             >
                               <div
-                                className={cn(
-                                  "w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]",
-                                  statusStyle.text
-                                )}
-                                style={{
-                                  background: statusStyle.gradient,
-                                }}
-                                title={isDorm && additionalBeds > 0 
-                                  ? `${guestName} +${additionalBeds} beds - Click for details`
-                                  : `${guestName} - ${booking.status}`
-                                }
+                                className={cn("w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]", statusStyle.text)}
+                                style={{ background: statusStyle.gradient }}
+                                title={isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds} beds - Click for details` : `${guestName} - ${booking.status}`}
                               >
                                 <span className="truncate">{displayName}</span>
-                                <span 
-                                  className={cn(
-                                    "w-2 h-2 rounded-full flex-shrink-0 ml-1",
-                                    isPaid ? "bg-green-600" : "bg-red-500"
-                                  )}
-                                />
+                                <span className={cn("w-2 h-2 rounded-full flex-shrink-0 ml-1", isPaid ? "bg-green-600" : "bg-red-500")} />
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+
         </div>
       </div>
 
