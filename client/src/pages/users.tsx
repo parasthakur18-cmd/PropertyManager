@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, Users as UsersIcon, Edit2, Building2, Copy, Trash2, Check, UserPlus, Power, Settings2, Mail, Clock } from "lucide-react";
+import { Shield, Users as UsersIcon, Edit2, Building2, Copy, Trash2, Check, UserPlus, Power, Settings2, Mail, Clock, Share2, Phone, Link2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -74,8 +74,11 @@ export default function UsersManagement() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [invitePhone, setInvitePhone] = useState("");
   const [inviteRole, setInviteRole] = useState("staff");
   const [invitePropertyId, setInvitePropertyId] = useState<number | null>(null);
+  const [generatedInviteLink, setGeneratedInviteLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [permissionsUser, setPermissionsUser] = useState<User | null>(null);
   const [userPermissionsData, setUserPermissionsData] = useState<Record<string, string>>({});
 
@@ -169,19 +172,14 @@ export default function UsersManagement() {
   });
 
   const inviteStaffMutation = useMutation({
-    mutationFn: async (data: { email: string; propertyId: number; role: string }) => {
+    mutationFn: async (data: { email: string; propertyId: number; role: string; phone?: string }) => {
       return await apiRequest("/api/staff-invitations", "POST", data);
     },
-    onSuccess: () => {
+    onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-invitations"] });
-      toast({
-        title: "Invitation Sent!",
-        description: "An email invitation has been sent to the staff member.",
-      });
-      setInviteDialogOpen(false);
-      setInviteEmail("");
-      setInviteRole("staff");
-      setInvitePropertyId(null);
+      if (result?.inviteUrl) {
+        setGeneratedInviteLink(result.inviteUrl);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -191,6 +189,33 @@ export default function UsersManagement() {
       });
     },
   });
+
+  const resetInviteDialog = () => {
+    setInviteDialogOpen(false);
+    setInviteEmail("");
+    setInvitePhone("");
+    setInviteRole("staff");
+    setInvitePropertyId(null);
+    setGeneratedInviteLink(null);
+    setLinkCopied(false);
+  };
+
+  const handleCopyLink = () => {
+    if (generatedInviteLink) {
+      navigator.clipboard.writeText(generatedInviteLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!generatedInviteLink) return;
+    const property = properties?.find(p => p.id === invitePropertyId);
+    const msg = encodeURIComponent(
+      `Hi! You've been invited to join ${property?.name || "a property"} on Hostezee as ${inviteRole}.\n\nClick the link below to accept your invitation and get started:\n${generatedInviteLink}\n\nThe link is valid for 7 days.`
+    );
+    window.open(`https://wa.me/${invitePhone.replace(/\D/g, "") || ""}?text=${msg}`, "_blank");
+  };
 
   const cancelInviteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -505,70 +530,150 @@ export default function UsersManagement() {
       </Tabs>
 
       {/* Invite Staff Dialog */}
-      <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+      <Dialog open={inviteDialogOpen} onOpenChange={(open) => { if (!open) resetInviteDialog(); else setInviteDialogOpen(true); }}>
         <DialogContent data-testid="dialog-invite-staff">
           <DialogHeader>
-            <DialogTitle>Invite Staff Member</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="h-5 w-5 text-teal-600" />
+              {generatedInviteLink ? "Invitation Ready" : "Share Access"}
+            </DialogTitle>
             <DialogDescription>
-              Send an email invitation to add a new staff member to your property
+              {generatedInviteLink
+                ? "Copy the link or share directly via WhatsApp to onboard the new user."
+                : "Grant access to a new staff member. They'll get an email and can also join via the link below."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Email Address</Label>
-              <Input
-                type="email"
-                placeholder="staff@example.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                data-testid="input-invite-email"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Role</Label>
-              <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger data-testid="select-invite-role">
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="staff">Staff - Basic Access</SelectItem>
-                  <SelectItem value="manager">Manager - Operations</SelectItem>
-                  <SelectItem value="kitchen">Kitchen - Kitchen Only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Property</Label>
-              <Select value={invitePropertyId?.toString() || ""} onValueChange={(v) => setInvitePropertyId(parseInt(v))}>
-                <SelectTrigger data-testid="select-invite-property">
-                  <SelectValue placeholder="Select a property" />
-                </SelectTrigger>
-                <SelectContent>
-                  {properties?.map(p => (
-                    <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setInviteDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={() => {
-                if (inviteEmail && invitePropertyId) {
-                  inviteStaffMutation.mutate({
-                    email: inviteEmail,
-                    propertyId: invitePropertyId,
-                    role: inviteRole,
-                  });
-                }
-              }}
-              disabled={!inviteEmail || !invitePropertyId || inviteStaffMutation.isPending}
-              data-testid="button-send-invite"
-            >
-              {inviteStaffMutation.isPending ? "Sending..." : "Send Invitation"}
-            </Button>
-          </div>
+
+          {!generatedInviteLink ? (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="space-y-2">
+                  <Label>Email Address <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="email"
+                    placeholder="staff@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    data-testid="input-invite-email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                    WhatsApp / Phone Number <span className="text-xs text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={invitePhone}
+                    onChange={(e) => setInvitePhone(e.target.value)}
+                    data-testid="input-invite-phone"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={inviteRole} onValueChange={setInviteRole}>
+                      <SelectTrigger data-testid="select-invite-role">
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="staff">Staff</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="kitchen">Kitchen</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Property</Label>
+                    <Select value={invitePropertyId?.toString() || ""} onValueChange={(v) => setInvitePropertyId(parseInt(v))}>
+                      <SelectTrigger data-testid="select-invite-property">
+                        <SelectValue placeholder="Select" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {properties?.map(p => (
+                          <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={resetInviteDialog}>Cancel</Button>
+                <Button
+                  onClick={() => {
+                    if (inviteEmail && invitePropertyId) {
+                      inviteStaffMutation.mutate({
+                        email: inviteEmail,
+                        propertyId: invitePropertyId,
+                        role: inviteRole,
+                        phone: invitePhone || undefined,
+                      });
+                    }
+                  }}
+                  disabled={!inviteEmail || !invitePropertyId || inviteStaffMutation.isPending}
+                  data-testid="button-send-invite"
+                >
+                  {inviteStaffMutation.isPending ? "Generating link..." : "Generate Invite Link"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-2">
+                <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-4 text-center">
+                  <Check className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-green-800 dark:text-green-300">Invitation created!</p>
+                  <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">Email sent to {inviteEmail}. Link is valid for 7 days.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    Invite Link
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={generatedInviteLink}
+                      className="text-xs font-mono bg-muted"
+                      data-testid="input-invite-link"
+                    />
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={handleCopyLink}
+                      title="Copy link"
+                      data-testid="button-copy-invite-link"
+                    >
+                      {linkCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Share via</Label>
+                  <Button
+                    className="w-full bg-[#25D366] hover:bg-[#20ba58] text-white gap-2"
+                    onClick={handleShareWhatsApp}
+                    data-testid="button-share-whatsapp"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Share on WhatsApp
+                  </Button>
+                  <p className="text-xs text-center text-muted-foreground">
+                    Opens WhatsApp Web with the invite message pre-filled. Just press send.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={resetInviteDialog} data-testid="button-done-invite">
+                  Done
+                </Button>
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

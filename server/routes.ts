@@ -1497,7 +1497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { email, propertyId, role } = req.body;
+      const { email, propertyId, role, phone } = req.body;
       
       if (!email || !propertyId) {
         return res.status(400).json({ message: "Email and property are required" });
@@ -1574,7 +1574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`[INVITE] Staff invitation created for ${email} to property ${propertyId}`);
-      res.status(201).json(invitation);
+      res.status(201).json({ ...invitation, inviteUrl });
     } catch (error: any) {
       console.error("[INVITE] Error:", error);
       res.status(500).json({ message: error.message });
