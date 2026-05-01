@@ -194,6 +194,7 @@ export interface IStorage {
     dateFrom?: string;
     dateTo?: string;
     propertyIds?: number[];
+    singlePropertyId?: number;
     search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }>;
   getActiveBookingsRaw(propertyIds?: number[]): Promise<Booking[]>;
@@ -939,14 +940,23 @@ export class DatabaseStorage implements IStorage {
     dateFrom?: string;
     dateTo?: string;
     propertyIds?: number[];
+    singlePropertyId?: number;
     search?: string;
   }): Promise<{ data: Booking[]; total: number; counts: { active: number; completed: number; cancelled: number; no_show: number } }> {
-    const { limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, search } = params;
+    const { limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, singlePropertyId, search } = params;
+
+    // Effective property IDs: if a specific property is selected, narrow to that one
+    // (validated to be within the tenant's accessible propertyIds)
+    const effectivePropertyIds = singlePropertyId
+      ? (propertyIds
+          ? (propertyIds.includes(singlePropertyId) ? [singlePropertyId] : [])
+          : [singlePropertyId])
+      : propertyIds;
 
     // Build the row-filter conditions (status + date + tenant + search)
     const rowConditions: any[] = [];
-    if (propertyIds && propertyIds.length > 0) {
-      rowConditions.push(inArray(bookings.propertyId, propertyIds));
+    if (effectivePropertyIds && effectivePropertyIds.length > 0) {
+      rowConditions.push(inArray(bookings.propertyId, effectivePropertyIds));
     }
     if (statusFilter === 'active') {
       rowConditions.push(inArray(bookings.status, ['confirmed', 'checked-in', 'pending', 'pending_advance']));
@@ -981,9 +991,10 @@ export class DatabaseStorage implements IStorage {
     const rowWhere = rowConditions.length > 0 ? and(...rowConditions) : undefined;
 
     // Tenant-only condition for counts (ignore status/date filter so all tabs show correct totals)
+    // When a specific property is selected, counts are also scoped to that property.
     const tenantConditions: any[] = [];
-    if (propertyIds && propertyIds.length > 0) {
-      tenantConditions.push(inArray(bookings.propertyId, propertyIds));
+    if (effectivePropertyIds && effectivePropertyIds.length > 0) {
+      tenantConditions.push(inArray(bookings.propertyId, effectivePropertyIds));
     }
     const tenantWhere = tenantConditions.length > 0 ? and(...tenantConditions) : undefined;
 

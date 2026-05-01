@@ -172,6 +172,7 @@ export default function ActiveBookings() {
   const [gstOnFood, setGstOnFood] = useState<boolean>(false);
   const [includeServiceCharge, setIncludeServiceCharge] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [propertyFilter, setPropertyFilter] = useState<string>("all");
   const [manualCharges, setManualCharges] = useState<Array<{ name: string; amount: string }>>([
     { name: "", amount: "" }
   ]);
@@ -327,6 +328,11 @@ export default function ActiveBookings() {
     refetchInterval: 30000,
   });
 
+  const { data: properties } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ["/api/properties"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: currentUser } = useQuery<{ id: string; role: string; email: string }>({
     queryKey: ["/api/auth/user"],
   });
@@ -351,13 +357,16 @@ export default function ActiveBookings() {
   });
 
   const filteredBookings = activeBookings?.filter((booking) => {
+    // Property filter
+    if (propertyFilter && propertyFilter !== "all") {
+      if (String(booking.property?.id) !== propertyFilter) return false;
+    }
+    // Search filter
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
-    
     const roomNumberMatch = booking.isGroupBooking && booking.rooms
       ? booking.rooms.some(room => room.roomNumber.toLowerCase().includes(query))
       : booking.room?.roomNumber.toLowerCase().includes(query);
-    
     return (
       booking.guest.fullName.toLowerCase().includes(query) ||
       roomNumberMatch ||
@@ -1047,16 +1056,32 @@ export default function ActiveBookings() {
             </DialogContent>
           </Dialog>
         </div>
-        <div className="relative w-64">
-          <Search className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search by guest name, room, or phone..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 rounded-md border border-input bg-background text-sm"
-            data-testid="input-search-active-bookings"
-          />
+        <div className="flex items-center gap-2">
+          {/* Property Filter */}
+          {properties && properties.length > 1 && (
+            <Select value={propertyFilter} onValueChange={setPropertyFilter}>
+              <SelectTrigger className="h-9 w-[180px]" data-testid="select-property-filter-active">
+                <SelectValue placeholder="All Properties" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Properties</SelectItem>
+                {properties.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-3 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search by guest name, room, or phone..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 rounded-md border border-input bg-background text-sm"
+              data-testid="input-search-active-bookings"
+            />
+          </div>
         </div>
       </div>
 

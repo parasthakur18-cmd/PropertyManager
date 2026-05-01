@@ -149,6 +149,7 @@ export default function Bookings() {
   const [checkinDateFilter, setCheckinDateFilter] = useState<string>(""); // Filter by check-in date (YYYY-MM-DD)
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [propertyFilter, setPropertyFilter] = useState<string>("all"); // Property dropdown filter
   const [qrBookingId, setQrBookingId] = useState<number | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [cancelBookingId, setCancelBookingId] = useState<number | null>(null);
@@ -195,13 +196,13 @@ export default function Bookings() {
   }, [isDialogOpen]);
 
   // Reset to page 1 when any filter changes
-  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch]);
+  useEffect(() => { setCurrentPage(1); }, [activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch, propertyFilter]);
 
   type BookingCounts = { active: number; completed: number; cancelled: number; no_show: number };
   type PaginatedBookingsResponse = { data: Booking[]; total: number; counts: BookingCounts };
 
   const { data: bookingsResponse, isLoading, isFetching } = useQuery<PaginatedBookingsResponse>({
-    queryKey: ["/api/bookings", activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch, currentPage],
+    queryKey: ["/api/bookings", activeTab, checkinDateFilter, dateFrom, dateTo, debouncedSearch, currentPage, propertyFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
@@ -211,6 +212,7 @@ export default function Bookings() {
       if (dateFrom) params.set("from", dateFrom);
       if (dateTo) params.set("to", dateTo);
       if (debouncedSearch) params.set("search", debouncedSearch);
+      if (propertyFilter && propertyFilter !== "all") params.set("propertyId", propertyFilter);
       const res = await fetch(`/api/bookings?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch bookings");
       return res.json();
@@ -1248,6 +1250,21 @@ export default function Bookings() {
               data-testid="input-search-bookings"
             />
           </div>
+
+          {/* Property Filter Dropdown */}
+          {properties && properties.length > 1 && (
+            <Select value={propertyFilter} onValueChange={setPropertyFilter}>
+              <SelectTrigger className="h-9 w-[180px]" data-testid="select-property-filter">
+                <SelectValue placeholder="All Properties" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Properties</SelectItem>
+                {properties.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           
           {/* Check-in Date Filter */}
           <div className="flex items-center gap-1">
@@ -1318,9 +1335,9 @@ export default function Bookings() {
           </div>
 
           {/* Filter Badge */}
-          {(searchQuery || checkinDateFilter || dateFrom || dateTo) && (
+          {(searchQuery || checkinDateFilter || dateFrom || dateTo || (propertyFilter && propertyFilter !== "all")) && (
             <Badge variant="secondary" className="h-7">
-              {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) !== 1 ? 's' : ''}
+              {(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (propertyFilter && propertyFilter !== "all" ? 1 : 0)} filter{(searchQuery ? 1 : 0) + (checkinDateFilter ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (propertyFilter && propertyFilter !== "all" ? 1 : 0) !== 1 ? 's' : ''}
             </Badge>
           )}
         </div>

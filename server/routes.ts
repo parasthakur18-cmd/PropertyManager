@@ -3042,11 +3042,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const dateFrom = req.query.from ? String(req.query.from) : undefined;
         const dateTo = req.query.to ? String(req.query.to) : undefined;
         const search = req.query.search ? String(req.query.search).trim() : undefined;
+        const singlePropertyId = req.query.propertyId ? parseInt(String(req.query.propertyId), 10) : undefined;
 
         if (!tenant.hasUnlimitedAccess && (tenant.assignedPropertyIds?.length ?? 0) === 0) {
           return res.json({ data: [], total: 0, counts: { active: 0, completed: 0, cancelled: 0, no_show: 0 } });
         }
-        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, search });
+        const result = await storage.getBookingsPaginated({ limit, offset, statusFilter, checkinDate, dateFrom, dateTo, propertyIds, singlePropertyId, search });
         return res.json(result);
       }
 
