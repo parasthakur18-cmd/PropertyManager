@@ -3450,43 +3450,49 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       // Check each room for conflicts
       for (const roomId of roomIdsToCheck) {
+        const room = await storage.getRoom(roomId);
         const existingBookings = await storage.getBookingsByRoom(roomId);
-        const conflictingBooking = existingBookings.find(b => {
-          // Skip cancelled or checked-out bookings
-          if (b.status === 'cancelled' || b.status === 'checked-out') {
-            return false;
-          }
-          
-          const existingCheckIn = new Date(b.checkInDate);
-          const existingCheckOut = new Date(b.checkOutDate);
-          
-          // Check for date overlap
-          const hasOverlap = checkIn < existingCheckOut && checkOut > existingCheckIn;
-          return hasOverlap;
+        const overlapping = existingBookings.filter(b => {
+          if (b.status === 'cancelled' || b.status === 'checked-out') return false;
+          return checkIn < new Date(b.checkOutDate) && checkOut > new Date(b.checkInDate);
         });
-        
-        if (conflictingBooking) {
-          const room = await storage.getRoom(roomId);
-          // Try to fetch guest name so staff can identify the conflicting booking quickly
-          let guestLabel = "";
-          try {
-            if (conflictingBooking.guestId) {
-              const conflictGuest = await storage.getGuest(conflictingBooking.guestId);
-              if (conflictGuest?.fullName) {
-                guestLabel = ` (Booking #${conflictingBooking.id} — ${conflictGuest.fullName})`;
+
+        if (room?.roomCategory === 'dormitory') {
+          // For dormitory rooms: only block if there are not enough beds left
+          const totalBeds = room.totalBeds ?? 1;
+          const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          const bedsRequested = data.bedsBooked || 1;
+          const bedsAvailable = totalBeds - bedsAlreadyBooked;
+          if (bedsAvailable < bedsRequested) {
+            console.log(`[BOOKING_BLOCKED] room=${room?.roomNumber ?? roomId} reason=dormitory_full totalBeds=${totalBeds} bedsBooked=${bedsAlreadyBooked} requested=${bedsRequested}`);
+            return res.status(400).json({
+              message: `Room ${room?.roomNumber || roomId} does not have enough available beds for these dates (${bedsAvailable} of ${totalBeds} available, you need ${bedsRequested}).`
+            });
+          }
+        } else {
+          // Regular room: any overlap is a conflict
+          const conflictingBooking = overlapping[0];
+          if (conflictingBooking) {
+            let guestLabel = "";
+            try {
+              if (conflictingBooking.guestId) {
+                const conflictGuest = await storage.getGuest(conflictingBooking.guestId);
+                if (conflictGuest?.fullName) {
+                  guestLabel = ` (Booking #${conflictingBooking.id} — ${conflictGuest.fullName})`;
+                } else {
+                  guestLabel = ` (Booking #${conflictingBooking.id})`;
+                }
               } else {
                 guestLabel = ` (Booking #${conflictingBooking.id})`;
               }
-            } else {
+            } catch (_) {
               guestLabel = ` (Booking #${conflictingBooking.id})`;
             }
-          } catch (_) {
-            guestLabel = ` (Booking #${conflictingBooking.id})`;
+            console.log(`[BOOKING_BLOCKED] room=${room?.roomNumber ?? roomId} reason=overlap conflictingBookingId=${conflictingBooking.id} requestedCheckIn=${checkIn.toISOString().split("T")[0]} requestedCheckOut=${checkOut.toISOString().split("T")[0]}`);
+            return res.status(400).json({
+              message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}${guestLabel}. Please cancel or modify that booking first, or select different dates/room.`
+            });
           }
-          console.log(`[BOOKING_BLOCKED] room=${room?.roomNumber ?? roomId} reason=overlap conflictingBookingId=${conflictingBooking.id} requestedCheckIn=${checkIn.toISOString().split("T")[0]} requestedCheckOut=${checkOut.toISOString().split("T")[0]}`);
-          return res.status(400).json({ 
-            message: `Room ${room?.roomNumber || roomId} is already booked from ${new Date(conflictingBooking.checkInDate).toLocaleDateString()} to ${new Date(conflictingBooking.checkOutDate).toLocaleDateString()}${guestLabel}. Please cancel or modify that booking first, or select different dates/room.`
-          });
         }
       }
       
@@ -3534,13 +3540,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (bookingData.roomId) finalRoomIds.push(bookingData.roomId);
       if (bookingData.roomIds?.length) finalRoomIds.push(...bookingData.roomIds);
       for (const rId of finalRoomIds) {
+        const freshRoom = await storage.getRoom(rId);
         const freshBookings = await storage.getBookingsByRoom(rId);
-        const raceConflict = freshBookings.find(b => {
+        const freshOverlapping = freshBookings.filter(b => {
           if (b.status === "cancelled" || b.status === "checked-out") return false;
           return checkIn < new Date(b.checkOutDate) && checkOut > new Date(b.checkInDate);
         });
-        if (raceConflict) {
-          console.log(`[BOOKING_BLOCKED] room=${rId} reason=race_condition_recheck conflictingBookingId=${raceConflict.id}`);
+        if (freshRoom?.roomCategory === "dormitory") {
+          const totalBeds = freshRoom.totalBeds ?? 1;
+          const bedsBooked = freshOverlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          const bedsRequested = bookingData.bedsBooked || 1;
+          if (totalBeds - bedsBooked < bedsRequested) {
+            console.log(`[BOOKING_BLOCKED] room=${rId} reason=race_condition_dormitory_full`);
+            return res.status(409).json({ message: `Room ${freshRoom.roomNumber || rId} ran out of beds just now. Please refresh and try again.` });
+          }
+        } else if (freshOverlapping.length > 0) {
+          console.log(`[BOOKING_BLOCKED] room=${rId} reason=race_condition_recheck conflictingBookingId=${freshOverlapping[0].id}`);
           return res.status(409).json({ message: `Room ${rId} was just booked by another request. Please refresh and try again.` });
         }
       }
