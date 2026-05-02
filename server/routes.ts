@@ -10582,7 +10582,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const d = b.checkOutDate ? new Date(b.checkOutDate) : null;
         if (!d || d < startDate || d > endDate) return false;
         if (!propFilter(b.propertyId)) return false;
-        return b.status === "checked_out";
+        return b.status === "checked-out";
       });
 
       // Expenses for this month
@@ -19237,7 +19237,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           .from(bookings)
           .where(and(
             eq(bookings.propertyId, config.propertyId),
-            not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+            not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
             lt(bookings.checkInDate, checkOutDate),
             gt(bookings.checkOutDate, checkInDate),
             isNotNull(bookings.roomId),
@@ -19247,7 +19247,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           .innerJoin(bookings, eq(bookings.id, bookingRoomStays.bookingId))
           .where(and(
             eq(bookings.propertyId, config.propertyId),
-            not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+            not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
             lt(bookings.checkInDate, checkOutDate),
             gt(bookings.checkOutDate, checkInDate),
             isNotNull(bookingRoomStays.roomId),
@@ -19281,6 +19281,21 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
 
           console.log("[AIOSELL] Mapping Found:", mapping ?? null);
+
+          // ── Auto-save aiosellRoomId if mapping was found by roomCode but has no roomId ──
+          // This ensures future inventory pushes include the roomId for accurate routing to Booking.com
+          if (mapping && incomingRoomId && !mapping.aiosellRoomId) {
+            try {
+              await db.update(aiosellRoomMappings)
+                .set({ aiosellRoomId: incomingRoomId })
+                .where(eq(aiosellRoomMappings.id, mapping.id));
+              // Update in-memory mapping too
+              (mapping as any).aiosellRoomId = incomingRoomId;
+              console.log(`[AIOSELL] Auto-saved aiosellRoomId="${incomingRoomId}" for mapping id=${mapping.id} (roomCode=${mapping.aiosellRoomCode})`);
+            } catch (err: any) {
+              console.warn(`[AIOSELL] Failed to auto-save aiosellRoomId: ${err.message}`);
+            }
+          }
 
           if (!mapping) {
             // Hard stop — no mapping means we cannot create a valid booking for this room
@@ -19343,7 +19358,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               }).from(bookings).where(
                 and(
                   eq(bookings.roomId, dormRoom.id),
-                  not(inArray(bookings.status, ["cancelled", "checked_out", "no_show"])),
+                  not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
                   lt(bookings.checkInDate, checkOutDate),
                   gt(bookings.checkOutDate, checkInDate),
                 )

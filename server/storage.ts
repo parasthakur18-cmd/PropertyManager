@@ -3768,10 +3768,10 @@ export class DatabaseStorage implements IStorage {
     const [bookingsCount] = propertyId 
       ? await db.select({ count: sql<number>`count(*)::int` })
           .from(bookings)
-          .where(and(eq(bookings.propertyId, propertyId), eq(bookings.status, "checked_out")))
+          .where(and(eq(bookings.propertyId, propertyId), eq(bookings.status, "checked-out")))
       : await db.select({ count: sql<number>`count(*)::int` })
           .from(bookings)
-          .where(eq(bookings.status, "checked_out"));
+          .where(eq(bookings.status, "checked-out"));
 
     const [guestsCount] = await db
       .select({ count: sql<number>`count(*)::int` })
