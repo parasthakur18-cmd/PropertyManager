@@ -1330,19 +1330,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // REGULAR ADMIN: Sees all non-super-admin users so they can manage access
-      // Users with no property assignments must still be visible so admins can assign them
-      const tenant = getTenantContext(currentUser);
-      const filteredUsers = allUsers.filter(u => {
-        // Never expose super-admins to regular admins
-        if (u.role === 'super-admin') return false;
-
-        // Users with no property assignments are shown to all admins — they need to be
-        // assigned somewhere and the admin must be able to find them to do that
-        if (!u.assignedPropertyIds || u.assignedPropertyIds.length === 0) return true;
-
-        // Users with properties: show if they share at least one property with this admin
-        return u.assignedPropertyIds.some(propId => canAccessProperty(tenant, parseInt(propId)));
-      });
+      const filteredUsers = allUsers.filter(u => u.role !== 'super-admin');
 
       res.json(filteredUsers);
     } catch (error: any) {
