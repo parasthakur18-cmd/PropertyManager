@@ -277,6 +277,10 @@ export interface IStorage {
   // Message Template operations
   getAllMessageTemplates(): Promise<MessageTemplate[]>;
   getMessageTemplate(id: number): Promise<MessageTemplate | undefined>;
+  getMessageTemplatesByProperty(propertyId: number | null): Promise<MessageTemplate[]>;
+  createMessageTemplate(template: InsertMessageTemplate): Promise<MessageTemplate>;
+  updateMessageTemplate(id: number, template: Partial<InsertMessageTemplate>): Promise<MessageTemplate>;
+  deleteMessageTemplate(id: number): Promise<void>;
 
   // Communication operations
   sendMessage(communication: InsertCommunication): Promise<Communication>;
@@ -2197,6 +2201,36 @@ export class DatabaseStorage implements IStorage {
   async getMessageTemplate(id: number): Promise<MessageTemplate | undefined> {
     const [template] = await db.select().from(messageTemplates).where(eq(messageTemplates.id, id));
     return template;
+  }
+
+  async getMessageTemplatesByProperty(propertyId: number | null): Promise<MessageTemplate[]> {
+    if (propertyId !== null) {
+      return db.select().from(messageTemplates)
+        .where(and(eq(messageTemplates.isActive, true), eq(messageTemplates.propertyId, propertyId)))
+        .orderBy(messageTemplates.name);
+    }
+    return db.select().from(messageTemplates)
+      .where(eq(messageTemplates.isActive, true))
+      .orderBy(messageTemplates.name);
+  }
+
+  async createMessageTemplate(template: InsertMessageTemplate): Promise<MessageTemplate> {
+    const [created] = await db.insert(messageTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateMessageTemplate(id: number, template: Partial<InsertMessageTemplate>): Promise<MessageTemplate> {
+    const [updated] = await db.update(messageTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(messageTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteMessageTemplate(id: number): Promise<void> {
+    await db.update(messageTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(messageTemplates.id, id));
   }
 
   // Communication operations

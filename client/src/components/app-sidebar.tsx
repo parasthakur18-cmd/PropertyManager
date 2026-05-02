@@ -37,6 +37,7 @@ import {
   Wallet,
   ArrowUpDown,
   Package,
+  MessageCircle,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -121,6 +122,7 @@ const adminAdminItems = [
   { title: "Channel Manager", url: "/channel-manager", icon: ArrowUpDown },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Audit Trail", url: "/audit-logs", icon: Shield },
+  { title: "WA Message Templates", url: "/whatsapp-templates", icon: MessageCircle },
   { title: "Settings", url: "/settings", icon: Settings },
   { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
 ];

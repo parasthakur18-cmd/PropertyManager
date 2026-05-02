@@ -582,6 +582,7 @@ export const messageTemplates = pgTable("message_templates", {
   name: varchar("name", { length: 255 }).notNull(),
   content: text("content").notNull(),
   templateType: varchar("template_type", { length: 50 }),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

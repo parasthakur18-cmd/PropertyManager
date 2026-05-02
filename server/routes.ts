@@ -8674,10 +8674,42 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const auth = await getAuthenticatedTenant(req);
       if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
 
-      const templates = await storage.getAllMessageTemplates();
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const templates = await storage.getMessageTemplatesByProperty(propertyId);
       res.json(templates);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/message-templates", isAuthenticated, async (req: any, res) => {
+    try {
+      const { insertMessageTemplateSchema } = await import("@shared/schema");
+      const data = insertMessageTemplateSchema.parse(req.body);
+      const template = await storage.createMessageTemplate(data);
+      res.status(201).json(template);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/message-templates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const template = await storage.updateMessageTemplate(id, req.body);
+      res.json(template);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/message-templates/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteMessageTemplate(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
     }
   });
 

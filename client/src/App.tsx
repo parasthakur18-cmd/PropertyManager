@@ -90,6 +90,7 @@ const Tasks = lazy(() => import("@/pages/tasks"));
 const Architecture = lazy(() => import("@/pages/architecture"));
 const AdvancedFeatures = lazy(() => import("@/pages/advanced-features"));
 const FeatureSettings = lazy(() => import("@/pages/feature-settings"));
+const WhatsAppTemplates = lazy(() => import("@/pages/whatsapp-templates"));
 const AnalyticsChat = lazy(() => import("@/pages/analytics-chat"));
 import { ErrorBoundary } from "@/components/error-boundary";
 
@@ -187,6 +188,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/tasks" component={Tasks} />
           <Route path="/users" component={UsersManagement} />
           <Route path="/whatsapp-alerts" component={WhatsappAlerts} />
+          <Route path="/whatsapp-templates" component={WhatsAppTemplates} />
           <Route path="/settings" component={Settings} />
           <Route path="/feature-settings" component={FeatureSettings} />
         </>

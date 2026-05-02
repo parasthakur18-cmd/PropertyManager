@@ -234,6 +234,11 @@ export default function ActiveBookings() {
   const [resendShowingId, setResendShowingId] = useState<number | null>(null);
   const [resendingType, setResendingType] = useState<string | null>(null);
 
+  // Custom WhatsApp message dialog
+  const [customMsgDialog, setCustomMsgDialog] = useState<{ open: boolean; booking: any | null }>({ open: false, booking: null });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [customMsgPhone, setCustomMsgPhone] = useState("");
+
   const updateGuestPhoneMutation = useMutation({
     mutationFn: async ({ guestId, phone }: { guestId: number; phone: string }) =>
       apiRequest(`/api/guests/${guestId}`, "PATCH", { phone }),
@@ -280,6 +285,37 @@ export default function ActiveBookings() {
         return { label: status, className: "" };
     }
   };
+
+  // Templates for Custom Message dialog
+  const { data: waTemplates = [] } = useQuery<{ id: number; name: string; content: string; propertyId: number | null }[]>({
+    queryKey: ["/api/message-templates", customMsgDialog.booking?.property?.id ?? "all"],
+    queryFn: async () => {
+      const pid = customMsgDialog.booking?.property?.id;
+      const url = pid ? `/api/message-templates?propertyId=${pid}` : "/api/message-templates";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: customMsgDialog.open,
+  });
+
+  function buildWaPreview(content: string, booking: any): string {
+    const b = booking;
+    const nights = Math.max(1, Math.ceil(
+      (new Date(b.checkOutDate).getTime() - new Date(b.checkInDate).getTime()) / (1000 * 60 * 60 * 24)
+    ));
+    const roomLabel = b.isGroupBooking && b.rooms?.length
+      ? b.rooms.map((r: any) => r.roomNumber).join(", ")
+      : b.room?.roomNumber ?? "TBA";
+    return content
+      .replaceAll("{guestName}", b.guest?.fullName ?? "Guest")
+      .replaceAll("{propertyName}", b.property?.name ?? "Hostezee")
+      .replaceAll("{roomNumber}", roomLabel)
+      .replaceAll("{checkIn}", format(new Date(b.checkInDate), "dd MMM yyyy"))
+      .replaceAll("{checkOut}", format(new Date(b.checkOutDate), "dd MMM yyyy"))
+      .replaceAll("{nights}", String(nights))
+      .replaceAll("{phone}", b.property?.contactPhone ?? "");
+  }
 
   const { data: currentPreBill } = useQuery<{ id: number; status: string } | null>({
     queryKey: ["/api/prebill/booking", checkoutDialog.booking?.id],
@@ -1315,20 +1351,35 @@ export default function ActiveBookings() {
                       <span className="text-amber-800 dark:text-amber-200">{booking.specialRequests}</span>
                     </div>
                   )}
-                  <div className="flex items-center justify-end gap-3 pt-0.5">
-                    {booking.guest.idProofImage && (
-                      <a
-                        href={booking.guest.idProofImage}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline text-xs flex items-center gap-1"
-                        data-testid="link-view-id-proof"
-                      >
-                        <FileText className="h-3 w-3" />
-                        View ID
-                      </a>
-                    )}
-                    <GuestIdsButton bookingId={booking.id} />
+                  <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+                    <Button
+                      size="sm"
+                      className="h-7 px-2 text-xs bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-1"
+                      data-testid={`button-custom-wa-msg-${booking.id}`}
+                      onClick={() => {
+                        setCustomMsgPhone((booking.guest.phone || "").replace(/\D/g, ""));
+                        setSelectedTemplateId("");
+                        setCustomMsgDialog({ open: true, booking });
+                      }}
+                    >
+                      <MessageCircle className="h-3 w-3" />
+                      Send Custom Message
+                    </Button>
+                    <div className="flex items-center gap-3">
+                      {booking.guest.idProofImage && (
+                        <a
+                          href={booking.guest.idProofImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-xs flex items-center gap-1"
+                          data-testid="link-view-id-proof"
+                        >
+                          <FileText className="h-3 w-3" />
+                          View ID
+                        </a>
+                      )}
+                      <GuestIdsButton bookingId={booking.id} />
+                    </div>
                   </div>
                 </TabsContent>
 
@@ -2858,6 +2909,95 @@ export default function ActiveBookings() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom WhatsApp Message Dialog */}
+      <Dialog open={customMsgDialog.open} onOpenChange={open => {
+        if (!open) setCustomMsgDialog({ open: false, booking: null });
+      }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-4 w-4 text-[#25D366]" />
+              Send Custom WhatsApp Message
+            </DialogTitle>
+          </DialogHeader>
+          {customMsgDialog.booking && (() => {
+            const b = customMsgDialog.booking;
+            const selectedTpl = waTemplates.find(t => String(t.id) === selectedTemplateId);
+            const preview = selectedTpl ? buildWaPreview(selectedTpl.content, b) : null;
+            return (
+              <div className="space-y-4 py-1">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Guest</Label>
+                  <p className="text-sm font-medium">{b.guest?.fullName} — {b.isGroupBooking && b.rooms?.length ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}` : b.room?.roomNumber ?? "TBA"}</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Phone Number</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={customMsgPhone}
+                      onChange={e => setCustomMsgPhone(e.target.value.replace(/\D/g, ""))}
+                      placeholder="10-digit number"
+                      className="font-mono"
+                      data-testid="input-custom-msg-phone"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Select Template</Label>
+                  {waTemplates.length === 0 ? (
+                    <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                      No templates found for this property.{" "}
+                      <a href="/whatsapp-templates" className="underline text-primary">Create one here</a>
+                    </div>
+                  ) : (
+                    <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                      <SelectTrigger data-testid="select-custom-msg-template">
+                        <SelectValue placeholder="Choose a template…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {waTemplates.map(t => (
+                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {preview && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Message Preview</Label>
+                    <div className="rounded-lg bg-[#e9fbe9] dark:bg-[#1a3a1a] border border-[#25D366]/30 p-3 max-h-52 overflow-y-auto">
+                      <pre className="text-xs whitespace-pre-wrap font-sans leading-relaxed">{preview}</pre>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <Button variant="outline" className="flex-1" onClick={() => setCustomMsgDialog({ open: false, booking: null })}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                    disabled={!selectedTpl || !customMsgPhone}
+                    data-testid="button-open-custom-msg-wa"
+                    onClick={() => {
+                      if (!selectedTpl || !customMsgPhone || !preview) return;
+                      const waPhone = customMsgPhone.startsWith("91") ? customMsgPhone : `91${customMsgPhone}`;
+                      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(preview)}`, "_blank");
+                    }}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-1.5" />
+                    Open in WhatsApp
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

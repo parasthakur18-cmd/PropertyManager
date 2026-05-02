@@ -899,6 +899,12 @@ async function reconcileRoomStatuses(): Promise<void> {
   }
 }
 
+async function migrateMessageTemplatesPropertyId(): Promise<void> {
+  if (!(await columnExists("message_templates", "property_id"))) {
+    await runRaw(`ALTER TABLE message_templates ADD COLUMN property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE`);
+  }
+}
+
 export async function runStartupMigrations(): Promise<void> {
   console.log("[MIGRATIONS] Running startup migrations...");
   const results: MigrationResult[] = [];
@@ -928,6 +934,12 @@ export async function runStartupMigrations(): Promise<void> {
     await seedWhatsappAlertConfigs();
   } catch (err: any) {
     console.warn(`[WA-SEED] Failed to seed WhatsApp alert configs: ${err.message}`);
+  }
+
+  try {
+    await migrateMessageTemplatesPropertyId();
+  } catch (err: any) {
+    console.warn(`[MIGRATE] message_templates property_id: ${err.message}`);
   }
 }
 
