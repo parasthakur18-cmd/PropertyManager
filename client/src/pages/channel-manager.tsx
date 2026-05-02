@@ -1165,6 +1165,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
                 <TableHead>AioSell Code</TableHead>
                 <TableHead>Room Count</TableHead>
                 <TableHead>Available Rooms</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1172,6 +1173,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
                 const roomCount = getRoomCount(m.hostezeeRoomType);
                 const matchingRooms = allRooms.filter(r => r.roomType === m.hostezeeRoomType);
                 const isDorm = matchingRooms.some(r => (r.totalBeds || 1) > 1);
+                const isPushingThis = pushingSingleInventory === m.aiosellRoomCode;
                 return (
                   <TableRow key={m.id} data-testid={`row-inventory-${m.id}`}>
                     <TableCell className="font-medium">{m.hostezeeRoomType}</TableCell>
@@ -1189,6 +1191,20 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
                         value={inventoryValues[m.aiosellRoomCode] || ""}
                         onChange={e => setInventoryValues({ ...inventoryValues, [m.aiosellRoomCode]: e.target.value })}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isPushingThis || !!pushingSingleInventory || pushInventoryMutation.isPending}
+                        onClick={() => pushSingleInventory(m)}
+                        data-testid={`button-push-inventory-single-${m.id}`}
+                      >
+                        {isPushingThis
+                          ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Pushing…</>
+                          : <><RefreshCw className="h-3.5 w-3.5 mr-1.5" />Push This</>
+                        }
+                      </Button>
                     </TableCell>
                   </TableRow>
                 );
