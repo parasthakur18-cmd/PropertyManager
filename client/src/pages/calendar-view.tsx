@@ -754,16 +754,42 @@ export default function CalendarView() {
 
                     {/* Date cells + booking bars (self-contained relative context) */}
                     <div className="relative flex-shrink-0" style={{ width: dates.length * CELL_WIDTH, height: ROW_HEIGHT }}>
-                      {/* Background grid cells */}
+                      {/* Background grid cells — click empty cells to quick-create a booking */}
                       <div className="flex h-full">
-                        {dates.map((date) => (
-                          <div
-                            key={`${room.id}-${format(date, "yyyy-MM-dd")}`}
-                            className="border-r flex-shrink-0"
-                            style={{ width: CELL_WIDTH }}
-                            data-testid={`calendar-cell-${room.id}-${format(date, "yyyy-MM-dd")}`}
-                          />
-                        ))}
+                        {dates.map((date) => {
+                          const dateStr = format(date, "yyyy-MM-dd");
+                          const isOccupied = displayBookings.some(({ booking }) => {
+                            const cin = startOfDay(new Date(booking.checkInDate));
+                            const cout = startOfDay(new Date(booking.checkOutDate));
+                            return date >= cin && date < cout;
+                          });
+                          return (
+                            <div
+                              key={`${room.id}-${dateStr}`}
+                              className={cn(
+                                "border-r flex-shrink-0 transition-colors",
+                                !isOccupied && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 group/cell"
+                              )}
+                              style={{ width: CELL_WIDTH }}
+                              onClick={() => {
+                                if (isOccupied) return;
+                                setCheckInDate(dateStr);
+                                setCheckOutDate(format(addDays(date, 1), "yyyy-MM-dd"));
+                                setSelectedRoomId(String(room.id));
+                                setGuestName("");
+                                setShowCreateBooking(true);
+                              }}
+                              title={!isOccupied ? `Book Room ${room.roomNumber} on ${format(date, "d MMM")}` : undefined}
+                              data-testid={`calendar-cell-${room.id}-${dateStr}`}
+                            >
+                              {!isOccupied && (
+                                <div className="h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                                  <Plus className="h-3.5 w-3.5 text-blue-400" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Booking bars */}
