@@ -18668,6 +18668,22 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
 
       if (action === "book" || action === "modify") {
+        // ── Idempotency guard: skip if this exact external booking already exists ──
+        // Booking.com / AioSell sometimes sends the same webhook twice
+        if (action === "book") {
+          const alreadyExists = await db.select({ id: bookings.id })
+            .from(bookings)
+            .where(and(
+              eq(bookings.propertyId, config.propertyId),
+              eq(bookings.externalBookingId, bookingId),
+            ))
+            .limit(1);
+          if (alreadyExists.length > 0) {
+            console.log(`[AIOSELL-WEBHOOK] Duplicate webhook — booking already exists for externalBookingId=${bookingId}, skipping`);
+            return res.json({ success: true, message: "Booking already exists (duplicate webhook)" });
+          }
+        }
+
         let guestId: number | undefined;
         if (guestData) {
           const guestFullName = `${guestData.firstName || ""} ${guestData.lastName || ""}`.trim() || "OTA Guest";
@@ -18962,9 +18978,32 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const primaryResolvedRoom = resolvedRooms.find(r => r.roomId !== null);
         const primaryBedsBooked = primaryResolvedRoom?.bedsBooked ?? null;
 
+        // ── Last-chance race-condition guard ─────────────────────────────────
+        // Two simultaneous webhooks can both pass the overlap check above and
+        // then both try to book the same physical room. Re-check the specific
+        // room right before inserting so the second one falls back to TBS.
+        let finalRoomId = primaryAssignedRoomId;
+        if (finalRoomId !== null) {
+          const lastCheck = await db.select({ id: bookings.id })
+            .from(bookings)
+            .where(and(
+              eq(bookings.roomId, finalRoomId),
+              not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+              lt(bookings.checkInDate, new Date(checkout)),
+              gt(bookings.checkOutDate, new Date(checkin)),
+            ))
+            .limit(1);
+          if (lastCheck.length > 0) {
+            console.warn(`[AIOSELL-WEBHOOK] Race condition detected — room ${finalRoomId} was taken between overlap check and insert. Falling back to TBS.`);
+            finalRoomId = null;
+            // Also clear roomId from resolvedRooms so room stays reflect TBS
+            resolvedRooms.forEach(r => { if (r.roomId === primaryAssignedRoomId) { r.roomId = null; r.status = "tbs"; } });
+          }
+        }
+
         const [newBooking] = await db.insert(bookings).values({
           propertyId: config.propertyId,
-          roomId: primaryAssignedRoomId,
+          roomId: finalRoomId,
           guestId: guestId || null,
           checkInDate: new Date(checkin),
           checkOutDate: new Date(checkout),
