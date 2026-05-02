@@ -6592,6 +6592,32 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  app.patch("/api/menu-items/swap", isAuthenticated, async (req, res) => {
+    try {
+      const { id1, id2, order1, order2 } = req.body;
+
+      console.log("[MENU-SWAP] Request body:", { id1, id2, order1, order2 });
+
+      const parsedId1 = parseInt(String(id1), 10);
+      const parsedId2 = parseInt(String(id2), 10);
+      const parsedOrder1 = parseInt(String(order1), 10);
+      const parsedOrder2 = parseInt(String(order2), 10);
+
+      if (isNaN(parsedId1) || isNaN(parsedId2) || isNaN(parsedOrder1) || isNaN(parsedOrder2)) {
+        return res.status(400).json({ message: "Invalid input: all values must be valid numbers" });
+      }
+
+      await storage.updateMenuItem(parsedId1, { displayOrder: parsedOrder2 });
+      await storage.updateMenuItem(parsedId2, { displayOrder: parsedOrder1 });
+
+      console.log("[MENU-SWAP] Swap successful:", { id1: parsedId1, newOrder1: parsedOrder2, id2: parsedId2, newOrder2: parsedOrder1 });
+      res.status(200).json({ success: true });
+    } catch (error: any) {
+      console.error("[MENU-SWAP] Error:", error.message);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/menu-items/:id", isAuthenticated, async (req: any, res) => {
     try {
       // Get current user to check role and property assignment
@@ -6710,37 +6736,6 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
-  // Swap two menu items (simple swap for arrow buttons)
-  app.patch("/api/menu-items/swap", isAuthenticated, async (req, res) => {
-    try {
-      const { id1, id2, order1, order2 } = req.body;
-      
-      console.log("[MENU-SWAP] Request body:", { id1, id2, order1, order2 });
-      
-      // Validate inputs
-      const parsedId1 = parseInt(String(id1), 10);
-      const parsedId2 = parseInt(String(id2), 10);
-      const parsedOrder1 = parseInt(String(order1), 10);
-      const parsedOrder2 = parseInt(String(order2), 10);
-      
-      if (isNaN(parsedId1) || isNaN(parsedId2) || isNaN(parsedOrder1) || isNaN(parsedOrder2)) {
-        console.log("[MENU-SWAP] Invalid input - NaN detected:", { parsedId1, parsedId2, parsedOrder1, parsedOrder2 });
-        return res.status(400).json({ message: "Invalid input: all values must be valid numbers" });
-      }
-      
-      // Simple swap - update both items
-      await storage.updateMenuItem(parsedId1, { displayOrder: parsedOrder2 });
-      await storage.updateMenuItem(parsedId2, { displayOrder: parsedOrder1 });
-      
-      console.log("[MENU-SWAP] Swap successful:", { id1: parsedId1, newOrder1: parsedOrder2, id2: parsedId2, newOrder2: parsedOrder1 });
-      
-      res.status(200).json({ success: true });
-    } catch (error: any) {
-      console.error("[MENU-SWAP] Error:", error.message);
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   // Menu Categories
   app.get("/api/menu-categories", isAuthenticated, async (req: any, res) => {
     try {
@@ -6784,10 +6779,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.patch("/api/menu-categories/reorder", isAuthenticated, async (req, res) => {
     try {
       const updates: { id: number; displayOrder: number }[] = req.body;
-      await storage.reorderMenuCategories(updates);
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Updates array is required" });
+      }
+      const normalized = updates.map(u => ({
+        id: Number(u.id),
+        displayOrder: Number(u.displayOrder),
+      })).filter(u => !isNaN(u.id) && !isNaN(u.displayOrder));
+      await storage.reorderMenuCategories(normalized);
       res.status(200).json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("[REORDER-CATEGORIES] Error:", error);
+      res.status(500).json({ message: error.message || "Reorder failed" });
     }
   });
 
