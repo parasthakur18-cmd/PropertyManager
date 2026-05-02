@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil, MessageCircle } from "lucide-react";
+import { Hotel, User, Calendar, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil, MessageCircle, MessageSquare } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format, isBefore, startOfDay } from "date-fns";
@@ -1352,6 +1352,25 @@ export default function ActiveBookings() {
                     </div>
                   )}
                   <div className="flex items-center justify-between gap-2 pt-0.5 flex-wrap">
+                    {/* Direct WhatsApp chat — opens wa.me immediately */}
+                    {(booking.guest?.whatsappPhone || booking.guest?.phone) && (() => {
+                      const rawPhone = ((booking.guest.whatsappPhone || booking.guest.phone) || "").replace(/\D/g, "");
+                      const waPhone = rawPhone.startsWith("91") ? rawPhone : `91${rawPhone}`;
+                      return (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10 gap-1"
+                          data-testid={`button-wa-direct-chat-${booking.id}`}
+                          onClick={() => window.open(`https://wa.me/${waPhone}`, "_blank")}
+                          title="Open WhatsApp chat with guest"
+                        >
+                          <MessageSquare className="h-3 w-3" />
+                          Chat
+                        </Button>
+                      );
+                    })()}
+                    {/* Send template message */}
                     <Button
                       size="sm"
                       className="h-7 px-2 text-xs bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-1"
@@ -1363,7 +1382,7 @@ export default function ActiveBookings() {
                       }}
                     >
                       <MessageCircle className="h-3 w-3" />
-                      Send Custom Message
+                      Send Message
                     </Button>
                     <div className="flex items-center gap-3">
                       {booking.guest.idProofImage && (
@@ -2947,24 +2966,49 @@ export default function ActiveBookings() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Select Template</Label>
+                <div className="space-y-2">
+                  <Label className="text-sm">Choose a Template</Label>
                   {waTemplates.length === 0 ? (
                     <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
                       No templates found for this property.{" "}
                       <a href="/whatsapp-templates" className="underline text-primary">Create one here</a>
                     </div>
                   ) : (
-                    <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                      <SelectTrigger data-testid="select-custom-msg-template">
-                        <SelectValue placeholder="Choose a template…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {waTemplates.map(t => (
-                          <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid gap-2">
+                      {waTemplates.slice(0, 3).map(t => {
+                        const isSelected = selectedTemplateId === String(t.id);
+                        const shortPreview = t.content.replace(/\{\{[^}]+\}\}/g, "…").slice(0, 80);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            data-testid={`template-card-${t.id}`}
+                            onClick={() => setSelectedTemplateId(String(t.id))}
+                            className={`w-full text-left rounded-lg border-2 px-3 py-2.5 transition-all ${
+                              isSelected
+                                ? "border-[#25D366] bg-[#25D366]/5 dark:bg-[#25D366]/10"
+                                : "border-border hover:border-[#25D366]/50 hover:bg-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium leading-tight">{t.name}</span>
+                              {isSelected && (
+                                <span className="flex-shrink-0 h-4 w-4 rounded-full bg-[#25D366] flex items-center justify-center">
+                                  <Check className="h-2.5 w-2.5 text-white" />
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{shortPreview}{t.content.length > 80 ? "…" : ""}</p>
+                          </button>
+                        );
+                      })}
+                      {waTemplates.length > 3 && (
+                        <p className="text-xs text-muted-foreground text-center">
+                          Showing 3 of {waTemplates.length} templates.{" "}
+                          <a href="/whatsapp-templates" className="underline text-primary">Manage templates</a>
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
 
