@@ -1291,6 +1291,18 @@ export default function ActiveBookings() {
                       ) : (
                         <div className="flex items-center gap-1.5 flex-1">
                           <span className="font-medium">{booking.guest.phone}</span>
+                          {/* Direct call */}
+                          {booking.guest.phone && (
+                            <a
+                              href={`tel:${booking.guest.phone}`}
+                              className="text-muted-foreground hover:text-blue-600 transition-colors"
+                              title={`Call ${booking.guest.fullName}`}
+                              data-testid={`button-call-${booking.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Phone className="h-3 w-3" />
+                            </a>
+                          )}
                           <button
                             className="text-muted-foreground hover:text-primary transition-colors"
                             title="Edit phone number"

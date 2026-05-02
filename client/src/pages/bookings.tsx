@@ -2272,6 +2272,24 @@ export default function Bookings() {
                                 <Phone className="h-3 w-3" />
                               </a>
                             )}
+                            {(guest?.phone) && (() => {
+                              const rawPhone = ((guest as any)?.whatsappPhone || guest?.phone || "").replace(/\D/g, "");
+                              const waPhone = rawPhone.startsWith("91") ? rawPhone : `91${rawPhone}`;
+                              return (
+                                <a
+                                  href={`https://wa.me/${waPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 rounded hover-elevate bg-[#25D366]/10 text-[#25D366] shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label={`WhatsApp ${guest.fullName}`}
+                                  data-testid={`button-wa-chat-${booking.id}`}
+                                  title="Chat on WhatsApp"
+                                >
+                                  <MessageSquare className="h-3 w-3" />
+                                </a>
+                              );
+                            })()}
                           </div>
                         </TableCell>
                         <TableCell className="py-2 text-sm" data-testid={`text-property-${booking.id}`}>
