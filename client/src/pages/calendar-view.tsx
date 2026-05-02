@@ -138,12 +138,13 @@ export default function CalendarView() {
   const [changeRoomBooking, setChangeRoomBooking] = useState<Booking | null>(null);
   const [changeRoomDialogOpen, setChangeRoomDialogOpen] = useState(false);
   const [changeRoomNewRoomId, setChangeRoomNewRoomId] = useState<string>("");
+  const [changeRoomRecalculate, setChangeRoomRecalculate] = useState(true);
   const [otaPromptOpen, setOtaPromptOpen] = useState(false);
-  const [pendingRoomChange, setPendingRoomChange] = useState<{ bookingId: number; newRoomId: number } | null>(null);
+  const [pendingRoomChange, setPendingRoomChange] = useState<{ bookingId: number; newRoomId: number; recalculatePrice: boolean } | null>(null);
 
   const changeRoomMutation = useMutation({
-    mutationFn: async ({ bookingId, newRoomId, openOldRoomOnOTA }: { bookingId: number; newRoomId: number; openOldRoomOnOTA: boolean }) =>
-      apiRequest(`/api/bookings/${bookingId}/change-room`, "POST", { newRoomId, openOldRoomOnOTA }),
+    mutationFn: async ({ bookingId, newRoomId, openOldRoomOnOTA, recalculatePrice }: { bookingId: number; newRoomId: number; openOldRoomOnOTA: boolean; recalculatePrice: boolean }) =>
+      apiRequest(`/api/bookings/${bookingId}/change-room`, "POST", { newRoomId, openOldRoomOnOTA, recalculatePrice }),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
@@ -152,9 +153,10 @@ export default function CalendarView() {
       setChangeRoomBooking(null);
       setChangeRoomDialogOpen(false);
       setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
+      const priceNote = data?.newTotal ? ` Booking total updated to ₹${Number(data.newTotal).toLocaleString()}.` : "";
       toast({
         title: "Room Changed",
-        description: `Booking moved to Room ${data?.newRoom?.roomNumber}. OTA inventory has been synced.`,
+        description: `Booking moved to Room ${data?.newRoom?.roomNumber}.${priceNote} OTA inventory synced.`,
       });
     },
     onError: (err: any) => {
@@ -1174,17 +1176,70 @@ export default function CalendarView() {
               })()}
             </div>
 
-            {changeRoomNewRoomId && (() => {
+            {changeRoomNewRoomId && changeRoomBooking && (() => {
               const newRoom = rooms.find(r => r.id === parseInt(changeRoomNewRoomId));
-              const oldRoom = rooms.find(r => r.id === changeRoomBooking?.roomId);
+              const oldRoom = rooms.find(r => r.id === changeRoomBooking.roomId);
+              const nights = Math.max(1, Math.round(
+                (new Date(changeRoomBooking.checkOutDate).getTime() - new Date(changeRoomBooking.checkInDate).getTime())
+                / (1000 * 60 * 60 * 24)
+              ));
+              const oldTotal = Number(changeRoomBooking.totalAmount || 0);
+              const newTotal = Number(newRoom?.pricePerNight || 0) * nights;
+              const diff = newTotal - oldTotal;
               return (
-                <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <span className="font-medium text-foreground">Room {oldRoom?.roomNumber || "—"}</span>
-                    <ArrowRightLeft className="h-3.5 w-3.5" />
-                    <span className="font-semibold text-[#2BB6A8]">Room {newRoom?.roomNumber}</span>
+                <div className="space-y-3">
+                  {/* Room swap preview */}
+                  <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Room {oldRoom?.roomNumber || "—"}</span>
+                      <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="font-semibold text-[#2BB6A8]">Room {newRoom?.roomNumber}</span>
+                      <span className="text-xs text-muted-foreground ml-1">({newRoom?.roomType})</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {nights} night{nights !== 1 ? "s" : ""} · ₹{Number(newRoom?.pricePerNight || 0).toLocaleString()}/night
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground">{newRoom?.roomType} · ₹{Number(newRoom?.pricePerNight || 0).toLocaleString()}/night</p>
+
+                  {/* Price comparison */}
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm space-y-2">
+                    <p className="font-medium text-amber-900 dark:text-amber-200 text-xs uppercase tracking-wide">Billing Impact</p>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Current booking total</span>
+                      <span className="font-medium">₹{oldTotal.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">New room rate ({nights}n × ₹{Number(newRoom?.pricePerNight || 0).toLocaleString()})</span>
+                      <span className="font-medium text-[#1E3A5F]">₹{newTotal.toLocaleString()}</span>
+                    </div>
+                    {diff !== 0 && (
+                      <div className="flex justify-between border-t pt-1.5 mt-1">
+                        <span className="text-muted-foreground">Difference</span>
+                        <span className={`font-semibold ${diff > 0 ? "text-orange-600" : "text-green-600"}`}>
+                          {diff > 0 ? "+" : ""}₹{Math.abs(diff).toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recalculate toggle */}
+                  <label className="flex items-start gap-3 cursor-pointer group" data-testid="label-recalculate-price">
+                    <div
+                      className={`mt-0.5 h-4 w-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${changeRoomRecalculate ? "bg-[#1E3A5F] border-[#1E3A5F]" : "border-muted-foreground"}`}
+                      onClick={() => setChangeRoomRecalculate(v => !v)}
+                      data-testid="checkbox-recalculate"
+                    >
+                      {changeRoomRecalculate && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </div>
+                    <div onClick={() => setChangeRoomRecalculate(v => !v)}>
+                      <p className="text-sm font-medium leading-tight">Update booking total to new room rate</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {changeRoomRecalculate
+                          ? `Total will be updated to ₹${newTotal.toLocaleString()}`
+                          : `Total stays at ₹${oldTotal.toLocaleString()} (you can adjust manually later)`}
+                      </p>
+                    </div>
+                  </label>
                 </div>
               );
             })()}
@@ -1199,7 +1254,7 @@ export default function CalendarView() {
               className="bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
               onClick={() => {
                 if (!changeRoomBooking || !changeRoomNewRoomId) return;
-                setPendingRoomChange({ bookingId: changeRoomBooking.id, newRoomId: parseInt(changeRoomNewRoomId) });
+                setPendingRoomChange({ bookingId: changeRoomBooking.id, newRoomId: parseInt(changeRoomNewRoomId), recalculatePrice: changeRoomRecalculate });
                 setChangeRoomDialogOpen(false);
                 setOtaPromptOpen(true);
               }}

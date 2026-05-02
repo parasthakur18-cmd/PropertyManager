@@ -3899,7 +3899,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.post("/api/bookings/:id/change-room", isAuthenticated, async (req: any, res) => {
     try {
       const bookingId = parseInt(req.params.id);
-      const { newRoomId, openOldRoomOnOTA } = req.body;
+      const { newRoomId, openOldRoomOnOTA, recalculatePrice } = req.body;
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
 
       if (!newRoomId) return res.status(400).json({ message: "newRoomId is required" });
@@ -3931,11 +3931,26 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       const oldRoom = oldRoomId ? await storage.getRoom(oldRoomId) : null;
 
-      // Update the booking
-      const updatedBooking = await storage.updateBooking(bookingId, {
+      // Optionally recalculate total based on new room's price × nights
+      let newTotal: number | undefined;
+      const bookingUpdates: Record<string, any> = {
         roomId: newRoomId,
         propertyId: newRoom.propertyId,
-      });
+      };
+      if (recalculatePrice && newRoom.pricePerNight) {
+        const nights = Math.max(1, Math.round(
+          (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime())
+          / (1000 * 60 * 60 * 24)
+        ));
+        newTotal = Number(newRoom.pricePerNight) * nights;
+        bookingUpdates.totalAmount = String(newTotal);
+        // Recalculate balance = totalAmount - advance already paid
+        const advancePaid = Number(booking.advanceAmount || 0);
+        bookingUpdates.balanceAmount = String(Math.max(0, newTotal - advancePaid));
+      }
+
+      // Update the booking
+      const updatedBooking = await storage.updateBooking(bookingId, bookingUpdates);
 
       // Audit log
       await storage.createAuditLog({
@@ -3945,11 +3960,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         userId: userId || "unknown",
         userRole: req.user?.role,
         changeSet: {
-          before: { roomId: oldRoomId, roomNumber: oldRoom?.roomNumber },
-          after: { roomId: newRoomId, roomNumber: newRoom.roomNumber },
+          before: { roomId: oldRoomId, roomNumber: oldRoom?.roomNumber, totalAmount: booking.totalAmount },
+          after: { roomId: newRoomId, roomNumber: newRoom.roomNumber, totalAmount: newTotal ?? booking.totalAmount },
         },
         metadata: {
           openOldRoomOnOTA: !!openOldRoomOnOTA,
+          recalculatePrice: !!recalculatePrice,
           guestId: booking.guestId,
         },
       });
@@ -3967,6 +3983,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         booking: updatedBooking,
         oldRoom: { id: oldRoomId, roomNumber: oldRoom?.roomNumber },
         newRoom: { id: newRoomId, roomNumber: newRoom.roomNumber },
+        newTotal: newTotal ?? null,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
