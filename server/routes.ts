@@ -16566,6 +16566,26 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
   // ===== NOTIFICATION CENTER ROUTES =====
   
   // Get notifications for current user
+  // Notification types grouped by permission module
+  const NOTIFICATION_PERMISSION_MAP: Record<string, string> = {
+    new_booking:             'bookings',
+    booking_modified:        'bookings',
+    booking_cancelled:       'bookings',
+    bill_generated:          'payments',
+    payment_received:        'payments',
+    pending_payment_overdue: 'payments',
+    vendor_due:              'payments',
+    new_order:               'foodOrders',
+    order_ready:             'foodOrders',
+  };
+
+  // Notification types that are admin/staff-management only
+  const ADMIN_ONLY_NOTIFICATION_TYPES = new Set([
+    'new_user_signup', 'approval_pending', 'approval_approved',
+    'approval_rejected', 'issue_reported', 'error_reported',
+    'contact_enquiry', 'system_alert',
+  ]);
+
   app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
@@ -16579,60 +16599,97 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         .limit(50);
       
       // For Super Admin: Only show system-level notifications
-      // Filter out operational notifications (bookings, payments, orders, check-ins)
       if (user?.role === 'super-admin') {
-        const systemNotificationTypes = [
-          'approval_pending',      // New user registration
-          'approval_approved',     // User approved
-          'approval_rejected',     // User rejected
-          'new_user_signup',       // New signup
-          'error_reported',        // App error reported
-          'issue_reported',        // Issue/bug reported
-          'contact_enquiry',       // Website contact form
-          'system_alert',          // System alerts
-        ];
-        
         userNotifications = userNotifications.filter((n: any) => 
-          systemNotificationTypes.includes(n.type) || 
+          ADMIN_ONLY_NOTIFICATION_TYPES.has(n.type) ||
           n.type?.startsWith('system_') ||
           n.type?.startsWith('error_') ||
           n.type?.startsWith('approval_')
         );
-      } else if (user?.role && user.role !== 'super-admin') {
-        const auth = await getAuthenticatedTenant(req);
-        if (auth) {
-          const { tenant } = auth;
-          if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
-            const userPropertyIds = new Set<number>(tenant.assignedPropertyIds);
-            const filteredNotifications: typeof userNotifications = [];
-            
-            for (const notification of userNotifications) {
-              if (!notification.relatedType || !notification.relatedId) {
-                filteredNotifications.push(notification);
-                continue;
-              }
-              
-              if (notification.relatedType === 'booking') {
-                const booking = await storage.getBooking(notification.relatedId);
-                if (booking && userPropertyIds.has(booking.propertyId)) {
-                  filteredNotifications.push(notification);
-                }
-                continue;
-              }
-              
-              if (notification.relatedType === 'order') {
-                const order = await storage.getOrder(notification.relatedId);
-                if (order && userPropertyIds.has(order.propertyId)) {
-                  filteredNotifications.push(notification);
-                }
-                continue;
-              }
-              
+        return res.json(userNotifications);
+      }
+
+      // ── Permission-based notification filtering ──────────────────────────
+      // Fetch the user's granular permissions (may be null if none configured)
+      const [userPermsRow] = await db
+        .select()
+        .from(userPermissions)
+        .where(eq(userPermissions.userId, userId))
+        .limit(1);
+
+      // Determine if this user has any configured granular restrictions
+      const permKeys = ['bookings','calendar','rooms','guests','foodOrders',
+                        'menuManagement','payments','reports','settings','tasks','staff'] as const;
+      const hasGranularPermissions = userPermsRow
+        ? permKeys.some(k => (userPermsRow as any)[k] !== 'none')
+        : false;
+
+      // kitchen role always restricted to food-orders only
+      const isKitchenRole = user?.role === 'kitchen';
+
+      // Admin with no granular restrictions → show all operational notifications
+      if (user?.role === 'admin' && !hasGranularPermissions) {
+        // fall through to property filter only
+      } else if (isKitchenRole || hasGranularPermissions) {
+        // Build the set of modules this user can access
+        const allowedModules = new Set<string>();
+        if (isKitchenRole) {
+          allowedModules.add('foodOrders');
+        } else if (userPermsRow) {
+          for (const k of permKeys) {
+            if ((userPermsRow as any)[k] !== 'none') allowedModules.add(k);
+          }
+        }
+
+        userNotifications = userNotifications.filter((n: any) => {
+          const requiredModule = NOTIFICATION_PERMISSION_MAP[n.type];
+          if (requiredModule) {
+            // Only show if the user has access to that module
+            return allowedModules.has(requiredModule);
+          }
+          // Admin-only notifications: hide from non-admin restricted users
+          if (ADMIN_ONLY_NOTIFICATION_TYPES.has(n.type)) {
+            return allowedModules.has('staff');
+          }
+          // Unknown type: show only to users with broad access
+          return !isKitchenRole;
+        });
+      }
+
+      // ── Property-based filtering for users scoped to specific properties ──
+      const auth = await getAuthenticatedTenant(req);
+      if (auth) {
+        const { tenant } = auth;
+        if (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0) {
+          const userPropertyIds = new Set<number>(tenant.assignedPropertyIds);
+          const filteredNotifications: typeof userNotifications = [];
+          
+          for (const notification of userNotifications) {
+            if (!notification.relatedType || !notification.relatedId) {
               filteredNotifications.push(notification);
+              continue;
             }
             
-            userNotifications = filteredNotifications;
+            if (notification.relatedType === 'booking') {
+              const booking = await storage.getBooking(notification.relatedId);
+              if (booking && userPropertyIds.has(booking.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            if (notification.relatedType === 'order') {
+              const order = await storage.getOrder(notification.relatedId);
+              if (order && userPropertyIds.has(order.propertyId)) {
+                filteredNotifications.push(notification);
+              }
+              continue;
+            }
+            
+            filteredNotifications.push(notification);
           }
+          
+          userNotifications = filteredNotifications;
         }
       }
       
