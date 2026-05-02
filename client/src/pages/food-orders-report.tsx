@@ -169,6 +169,10 @@ export default function FoodOrdersReport() {
       case "today":
         startDate = startOfDay(now);
         break;
+      case "yesterday":
+        startDate = startOfDay(subDays(now, 1));
+        endDate = endOfDay(subDays(now, 1));
+        break;
       case "last7days":
         startDate = startOfDay(subDays(now, 6));
         break;
@@ -294,71 +298,92 @@ export default function FoodOrdersReport() {
         </Button>
       </div>
 
-      {/* Property Filter */}
-      {availableProperties.length > 1 && (
-        <div className="mb-6">
-          <PropertyScopePicker
-            availableProperties={availableProperties}
-            selectedPropertyId={selectedPropertyId}
-            onPropertyChange={setSelectedPropertyId}
-          />
-        </div>
-      )}
-
+      {/* Filters row: property + date hot tabs */}
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Date Range
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <label className="text-sm font-medium mb-2 block">Select Period</label>
-              <Select value={dateRange} onValueChange={setDateRange}>
-                <SelectTrigger data-testid="select-date-range">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="last7days">Last 7 Days</SelectItem>
-                  <SelectItem value="last30days">Last 30 Days</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {dateRange === "custom" && (
-              <>
-                <div className="flex-1 min-w-[200px]">
-                  <label className="text-sm font-medium mb-2 block">Start Date *</label>
-                  <Input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    data-testid="input-start-date"
-                  />
-                </div>
-                <div className="flex-1 min-w-[200px]">
-                  <label className="text-sm font-medium mb-2 block">End Date *</label>
-                  <Input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    data-testid="input-end-date"
-                  />
-                </div>
-              </>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Property filter — always visible */}
+            {availableProperties.length > 0 && (
+              <div className="min-w-[200px] flex-1">
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">Property</label>
+                <Select
+                  value={selectedPropertyId !== null ? String(selectedPropertyId) : "all"}
+                  onValueChange={(v) => setSelectedPropertyId(v === "all" ? null : Number(v))}
+                >
+                  <SelectTrigger data-testid="select-property-filter" className="h-9">
+                    <SelectValue placeholder="All Properties" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Properties</SelectItem>
+                    {availableProperties.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
 
-            <div className="text-sm">
-              {dateRange === "custom" && (!customStartDate || !customEndDate) ? (
-                <span className="text-destructive">Please select both start and end dates</span>
+            {/* Hot tab date buttons */}
+            <div className="flex-1">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">Period</label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { value: "today",      label: "Today" },
+                  { value: "yesterday",  label: "Yesterday" },
+                  { value: "last7days",  label: "Last 7 Days" },
+                  { value: "last30days", label: "Last 30 Days" },
+                  { value: "custom",     label: "Custom" },
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    data-testid={`tab-date-${value}`}
+                    onClick={() => setDateRange(value)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all border ${
+                      dateRange === value
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Date label / custom inputs */}
+            <div className="w-full">
+              {dateRange === "custom" ? (
+                <div className="flex flex-wrap gap-3 mt-1">
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="text-xs font-medium mb-1 block">Start Date *</label>
+                    <Input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      data-testid="input-start-date"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-[160px]">
+                    <label className="text-xs font-medium mb-1 block">End Date *</label>
+                    <Input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      data-testid="input-end-date"
+                      className="h-9"
+                    />
+                  </div>
+                  {(!customStartDate || !customEndDate) && (
+                    <p className="w-full text-xs text-destructive">Please select both start and end dates</p>
+                  )}
+                </div>
               ) : (
-                <span className="text-muted-foreground">
-                  Showing: {format(startDate, "MMM dd, yyyy")} - {format(endDate, "MMM dd, yyyy")}
-                </span>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <Calendar className="inline h-3 w-3 mr-1 mb-0.5" />
+                  Showing: {format(startDate, "MMM dd, yyyy")} — {format(endDate, "MMM dd, yyyy")}
+                </p>
               )}
             </div>
           </div>
