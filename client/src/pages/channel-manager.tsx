@@ -1069,6 +1069,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
   };
 
   const [inventoryValues, setInventoryValues] = useState<Record<string, string>>({});
+  const [pushingSingleInventory, setPushingSingleInventory] = useState<string | null>(null);
 
   const pushInventoryMutation = useMutation({
     mutationFn: async () => {
@@ -1099,6 +1100,33 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
       toast({ title: "Push Error", description: e.message, variant: "destructive" });
     },
   });
+
+  const pushSingleInventory = async (m: typeof mappings[0]) => {
+    const val = inventoryValues[m.aiosellRoomCode];
+    if (!val && val !== "0") {
+      toast({ title: "Enter a value", description: `Set the available rooms count for ${m.hostezeeRoomType} first.`, variant: "destructive" });
+      return;
+    }
+    setPushingSingleInventory(m.aiosellRoomCode);
+    try {
+      const entry: { roomCode: string; available: number; roomId?: string } = {
+        roomCode: m.aiosellRoomCode,
+        available: parseInt(val || "0"),
+      };
+      if (m.aiosellRoomId) entry.roomId = m.aiosellRoomId;
+      const res = await apiRequest("/api/aiosell/push-inventory", "POST", {
+        propertyId,
+        updates: [{ startDate, endDate, rooms: [entry] }],
+      });
+      const data = await res.json();
+      toast({ title: data.success ? "Inventory pushed" : "Push failed", description: data.success ? `${m.hostezeeRoomType} inventory updated on OTAs.` : data.message, variant: data.success ? "default" : "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+    } catch (e: any) {
+      toast({ title: "Push Error", description: e.message, variant: "destructive" });
+    } finally {
+      setPushingSingleInventory(null);
+    }
+  };
 
   if (mappings.length === 0) {
     return (
