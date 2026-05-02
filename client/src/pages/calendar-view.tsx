@@ -28,8 +28,21 @@ import {
   Link2,
   AlertTriangle,
   MoreVertical,
-  Hotel
+  Hotel,
+  ArrowRightLeft,
+  CheckCircle2,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { format, addDays, startOfDay, eachDayOfInterval, addMonths } from "date-fns";
 import {
   Select,
@@ -91,6 +104,7 @@ const SIDEBAR_WIDTH = 180;
 
 export default function CalendarView() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
@@ -119,6 +133,54 @@ export default function CalendarView() {
     bookings: Booking[];
     date: Date | null;
   }>({ isOpen: false, room: null, bookings: [], date: null });
+
+  // ── Change Room state ───────────────────────────────────────────────────────
+  const [changeRoomBooking, setChangeRoomBooking] = useState<Booking | null>(null);
+  const [changeRoomDialogOpen, setChangeRoomDialogOpen] = useState(false);
+  const [changeRoomNewRoomId, setChangeRoomNewRoomId] = useState<string>("");
+  const [otaPromptOpen, setOtaPromptOpen] = useState(false);
+  const [pendingRoomChange, setPendingRoomChange] = useState<{ bookingId: number; newRoomId: number } | null>(null);
+
+  const changeRoomMutation = useMutation({
+    mutationFn: async ({ bookingId, newRoomId, openOldRoomOnOTA }: { bookingId: number; newRoomId: number; openOldRoomOnOTA: boolean }) =>
+      apiRequest(`/api/bookings/${bookingId}/change-room`, "POST", { newRoomId, openOldRoomOnOTA }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
+      setOtaPromptOpen(false);
+      setPendingRoomChange(null);
+      setChangeRoomBooking(null);
+      setChangeRoomDialogOpen(false);
+      setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
+      toast({
+        title: "Room Changed",
+        description: `Booking moved to Room ${data?.newRoom?.roomNumber}. OTA inventory has been synced.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to change room", variant: "destructive" });
+    },
+  });
+
+  // Compute available rooms for a booking's dates (client-side pre-filter; server validates too)
+  const getAvailableRoomsForChange = (booking: Booking): Room[] => {
+    const cin = format(new Date(booking.checkInDate), "yyyy-MM-dd");
+    const cout = format(new Date(booking.checkOutDate), "yyyy-MM-dd");
+    return rooms.filter(room => {
+      if (room.id === booking.roomId) return false;
+      if (room.propertyId !== booking.propertyId) return false;
+      if (room.status === "out-of-service" || room.status === "maintenance") return false;
+      const hasConflict = bookings.some(b => {
+        if (b.id === booking.id) return false;
+        if (b.status === "cancelled" || b.status === "checked-out" || b.status === "no_show") return false;
+        if (b.roomId !== room.id) return false;
+        const bc = format(new Date(b.checkInDate), "yyyy-MM-dd");
+        const bo = format(new Date(b.checkOutDate), "yyyy-MM-dd");
+        return bc < cout && bo > cin;
+      });
+      return !hasConflict;
+    });
+  };
   const calendarRef = useRef<HTMLDivElement>(null);
   
   const endDate = addDays(startDate, 11);
@@ -1011,19 +1073,36 @@ export default function CalendarView() {
                       </div>
                     </div>
                     
-                    {/* View booking button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full mt-2"
-                      onClick={() => {
-                        setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
-                        navigate(`/bookings/${booking.id}`);
-                      }}
-                      data-testid={`button-view-booking-${booking.id}`}
-                    >
-                      View Full Details
-                    </Button>
+                    {/* Action buttons */}
+                    <div className="flex gap-2 mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
+                          navigate(`/bookings/${booking.id}`);
+                        }}
+                        data-testid={`button-view-booking-${booking.id}`}
+                      >
+                        View Full Details
+                      </Button>
+                      {booking.status !== "checked-out" && booking.status !== "cancelled" && (
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
+                          onClick={() => {
+                            setChangeRoomBooking(booking);
+                            setChangeRoomNewRoomId("");
+                            setChangeRoomDialogOpen(true);
+                          }}
+                          data-testid={`button-change-room-${booking.id}`}
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
+                          Change Room
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1041,6 +1120,139 @@ export default function CalendarView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Change Room: Room Picker Dialog ──────────────────────────────── */}
+      <Dialog open={changeRoomDialogOpen} onOpenChange={(open) => { if (!open) { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomNewRoomId(""); } }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-change-room">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-[#1E3A5F]" />
+              Change Room Assignment
+            </DialogTitle>
+            <DialogDescription>
+              {changeRoomBooking && (() => {
+                const guest = guests.find(g => g.id === changeRoomBooking.guestId);
+                const currentRoom = rooms.find(r => r.id === changeRoomBooking.roomId);
+                return `Moving ${guest?.fullName || "Guest"} from Room ${currentRoom?.roomNumber || "—"} · ${format(new Date(changeRoomBooking.checkInDate), "d MMM")} – ${format(new Date(changeRoomBooking.checkOutDate), "d MMM yyyy")}`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Select New Room</Label>
+              {changeRoomBooking && (() => {
+                const available = getAvailableRoomsForChange(changeRoomBooking);
+                if (available.length === 0) {
+                  return (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-4 text-sm text-amber-800 dark:text-amber-300">
+                      No available rooms found for these dates in this property.
+                    </div>
+                  );
+                }
+                const byType: Record<string, Room[]> = {};
+                available.forEach(r => { const t = r.roomType || "Other"; if (!byType[t]) byType[t] = []; byType[t].push(r); });
+                return (
+                  <Select value={changeRoomNewRoomId} onValueChange={setChangeRoomNewRoomId}>
+                    <SelectTrigger data-testid="select-new-room">
+                      <SelectValue placeholder="Choose an available room…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(byType).map(([type, typeRooms]) => (
+                        <div key={type}>
+                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{type}</div>
+                          {typeRooms.map(r => (
+                            <SelectItem key={r.id} value={String(r.id)}>
+                              Room {r.roomNumber} — ₹{Number(r.pricePerNight).toLocaleString()}/night
+                            </SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                );
+              })()}
+            </div>
+
+            {changeRoomNewRoomId && (() => {
+              const newRoom = rooms.find(r => r.id === parseInt(changeRoomNewRoomId));
+              const oldRoom = rooms.find(r => r.id === changeRoomBooking?.roomId);
+              return (
+                <div className="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <span className="font-medium text-foreground">Room {oldRoom?.roomNumber || "—"}</span>
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                    <span className="font-semibold text-[#2BB6A8]">Room {newRoom?.roomNumber}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{newRoom?.roomType} · ₹{Number(newRoom?.pricePerNight || 0).toLocaleString()}/night</p>
+                </div>
+              );
+            })()}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setChangeRoomDialogOpen(false); setChangeRoomBooking(null); setChangeRoomNewRoomId(""); }} data-testid="button-cancel-change-room">
+              Cancel
+            </Button>
+            <Button
+              disabled={!changeRoomNewRoomId || changeRoomMutation.isPending}
+              className="bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
+              onClick={() => {
+                if (!changeRoomBooking || !changeRoomNewRoomId) return;
+                setPendingRoomChange({ bookingId: changeRoomBooking.id, newRoomId: parseInt(changeRoomNewRoomId) });
+                setChangeRoomDialogOpen(false);
+                setOtaPromptOpen(true);
+              }}
+              data-testid="button-confirm-change-room"
+            >
+              {changeRoomMutation.isPending ? "Moving…" : "Continue"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change Room: OTA Prompt AlertDialog ──────────────────────────── */}
+      <AlertDialog open={otaPromptOpen} onOpenChange={setOtaPromptOpen}>
+        <AlertDialogContent data-testid="dialog-ota-prompt">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-[#2BB6A8]" />
+              Open Previous Room on OTAs?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                The room has been reassigned. Would you like to <strong>open the previous room for sale</strong> on connected OTAs (e.g. Booking.com)?
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Select <em>Yes, Open for Sale</em> to make it available again, or <em>Keep Blocked</em> to leave it closed — useful when the room needs maintenance or inspection.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                if (pendingRoomChange) {
+                  changeRoomMutation.mutate({ ...pendingRoomChange, openOldRoomOnOTA: false });
+                }
+              }}
+              data-testid="button-keep-blocked"
+            >
+              Keep Blocked
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[#2BB6A8] hover:bg-[#229e91] text-white"
+              onClick={() => {
+                if (pendingRoomChange) {
+                  changeRoomMutation.mutate({ ...pendingRoomChange, openOldRoomOnOTA: true });
+                }
+              }}
+              data-testid="button-open-ota"
+            >
+              Yes, Open for Sale
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

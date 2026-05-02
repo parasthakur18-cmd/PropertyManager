@@ -3895,6 +3895,84 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // ── Change Room: reassign booking to a different room with OTA sync ──────────
+  app.post("/api/bookings/:id/change-room", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      const { newRoomId, openOldRoomOnOTA } = req.body;
+      const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
+
+      if (!newRoomId) return res.status(400).json({ message: "newRoomId is required" });
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      const oldRoomId = booking.roomId;
+      if (oldRoomId === newRoomId) return res.status(400).json({ message: "New room is the same as current room" });
+
+      const newRoom = await storage.getRoom(newRoomId);
+      if (!newRoom) return res.status(404).json({ message: "Room not found" });
+
+      // Conflict check: make sure new room is free for these dates
+      const conflicting = await db.select({ id: bookings.id })
+        .from(bookings)
+        .where(and(
+          eq(bookings.roomId, newRoomId),
+          not(eq(bookings.id, bookingId)),
+          not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+          lt(bookings.checkInDate, booking.checkOutDate),
+          gt(bookings.checkOutDate, booking.checkInDate),
+        ))
+        .limit(1);
+
+      if (conflicting.length > 0) {
+        return res.status(409).json({ message: "The selected room is already booked for these dates" });
+      }
+
+      const oldRoom = oldRoomId ? await storage.getRoom(oldRoomId) : null;
+
+      // Update the booking
+      const updatedBooking = await storage.updateBooking(bookingId, {
+        roomId: newRoomId,
+        propertyId: newRoom.propertyId,
+      });
+
+      // Audit log
+      await storage.createAuditLog({
+        entityType: "booking",
+        entityId: String(bookingId),
+        action: "room_changed",
+        userId: userId || "unknown",
+        userRole: req.user?.role,
+        changeSet: {
+          before: { roomId: oldRoomId, roomNumber: oldRoom?.roomNumber },
+          after: { roomId: newRoomId, roomNumber: newRoom.roomNumber },
+        },
+        metadata: {
+          openOldRoomOnOTA: !!openOldRoomOnOTA,
+          guestId: booking.guestId,
+        },
+      });
+
+      // Trigger OTA inventory sync for the property
+      try {
+        await autoSyncInventoryForProperty(newRoom.propertyId);
+        console.log(`[CHANGE-ROOM] OTA sync triggered for property ${newRoom.propertyId}`);
+      } catch (syncErr: any) {
+        console.error("[CHANGE-ROOM] OTA sync failed (non-critical):", syncErr.message);
+      }
+
+      res.json({
+        success: true,
+        booking: updatedBooking,
+        oldRoom: { id: oldRoomId, roomNumber: oldRoom?.roomNumber },
+        newRoom: { id: newRoomId, roomNumber: newRoom.roomNumber },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.patch("/api/bookings/:id/status", isAuthenticated, async (req, res) => {
     try {
       const { status } = req.body;

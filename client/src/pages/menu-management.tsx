@@ -397,8 +397,8 @@ export default function MenuManagement() {
 
   // Reorder mutation for up/down buttons
   const reorderMutation = useMutation({
-    mutationFn: async (data: { category: string; itemIds: number[] }) => {
-      return await apiRequest("/api/menu-items/reorder", "POST", data);
+    mutationFn: async (updates: { id: number; displayOrder: number }[]) => {
+      return await apiRequest("/api/menu-items/reorder", "PATCH", updates);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
@@ -418,21 +418,18 @@ export default function MenuManagement() {
 
   // Handle move up/down for menu items
   const handleMoveItem = (category: string, categoryItems: MenuItem[], itemId: number, direction: 'up' | 'down') => {
-    const currentIndex = categoryItems.findIndex(item => item.id === itemId);
+    const sorted = [...categoryItems].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+    const currentIndex = sorted.findIndex(item => item.id === itemId);
     if (currentIndex === -1) return;
-    
-    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (newIndex < 0 || newIndex >= categoryItems.length) return;
-    
-    // Create new order by swapping items
-    const newOrder = [...categoryItems];
-    [newOrder[currentIndex], newOrder[newIndex]] = [newOrder[newIndex], newOrder[currentIndex]];
-    
-    // Save the new order to the backend
-    reorderMutation.mutate({
-      category,
-      itemIds: newOrder.map(item => item.id),
-    });
+
+    const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (swapIndex < 0 || swapIndex >= sorted.length) return;
+
+    // Swap items and assign clean sequential displayOrder values
+    const newOrder = [...sorted];
+    [newOrder[currentIndex], newOrder[swapIndex]] = [newOrder[swapIndex], newOrder[currentIndex]];
+
+    reorderMutation.mutate(newOrder.map((item, i) => ({ id: item.id, displayOrder: i })));
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
