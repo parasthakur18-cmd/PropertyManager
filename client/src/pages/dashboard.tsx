@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone, Copy } from "lucide-react";
+import { Building2, Hotel, Calendar, Users, TrendingUp, IndianRupee, LogIn, LogOut, ChefHat, Receipt, Plus, MessageSquarePlus, Clock, Check, AlertCircle, ChevronDown, Activity, AlertTriangle, Phone, User, MapPin, Utensils, Home, Bell, ArrowRight, CheckCircle2, XCircle, Timer, CookingPot, Upload, Camera, Wallet, CreditCard, Banknote, Smartphone, Copy, MessageCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1860,6 +1860,46 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="space-y-2">
+                  <Button
+                    className="w-full bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                    data-testid="button-send-bill-whatsapp-dashboard"
+                    onClick={() => {
+                      const phone = (guest?.phone || "").replace(/\D/g, "");
+                      if (!phone) {
+                        toast({ title: "No phone number", description: "Guest has no phone number on file.", variant: "destructive" });
+                        return;
+                      }
+                      const room = bookingRooms[0];
+                      const roomLabel = booking?.isGroupBooking && bookingRooms.length
+                        ? `Rooms ${bookingRooms.map((r: any) => r.roomNumber).join(", ")}`
+                        : room?.roomNumber ?? "TBA";
+                      const checkIn = format(checkInDate, "dd MMM yyyy");
+                      const checkOut = format(checkOutDate, "dd MMM yyyy");
+                      const balanceAmt = Math.max(0, remainingBalance);
+
+                      let msg = `🏨 *Bill — Hostezee*\n\n`;
+                      msg += `Guest: *${guest?.fullName ?? "Guest"}*\n`;
+                      msg += `Room: ${roomLabel}\n`;
+                      msg += `Check-in: ${checkIn}\n`;
+                      msg += `Check-out: ${checkOut}\n`;
+                      msg += `Nights: ${nights}\n\n`;
+                      msg += `💰 *Bill Summary*\n`;
+                      if (roomCharges > 0)  msg += `Room Charges: ₹${roomCharges.toFixed(2)}\n`;
+                      if (foodCharges > 0)  msg += `Food & Beverages: ₹${foodCharges.toFixed(2)}\n`;
+                      if (extraCharges > 0) msg += `Extra Services: ₹${extraCharges.toFixed(2)}\n`;
+                      msg += `*Total: ₹${billTotal.toFixed(2)}*\n`;
+                      if (cashPaid > 0) msg += `Paid: ₹${cashPaid.toFixed(2)}\n`;
+                      msg += `*Balance Due: ₹${balanceAmt.toFixed(2)}*\n\n`;
+                      msg += `Thank you for staying with us! 🙏`;
+
+                      const waPhone = phone.startsWith("91") ? phone : `91${phone}`;
+                      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+                    }}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Send Bill on WhatsApp
+                  </Button>
+
                   <Button
                     variant="outline"
                     className="w-full"

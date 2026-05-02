@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Hotel, User, Calendar, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil } from "lucide-react";
+import { Hotel, User, Calendar, UtensilsCrossed, LogOut, Phone, Search, Plus, Trash2, AlertCircle, Coffee, FileText, Download, QrCode, Check, CheckCircle, Clock, Merge, CreditCard, Wrench, CheckCircle2, Copy, Link2, RotateCcw, Pencil, MessageCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { format, isBefore, startOfDay } from "date-fns";
@@ -2258,6 +2258,52 @@ export default function ActiveBookings() {
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Download Bill PDF
+                  </Button>
+
+                  <Button
+                    className="w-full bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                    data-testid="button-send-bill-whatsapp"
+                    onClick={() => {
+                      const b = booking;
+                      const phone = (b.guest?.whatsappPhone || b.guest?.phone || "").replace(/\D/g, "");
+                      if (!phone) {
+                        toast({ title: "No phone number", description: "Guest has no phone number on file.", variant: "destructive" });
+                        return;
+                      }
+                      const propertyName = b.property?.name ?? "Hostezee";
+                      const roomLabel = b.isGroupBooking && b.rooms?.length
+                        ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
+                        : b.room?.roomNumber ?? "TBA";
+                      const checkIn = b.actualCheckInTime
+                        ? format(new Date(b.actualCheckInTime), "dd MMM yyyy")
+                        : format(new Date(b.checkInDate), "dd MMM yyyy");
+                      const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
+                      const balanceAmt = Math.max(0, remainingBalance);
+
+                      let msg = `🏨 *Bill — ${propertyName}*\n\n`;
+                      msg += `Guest: *${b.guest.fullName}*\n`;
+                      msg += `Room: ${roomLabel}\n`;
+                      msg += `Check-in: ${checkIn}\n`;
+                      msg += `Check-out: ${checkOut}\n`;
+                      msg += `Nights: ${actualNights}\n\n`;
+                      msg += `💰 *Bill Summary*\n`;
+                      if (roomCharges > 0)   msg += `Room Charges: ₹${roomCharges.toFixed(2)}\n`;
+                      if (foodCharges > 0)   msg += `Food & Beverages: ₹${foodCharges.toFixed(2)}\n`;
+                      if (extraCharges > 0)  msg += `Extra Services: ₹${extraCharges.toFixed(2)}\n`;
+                      if (totalGst > 0)      msg += `GST: ₹${totalGst.toFixed(2)}\n`;
+                      if (serviceCharge > 0) msg += `Service Charge: ₹${serviceCharge.toFixed(2)}\n`;
+                      if (discount > 0)      msg += `Discount: -₹${discount.toFixed(2)}\n`;
+                      msg += `*Total: ₹${grandTotal.toFixed(2)}*\n`;
+                      if (advancePaid > 0)   msg += `Advance Paid: ₹${advancePaid.toFixed(2)}\n`;
+                      msg += `*Balance Due: ₹${balanceAmt.toFixed(2)}*\n\n`;
+                      msg += `Thank you for staying with us! 🙏`;
+
+                      const waPhone = phone.startsWith("91") ? phone : `91${phone}`;
+                      window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(msg)}`, "_blank");
+                    }}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Send Bill on WhatsApp
                   </Button>
 
                   <div className="grid grid-cols-2 gap-2">
