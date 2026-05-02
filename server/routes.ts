@@ -1352,10 +1352,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/users/:id/role", isAuthenticated, async (req: any, res) => {
     try {
-      // Check if user is admin
+      // Check if user is admin or super-admin
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
-      if (currentUser?.role !== "admin") {
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1390,10 +1390,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/users/:id", isAuthenticated, async (req: any, res) => {
     try {
-      // Check if user is admin
+      // Check if user is admin or super-admin
       const userId = req.user?.claims?.sub || req.user?.id || (req.session as any)?.userId;
       const currentUser = await storage.getUser(userId);
-      if (currentUser?.role !== "admin") {
+      if (currentUser?.role !== "admin" && currentUser?.role !== "super-admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 

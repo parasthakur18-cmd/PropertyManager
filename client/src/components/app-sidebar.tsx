@@ -146,10 +146,13 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { user } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
-  const { hasAccess } = usePermissions();
+  const { hasAccess, isFullAccess } = usePermissions();
 
   const getMenuConfig = () => {
-    if (user?.role === "admin" || user?.role === "super-admin") {
+    // Super-admin always gets full admin menu.
+    // Admin with NO granular permissions configured also gets full admin menu.
+    // Admin WITH explicit granular permissions falls through to the filtered section.
+    if (isFullAccess) {
       return {
         mainItems: adminMainItems,
         bookingItems: adminBookingItems,
