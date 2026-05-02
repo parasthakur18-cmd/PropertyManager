@@ -228,6 +228,40 @@ export default function ActiveBookings() {
   const [editSvcAmount, setEditSvcAmount] = useState("");
   const [editSvcDate, setEditSvcDate] = useState("");
 
+  // Inline phone editing + WhatsApp resend
+  const [editingPhoneId, setEditingPhoneId] = useState<number | null>(null);
+  const [editedPhoneValue, setEditedPhoneValue] = useState("");
+  const [resendShowingId, setResendShowingId] = useState<number | null>(null);
+  const [resendingType, setResendingType] = useState<string | null>(null);
+
+  const updateGuestPhoneMutation = useMutation({
+    mutationFn: async ({ guestId, phone }: { guestId: number; phone: string }) =>
+      apiRequest(`/api/guests/${guestId}`, "PATCH", { phone }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      toast({ title: "Phone updated", description: `Number saved as ${vars.phone}` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update", description: error.message || "Could not save phone number", variant: "destructive" });
+    },
+  });
+
+  const resendWhatsAppMutation = useMutation({
+    mutationFn: async ({ bookingId, type }: { bookingId: number; type: string }) => {
+      setResendingType(type);
+      const res = await apiRequest(`/api/bookings/${bookingId}/resend-whatsapp`, "POST", { type });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Sent", description: data.message || "WhatsApp message sent" });
+      setResendingType(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send", description: error.message || "Could not send WhatsApp", variant: "destructive" });
+      setResendingType(null);
+    },
+  });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending_advance":
@@ -1182,11 +1216,61 @@ export default function ActiveBookings() {
                 {/* Details tab */}
                 <TabsContent value="overview" className="mt-0 px-3 py-2 space-y-2">
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 col-span-2">
                       <Phone className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="font-medium">{booking.guest.phone}</span>
+                      {editingPhoneId === booking.id ? (
+                        <div className="flex items-center gap-1 flex-1">
+                          <Input
+                            value={editedPhoneValue}
+                            onChange={e => setEditedPhoneValue(e.target.value)}
+                            className="h-6 text-xs px-2 py-0 flex-1"
+                            placeholder="Enter phone number"
+                            autoFocus
+                            data-testid={`input-phone-${booking.id}`}
+                          />
+                          <Button
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            disabled={updateGuestPhoneMutation.isPending}
+                            data-testid={`button-save-phone-${booking.id}`}
+                            onClick={async () => {
+                              if (!editedPhoneValue.trim()) return;
+                              await updateGuestPhoneMutation.mutateAsync({ guestId: booking.guest.id, phone: editedPhoneValue.trim() });
+                              setEditingPhoneId(null);
+                              setResendShowingId(booking.id);
+                            }}
+                          >
+                            {updateGuestPhoneMutation.isPending ? "..." : "Save"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-1.5 text-xs"
+                            onClick={() => setEditingPhoneId(null)}
+                            data-testid={`button-cancel-phone-${booking.id}`}
+                          >
+                            ✕
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <span className="font-medium">{booking.guest.phone}</span>
+                          <button
+                            className="text-muted-foreground hover:text-primary transition-colors"
+                            title="Edit phone number"
+                            data-testid={`button-edit-phone-${booking.id}`}
+                            onClick={() => {
+                              setEditedPhoneValue(booking.guest.phone || "");
+                              setEditingPhoneId(booking.id);
+                              setResendShowingId(null);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <span className="text-muted-foreground">Source: </span>
                       <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{sourceLabel}</Badge>
                     </div>
@@ -1194,6 +1278,37 @@ export default function ActiveBookings() {
                       <div className="col-span-2 text-muted-foreground truncate">{booking.guest.email}</div>
                     )}
                   </div>
+                  {resendShowingId === booking.id && (
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] text-muted-foreground font-medium">Resend WhatsApp template to updated number:</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { type: "confirmation", label: "Booking Confirm" },
+                          { type: "payment",      label: "Payment Request" },
+                          { type: "checkin",      label: "Check-in Link" },
+                        ].map(({ type, label }) => (
+                          <Button
+                            key={type}
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[10px] px-1.5 border-[#25D366] text-[#25D366] hover:bg-[#25D366]/10"
+                            disabled={resendWhatsAppMutation.isPending && resendingType === type}
+                            data-testid={`button-resend-wa-${type}-${booking.id}`}
+                            onClick={() => resendWhatsAppMutation.mutate({ bookingId: booking.id, type })}
+                          >
+                            <MessageCircle className="h-3 w-3 mr-1 shrink-0" />
+                            {resendWhatsAppMutation.isPending && resendingType === type ? "..." : label}
+                          </Button>
+                        ))}
+                      </div>
+                      <button
+                        className="text-[10px] text-muted-foreground hover:text-foreground underline"
+                        onClick={() => setResendShowingId(null)}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                   {booking.specialRequests && (
                     <div className="flex items-start gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5 text-xs" data-testid={`text-special-requests-${booking.id}`}>
                       <span className="text-amber-600 dark:text-amber-400 font-medium shrink-0">Requests:</span>
