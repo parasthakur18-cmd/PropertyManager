@@ -81,7 +81,6 @@ const Terms = lazy(() => import("@/pages/terms"));
 const Privacy = lazy(() => import("@/pages/privacy"));
 const ContactEnquiries = lazy(() => import("@/pages/contact-enquiries"));
 const ReportIssue = lazy(() => import("@/pages/report-issue"));
-const OtaIntegrations = lazy(() => import("@/pages/ota-integrations"));
 const ChannelManager = lazy(() => import("@/pages/channel-manager"));
 const AcceptInvite = lazy(() => import("@/pages/accept-invite"));
 const Notifications = lazy(() => import("@/pages/notifications"));
@@ -181,7 +180,6 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/attendance" component={Attendance} />
           <Route path="/performance" component={Performance} />
           <Route path="/travel-agents" component={TravelAgents} />
-          <Route path="/ota-integrations" component={OtaIntegrations} />
           <Route path="/channel-manager" component={ChannelManager} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/audit-logs" component={AuditLogs} />

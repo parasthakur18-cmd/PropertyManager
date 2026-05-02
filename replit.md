@@ -43,7 +43,7 @@ Hostezee employs a monorepo structure with distinct `client/`, `server/`, `share
 -   **Databases**: PostgreSQL 14+, Neon Serverless.
 -   **Payment Gateway**: Razorpay.
 -   **Messaging & Communications**: Authkey.io (WhatsApp Business API, SMS), AgentMail (Email service via Replit Connector).
--   **Channel Managers**: Beds24, AioSell (for inventory, rates, restrictions, and webhook-based reservation sync).
+-   **Channel Managers**: AioSell (for inventory, rates, restrictions, and webhook-based reservation sync).
 -   **Object/File Storage**: Replit Object Storage (Google Cloud Storage-based), MinIO (S3-compatible).
 -   **Authentication Providers**: Replit OIDC, Google OAuth 2.0, Local (bcrypt).
 -   **Frontend Libraries**: Recharts, QRCode, date-fns, Uppy.

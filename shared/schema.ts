@@ -277,7 +277,7 @@ export const bookings = pgTable("bookings", {
   lastReminderAt: timestamp("last_reminder_at"),
   // 8-hour overdue alert tracking (prevents duplicate notifications)
   pendingAlertSent: boolean("pending_alert_sent").default(false),
-  // External booking integration (Beds24, etc.)
+  // External booking integration (AioSell, etc.)
   externalBookingId: varchar("external_booking_id", { length: 100 }),
   externalSource: varchar("external_source", { length: 50 }),
 });
@@ -1053,42 +1053,6 @@ export const issueReports = pgTable("issue_reports", {
 
 export type IssueReport = typeof issueReports.$inferSelect;
 
-// OTA Integrations table - matches actual database
-export const otaIntegrations = pgTable("ota_integrations", {
-  id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  otaName: varchar("ota_name", { length: 50 }).notNull(),
-  propertyIdExternal: varchar("property_id_external", { length: 255 }),
-  apiKey: text("api_key"),
-  apiSecret: text("api_secret"),
-  credentials: text("credentials"),
-  enabled: boolean("enabled").notNull().default(true),
-  syncStatus: varchar("sync_status", { length: 50 }),
-  lastSyncAt: timestamp("last_sync_at"),
-  syncErrorMessage: text("sync_error_message"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export type OtaIntegration = typeof otaIntegrations.$inferSelect;
-
-// Beds24 Room Mappings table - maps Beds24 room IDs to Hostezee room types
-export const beds24RoomMappings = pgTable("beds24_room_mappings", {
-  id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
-  beds24RoomId: varchar("beds24_room_id", { length: 50 }).notNull(),
-  beds24RoomName: varchar("beds24_room_name", { length: 255 }),
-  roomType: varchar("room_type", { length: 100 }).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertBeds24RoomMappingSchema = createInsertSchema(beds24RoomMappings).omit({
-  id: true,
-  createdAt: true,
-});
-
-export type Beds24RoomMapping = typeof beds24RoomMappings.$inferSelect;
-export type InsertBeds24RoomMapping = z.infer<typeof insertBeds24RoomMappingSchema>;
 
 // Notifications table - matches actual database
 export const notifications = pgTable("notifications", {
