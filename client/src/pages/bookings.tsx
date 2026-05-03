@@ -2277,12 +2277,12 @@ export default function Bookings() {
                     const canCheckin = hasRoom && (booking.status === "confirmed" || booking.status === "pending");
 
                     const rowTint = isTba
-                      ? "bg-red-50/70 dark:bg-red-950/20"
+                      ? "bg-red-100/80 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/40"
                       : needsPayment
-                      ? "bg-orange-50/70 dark:bg-orange-950/20"
+                      ? "bg-orange-100/80 hover:bg-orange-100 dark:bg-orange-950/30 dark:hover:bg-orange-950/40"
                       : booking.status === "checked-in"
-                      ? "bg-green-50/70 dark:bg-green-950/20"
-                      : "";
+                      ? "bg-green-100/70 hover:bg-green-100 dark:bg-green-950/25 dark:hover:bg-green-950/35"
+                      : "hover:bg-muted/50 dark:hover:bg-muted/30";
 
                     const statusLabel: Record<string, string> = {
                       pending: "🟠 Pending Payment",
@@ -2391,14 +2391,14 @@ export default function Bookings() {
                             {statusLabel[booking.status] || booking.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right py-1.5">
-                          <div className="flex items-center justify-end gap-1">
+                        <TableCell className="text-right py-1.5 whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1 min-w-[180px]">
                             {/* Smart contextual buttons (max 2) */}
                             {needsPayment && (
                               <Button
                                 size="sm"
                                 variant="default"
-                                className="h-8 px-2 text-xs bg-orange-500 hover:bg-orange-600"
+                                className="h-8 px-2 text-xs bg-orange-500 hover:bg-orange-600 shrink-0 whitespace-nowrap"
                                 onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
                                 disabled={sendAdvancePaymentMutation.isPending}
                                 title={booking.status === "pending_advance" ? "Resend payment link to guest" : "Send payment link to guest"}
@@ -2412,7 +2412,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="default"
-                                className="h-8 px-2 text-xs bg-red-600 hover:bg-red-700"
+                                className="h-8 px-2 text-xs bg-red-600 hover:bg-red-700 shrink-0 whitespace-nowrap"
                                 onClick={() => handleEditBooking(booking)}
                                 title="Assign Room"
                                 data-testid={`button-assign-room-${booking.id}`}
@@ -2425,7 +2425,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="default"
-                                className="h-8 px-2 text-xs bg-green-600 hover:bg-green-700"
+                                className="h-8 px-2 text-xs bg-green-600 hover:bg-green-700 shrink-0 whitespace-nowrap"
                                 onClick={() => handleStatusChange(booking, "checked-in")}
                                 title="Check-in guest"
                                 data-testid={`button-checkin-${booking.id}`}
