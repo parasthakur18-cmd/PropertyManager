@@ -1,0 +1,38 @@
+0|propertymanager  | 2026-05-03 14:56:57 +00:00: 2:56:57 PM [express] GET /api/auth/google 302 in 10ms
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: [GOOGLE-AUTH] Email paras.thakur18@gmail.com exists with different ID - updating profile only
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: [GOOGLE-AUTH] Login successful for user 48913322
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: 2:57:03 PM [express] GET /api/auth/google/callback 302 in 152ms
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: Error fetching user: error: column "property_type" does not exist
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at /var/www/myapp/node_modules/pg-pool/index.js:45:11
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async file:///var/www/myapp/node_modules/drizzle-orm/node-postgres/session.js:83:22
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async DatabaseStorage.getProperty (file:///var/www/myapp/dist/index.js:2010:28)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async Promise.all (index 0)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async file:///var/www/myapp/dist/index.js:11855:29 {
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   length: 114,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   severity: 'ERROR',
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   code: '42703',
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   detail: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   hint: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   position: '219',
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   internalPosition: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   internalQuery: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   where: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   schema: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   table: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   column: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   dataType: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   constraint: undefined,
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   file: 'parse_relation.c',
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   line: '3722',
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:   routine: 'errorMissingColumn'
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: }
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: Error fetching user (stack): error: column "property_type" does not exist
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at /var/www/myapp/node_modules/pg-pool/index.js:45:11
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async file:///var/www/myapp/node_modules/drizzle-orm/node-postgres/session.js:83:22
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async DatabaseStorage.getProperty (file:///var/www/myapp/dist/index.js:2010:28)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async Promise.all (index 0)
+0|propertymanager  | 2026-05-03 14:57:03 +00:00:     at async file:///var/www/myapp/dist/index.js:11855:29
+0|propertymanager  | 2026-05-03 14:57:03 +00:00: 2:57:03 PM [express] GET /api/auth/user 500 in 14ms :: Failed to fetch user
+0|propertymanager  | 2026-05-03 14:57:07 +00:00: [KITCHEN-ESCALATION] tick failed: column "property_type" does not exist

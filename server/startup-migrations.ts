@@ -867,6 +867,70 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Cafe Mode — properties.property_type ('hotel' | 'cafe'). Drives the
+    // slimmed café sidebar. Idempotent.
+    name: "add_properties_property_type",
+    async run() {
+      await runRaw(`
+        ALTER TABLE properties
+          ADD COLUMN IF NOT EXISTS property_type VARCHAR(20) NOT NULL DEFAULT 'hotel';
+      `);
+    },
+  },
+  {
+    // Takeaway / Parcel orders — orders.order_mode ('dine-in' | 'takeaway' | 'room').
+    // Idempotent.
+    name: "add_orders_order_mode",
+    async run() {
+      await runRaw(`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS order_mode VARCHAR(20) DEFAULT 'dine-in';
+      `);
+    },
+  },
+  {
+    // Restaurant Tables — physical table list per property (used by QR
+    // dine-in flow + table reservations). Idempotent.
+    name: "create_restaurant_tables",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS restaurant_tables (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
+          name VARCHAR(50) NOT NULL,
+          capacity INTEGER DEFAULT 4,
+          location VARCHAR(100),
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+      `);
+    },
+  },
+  {
+    // Table Reservations — advance bookings for a restaurant/cafe table.
+    // Idempotent.
+    name: "create_table_reservations",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS table_reservations (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          table_id INTEGER REFERENCES restaurant_tables(id) ON DELETE SET NULL,
+          guest_name VARCHAR(255) NOT NULL,
+          phone VARCHAR(20),
+          party_size INTEGER NOT NULL DEFAULT 2,
+          reservation_at TIMESTAMP NOT NULL,
+          duration_minutes INTEGER NOT NULL DEFAULT 90,
+          status VARCHAR(20) NOT NULL DEFAULT 'booked',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_table_reservations_property_at
+          ON table_reservations(property_id, reservation_at);
+      `);
+    },
+  },
+  {
     // Second-level kitchen-acceptance escalation. Adds a one-shot stamp on
     // orders + per-property timeout setting + partial index for the cron's
     // per-tick scan. Idempotent.
