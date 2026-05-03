@@ -544,7 +544,13 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             .filter(r => activeRoomIds.includes(r.id))
             .reduce((sum, r) => sum + (r.totalBeds || 1), 0);
 
-          // Track beds booked per room
+          // Track beds booked per room.
+          // SOURCE-OF-TRUTH RULE for dorms:
+          //   - If booking has stays in booking_room_stays (multi-bed OTA reservations),
+          //     each stay row = 1 bed. Use stays exclusively to avoid double-counting
+          //     the primary room (which appears in BOTH bookings.roomId AND a stay row).
+          //   - Otherwise (single-bed manual booking with no stays), fall back to
+          //     booking.roomId / roomIds with bedsBooked count.
           const bedsBookedByRoom: Record<number, number> = {};
           for (const booking of activeBookings) {
             const cin = new Date(booking.checkInDate);
@@ -552,19 +558,39 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             cin.setHours(0, 0, 0, 0);
             cout.setHours(0, 0, 0, 0);
             if (cin <= date && date < cout) {
-              // Use the stored bedsBooked value; default to 1 (each OTA dorm booking = 1 bed)
-              const beds = booking.bedsBooked || 1;
-              const bRoomId = booking.roomId;
-              if (bRoomId && activeRoomIds.includes(bRoomId)) {
-                bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
-              }
-              if (booking.roomIds) {
-                for (const rid of booking.roomIds) {
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(booking.id) || [];
+              if (stayRoomIds.length > 0) {
+                // Multi-bed OTA reservation: each stay row counts as 1 bed
+                for (const rid of stayRoomIds) {
                   if (activeRoomIds.includes(rid)) {
-                    bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+                    bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+                  }
+                }
+              } else {
+                // Manual / legacy single-bed booking: use bedsBooked from booking row
+                const beds = booking.bedsBooked || 1;
+                const bRoomId = booking.roomId;
+                if (bRoomId && activeRoomIds.includes(bRoomId)) {
+                  bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
+                }
+                if (booking.roomIds) {
+                  for (const rid of booking.roomIds) {
+                    if (activeRoomIds.includes(rid)) {
+                      bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+                    }
                   }
                 }
               }
+            }
+          }
+
+          // Hard safety check: never report more beds available than physical capacity
+          for (const rid of activeRoomIds) {
+            const room = allRooms.find(r => r.id === rid);
+            const cap = room?.totalBeds || 0;
+            if (cap > 0 && (bedsBookedByRoom[rid] || 0) > cap) {
+              console.warn(`[AIOSELL] Over-booked dorm room ${rid} (${room?.roomNumber}): ${bedsBookedByRoom[rid]} beds booked > ${cap} capacity. Capping at ${cap}.`);
+              bedsBookedByRoom[rid] = cap;
             }
           }
 

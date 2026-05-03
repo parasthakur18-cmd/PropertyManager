@@ -19133,9 +19133,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         const totalAmount = amount?.amountAfterTax?.toString() || "0";
 
-        // For dorm bookings, carry forward the bedsBooked count from the primary resolved room
+        // For dorm bookings, carry forward the bedsBooked count.
+        // Sum bedsBooked across ALL resolved rooms (a Booking.com reservation may include
+        // multiple beds in the same dorm — each stay = 1 bed).
         const primaryResolvedRoom = resolvedRooms.find(r => r.roomId !== null);
-        const primaryBedsBooked = primaryResolvedRoom?.bedsBooked ?? null;
+        const dormStaysCount = resolvedRooms.filter(r => r.bedsBooked != null).length;
+        const primaryBedsBooked = primaryResolvedRoom?.bedsBooked != null
+          ? Math.max(dormStaysCount, primaryResolvedRoom.bedsBooked)
+          : null;
 
         // ── Last-chance race-condition guard ─────────────────────────────────
         // Two simultaneous webhooks can both pass the overlap check above and

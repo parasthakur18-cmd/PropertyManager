@@ -817,6 +817,44 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    name: "backfill_dorm_bookings_beds_booked_from_stays",
+    async run() {
+      // Multi-bed dorm OTA reservations were historically inserted with
+      // bookings.beds_booked = 1 even when the reservation actually covered
+      // multiple beds (the extra beds lived in booking_room_stays only).
+      // This caused the inventory-push and availability checks to under-count
+      // booked beds. Backfill bookings.beds_booked = number of stays for the
+      // primary dorm room. Only updates dorm bookings; only INCREASES the value
+      // (never reduces it) so manual edits are preserved.
+      if (!(await tableExists("bookings")) || !(await tableExists("booking_room_stays"))) return;
+      if (!(await tableExists("rooms"))) return;
+      const client = await pool.connect();
+      try {
+        const result = await client.query(`
+          UPDATE bookings b
+          SET beds_booked = sub.stay_count, updated_at = NOW()
+          FROM (
+            SELECT brs.booking_id, brs.room_id, COUNT(*)::int AS stay_count
+            FROM booking_room_stays brs
+            WHERE brs.room_id IS NOT NULL
+            GROUP BY brs.booking_id, brs.room_id
+          ) sub
+          JOIN rooms r ON r.id = sub.room_id
+          WHERE b.id = sub.booking_id
+            AND b.room_id = sub.room_id
+            AND r.room_category = 'dormitory'
+            AND sub.stay_count > COALESCE(b.beds_booked, 1)
+            AND b.status NOT IN ('cancelled','checked-out','no_show')
+        `);
+        if (result.rowCount && result.rowCount > 0) {
+          console.log(`[MIGRATIONS] backfill_dorm_bookings_beds_booked_from_stays: updated ${result.rowCount} dorm booking(s)`);
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
