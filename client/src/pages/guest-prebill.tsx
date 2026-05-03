@@ -258,7 +258,7 @@ export default function GuestPreBill() {
                     <span>
                       {item.name} x {item.quantity}
                     </span>
-                    <span>₹{item.total.toFixed(2)}</span>
+                    <span>₹{(parseFloat(item.total) || 0).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
