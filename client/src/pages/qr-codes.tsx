@@ -1,18 +1,43 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, QrCode } from "lucide-react";
+import { Download, QrCode, Send, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import QRCodeGenerator from "qrcode";
+import { apiRequest } from "@/lib/queryClient";
 import type { Property, Room } from "@shared/schema";
 
 export default function QRCodes() {
   const { toast } = useToast();
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
+  const [sendPhone, setSendPhone] = useState<string>("");
+  const [sendGuestName, setSendGuestName] = useState<string>("");
+
+  const sendRoomQrMutation = useMutation({
+    mutationFn: async (vars: { propertyId: string; roomNumber: string; phone: string; guestName?: string }) => {
+      return await apiRequest("POST", "/api/qr/send-room", vars);
+    },
+    onSuccess: () => {
+      toast({
+        title: "QR sent on WhatsApp",
+        description: `Menu link delivered to +91 ${sendPhone}`,
+      });
+      setSendPhone("");
+      setSendGuestName("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to send",
+        description: err?.message || "Could not deliver the menu link. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
   
   const guestCheckinQRRef = useRef<HTMLCanvasElement>(null);
   const roomQRRef = useRef<HTMLCanvasElement>(null);
@@ -289,6 +314,53 @@ export default function QRCodes() {
                   <Download className="h-4 w-4 mr-2" />
                   Download QR Code
                 </Button>
+
+                {/* Send to guest via WhatsApp */}
+                <div className="rounded-lg border border-[#25D366]/30 bg-[#25D366]/5 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-[#128C7E]">
+                    <MessageCircle className="h-4 w-4" />
+                    Send menu link to guest
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="Guest name (optional)"
+                    value={sendGuestName}
+                    onChange={(e) => setSendGuestName(e.target.value)}
+                    className="h-9 text-sm"
+                    data-testid="input-send-qr-guest-name"
+                  />
+                  <div className="flex gap-2">
+                    <div className="flex items-center gap-1 px-2 rounded-md border bg-muted text-xs text-muted-foreground shrink-0">+91</div>
+                    <Input
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder="10-digit mobile"
+                      value={sendPhone}
+                      onChange={(e) => setSendPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      className="h-9 text-sm flex-1"
+                      data-testid="input-send-qr-phone"
+                    />
+                  </div>
+                  <Button
+                    className="w-full bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                    disabled={sendPhone.length < 10 || sendRoomQrMutation.isPending}
+                    onClick={() =>
+                      sendRoomQrMutation.mutate({
+                        propertyId: selectedPropertyId,
+                        roomNumber: selectedRoom.roomNumber,
+                        phone: sendPhone,
+                        guestName: sendGuestName,
+                      })
+                    }
+                    data-testid="button-send-room-qr-whatsapp"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {sendRoomQrMutation.isPending ? "Sending..." : "Send via WhatsApp"}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    Sends the same menu link the QR encodes. Order placed by the guest will auto-link to this room's bill.
+                  </p>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-center h-[300px] bg-muted rounded-lg border-2 border-dashed">

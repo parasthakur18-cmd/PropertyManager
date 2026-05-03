@@ -836,14 +836,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: `Room ${roomNumber} not found in the selected property. Please check your room number.` });
         }
 
-        // Find the checked-in booking for this room to link the order
+        // Find the active booking for this room so the order links to the room bill.
+        // We accept any booking whose stay window covers TODAY and is not cancelled /
+        // checked-out / no-show. Previously this only matched status === "checked-in",
+        // which meant orders placed before the front-desk pressed "Check-in" never made
+        // it onto the bill. We prefer status === "checked-in" but fall back to confirmed
+        // / pending bookings that are clearly the current guest in the room.
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const bookings = await storage.getAllBookings();
-        const activeBooking = bookings.find(b => b.roomId === room.id && b.status === "checked-in");
+        const candidateBookings = bookings.filter(b => {
+          if (b.roomId !== room.id) return false;
+          if (["cancelled", "checked-out", "no_show"].includes(String(b.status))) return false;
+          const cin = new Date(b.checkInDate as any);
+          const cout = new Date(b.checkOutDate as any);
+          // today within [checkIn, checkOut)
+          return cin <= now && startOfToday < cout;
+        });
+        // Prefer a checked-in booking, then confirmed, then anything else current
+        const activeBooking =
+          candidateBookings.find(b => b.status === "checked-in") ||
+          candidateBookings.find(b => b.status === "confirmed") ||
+          candidateBookings[0] ||
+          null;
+
+        if (!activeBooking) {
+          console.warn(`[QR-Order] No active booking found for room ${room.roomNumber} (id=${room.id}). Order will be created unlinked — it will NOT show on a room bill.`);
+        } else {
+          console.log(`[QR-Order] Linking order to booking #${activeBooking.id} (status=${activeBooking.status}, guest=${activeBooking.guestId}) for room ${room.roomNumber}`);
+        }
 
         orderData.propertyId = room.propertyId;
         orderData.roomId = room.id;
-        orderData.bookingId = activeBooking?.id || null; // Link to booking if guest is checked in
-        orderData.guestId = activeBooking?.guestId || null; // Also include guest ID for tracking
+        orderData.bookingId = activeBooking?.id || null;
+        orderData.guestId = activeBooking?.guestId || null;
       } else {
         // Handle restaurant/café orders
         orderData.customerName = customerName;
@@ -984,6 +1010,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Public order error:", error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Send a Room QR / menu link to the guest via WhatsApp
+  // Body: { propertyId: number, roomNumber: string, phone: string, guestName?: string }
+  app.post("/api/qr/send-room", isAuthenticated, async (req: any, res) => {
+    try {
+      const { propertyId, roomNumber, phone, guestName } = req.body || {};
+      if (!propertyId || !roomNumber || !phone) {
+        return res.status(400).json({ message: "propertyId, roomNumber and phone are required" });
+      }
+      const cleanedPhone = String(phone).replace(/\D/g, "");
+      if (cleanedPhone.length < 10) {
+        return res.status(400).json({ message: "Please enter a valid phone number" });
+      }
+
+      const property = await storage.getProperty(parseInt(String(propertyId)));
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Build the same menu URL the QR encodes
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPLIT_DOMAINS?.split(",")[0]
+          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+          : `${req.protocol}://${req.get("host")}`;
+      const menuLink = `${baseUrl}/menu?type=room&property=${property.id}&room=${encodeURIComponent(String(roomNumber))}`;
+
+      const { sendWelcomeWithMenuLink } = await import("./whatsapp");
+      const result = await sendWelcomeWithMenuLink(
+        cleanedPhone,
+        property.name || "Our Property",
+        guestName?.trim() || "Guest",
+        menuLink,
+      );
+
+      if (!result?.success) {
+        return res.status(502).json({ message: result?.message || "WhatsApp delivery failed", menuLink });
+      }
+      console.log(`[QR-Send] Room ${roomNumber} menu link sent to ${cleanedPhone} for property ${property.id}`);
+      res.json({ success: true, menuLink });
+    } catch (error: any) {
+      console.error("[QR-Send] Failed:", error);
+      res.status(500).json({ message: error.message || "Failed to send QR link" });
     }
   });
 
