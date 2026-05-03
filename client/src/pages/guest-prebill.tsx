@@ -253,14 +253,18 @@ export default function GuestPreBill() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {foodItems.map((item, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span>
-                      {item.name} x {item.quantity}
-                    </span>
-                    <span>₹{(parseFloat(item.total) || 0).toFixed(2)}</span>
-                  </div>
-                ))}
+                {foodItems.map((item: any, index: number) => {
+                  const qty = Number(item?.quantity) || 1;
+                  const price = parseFloat(String(item?.price ?? 0)) || 0;
+                  const total = parseFloat(String(item?.total ?? 0)) || (qty * price);
+                  const name = (typeof item?.name === 'string' && item.name.trim()) || 'Item';
+                  return (
+                    <div key={index} className="flex justify-between text-sm" data-testid={`prebill-fooditem-${index}`}>
+                      <span>{name} x {qty}</span>
+                      <span>₹{total.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

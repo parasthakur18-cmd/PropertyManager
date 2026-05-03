@@ -5441,7 +5441,48 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         propertyName = property?.name || '';
       }
 
-      res.json({ ...preBill, propertyName });
+      // Always rebuild foodItems LIVE from the orders table at view time.
+      // This handles three problems at once:
+      //  - older pre_bill rows that snapshotted broken data ([{total:null}...])
+      //  - new orders placed AFTER the pre-bill was sent (now visible)
+      //  - cancelled orders being filtered out properly
+      // Falls back to the saved snapshot only if the live lookup fails.
+      let foodItems: any[] = Array.isArray(preBill.foodItems) ? (preBill.foodItems as any[]) : [];
+      try {
+        const orders = await storage.getOrdersByBooking(preBill.bookingId);
+        const merged = new Map<string, { name: string; quantity: number; price: number; total: number }>();
+        for (const order of orders) {
+          if (order.status === 'cancelled' || (order as any).isTest) continue;
+          const lineItems = Array.isArray((order as any).items) ? ((order as any).items as any[]) : [];
+          for (const li of lineItems) {
+            const name = String(li?.name ?? li?.itemName ?? 'Item').trim() || 'Item';
+            const quantity = Number(li?.quantity ?? 1) || 1;
+            const price = parseFloat(String(li?.price ?? 0)) || 0;
+            const key = `${name}__${price}`;
+            const existing = merged.get(key);
+            if (existing) {
+              existing.quantity += quantity;
+              existing.total += quantity * price;
+            } else {
+              merged.set(key, { name, quantity, price, total: quantity * price });
+            }
+          }
+        }
+        const live = Array.from(merged.values());
+        if (live.length > 0) foodItems = live;
+      } catch (liveErr) {
+        console.warn('[PREBILL-VIEW] live food-items rebuild failed, falling back to snapshot:', liveErr);
+      }
+
+      // Strip any malformed snapshot entries (no name AND no price) so the
+      // guest never sees blank "x  ₹0.00" rows.
+      foodItems = foodItems.filter((it: any) => {
+        const hasName = it && typeof it.name === 'string' && it.name.trim().length > 0;
+        const hasValue = parseFloat(String(it?.total ?? it?.price ?? 0)) > 0;
+        return hasName || hasValue;
+      });
+
+      res.json({ ...preBill, foodItems, propertyName });
     } catch (error: any) {
       console.error("Get pre-bill error:", error);
       res.status(500).json({ message: error.message || "Failed to get pre-bill" });
