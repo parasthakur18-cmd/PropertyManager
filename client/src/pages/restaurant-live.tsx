@@ -9,8 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Order, RestaurantTable, Property } from "@shared/schema";
-import { formatDistanceToNowStrict } from "date-fns";
+import type { Order, RestaurantTable, Property, TableReservation } from "@shared/schema";
+import { formatDistanceToNowStrict, format } from "date-fns";
 
 type PayMethod = "cash" | "upi" | "card";
 
@@ -47,6 +47,37 @@ export default function RestaurantLive() {
     if (selectedPropertyId) return Number(selectedPropertyId);
     return properties?.[0]?.id ?? null;
   }, [selectedPropertyId, properties]);
+
+  // Upcoming reservations for the next 3 hours — used to flag tables that
+  // are about to be occupied so floor staff don't seat walk-ins on them.
+  const nowIso = useMemo(() => new Date().toISOString(), []);
+  const soonIso = useMemo(() => new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), []);
+  const { data: upcomingReservations } = useQuery<TableReservation[]>({
+    queryKey: ["/api/table-reservations", propertyIdNum, "live", nowIso],
+    enabled: !!propertyIdNum,
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/table-reservations?propertyId=${propertyIdNum}&from=${encodeURIComponent(nowIso)}&to=${encodeURIComponent(soonIso)}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const reservationByTableId = useMemo(() => {
+    const m = new Map<number, TableReservation>();
+    (upcomingReservations || [])
+      .filter((r) => r.status === "booked" && r.tableId != null)
+      .forEach((r) => {
+        const existing = m.get(r.tableId!);
+        if (!existing || new Date(r.reservationAt) < new Date(existing.reservationAt)) {
+          m.set(r.tableId!, r);
+        }
+      });
+    return m;
+  }, [upcomingReservations]);
 
   // Build per-table snapshot
   const tableStates: TableState[] = useMemo(() => {
@@ -245,6 +276,20 @@ export default function RestaurantLive() {
                     <Users className="h-3 w-3" /> {ts.table.capacity ?? 4} seats
                     {ts.table.location ? <span>· {ts.table.location}</span> : null}
                   </p>
+                  {(() => {
+                    const r = reservationByTableId.get(ts.table.id);
+                    if (!r) return null;
+                    return (
+                      <div
+                        className="mt-2 rounded-md border border-blue-300 bg-blue-50 dark:bg-blue-950/30 px-2 py-1 text-xs flex items-center gap-1 text-blue-800 dark:text-blue-200"
+                        data-testid={`badge-reservation-${ts.table.id}`}
+                      >
+                        <Clock className="h-3 w-3" />
+                        <span className="font-semibold">{format(new Date(r.reservationAt), "h:mm a")}</span>
+                        <span className="truncate">· {r.guestName} (party {r.partySize})</span>
+                      </div>
+                    );
+                  })()}
                 </CardHeader>
                 <CardContent className="pt-0 space-y-2">
                   {occupied ? (

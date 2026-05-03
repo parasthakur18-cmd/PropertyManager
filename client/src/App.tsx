@@ -63,6 +63,8 @@ const BookingAnalytics = lazy(() => import("@/pages/booking-analytics"));
 const QRCodes = lazy(() => import("@/pages/qr-codes"));
 const RestaurantTables = lazy(() => import("@/pages/restaurant-tables"));
 const RestaurantLive = lazy(() => import("@/pages/restaurant-live"));
+const Reservations = lazy(() => import("@/pages/reservations"));
+const ZReport = lazy(() => import("@/pages/z-report"));
 const Salaries = lazy(() => import("@/pages/salaries"));
 const Attendance = lazy(() => import("@/pages/attendance"));
 const TravelAgents = lazy(() => import("@/pages/travel-agents"));
@@ -192,6 +194,8 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/enhanced-menu" component={EnhancedMenu} />
           <Route path="/restaurant-tables" component={RestaurantTables} />
           <Route path="/restaurant-live" component={RestaurantLive} />
+          <Route path="/reservations" component={Reservations} />
+          <Route path="/z-report" component={ZReport} />
           <Route path="/food-orders-report" component={FoodOrdersReport} />
           <Route path="/booking-analytics" component={BookingAnalytics} />
           <Route path="/enquiries" component={Enquiries} />

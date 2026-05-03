@@ -142,6 +142,10 @@ export const properties = pgTable("properties", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   ownerUserId: varchar("owner_user_id").references(() => users.id),
+  // 'hotel' (default) or 'cafe'. Cafe-type properties hide hotel nav
+  // (rooms, bookings, housekeeping, channel manager, etc.) and surface
+  // a slimmer restaurant-only sidebar for the staff assigned to them.
+  propertyType: varchar("property_type", { length: 20 }).notNull().default("hotel"),
 });
 
 export const insertPropertySchema = createInsertSchema(properties).omit({
@@ -362,6 +366,36 @@ export const insertRestaurantTableSchema = createInsertSchema(restaurantTables).
 export type InsertRestaurantTable = z.infer<typeof insertRestaurantTableSchema>;
 export type RestaurantTable = typeof restaurantTables.$inferSelect;
 
+// Table Reservations — book a table in advance for a party. Independent
+// from hotel bookings; only restaurant/cafe surface.
+// Status: 'booked' | 'seated' | 'completed' | 'cancelled' | 'no-show'
+export const tableReservations = pgTable("table_reservations", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }).notNull(),
+  // tableId nullable so a walk-in floor manager can take a "any table"
+  // booking and assign later. When null, the reservation is "unassigned".
+  tableId: integer("table_id").references(() => restaurantTables.id, { onDelete: 'set null' }),
+  guestName: varchar("guest_name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  partySize: integer("party_size").notNull().default(2),
+  reservationAt: timestamp("reservation_at").notNull(),
+  durationMinutes: integer("duration_minutes").notNull().default(90),
+  status: varchar("status", { length: 20 }).notNull().default("booked"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTableReservationSchema = createInsertSchema(tableReservations).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  // Accept ISO string from the form, drizzle-zod expects Date.
+  reservationAt: z.coerce.date(),
+});
+
+export type InsertTableReservation = z.infer<typeof insertTableReservationSchema>;
+export type TableReservation = typeof tableReservations.$inferSelect;
+
 // Menu Categories table
 export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),
@@ -479,6 +513,10 @@ export const orders = pgTable("orders", {
   // Dine-in table identifier (e.g. "T1", "A5"). Set for restaurant orders
   // placed via the table QR. Standalone — independent of hotel rooms.
   tableNumber: varchar("table_number", { length: 50 }),
+  // 'dine-in' | 'takeaway' | 'room'. For restaurant orders this distinguishes
+  // a guest seated at a table from a parcel/walk-in pickup. Defaults to
+  // 'dine-in' for restaurant rows and 'room' for room-service rows.
+  orderMode: varchar("order_mode", { length: 20 }).default("dine-in"),
   // Test Order Mode flag — when true, the order is excluded from ALL
   // financial calculations (revenue, P&L, wallet, reports). Used only
   // for kitchen/notification testing. Never set this on real orders.

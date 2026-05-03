@@ -40,8 +40,11 @@ import {
   MessageCircle,
   TrendingUp as TrendingUpIcon,
   Users2,
+  CalendarPlus,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import type { Property } from "@shared/schema";
 import {
   Sidebar,
   SidebarContent,
@@ -94,7 +97,9 @@ const adminRestaurantItems = [
   { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Tables & QR", url: "/restaurant-tables", icon: QrCode },
   { title: "Live Tables", url: "/restaurant-live", icon: Users2 },
+  { title: "Reservations", url: "/reservations", icon: CalendarPlus },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
+  { title: "Z-Report", url: "/z-report", icon: FileBarChart },
 ];
 
 const adminFinanceItems = [
@@ -153,11 +158,56 @@ export function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const { hasAccess, isFullAccess } = usePermissions();
 
+  // Cafe-mode detection: a user is considered cafe-only when every property
+  // they can access is propertyType="cafe". Super-admin/full-access owners
+  // who can see every property keep the full hotel sidebar — we only switch
+  // when ALL accessible properties are cafes (typical for Reo Cafe staff).
+  const { data: accessibleProperties } = useQuery<Property[]>({
+    queryKey: ["/api/properties"],
+    enabled: !!user && user.role !== "super-admin",
+  });
+  const isCafeMode =
+    !!accessibleProperties &&
+    accessibleProperties.length > 0 &&
+    accessibleProperties.every(p => (p as any).propertyType === "cafe");
+
+  // Cafe-mode finance — drop hotel-only entries (Billing room bills, Leases,
+  // Monthly Income Report, Services Report) but keep café-relevant ones.
+  const cafeFinanceItems = [
+    { title: "Expenses", url: "/expenses", icon: FileText },
+    { title: "Vendors", url: "/vendors", icon: Store },
+    { title: "Wallets", url: "/wallets", icon: Wallet },
+    { title: "P&L Statement", url: "/pnl-statement", icon: FileText },
+  ];
+  // Cafe-mode admin — strip Channel Manager, Dynamic Pricing, Travel Agents
+  // (all hotel-only). Keep user/settings/audit + WA templates.
+  const cafeAdminItems = [
+    { title: "Users", url: "/users", icon: UserCog },
+    { title: "Audit Trail", url: "/audit-logs", icon: Shield },
+    { title: "WA Message Templates", url: "/whatsapp-templates", icon: MessageCircle },
+    { title: "Settings", url: "/settings", icon: Settings },
+    { title: "Feature Settings", url: "/feature-settings", icon: Settings2 },
+  ];
+
   const getMenuConfig = () => {
     // Super-admin always gets full admin menu.
     // Admin with NO granular permissions configured also gets full admin menu.
     // Admin WITH explicit granular permissions falls through to the filtered section.
     if (isFullAccess) {
+      // Cafe-only owner/manager → strip every hotel section.
+      if (isCafeMode) {
+        return {
+          mainItems: adminMainItems.filter(i => i.title !== "Housekeeping"),
+          bookingItems: [],
+          roomItems: [],
+          guestItems: [],
+          restaurantItems: adminRestaurantItems,
+          financeItems: cafeFinanceItems,
+          staffItems: adminStaffItems,
+          analyticsItems: [],
+          adminItems: cafeAdminItems,
+        };
+      }
       return {
         mainItems: adminMainItems,
         bookingItems: adminBookingItems,

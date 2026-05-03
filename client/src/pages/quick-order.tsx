@@ -31,7 +31,7 @@ interface CartItem extends MenuItem {
   cartAddOns?: CartAddOn[];
 }
 
-type OrderType = "room" | "restaurant" | null;
+type OrderType = "room" | "restaurant" | "takeaway" | null;
 type RestaurantCustomerType = "walk-in" | "in-house";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -375,6 +375,19 @@ export default function QuickOrder() {
           return;
         }
       }
+      if (orderType === "takeaway") {
+        if (!customerName || !customerPhone) {
+          toast({ title: "Customer Info Required", description: "Enter name and phone for the parcel", variant: "destructive" });
+          return;
+        }
+        // Multi-property guard: takeaway must be tagged to one property,
+        // otherwise the kitchen never sees the parcel + reports lose it.
+        const resolvedPropertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
+        if (!resolvedPropertyId) {
+          toast({ title: "Property Required", description: "Pick a property at the top before placing a takeaway order.", variant: "destructive" });
+          return;
+        }
+      }
     }
     setStep(step + 1);
   };
@@ -420,7 +433,16 @@ export default function QuickOrder() {
         orderData.customerName = roomGuest.guestName;
         orderData.customerPhone = roomGuest.guestPhone || "";
       }
+    } else if (orderType === "takeaway") {
+      // Takeaway is a restaurant order with orderMode="takeaway".
+      // Server stores orderType="restaurant" so existing reports keep working.
+      orderData.orderType = "restaurant";
+      orderData.orderMode = "takeaway";
+      orderData.propertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
+      orderData.customerName = customerName;
+      orderData.customerPhone = customerPhone;
     } else if (orderType === "restaurant") {
+      orderData.orderMode = "dine-in";
       if (restaurantCustomerType === "in-house") {
         orderData.roomId = parseInt(selectedRoom);
         const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
@@ -504,7 +526,7 @@ export default function QuickOrder() {
           <Card>
             <CardHeader><CardTitle>Step 1: Select Order Type</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
                   onClick={() => setOrderType("room")}
                   className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${orderType === "room" ? "border-primary bg-primary/5" : "border-border"}`}
@@ -523,6 +545,15 @@ export default function QuickOrder() {
                   <h3 className="font-semibold text-lg mb-2">Restaurant / Dine-in</h3>
                   <p className="text-sm text-muted-foreground">Order for restaurant table</p>
                 </button>
+                <button
+                  onClick={() => { setOrderType("takeaway"); setRestaurantCustomerType("walk-in"); setSelectedRoom(""); }}
+                  className={`p-6 border-2 rounded-lg hover-elevate active-elevate-2 transition-all ${orderType === "takeaway" ? "border-primary bg-primary/5" : "border-border"}`}
+                  data-testid="button-order-type-takeaway"
+                >
+                  <span className="block text-5xl mb-3">🥡</span>
+                  <h3 className="font-semibold text-lg mb-2">Takeaway / Parcel</h3>
+                  <p className="text-sm text-muted-foreground">Pickup order — name & phone only</p>
+                </button>
               </div>
               <Button className="w-full mt-6" size="lg" onClick={handleNextStep} disabled={!orderType} data-testid="button-next-step-1">
                 Next: Customer Details <ArrowRight className="h-5 w-5 ml-2" />
@@ -539,10 +570,24 @@ export default function QuickOrder() {
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>Step 2: {orderType === "room" ? "Select Room" : "Customer Information"}</CardTitle>
+              <CardTitle>Step 2: {orderType === "room" ? "Select Room" : orderType === "takeaway" ? "Takeaway Customer" : "Customer Information"}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {orderType === "room" ? (
+              {orderType === "takeaway" ? (
+                <>
+                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/30">
+                    🥡 Takeaway / parcel order — no table, no room. Just name & phone for pickup.
+                  </div>
+                  <div>
+                    <Label htmlFor="takeaway-name">Customer Name *</Label>
+                    <Input id="takeaway-name" placeholder="Enter customer name" value={customerName} onChange={e => setCustomerName(e.target.value)} data-testid="input-takeaway-name" />
+                  </div>
+                  <div>
+                    <Label htmlFor="takeaway-phone">Phone Number *</Label>
+                    <Input id="takeaway-phone" placeholder="Enter phone number" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} data-testid="input-takeaway-phone" />
+                  </div>
+                </>
+              ) : orderType === "room" ? (
                 <div>
                   <Label htmlFor="room-select">Room Number *</Label>
                   {roomsLoading ? <Skeleton className="h-10 w-full" />

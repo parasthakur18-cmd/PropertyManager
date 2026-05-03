@@ -140,6 +140,9 @@ import {
   pushSubscriptions,
   propertyTransfers,
   type PropertyTransfer,
+  tableReservations,
+  type TableReservation,
+  type InsertTableReservation,
 } from "@shared/schema";
 import { db, pool } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, inArray, isNull, isNotNull } from "drizzle-orm";
@@ -222,6 +225,13 @@ export interface IStorage {
   createRestaurantTable(table: InsertRestaurantTable): Promise<RestaurantTable>;
   updateRestaurantTable(id: number, table: Partial<InsertRestaurantTable>): Promise<RestaurantTable>;
   deleteRestaurantTable(id: number): Promise<void>;
+
+  // Table Reservations
+  getTableReservations(propertyId: number, fromDate?: Date, toDate?: Date): Promise<TableReservation[]>;
+  getTableReservation(id: number): Promise<TableReservation | undefined>;
+  createTableReservation(r: InsertTableReservation): Promise<TableReservation>;
+  updateTableReservation(id: number, r: Partial<InsertTableReservation>): Promise<TableReservation>;
+  deleteTableReservation(id: number): Promise<void>;
 
   // Menu Item operations
   getAllMenuItems(): Promise<MenuItem[]>;
@@ -1259,6 +1269,35 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRestaurantTable(id: number): Promise<void> {
     await db.delete(restaurantTables).where(eq(restaurantTables.id, id));
+  }
+
+  // ── Table Reservations ──────────────────────────────────────────────────
+  async getTableReservations(propertyId: number, fromDate?: Date, toDate?: Date): Promise<TableReservation[]> {
+    const conds: any[] = [eq(tableReservations.propertyId, propertyId)];
+    if (fromDate) conds.push(gte(tableReservations.reservationAt, fromDate));
+    if (toDate) conds.push(lte(tableReservations.reservationAt, toDate));
+    return await db.select().from(tableReservations)
+      .where(and(...conds))
+      .orderBy(tableReservations.reservationAt);
+  }
+
+  async getTableReservation(id: number): Promise<TableReservation | undefined> {
+    const [row] = await db.select().from(tableReservations).where(eq(tableReservations.id, id));
+    return row;
+  }
+
+  async createTableReservation(r: InsertTableReservation): Promise<TableReservation> {
+    const [row] = await db.insert(tableReservations).values(r).returning();
+    return row;
+  }
+
+  async updateTableReservation(id: number, r: Partial<InsertTableReservation>): Promise<TableReservation> {
+    const [row] = await db.update(tableReservations).set(r).where(eq(tableReservations.id, id)).returning();
+    return row;
+  }
+
+  async deleteTableReservation(id: number): Promise<void> {
+    await db.delete(tableReservations).where(eq(tableReservations.id, id));
   }
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {

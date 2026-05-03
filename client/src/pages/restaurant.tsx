@@ -641,9 +641,13 @@ export default function Kitchen() {
                     <><Phone className="h-3 w-3 mr-1" />Staff</>
                   )}
                 </Badge>
-                {orderType === "restaurant" && (
+                {orderType === "restaurant" && (order as any).orderMode === "takeaway" ? (
+                  <Badge className="text-xs bg-orange-500 text-white border-0" data-testid={`badge-takeaway-${order.id}`}>
+                    🥡 Takeaway
+                  </Badge>
+                ) : orderType === "restaurant" ? (
                   <Badge variant="secondary" className="text-xs">Restaurant</Badge>
-                )}
+                ) : null}
                 {(order as any).isTest && (
                   <Badge
                     className="text-[10px] px-2 py-0 bg-violet-600 text-white border-0"

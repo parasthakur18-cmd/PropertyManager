@@ -13,6 +13,7 @@ import {
   insertBookingSchema,
   insertMenuItemSchema,
   insertRestaurantTableSchema,
+  insertTableReservationSchema,
   insertOrderSchema,
   insertExtraServiceSchema,
   insertBillSchema,
@@ -897,7 +898,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/public/orders", async (req, res) => {
     try {
       
-      const { orderType, roomId, propertyId, customerName, customerPhone, tableNumber, items, totalAmount, specialInstructions } = req.body;
+      const { orderType, roomId, propertyId, customerName, customerPhone, tableNumber, orderMode: bodyOrderMode, items, totalAmount, specialInstructions } = req.body;
       
       // Validate items
       if (!items || items.length === 0) {
@@ -920,9 +921,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid order type" });
       }
 
+      // Resolve order mode: explicit body value wins, else derive from
+      // orderType/tableNumber. Restaurant + table → dine-in; Restaurant
+      // alone → takeaway only if explicitly set; Room orders → room.
+      const resolvedOrderMode = (() => {
+        const allowed = ["dine-in", "takeaway", "room"];
+        if (bodyOrderMode && allowed.includes(String(bodyOrderMode))) return String(bodyOrderMode);
+        if (orderType === "room") return "room";
+        if (tableNumber) return "dine-in";
+        return "dine-in";
+      })();
+
       let orderData: any = {
         orderType: orderType || "restaurant",
         orderSource: "guest",
+        orderMode: resolvedOrderMode,
         items,
         totalAmount,
         specialInstructions: specialInstructions || null,
@@ -7076,6 +7089,185 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // ── Table Reservations ────────────────────────────────────────────────
+  app.get("/api/table-reservations", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : NaN;
+      if (isNaN(propertyId)) return res.status(400).json({ message: "propertyId required" });
+      if (!(await canAccessProperty(auth.tenant, propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const from = req.query.from ? new Date(String(req.query.from)) : undefined;
+      const to = req.query.to ? new Date(String(req.query.to)) : undefined;
+      const list = await storage.getTableReservations(propertyId, from, to);
+      res.json(list);
+    } catch (e: any) {
+      console.error("[GET /api/table-reservations]", e);
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
+  app.post("/api/table-reservations", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const parsed = insertTableReservationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid reservation", errors: parsed.error.errors });
+      if (!(await canAccessProperty(auth.tenant, parsed.data.propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const created = await storage.createTableReservation(parsed.data);
+      res.json(created);
+    } catch (e: any) {
+      console.error("[POST /api/table-reservations]", e);
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
+  app.patch("/api/table-reservations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getTableReservation(id);
+      if (!existing) return res.status(404).json({ message: "Reservation not found" });
+      if (!(await canAccessProperty(auth.tenant, existing.propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      // Coerce reservationAt if provided as string
+      const body = { ...req.body };
+      if (body.reservationAt && typeof body.reservationAt === "string") {
+        body.reservationAt = new Date(body.reservationAt);
+      }
+      const updated = await storage.updateTableReservation(id, body);
+      res.json(updated);
+    } catch (e: any) {
+      console.error("[PATCH /api/table-reservations/:id]", e);
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
+  app.delete("/api/table-reservations/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getTableReservation(id);
+      if (!existing) return res.status(404).json({ message: "Reservation not found" });
+      if (!(await canAccessProperty(auth.tenant, existing.propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteTableReservation(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[DELETE /api/table-reservations/:id]", e);
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
+  // ── Z-Report (end-of-shift summary) ──────────────────────────────────
+  // Computes a daily restaurant summary entirely from existing orders rows
+  // (no schema changes). Filters: orderType in ('restaurant','room'),
+  // is_test=false, paymentStatus='paid', within [date 00:00, date 23:59:59]
+  // local server time. Groups by orderMode and paymentMethod, returns top
+  // items + grand totals so the floor manager can reconcile cash drawer.
+  app.get("/api/reports/z-report", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found." });
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : NaN;
+      const dateStr = String(req.query.date || "");
+      if (isNaN(propertyId) || !dateStr) {
+        return res.status(400).json({ message: "propertyId and date (YYYY-MM-DD) required" });
+      }
+      if (!(await canAccessProperty(auth.tenant, propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const start = new Date(`${dateStr}T00:00:00`);
+      const end = new Date(`${dateStr}T23:59:59.999`);
+
+      const rows = await db.select().from(orders).where(and(
+        eq(orders.propertyId, propertyId),
+        gte(orders.createdAt, start),
+        lte(orders.createdAt, end),
+        eq(orders.isTest, false),
+        // Restaurant Z-Report only — exclude any future non-F&B order types
+        // that may share the orders table (currently restaurant + room).
+        inArray(orders.orderType, ["restaurant", "room"]),
+      ));
+
+      const paidRows = rows.filter(r => r.paymentStatus === "paid");
+      const num = (v: any) => {
+        const n = parseFloat(String(v ?? "0"));
+        return Number.isFinite(n) ? n : 0;
+      };
+      const sum = (arr: any[]) => arr.reduce((s, r) => s + num(r.totalAmount), 0);
+
+      const byMode: Record<string, { count: number; gross: number }> = {};
+      const byPayment: Record<string, { count: number; gross: number }> = {};
+      const itemTally: Record<string, { qty: number; gross: number }> = {};
+
+      for (const r of paidRows) {
+        const mode = (r as any).orderMode || (r.orderType === "room" ? "room" : "dine-in");
+        const pm = r.paymentMethod || "unspecified";
+        const amt = num(r.totalAmount);
+        byMode[mode] = byMode[mode] || { count: 0, gross: 0 };
+        byMode[mode].count += 1;
+        byMode[mode].gross += amt;
+        byPayment[pm] = byPayment[pm] || { count: 0, gross: 0 };
+        byPayment[pm].count += 1;
+        byPayment[pm].gross += amt;
+        try {
+          const items = Array.isArray(r.items) ? r.items : (typeof r.items === "string" ? JSON.parse(r.items) : []);
+          for (const it of items) {
+            const key = String(it.name || "Unknown");
+            const qRaw = Number(it.quantity);
+            const q = Number.isFinite(qRaw) && qRaw > 0 ? qRaw : 1;
+            const p = num(it.price) * q;
+            itemTally[key] = itemTally[key] || { qty: 0, gross: 0 };
+            itemTally[key].qty += q;
+            itemTally[key].gross += p;
+          }
+        } catch { /* tolerate malformed items */ }
+      }
+
+      const topItems = Object.entries(itemTally)
+        .map(([name, v]) => ({ name, ...v }))
+        .sort((a, b) => b.qty - a.qty)
+        .slice(0, 15);
+
+      const firstOrder = paidRows.reduce<Date | null>((acc, r) => {
+        const t = r.createdAt ? new Date(r.createdAt) : null;
+        return t && (!acc || t < acc) ? t : acc;
+      }, null);
+      const lastOrder = paidRows.reduce<Date | null>((acc, r) => {
+        const t = r.createdAt ? new Date(r.createdAt) : null;
+        return t && (!acc || t > acc) ? t : acc;
+      }, null);
+
+      res.json({
+        propertyId,
+        date: dateStr,
+        totals: {
+          paidOrders: paidRows.length,
+          allOrders: rows.length,
+          unpaidOrders: rows.length - paidRows.length,
+          gross: sum(paidRows),
+        },
+        byMode,
+        byPayment,
+        topItems,
+        firstOrder: firstOrder ? firstOrder.toISOString() : null,
+        lastOrder: lastOrder ? lastOrder.toISOString() : null,
+      });
+    } catch (e: any) {
+      console.error("[GET /api/reports/z-report]", e);
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
   // Menu Items
   app.get("/api/menu-items", isAuthenticated, async (req: any, res) => {
     try {
@@ -7837,6 +8029,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const { isTest: _ignoreIsTest, ...sanitizedBody } = req.body || {};
       let orderData = insertOrderSchema.parse(sanitizedBody) as any;
       orderData.isTest = false;
+
+      // Backstop: ensure every order has a valid orderMode so reports stay
+      // consistent. Prefer explicit body value, otherwise derive from type.
+      const allowedModes = ["dine-in", "takeaway", "room"];
+      if (!orderData.orderMode || !allowedModes.includes(orderData.orderMode)) {
+        orderData.orderMode = orderData.orderType === "room" ? "room"
+          : (orderData.tableNumber ? "dine-in" : "dine-in");
+      }
 
       // Require customerName for restaurant walk-in orders (no room linked)
       if (orderData.orderType === "restaurant" && !orderData.roomId && !orderData.customerName?.trim()) {
