@@ -180,6 +180,21 @@ export default function UsersManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-invitations"] });
       if (result?.inviteUrl) {
         setGeneratedInviteLink(result.inviteUrl);
+        // Auto-copy so the admin can paste straight into WhatsApp / SMS / chat
+        try {
+          navigator.clipboard.writeText(result.inviteUrl);
+          setLinkCopied(true);
+          setTimeout(() => setLinkCopied(false), 2000);
+          toast({
+            title: "Invite link copied",
+            description: "Email sent + link copied to clipboard. Paste anywhere to share.",
+          });
+        } catch {
+          toast({
+            title: "Invitation created",
+            description: "Email sent. Use the Copy button to grab the link.",
+          });
+        }
       } else {
         toast({
           title: "Invitation created",
