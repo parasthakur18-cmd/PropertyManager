@@ -2441,13 +2441,18 @@ export default function ActiveBookings() {
                         const html2pdfLib = (await import('html2pdf.js')).default;
                         const el = document.createElement('div');
                         el.innerHTML = html;
-                        el.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;z-index:-999;';
+                        // IMPORTANT: keep the element at (0,0) — html2canvas produces
+                        // a blank capture when the source element is positioned at
+                        // negative coordinates (the previous left:-9999px caused the
+                        // "white / blank bill PDF" bug). We hide it with opacity:0
+                        // + pointer-events:none + a low z-index instead.
+                        el.style.cssText = 'position:fixed;left:0;top:0;width:900px;opacity:0;pointer-events:none;z-index:-9999;background:#fff;';
                         document.body.appendChild(el);
                         try {
                           await html2pdfLib().from(el).set({
                             margin: [8, 8, 8, 8],
                             filename: `Bill_${guestNameClean}_${dateSuffix}.pdf`,
-                            html2canvas: { scale: 2, useCORS: true, logging: false },
+                            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                           }).save();
                         } finally {
@@ -2505,14 +2510,16 @@ export default function ActiveBookings() {
                         const html2pdfLib = (await import('html2pdf.js')).default;
                         const el = document.createElement('div');
                         el.innerHTML = pdfHtml;
-                        el.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;z-index:-999;';
+                        // Same blank-PDF fix as the download button above — never use
+                        // negative-left positioning with html2canvas.
+                        el.style.cssText = 'position:fixed;left:0;top:0;width:900px;opacity:0;pointer-events:none;z-index:-9999;background:#fff;';
                         document.body.appendChild(el);
                         let pdfBlob: Blob;
                         try {
                           pdfBlob = await html2pdfLib().from(el).set({
                             margin: [8, 8, 8, 8],
                             filename: fileName,
-                            html2canvas: { scale: 2, useCORS: true, logging: false },
+                            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                           }).outputPdf('blob');
                         } finally {
@@ -2522,11 +2529,10 @@ export default function ActiveBookings() {
                         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
                         const waPhone = phone.startsWith("91") ? phone : `91${phone}`;
 
-                        // Mobile: use Web Share API to share directly to WhatsApp
-                        if (navigator.share && (navigator as any).canShare && (navigator as any).canShare({ files: [file] })) {
-                          await navigator.share({ files: [file], title: `Bill — ${b.guest.fullName}` });
-                        } else {
-                          // Desktop: download PDF first, then open WhatsApp so user can attach it
+                        // Helper: download the PDF and open WhatsApp so the operator can attach it.
+                        // Used as fallback for desktop AND when navigator.share fails (e.g. gesture
+                        // expired after our async PDF generation, which iOS Safari treats as an error).
+                        const fallbackDownloadAndOpenWA = () => {
                           const blobUrl = URL.createObjectURL(pdfBlob);
                           const link = document.createElement('a');
                           link.href = blobUrl;
@@ -2536,7 +2542,29 @@ export default function ActiveBookings() {
                           document.body.removeChild(link);
                           URL.revokeObjectURL(blobUrl);
                           setTimeout(() => window.open(`https://wa.me/${waPhone}`, "_blank"), 800);
-                          toast({ title: "PDF Downloaded", description: `Bill PDF saved as "${fileName}". WhatsApp is opening — attach the PDF to send.`, duration: 6000 });
+                          toast({
+                            title: "PDF Downloaded",
+                            description: `Bill PDF saved as "${fileName}". WhatsApp is opening — attach the PDF to send.`,
+                            duration: 6000,
+                          });
+                        };
+
+                        // Try Web Share API first (mobile). Many browsers reject the share
+                        // call because the user-gesture context is lost after our awaits
+                        // (Error: "Must be handling a user gesture to perform a share request").
+                        // Catch that and fall back to download + WhatsApp link.
+                        const canShareFiles = !!(navigator.share && (navigator as any).canShare && (navigator as any).canShare({ files: [file] }));
+                        if (canShareFiles) {
+                          try {
+                            await navigator.share({ files: [file], title: `Bill — ${b.guest.fullName}` });
+                          } catch (shareErr: any) {
+                            // User cancelled the share sheet — do nothing.
+                            if (shareErr?.name === 'AbortError') return;
+                            console.warn('[Bill] navigator.share failed, falling back to download:', shareErr);
+                            fallbackDownloadAndOpenWA();
+                          }
+                        } else {
+                          fallbackDownloadAndOpenWA();
                         }
                       } catch (error: any) {
                         console.error("Send PDF WA error:", error);
