@@ -165,6 +165,7 @@ export default function Kitchen() {
     setSelectedPropertyId,
     availableProperties,
     showPropertySwitcher,
+    isSuperAdmin,
   } = usePropertyFilter();
 
   // Restaurant popup settings
