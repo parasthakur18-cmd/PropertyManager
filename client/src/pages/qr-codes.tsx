@@ -20,7 +20,7 @@ export default function QRCodes() {
 
   const sendRoomQrMutation = useMutation({
     mutationFn: async (vars: { propertyId: string; roomNumber: string; phone: string; guestName?: string }) => {
-      return await apiRequest("POST", "/api/qr/send-room", vars);
+      return await apiRequest("/api/qr/send-room", "POST", vars);
     },
     onSuccess: () => {
       toast({
