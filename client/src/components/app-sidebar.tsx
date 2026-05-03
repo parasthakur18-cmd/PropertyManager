@@ -91,6 +91,7 @@ const adminRestaurantItems = [
   { title: "Kitchen", url: "/kitchen", icon: ChefHat },
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
+  { title: "Tables & QR", url: "/restaurant-tables", icon: QrCode },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
 ];
 

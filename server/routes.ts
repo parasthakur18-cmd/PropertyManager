@@ -12,6 +12,7 @@ import {
   insertTravelAgentSchema,
   insertBookingSchema,
   insertMenuItemSchema,
+  insertRestaurantTableSchema,
   insertOrderSchema,
   insertExtraServiceSchema,
   insertBillSchema,
@@ -6982,6 +6983,92 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     } catch (error: any) {
       console.error("[RazorPay Webhook] ❌ ERROR:", error);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ─── Restaurant Tables ───────────────────────────────────────────────────
+  // Standalone dine-in tables. Not linked to hotel rooms / bookings.
+  app.get("/api/restaurant-tables", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      if (propertyId != null && !(await canAccessProperty(auth.tenant, propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const tables = await storage.getRestaurantTables(propertyId);
+      res.json(tables);
+    } catch (e: any) {
+      console.error("[GET /api/restaurant-tables]", e);
+      res.status(500).json({ message: e.message || "Failed to fetch tables" });
+    }
+  });
+
+  // Public endpoint — guest-facing menu page calls this to validate the
+  // ?table= param. Returns minimal info, no auth required.
+  app.get("/api/public/restaurant-tables", async (req, res) => {
+    try {
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      if (propertyId == null || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId required" });
+      }
+      const tables = await storage.getRestaurantTables(propertyId);
+      res.json(tables.filter(t => t.isActive).map(t => ({ id: t.id, name: t.name })));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "Failed" });
+    }
+  });
+
+  app.post("/api/restaurant-tables", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const parsed = insertRestaurantTableSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid table", errors: parsed.error.errors });
+      if (parsed.data.propertyId != null && !(await canAccessProperty(auth.tenant, parsed.data.propertyId))) {
+        return res.status(403).json({ message: "Forbidden for this property" });
+      }
+      const created = await storage.createRestaurantTable(parsed.data);
+      res.json(created);
+    } catch (e: any) {
+      console.error("[POST /api/restaurant-tables]", e);
+      res.status(500).json({ message: e.message || "Failed to create table" });
+    }
+  });
+
+  app.patch("/api/restaurant-tables/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getRestaurantTable(id);
+      if (!existing) return res.status(404).json({ message: "Table not found" });
+      if (existing.propertyId != null && !(await canAccessProperty(auth.tenant, existing.propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      const updated = await storage.updateRestaurantTable(id, req.body);
+      res.json(updated);
+    } catch (e: any) {
+      console.error("[PATCH /api/restaurant-tables/:id]", e);
+      res.status(500).json({ message: e.message || "Failed to update table" });
+    }
+  });
+
+  app.delete("/api/restaurant-tables/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
+      const id = parseInt(req.params.id);
+      const existing = await storage.getRestaurantTable(id);
+      if (!existing) return res.status(404).json({ message: "Table not found" });
+      if (existing.propertyId != null && !(await canAccessProperty(auth.tenant, existing.propertyId))) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteRestaurantTable(id);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("[DELETE /api/restaurant-tables/:id]", e);
+      res.status(500).json({ message: e.message || "Failed to delete table" });
     }
   });
 

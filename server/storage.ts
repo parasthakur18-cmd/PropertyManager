@@ -7,6 +7,7 @@ import {
   bookings,
   menuCategories,
   menuItems,
+  restaurantTables,
   menuItemVariants,
   menuItemAddOns,
   orders,
@@ -57,6 +58,8 @@ import {
   type InsertMenuItemVariant,
   type MenuItemAddOn,
   type InsertMenuItemAddOn,
+  type RestaurantTable,
+  type InsertRestaurantTable,
   type Order,
   type InsertOrder,
   type ExtraService,
@@ -212,6 +215,13 @@ export interface IStorage {
   updateMenuCategory(id: number, category: Partial<InsertMenuCategory>): Promise<MenuCategory>;
   deleteMenuCategory(id: number): Promise<void>;
   reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void>;
+
+  // Restaurant Tables operations (standalone dine-in tables)
+  getRestaurantTables(propertyId?: number): Promise<RestaurantTable[]>;
+  getRestaurantTable(id: number): Promise<RestaurantTable | undefined>;
+  createRestaurantTable(table: InsertRestaurantTable): Promise<RestaurantTable>;
+  updateRestaurantTable(id: number, table: Partial<InsertRestaurantTable>): Promise<RestaurantTable>;
+  deleteRestaurantTable(id: number): Promise<void>;
 
   // Menu Item operations
   getAllMenuItems(): Promise<MenuItem[]>;
@@ -1217,6 +1227,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteMenuCategory(id: number): Promise<void> {
     await db.delete(menuCategories).where(eq(menuCategories.id, id));
+  }
+
+  // ─── Restaurant Tables (standalone dine-in tables) ──────────────────────
+  async getRestaurantTables(propertyId?: number): Promise<RestaurantTable[]> {
+    const q = db.select().from(restaurantTables);
+    const rows = propertyId != null
+      ? await q.where(eq(restaurantTables.propertyId, propertyId)).orderBy(restaurantTables.name)
+      : await q.orderBy(restaurantTables.name);
+    return rows;
+  }
+
+  async getRestaurantTable(id: number): Promise<RestaurantTable | undefined> {
+    const [row] = await db.select().from(restaurantTables).where(eq(restaurantTables.id, id));
+    return row;
+  }
+
+  async createRestaurantTable(table: InsertRestaurantTable): Promise<RestaurantTable> {
+    const [row] = await db.insert(restaurantTables).values(table).returning();
+    return row;
+  }
+
+  async updateRestaurantTable(id: number, table: Partial<InsertRestaurantTable>): Promise<RestaurantTable> {
+    const [row] = await db
+      .update(restaurantTables)
+      .set(table)
+      .where(eq(restaurantTables.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteRestaurantTable(id: number): Promise<void> {
+    await db.delete(restaurantTables).where(eq(restaurantTables.id, id));
   }
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {

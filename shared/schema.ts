@@ -340,6 +340,28 @@ export const insertBookingRoomStaySchema = createInsertSchema(bookingRoomStays).
 export type InsertBookingRoomStay = z.infer<typeof insertBookingRoomStaySchema>;
 export type BookingRoomStay = typeof bookingRoomStays.$inferSelect;
 
+// Restaurant Tables table — standalone dine-in tables (NOT linked to hotel
+// rooms or bookings). Each table gets its own QR sticker that opens the
+// guest-facing menu pre-filled with the table number. Kept intentionally
+// separate from the PMS so the restaurant can be operated independently.
+export const restaurantTables = pgTable("restaurant_tables", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").references(() => properties.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 50 }).notNull(),
+  capacity: integer("capacity").default(4),
+  location: varchar("location", { length: 100 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRestaurantTableSchema = createInsertSchema(restaurantTables).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertRestaurantTable = z.infer<typeof insertRestaurantTableSchema>;
+export type RestaurantTable = typeof restaurantTables.$inferSelect;
+
 // Menu Categories table
 export const menuCategories = pgTable("menu_categories", {
   id: serial("id").primaryKey(),
