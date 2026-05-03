@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -106,6 +106,32 @@ function PageLoader() {
   );
 }
 
+// Route-level gate: synchronously redirect restaurant-only users away from
+// the admin dashboard so there is zero flash of financial UI. Mirrors the
+// same logic used in App's useEffect below.
+function DashboardGate() {
+  const { user } = useAuth();
+  const { permissions, isFullAccess, isLoading } = usePermissions();
+  const role = (user as any)?.role;
+  if (role === 'super-admin' || role === 'super_admin') return <Dashboard />;
+  if (role === 'kitchen') return <Redirect to="/restaurant" />;
+  if (isFullAccess) return <Dashboard />;
+  if (isLoading || !permissions) return null;
+  const restaurantOnly =
+    (permissions.foodOrders !== 'none' || permissions.menuManagement !== 'none') &&
+    permissions.bookings === 'none' &&
+    permissions.calendar === 'none' &&
+    permissions.rooms === 'none' &&
+    permissions.guests === 'none' &&
+    permissions.payments === 'none' &&
+    permissions.reports === 'none' &&
+    permissions.staff === 'none' &&
+    permissions.tasks === 'none' &&
+    permissions.settings === 'none';
+  if (restaurantOnly) return <Redirect to="/restaurant" />;
+  return <Dashboard />;
+}
+
 function Router({ showDashboard }: { showDashboard: boolean }) {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -143,8 +169,8 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
       
       {showDashboard ? (
         <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/dashboard" component={Dashboard} />
+          <Route path="/" component={DashboardGate} />
+          <Route path="/dashboard" component={DashboardGate} />
           <Route path="/architecture" component={Architecture} />
           <Route path="/advanced-features" component={AdvancedFeatures} />
           <Route path="/properties" component={Properties} />
@@ -279,20 +305,26 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     const path = window.location.pathname;
     if (path !== '/' && path !== '/dashboard') return;
     const role = (user as any).role;
-    if (role === 'admin' || role === 'super-admin' || role === 'super_admin' || role === 'manager') return;
+    // Super-admin always sees the full dashboard.
+    if (role === 'super-admin' || role === 'super_admin') return;
+    // Kitchen role: hard redirect.
     if (role === 'kitchen') { setLocation('/restaurant'); return; }
-    // Staff: only redirect when permissions are loaded, foodOrders is the
-    // only granted module, and at least one other module is restricted.
+    // Everyone else (admin / manager / staff) — check granular permissions.
+    // If the only granted module is foodOrders/menuManagement, bounce them
+    // to /restaurant. This catches property-scoped admins who were given
+    // restaurant-only access.
     if (!dashPerms) return;
     const restaurantOnly =
-      dashPerms.foodOrders !== 'none' &&
+      (dashPerms.foodOrders !== 'none' || dashPerms.menuManagement !== 'none') &&
       dashPerms.bookings === 'none' &&
       dashPerms.calendar === 'none' &&
       dashPerms.rooms === 'none' &&
       dashPerms.guests === 'none' &&
       dashPerms.payments === 'none' &&
       dashPerms.reports === 'none' &&
-      dashPerms.staff === 'none';
+      dashPerms.staff === 'none' &&
+      dashPerms.tasks === 'none' &&
+      dashPerms.settings === 'none';
     if (restaurantOnly) setLocation('/restaurant');
   }, [isLoading, isAuthenticated, user, setLocation, dashPerms]);
 
