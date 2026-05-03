@@ -61,19 +61,19 @@ import type { Property, Booking, Room } from "@shared/schema";
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; gradient: string }> = {
   confirmed: { 
-    bg: "bg-teal-400", 
-    text: "text-teal-900",
-    gradient: "linear-gradient(135deg, #4fd1c5 0%, #38b2ac 100%)"
+    bg: "bg-green-500", 
+    text: "text-white",
+    gradient: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
   },
   pending: { 
-    bg: "bg-blue-300", 
-    text: "text-blue-900",
-    gradient: "linear-gradient(135deg, #90cdf4 0%, #63b3ed 100%)"
+    bg: "bg-blue-500", 
+    text: "text-white",
+    gradient: "linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)"
   },
   "checked-in": { 
-    bg: "bg-emerald-500", 
+    bg: "bg-teal-500", 
     text: "text-white",
-    gradient: "linear-gradient(135deg, #48bb78 0%, #38a169 100%)"
+    gradient: "linear-gradient(135deg, #2BB6A8 0%, #14b8a6 100%)"
   },
   "checked-out": { 
     bg: "bg-gray-300", 
@@ -561,26 +561,26 @@ export default function CalendarView() {
                   key={format(date, "yyyy-MM-dd")}
                   className={cn(
                     "border-r text-center flex-shrink-0 py-1",
-                    isToday && "bg-blue-50 dark:bg-blue-950/30",
+                    isToday && "bg-amber-50 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-300 dark:ring-amber-700",
                     showMonth && idx !== 0 && "border-l-2 border-l-slate-300 dark:border-l-slate-600"
                   )}
                   style={{ width: CELL_WIDTH }}
                 >
                   {/* Day name + number on one line */}
-                  <div className={cn("text-xs font-semibold leading-tight", isToday ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
-                    {dayName} {dayNum}
+                  <div className={cn("text-xs font-semibold leading-tight", isToday ? "text-amber-700 dark:text-amber-300" : "text-foreground")}>
+                    {isToday ? `Today ${dayNum}` : `${dayName} ${dayNum}`}
                   </div>
                   {/* Month label — only when month changes */}
                   <div className={cn(
                     "text-xs leading-tight",
-                    showMonth ? (isToday ? "text-blue-400 dark:text-blue-300" : "text-muted-foreground") : "text-transparent select-none"
+                    showMonth ? (isToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground") : "text-transparent select-none"
                   )}>{monthLabel}</div>
-                  {/* Occupancy badge */}
+                  {/* Occupancy badge — color = demand intensity */}
                   <div className={cn(
-                    "text-xs font-medium",
-                    occupancy >= 80 ? "text-green-700 dark:text-green-400" :
-                    occupancy >= 50 ? "text-yellow-700 dark:text-yellow-400" :
-                    "text-slate-500 dark:text-slate-400"
+                    "text-xs font-bold",
+                    occupancy >= 80 ? "text-red-600 dark:text-red-400" :
+                    occupancy >= 50 ? "text-amber-600 dark:text-amber-400" :
+                    "text-green-600 dark:text-green-400"
                   )}>{occupancy}%</div>
                 </div>
               );
@@ -702,8 +702,8 @@ export default function CalendarView() {
                       className="border-r text-center flex flex-col items-center justify-center flex-shrink-0"
                       style={{ width: CELL_WIDTH, height: TYPE_ROW_HEIGHT }}
                     >
-                      <div className="text-xs text-muted-foreground">{available}</div>
-                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">{price}</div>
+                      <div className="text-[10px] text-muted-foreground leading-tight">{available} left</div>
+                      <div className="text-xs font-bold text-primary leading-tight">{price}</div>
                     </div>
                   );
                 })}
@@ -743,9 +743,27 @@ export default function CalendarView() {
                         style={{ width: SIDEBAR_WIDTH, height: ROW_HEIGHT }}
                       >
                         <div
-                          className="flex items-center gap-1 cursor-pointer min-w-0 flex-1"
+                          className="flex items-center gap-1.5 cursor-pointer min-w-0 flex-1"
                           onClick={() => navigate(`/rooms/${room.id}`)}
+                          title={`Room ${room.roomNumber} · ${room.status || "available"}`}
                         >
+                          {/* Status dot: occupied (today booking) / cleaning / available */}
+                          <span
+                            className={cn(
+                              "w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-white shadow-sm",
+                              roomBookings.some(b => {
+                                const cin = startOfDay(new Date(b.checkInDate));
+                                const cout = startOfDay(new Date(b.checkOutDate));
+                                return today >= cin && today < cout;
+                              })
+                                ? "bg-teal-500"
+                                : room.status === "cleaning" || room.status === "maintenance"
+                                ? "bg-amber-500"
+                                : room.status === "blocked" || room.status === "out-of-service"
+                                ? "bg-gray-400"
+                                : "bg-green-500"
+                            )}
+                          />
                           <span className="font-medium text-sm truncate">{room.roomNumber}</span>
                           <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
@@ -763,11 +781,13 @@ export default function CalendarView() {
                             const cout = startOfDay(new Date(booking.checkOutDate));
                             return date >= cin && date < cout;
                           });
+                          const isTodayCell = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
                           return (
                             <div
                               key={`${room.id}-${dateStr}`}
                               className={cn(
                                 "border-r flex-shrink-0 transition-colors",
+                                isTodayCell && "bg-amber-50/40 dark:bg-amber-950/10",
                                 !isOccupied && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 group/cell"
                               )}
                               style={{ width: CELL_WIDTH }}
@@ -809,7 +829,16 @@ export default function CalendarView() {
                           if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
                           if (widthPx <= 0) return null;
                           const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
-                          const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                          const baseStatusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                          // Override: bookings arriving TODAY (and not yet checked-in) → orange
+                          const arrivingToday =
+                            format(checkInDate, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") &&
+                            booking.status !== "checked-in" &&
+                            booking.status !== "checked-out" &&
+                            booking.status !== "cancelled";
+                          const statusStyle = arrivingToday
+                            ? { bg: "bg-orange-500", text: "text-white", gradient: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)" }
+                            : baseStatusStyle;
                           const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
                           const displayName = isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds}` : guestName;
                           const handleClick = () => {
@@ -829,7 +858,15 @@ export default function CalendarView() {
                                 title={isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds} beds - Click for details` : `${guestName} - ${booking.status}`}
                               >
                                 <span className="truncate">{displayName}</span>
-                                <span className={cn("w-2 h-2 rounded-full flex-shrink-0 ml-1", isPaid ? "bg-green-600" : "bg-red-500")} />
+                                {!isPaid && (
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 ml-1 bg-red-500 ring-2 ring-white shadow-sm animate-pulse"
+                                    title="Unpaid / overdue balance"
+                                  />
+                                )}
+                                {isPaid && (
+                                  <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1 bg-white/90" title="Paid" />
+                                )}
                               </div>
                             </div>
                           );
@@ -845,35 +882,48 @@ export default function CalendarView() {
         </div>
       </div>
 
+      {/* Mobile hint — visible only on small screens */}
+      <div className="md:hidden border-t bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5 text-[11px] text-blue-700 dark:text-blue-300 flex items-center gap-1.5 flex-shrink-0">
+        <span>👉 Swipe horizontally to scroll the calendar</span>
+      </div>
+
       {/* Legend */}
-      <div className="border-t bg-white dark:bg-card p-2 flex gap-4 flex-wrap text-xs flex-shrink-0">
+      <div className="border-t bg-white dark:bg-card p-2 flex gap-3 flex-wrap text-xs flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.confirmed.gradient }} />
           <span>Confirmed</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.pending.gradient }} />
-          <span>Pending</span>
+          <span>Upcoming</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded" style={{ background: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)" }} />
+          <span>Arriving Today</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS["checked-in"].gradient }} />
-          <span>Checked-in</span>
+          <span>In-house</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS.blocked.gradient }} />
           <span>Blocked</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded" style={{ background: STATUS_COLORS["out-of-service"].gradient }} />
-          <span>Out of Service</span>
-        </div>
-        <div className="flex items-center gap-1.5 ml-4">
-          <span className="w-2 h-2 rounded-full bg-green-600" />
-          <span>Paid</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-red-500" />
+        <div className="flex items-center gap-1.5 ml-2 border-l pl-3">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white shadow-sm" />
           <span>Unpaid</span>
+        </div>
+        <div className="flex items-center gap-1.5 ml-2 border-l pl-3">
+          <span className="w-2 h-2 rounded-full bg-green-500" />
+          <span>Available</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-teal-500" />
+          <span>Occupied</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          <span>Cleaning</span>
         </div>
       </div>
 
