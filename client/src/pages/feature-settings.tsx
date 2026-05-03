@@ -24,6 +24,7 @@ interface FeatureSettings {
   id: number;
   propertyId: number;
   foodOrderNotifications: boolean;
+  kitchenAcceptanceTimeoutMinutes: number;
   whatsappNotifications: boolean;
   emailNotifications: boolean;
   autoCheckout: boolean;
@@ -58,6 +59,7 @@ const features = [
     icon: Bell,
     items: [
       { key: "foodOrderNotifications", label: "Food Order Alerts", description: "Browser + WhatsApp alerts when new orders arrive" },
+      { key: "kitchenAcceptanceTimeoutInput", label: "Kitchen Acceptance Timeout", description: "If kitchen doesn't accept an order within this many minutes, send a warning re-alert. 0 = disabled.", type: "number-input" },
       { key: "whatsappNotifications", label: "WhatsApp Messaging", description: "Master toggle for all WhatsApp notifications" },
       { key: "emailNotifications", label: "Email Notifications", description: "Send alerts via email" },
       { key: "paymentReminders", label: "Payment Reminders", description: "Remind guests about pending payments" },
@@ -680,7 +682,7 @@ export default function FeatureSettings() {
                 </div>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
-                {category.items.map((item) => (
+                {category.items.map((item: any) => (
                   <div
                     key={item.key}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors"
@@ -689,12 +691,28 @@ export default function FeatureSettings() {
                       <p className="font-medium">{item.label}</p>
                       <p className="text-sm text-muted-foreground">{item.description}</p>
                     </div>
-                    <Switch
-                      checked={(settings as any)[item.key] || false}
-                      onCheckedChange={(value) => handleToggle(item.key, value)}
-                      disabled={updateMutation.isPending}
-                      data-testid={`toggle-${item.key}`}
-                    />
+                    {item.type === "number-input" ? (
+                      <Input
+                        type="number"
+                        min="0"
+                        max="120"
+                        className="w-24"
+                        value={settings?.kitchenAcceptanceTimeoutMinutes ?? 10}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value);
+                          updateMutation.mutate({ kitchenAcceptanceTimeoutMinutes: isNaN(v) ? 0 : v } as any);
+                        }}
+                        disabled={updateMutation.isPending}
+                        data-testid="input-kitchenAcceptanceTimeoutMinutes"
+                      />
+                    ) : (
+                      <Switch
+                        checked={(settings as any)[item.key] || false}
+                        onCheckedChange={(value) => handleToggle(item.key, value)}
+                        disabled={updateMutation.isPending}
+                        data-testid={`toggle-${item.key}`}
+                      />
+                    )}
                   </div>
                 ))}
               </CardContent>

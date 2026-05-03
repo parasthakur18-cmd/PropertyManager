@@ -867,6 +867,23 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Second-level kitchen-acceptance escalation. Adds a one-shot stamp on
+    // orders + per-property timeout setting + partial index for the cron's
+    // per-tick scan. Idempotent.
+    name: "add_kitchen_acceptance_escalation",
+    async run() {
+      await runRaw(`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS acceptance_alert_sent_at TIMESTAMP;
+        ALTER TABLE feature_settings
+          ADD COLUMN IF NOT EXISTS kitchen_acceptance_timeout_minutes INTEGER NOT NULL DEFAULT 10;
+        CREATE INDEX IF NOT EXISTS idx_orders_pending_escalation
+          ON orders(property_id, status, created_at)
+          WHERE status = 'pending' AND acceptance_alert_sent_at IS NULL AND is_test = false;
+      `);
+    },
+  },
+  {
     // Dynamic pricing add-on — creates 3 tables. Idempotent (IF NOT EXISTS).
     // Does NOT touch any existing booking/inventory/OTA tables.
     name: "create_dynamic_pricing_tables",

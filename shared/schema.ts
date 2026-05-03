@@ -521,6 +521,12 @@ export const orders = pgTable("orders", {
   // financial calculations (revenue, P&L, wallet, reports). Used only
   // for kitchen/notification testing. Never set this on real orders.
   isTest: boolean("is_test").default(false).notNull(),
+  // Second-level kitchen-acceptance escalation: stamped when the
+  // background job has fired the "kitchen has not accepted this order
+  // within X minutes" warning. NULL = not yet alerted. We never re-fire
+  // for the same order (avoids alert spam). Cleared by status moves
+  // implicitly because the job filters status='pending' only.
+  acceptanceAlertSentAt: timestamp("acceptance_alert_sent_at"),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -1028,6 +1034,10 @@ export const featureSettings = pgTable("feature_settings", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
   foodOrderNotifications: boolean("food_order_notifications").notNull().default(true),
+  // Second-level kitchen-acceptance alert. If a new order stays in
+  // status='pending' for more than this many minutes, a warning is
+  // re-sent to admin/kitchen (in-app + WhatsApp + push). 0 = disabled.
+  kitchenAcceptanceTimeoutMinutes: integer("kitchen_acceptance_timeout_minutes").notNull().default(10),
   whatsappNotifications: boolean("whatsapp_notifications").notNull().default(true),
   emailNotifications: boolean("email_notifications").notNull().default(false),
   paymentReminders: boolean("payment_reminders").notNull().default(true),

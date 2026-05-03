@@ -20808,6 +20808,149 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   // Start daily report cron
   startDailyReportJob();
 
+  // Start kitchen-acceptance escalation cron (Phase: second-level alert)
+  startKitchenAcceptanceEscalationJob();
+
   const httpServer = createServer(app);
   return httpServer;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Kitchen Acceptance Escalation Job
+// Scans every 60s for pending orders that have been sitting unaccepted
+// for longer than the property's `kitchenAcceptanceTimeoutMinutes`
+// (default 10, 0 = disabled). Fires a one-shot warning per order:
+//   • In-app notification (sound: warning) for admin/super-admin/kitchen
+//   • PWA push notification with warning copy
+//   • WhatsApp re-alert via existing food_order_staff_alert template
+// Stamps `acceptance_alert_sent_at` so it never re-fires for the same
+// order. Skips test orders entirely.
+// ─────────────────────────────────────────────────────────────────────────
+function startKitchenAcceptanceEscalationJob() {
+  const TICK_MS = 60_000;
+  const DEFAULT_TIMEOUT_MIN = 10;
+
+  async function tick() {
+    try {
+      const allProperties = await db.select().from(properties);
+      if (allProperties.length === 0) return;
+
+      // Pre-load admin/kitchen users once per tick
+      const allUsers = await storage.getAllUsers();
+      const escalationUsers = allUsers.filter(
+        u => u.role === "admin" || u.role === "super-admin" || u.role === "kitchen",
+      );
+      const escalationUserIds = escalationUsers.map(u => u.id);
+
+      for (const property of allProperties) {
+        const settings = await storage.getFeatureSettingsByProperty(property.id);
+        const timeoutMin = settings?.kitchenAcceptanceTimeoutMinutes ?? DEFAULT_TIMEOUT_MIN;
+        if (!timeoutMin || timeoutMin <= 0) continue; // disabled
+
+        const cutoff = new Date(Date.now() - timeoutMin * 60_000);
+
+        // Atomically claim stale orders: a single UPDATE…RETURNING flips
+        // acceptance_alert_sent_at to now() ONLY for rows still matching
+        // (status='pending' AND not yet alerted AND not test AND aged out).
+        // This eliminates the race where an order is accepted between the
+        // SELECT and the notification fire — and prevents two overlapping
+        // ticks from firing twice.
+        const stale = await db
+          .update(orders)
+          .set({ acceptanceAlertSentAt: new Date() })
+          .where(and(
+            eq(orders.propertyId, property.id),
+            eq(orders.status, "pending"),
+            eq(orders.isTest, false),
+            isNull(orders.acceptanceAlertSentAt),
+            lt(orders.createdAt, cutoff),
+          ))
+          .returning();
+
+        if (stale.length === 0) continue;
+
+        for (const order of stale) {
+          const ageMin = Math.max(
+            timeoutMin,
+            Math.round((Date.now() - new Date(order.createdAt as any).getTime()) / 60_000),
+          );
+          const guestLabel = order.customerName || "Guest";
+          const roomLabel = order.tableNumber
+            ? `Table ${order.tableNumber}`
+            : order.orderType === "room"
+              ? "Room Service"
+              : (order as any).orderMode === "takeaway" ? "Takeaway" : "Restaurant";
+          const totalStr = String(order.totalAmount || 0);
+          const messageCore = `Kitchen has NOT accepted order #${order.id} (${roomLabel}, ₹${totalStr}) — pending for ${ageMin} min. Please check.`;
+
+          // 1. In-app notifications
+          try {
+            for (const user of escalationUsers) {
+              await db.insert(notifications).values({
+                userId: user.id,
+                type: "order_unaccepted",
+                title: "⚠️ Order not accepted",
+                message: messageCore,
+                soundType: "warning",
+                relatedId: order.id,
+                relatedType: "order",
+              });
+            }
+          } catch (e: any) {
+            console.warn(`[KITCHEN-ESCALATION] in-app insert failed for order #${order.id}:`, e.message);
+          }
+
+          // 2. PWA push
+          try {
+            await sendPushToUsers(escalationUserIds, {
+              type: "order_unaccepted",
+              title: "⚠️ Order not accepted",
+              body: messageCore,
+              url: "/restaurant",
+              orderId: order.id,
+            });
+          } catch (e: any) {
+            console.warn(`[KITCHEN-ESCALATION] push failed for order #${order.id}:`, e.message);
+          }
+
+          // 3. WhatsApp re-alert (reuse approved staff-alert template;
+          //    prefix guest name with "URGENT" so the template message
+          //    visibly conveys the escalation context).
+          try {
+            const recipients = await storage.resolveAlertRecipients(
+              "food_order_staff_alert",
+              property.id,
+            );
+            const urgentGuest = `URGENT (${ageMin}m): ${guestLabel}`;
+            for (const phone of recipients) {
+              if (!isRealPhone(phone)) continue;
+              try {
+                await sendFoodOrderStaffAlert(
+                  phone,
+                  urgentGuest,
+                  property.name || "Property",
+                  roomLabel,
+                  order.id,
+                );
+              } catch (waErr: any) {
+                console.warn(`[KITCHEN-ESCALATION] WA failed for ${phone} order #${order.id}:`, waErr.message);
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[KITCHEN-ESCALATION] WA routing failed for order #${order.id}:`, e.message);
+          }
+
+          // (Stamp happens atomically in the UPDATE…RETURNING above.)
+          console.log(`[KITCHEN-ESCALATION] Fired escalation for order #${order.id} (property=${property.id}, age=${ageMin}m, timeout=${timeoutMin}m)`);
+        }
+      }
+    } catch (e: any) {
+      console.error("[KITCHEN-ESCALATION] tick failed:", e.message);
+    }
+  }
+
+  // Kick first run after 30s so it doesn't race startup; then every 60s.
+  setTimeout(tick, 30_000);
+  setInterval(tick, TICK_MS);
+  console.log("[KITCHEN-ESCALATION] Background job started — checks every 60s");
 }
