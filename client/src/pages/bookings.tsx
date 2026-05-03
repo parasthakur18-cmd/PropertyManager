@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare, FileEdit } from "lucide-react";
+import { Plus, Calendar, User, Hotel, Receipt, Search, Pencil, Upload, Trash2, Phone, QrCode, AlertTriangle, Info, CreditCard, Check, Send, ChevronLeft, ChevronRight, MessageSquare, FileEdit, MoreHorizontal, BedDouble, LogIn, Wallet } from "lucide-react";
 import { IdVerificationUpload } from "@/components/IdVerificationUpload";
 import { GuestIdUpload } from "@/components/GuestIdUpload";
 import { BookingQRCode } from "@/components/BookingQRCode";
@@ -210,8 +210,23 @@ export default function Bookings() {
       const params = new URLSearchParams();
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String((currentPage - 1) * PAGE_SIZE));
-      if (activeTab !== "all") params.set("status", activeTab);
-      if (checkinDateFilter) params.set("checkinDate", checkinDateFilter);
+      // Map UX tabs to server status params
+      const tabToStatus: Record<string, string | undefined> = {
+        all: undefined,
+        today_checkins: "active",
+        // pending_payment covers both 'pending' and 'pending_advance'; we fetch
+        // the broader 'active' set and filter client-side below.
+        pending_payment: "active",
+        tba: "active",
+        cancelled: "cancelled",
+      };
+      const serverStatus = tabToStatus[activeTab];
+      if (serverStatus) params.set("status", serverStatus);
+      // For "Today Check-ins" tab, force checkinDate=today
+      const effectiveCheckinDate = activeTab === "today_checkins"
+        ? new Date().toISOString().slice(0, 10)
+        : checkinDateFilter;
+      if (effectiveCheckinDate) params.set("checkinDate", effectiveCheckinDate);
       if (dateFrom) params.set("from", dateFrom);
       if (dateTo) params.set("to", dateTo);
       if (debouncedSearch) params.set("search", debouncedSearch);
@@ -1188,8 +1203,19 @@ export default function Bookings() {
 
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
+    // For TBA tab, additionally filter to only bookings without an assigned room
+    if (activeTab === "tba") {
+      return bookings.filter((b) => {
+        const hasRoom = !!b.roomId || (Array.isArray(b.roomIds) && b.roomIds.length > 0);
+        return !hasRoom;
+      });
+    }
+    // For Pending Payment tab, include both 'pending' and 'pending_advance'
+    if (activeTab === "pending_payment") {
+      return bookings.filter((b) => b.status === "pending" || b.status === "pending_advance");
+    }
     return bookings;
-  }, [bookings]);
+  }, [bookings, activeTab]);
 
   // Counts come from the server (across all pages, not just current page)
   const bookingCounts = {
@@ -2156,21 +2182,21 @@ export default function Bookings() {
         </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 flex-wrap h-auto">
           <TabsTrigger value="all" data-testid="tab-all-bookings">
             All <Badge variant="secondary" className="ml-2">{bookingCounts.all}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="active" data-testid="tab-active-bookings">
-            Active <Badge variant="secondary" className="ml-2">{bookingCounts.active}</Badge>
+          <TabsTrigger value="today_checkins" data-testid="tab-today-checkins">
+            Today Check-ins
           </TabsTrigger>
-          <TabsTrigger value="completed" data-testid="tab-completed-bookings">
-            Completed <Badge variant="secondary" className="ml-2">{bookingCounts.completed}</Badge>
+          <TabsTrigger value="pending_payment" data-testid="tab-pending-payment" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white">
+            <span className="mr-1">⚠️</span> Pending Payment
+          </TabsTrigger>
+          <TabsTrigger value="tba" data-testid="tab-tba" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
+            <span className="mr-1">🚨</span> TBA
           </TabsTrigger>
           <TabsTrigger value="cancelled" data-testid="tab-cancelled-bookings">
             Cancelled <Badge variant="secondary" className="ml-2">{bookingCounts.cancelled}</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="no_show" data-testid="tab-no-show-bookings">
-            No Show {bookingCounts.no_show > 0 && <Badge variant="secondary" className="ml-2">{bookingCounts.no_show}</Badge>}
           </TabsTrigger>
         </TabsList>
 
@@ -2214,10 +2240,7 @@ export default function Bookings() {
                     <TableHead className="font-semibold">Guest</TableHead>
                     <TableHead className="font-semibold">Property</TableHead>
                     <TableHead className="font-semibold">Room</TableHead>
-                    <TableHead className="font-semibold">Check-in</TableHead>
-                    <TableHead className="font-semibold">Check-out</TableHead>
-                    <TableHead className="font-semibold">Guests</TableHead>
-                    <TableHead className="font-semibold">Meal Plan</TableHead>
+                    <TableHead className="font-semibold">Stay</TableHead>
                     <TableHead className="font-semibold">Amount</TableHead>
                     <TableHead className="font-semibold">Advance</TableHead>
                     <TableHead className="font-semibold">Source</TableHead>
@@ -2236,51 +2259,72 @@ export default function Bookings() {
                       ? rooms?.filter((r) => booking.roomIds?.includes(r.id)) || []
                       : [];
                     
+                    const hasRoom = !!room || (isGroupBooking && groupRooms.length > 0);
                     const roomDisplay = isGroupBooking && groupRooms.length > 0
                       ? groupRooms.map(r => `${r.roomNumber}`).join(", ")
                       : room ? room.roomNumber : "TBA";
 
-                    const mealPlanDisplay = {
-                      "EP": "EP (Room Only)",
-                      "CP": "CP (with Breakfast)",
-                      "MAP": "MAP (Half Board)",
-                      "AP": "AP (Full Board)"
-                    }[booking.mealPlan || "EP"] || booking.mealPlan;
+                    const mealPlanShort = (booking.mealPlan || "EP").toUpperCase();
+                    const checkInD = new Date(booking.checkInDate);
+                    const checkOutD = new Date(booking.checkOutDate);
+                    const sameMonth = checkInD.getMonth() === checkOutD.getMonth();
+                    const stayLabel = sameMonth
+                      ? `${format(checkInD, "dd")}–${format(checkOutD, "dd MMM")}`
+                      : `${format(checkInD, "dd MMM")} – ${format(checkOutD, "dd MMM")}`;
+
+                    const isTba = !hasRoom && booking.status !== "cancelled" && booking.status !== "checked-out" && booking.status !== "no_show";
+                    const needsPayment = booking.status === "pending_advance" || booking.status === "pending";
+                    const canCheckin = hasRoom && (booking.status === "confirmed" || booking.status === "pending");
+
+                    const rowTint = isTba
+                      ? "bg-red-50/70 dark:bg-red-950/20"
+                      : needsPayment
+                      ? "bg-orange-50/70 dark:bg-orange-950/20"
+                      : booking.status === "checked-in"
+                      ? "bg-green-50/70 dark:bg-green-950/20"
+                      : "";
+
+                    const statusLabel: Record<string, string> = {
+                      pending: "🟠 Pending",
+                      pending_advance: "🟠 Pending Pay",
+                      confirmed: "Confirmed",
+                      "checked-in": "🟢 Checked-in",
+                      "checked-out": "Checked-out",
+                      cancelled: "Cancelled",
+                      no_show: "No Show",
+                    };
+
+                    const rawPhone = ((guest as any)?.whatsappPhone || guest?.phone || "").replace(/\D/g, "");
+                    const waPhone = rawPhone.startsWith("91") ? rawPhone : `91${rawPhone}`;
 
                     return (
-                      <TableRow key={booking.id} className="hover-elevate h-12" data-testid={`row-booking-${booking.id}`}>
-                        <TableCell className="font-medium py-2" data-testid={`text-guest-${booking.id}`}>
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm">
+                      <TableRow key={booking.id} className={`hover-elevate ${rowTint}`} data-testid={`row-booking-${booking.id}`}>
+                        <TableCell className="py-2" data-testid={`text-guest-${booking.id}`}>
+                          <div className="flex flex-col">
+                            <div className="font-semibold text-sm leading-tight">
                               {guest?.fullName || "Unknown Guest"}
-                              <div className="text-xs text-muted-foreground">{guest?.phone}</div>
-                              {booking.specialRequests && (
-                                <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1" title={booking.specialRequests} data-testid={`text-special-req-${booking.id}`}>
-                                  <span>★</span>
-                                  <span className="truncate max-w-[140px]">{booking.specialRequests}</span>
-                                </div>
-                              )}
                             </div>
-                            {guest?.phone && (
-                              <a 
-                                href={`tel:${guest.phone}`} 
-                                className="p-1 rounded hover-elevate bg-primary/10 text-primary shrink-0"
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label={`Call ${guest.fullName}`}
-                                data-testid={`button-call-${booking.id}`}
-                              >
-                                <Phone className="h-3 w-3" />
-                              </a>
-                            )}
-                            {(guest?.phone) && (() => {
-                              const rawPhone = ((guest as any)?.whatsappPhone || guest?.phone || "").replace(/\D/g, "");
-                              const waPhone = rawPhone.startsWith("91") ? rawPhone : `91${rawPhone}`;
-                              return (
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {guest?.phone && (
+                                <span className="text-xs text-muted-foreground">{guest.phone}</span>
+                              )}
+                              {guest?.phone && (
+                                <a
+                                  href={`tel:${guest.phone}`}
+                                  className="p-0.5 rounded hover-elevate bg-primary/10 text-primary shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label={`Call ${guest.fullName}`}
+                                  data-testid={`button-call-${booking.id}`}
+                                >
+                                  <Phone className="h-3 w-3" />
+                                </a>
+                              )}
+                              {guest?.phone && (
                                 <a
                                   href={`https://wa.me/${waPhone}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="p-1 rounded hover-elevate bg-[#25D366]/10 text-[#25D366] shrink-0"
+                                  className="p-0.5 rounded hover-elevate bg-[#25D366]/10 text-[#25D366] shrink-0"
                                   onClick={(e) => e.stopPropagation()}
                                   aria-label={`WhatsApp ${guest.fullName}`}
                                   data-testid={`button-wa-chat-${booking.id}`}
@@ -2288,8 +2332,14 @@ export default function Bookings() {
                                 >
                                   <MessageSquare className="h-3 w-3" />
                                 </a>
-                              );
-                            })()}
+                              )}
+                            </div>
+                            {booking.specialRequests && (
+                              <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1" title={booking.specialRequests} data-testid={`text-special-req-${booking.id}`}>
+                                <span>★</span>
+                                <span className="truncate max-w-[160px]">{booking.specialRequests}</span>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="py-2 text-sm" data-testid={`text-property-${booking.id}`}>
@@ -2298,22 +2348,22 @@ export default function Bookings() {
                             <Badge variant="secondary" className="ml-1 text-xs bg-blue-500 text-white">Group</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="font-mono py-2 text-sm" data-testid={`text-room-${booking.id}`}>
-                          {roomDisplay}
+                        <TableCell className="py-2 text-sm" data-testid={`text-room-${booking.id}`}>
+                          {isTba ? (
+                            <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs whitespace-nowrap" data-testid={`badge-tba-${booking.id}`}>
+                              <AlertTriangle className="h-3 w-3 mr-1" /> TBA
+                            </Badge>
+                          ) : (
+                            <span className="font-mono font-medium">{roomDisplay}</span>
+                          )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-checkin-${booking.id}`}>
-                          {format(new Date(booking.checkInDate), "dd MMM")}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-checkout-${booking.id}`}>
-                          {format(new Date(booking.checkOutDate), "dd MMM")}
-                        </TableCell>
-                        <TableCell className="text-center py-2 text-sm" data-testid={`text-guests-${booking.id}`}>
-                          {booking.numberOfGuests}
-                        </TableCell>
-                        <TableCell className="font-medium py-2 text-xs" data-testid={`text-meal-plan-${booking.id}`}>
-                          <Badge variant="outline" className="text-xs whitespace-nowrap">
-                            {mealPlanDisplay}
-                          </Badge>
+                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-stay-${booking.id}`}>
+                          <div className="flex flex-col leading-tight">
+                            <span className="font-medium">{stayLabel}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {booking.numberOfGuests} {booking.numberOfGuests === 1 ? "Guest" : "Guests"} • {mealPlanShort}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
                           {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
@@ -2335,170 +2385,162 @@ export default function Bookings() {
                             {normalizeSource(booking.source)}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs`} data-testid={`badge-status-${booking.id}`}>
-                            {booking.status}
+                        <TableCell className="py-2">
+                          <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs whitespace-nowrap`} data-testid={`badge-status-${booking.id}`}>
+                            {statusLabel[booking.status] || booking.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right py-2">
                           <div className="flex items-center justify-end gap-1">
-                            {/* Status Change Dropdown - Always visible */}
-                            <Select
-                              value={booking.status}
-                              onValueChange={(newStatus) => handleStatusChange(booking, newStatus)}
-                            >
-                              <SelectTrigger className="w-[110px] h-8 text-xs" data-testid={`select-status-${booking.id}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="confirmed">Confirmed</SelectItem>
-                                <SelectItem value="checked-in">Checked In</SelectItem>
-                                <SelectItem value="cancelled">Cancelled</SelectItem>
-                                {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "pending_advance") && (
-                                  <SelectItem value="no_show">No Show</SelectItem>
-                                )}
-                                {booking.status === "no_show" && (
-                                  <SelectItem value="no_show" disabled>No Show</SelectItem>
-                                )}
-                              </SelectContent>
-                            </Select>
-                            
-                            {/* Payment Actions - Fixed width container for consistent layout */}
-                            <div className="flex items-center gap-1 min-w-[160px] justify-end">
-                              {booking.status === "pending_advance" && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8 px-2 text-xs"
-                                    onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                    disabled={sendAdvancePaymentMutation.isPending}
-                                    title="Resend payment link"
-                                    data-testid={`button-resend-payment-${booking.id}`}
-                                  >
-                                    <CreditCard className="h-3.5 w-3.5 mr-1" />
-                                    Resend
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="default"
-                                    className="h-8 px-2 text-xs"
-                                    onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                    disabled={confirmAdvancePaymentMutation.isPending}
-                                    title="Confirm payment received"
-                                    data-testid={`button-confirm-payment-${booking.id}`}
-                                  >
-                                    <Check className="h-3.5 w-3.5 mr-1" />
-                                    Confirm
-                                  </Button>
-                                </>
-                              )}
-                              
-                              {booking.status === "pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 px-2 text-xs"
-                                  onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
-                                  disabled={sendAdvancePaymentMutation.isPending}
-                                  title="Send payment link"
-                                  data-testid={`button-send-payment-${booking.id}`}
-                                >
-                                  <CreditCard className="h-3.5 w-3.5 mr-1" />
-                                  Pay Link
-                                </Button>
-                              )}
-                            </div>
-                            
-                            {/* Icon Actions - Consistent for all */}
-                            <div className="flex items-center border-l pl-1">
+                            {/* Smart contextual buttons (max 2) */}
+                            {needsPayment && (
                               <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                onClick={() => sendCheckinLinkMutation.mutate({ bookingId: booking.id })}
-                                disabled={sendCheckinLinkMutation.isPending || booking.status === "checked-in" || booking.status === "checked-out"}
-                                title={booking.status === "checked-in" || booking.status === "checked-out" ? "Guest already checked in" : "Send self check-in link via WhatsApp"}
-                                data-testid={`button-checkin-link-${booking.id}`}
+                                size="sm"
+                                variant="default"
+                                className="h-8 px-2 text-xs bg-orange-500 hover:bg-orange-600"
+                                onClick={() => sendAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                disabled={sendAdvancePaymentMutation.isPending}
+                                title={booking.status === "pending_advance" ? "Resend payment link to guest" : "Send payment link to guest"}
+                                data-testid={`button-collect-payment-${booking.id}`}
                               >
-                                <Send className="h-4 w-4" />
+                                <Wallet className="h-3.5 w-3.5 mr-1" />
+                                {booking.status === "pending_advance" ? "Resend Pay" : "Collect Pay"}
                               </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8"
-                                    disabled={resendWaMutation.isPending}
-                                    title="Send WhatsApp message"
-                                    data-testid={`button-wa-menu-${booking.id}`}
-                                  >
-                                    <MessageSquare className="h-4 w-4 text-green-600" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuLabel className="text-xs">Send via WhatsApp</DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "confirmation" })}
-                                    data-testid={`btn-wa-confirmation-${booking.id}`}
-                                  >
-                                    Booking Confirmation
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "payment" })}
-                                    data-testid={`btn-wa-payment-${booking.id}`}
-                                  >
-                                    Payment Request
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "checkin" })}
-                                    data-testid={`btn-wa-checkin-${booking.id}`}
-                                  >
-                                    Check-in Link
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                            )}
+                            {isTba && (
                               <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
+                                size="sm"
+                                variant="default"
+                                className="h-8 px-2 text-xs bg-red-600 hover:bg-red-700"
                                 onClick={() => handleEditBooking(booking)}
-                                title="Edit Booking"
-                                data-testid={`button-edit-booking-${booking.id}`}
+                                title="Assign Room"
+                                data-testid={`button-assign-room-${booking.id}`}
                               >
-                                <Pencil className="h-4 w-4" />
+                                <BedDouble className="h-3.5 w-3.5 mr-1" />
+                                Assign Room
                               </Button>
-                              {booking.status === "checked-out" && (
+                            )}
+                            {!isTba && canCheckin && !needsPayment && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="h-8 px-2 text-xs bg-green-600 hover:bg-green-700"
+                                onClick={() => handleStatusChange(booking, "checked-in")}
+                                title="Check-in guest"
+                                data-testid={`button-checkin-${booking.id}`}
+                              >
+                                <LogIn className="h-3.5 w-3.5 mr-1" />
+                                Check-in
+                              </Button>
+                            )}
+
+                            {/* Inline WhatsApp quick send */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
                                 <Button
                                   size="icon"
                                   variant="ghost"
                                   className="h-8 w-8"
-                                  onClick={() => {
-                                    setBillCorrectionBookingId(booking.id);
-                                    setBillCorrectionOpen(true);
-                                  }}
-                                  title="Correct Bill"
-                                  data-testid={`button-correct-bill-${booking.id}`}
+                                  disabled={resendWaMutation.isPending}
+                                  title="Send WhatsApp message"
+                                  data-testid={`button-wa-menu-${booking.id}`}
                                 >
-                                  <FileEdit className="h-4 w-4 text-blue-500" />
+                                  <MessageSquare className="h-4 w-4 text-green-600" />
                                 </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                onClick={() => {
-                                  setDeleteBookingId(booking.id);
-                                  setDeleteDialogOpen(true);
-                                }}
-                                title="Delete Booking"
-                                data-testid={`button-delete-booking-${booking.id}`}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </div>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel className="text-xs">Send via WhatsApp</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "confirmation" })}
+                                  data-testid={`btn-wa-confirmation-${booking.id}`}
+                                >
+                                  Booking Confirmation
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "payment" })}
+                                  data-testid={`btn-wa-payment-${booking.id}`}
+                                >
+                                  Payment Request
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => resendWaMutation.mutate({ bookingId: booking.id, type: "checkin" })}
+                                  data-testid={`btn-wa-checkin-${booking.id}`}
+                                >
+                                  Check-in Link
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            {/* Overflow menu - all secondary actions */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  title="More actions"
+                                  data-testid={`button-more-${booking.id}`}
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel className="text-xs">Change Status</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => handleStatusChange(booking, "pending")} data-testid={`mi-status-pending-${booking.id}`}>Pending</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(booking, "confirmed")} data-testid={`mi-status-confirmed-${booking.id}`}>Confirmed</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(booking, "checked-in")} data-testid={`mi-status-checkin-${booking.id}`}>Checked In</DropdownMenuItem>
+                                {(booking.status === "pending" || booking.status === "confirmed" || booking.status === "pending_advance") && (
+                                  <DropdownMenuItem onClick={() => handleStatusChange(booking, "no_show")} data-testid={`mi-status-noshow-${booking.id}`}>No Show</DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onClick={() => handleStatusChange(booking, "cancelled")} data-testid={`mi-status-cancel-${booking.id}`}>Cancelled</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                {booking.status === "pending_advance" && (
+                                  <DropdownMenuItem
+                                    onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                    disabled={confirmAdvancePaymentMutation.isPending}
+                                    data-testid={`mi-confirm-payment-${booking.id}`}
+                                  >
+                                    <Check className="h-4 w-4 mr-2 text-green-600" /> Confirm Payment Received
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => sendCheckinLinkMutation.mutate({ bookingId: booking.id })}
+                                  disabled={sendCheckinLinkMutation.isPending || booking.status === "checked-in" || booking.status === "checked-out"}
+                                  data-testid={`mi-send-checkin-${booking.id}`}
+                                >
+                                  <Send className="h-4 w-4 mr-2" /> Send Self Check-in Link
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleEditBooking(booking)}
+                                  data-testid={`mi-edit-${booking.id}`}
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" /> Edit Booking
+                                </DropdownMenuItem>
+                                {booking.status === "checked-out" && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setBillCorrectionBookingId(booking.id);
+                                      setBillCorrectionOpen(true);
+                                    }}
+                                    data-testid={`mi-correct-bill-${booking.id}`}
+                                  >
+                                    <FileEdit className="h-4 w-4 mr-2 text-blue-500" /> Correct Bill
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setDeleteBookingId(booking.id);
+                                    setDeleteDialogOpen(true);
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                  data-testid={`mi-delete-${booking.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" /> Delete Booking
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
