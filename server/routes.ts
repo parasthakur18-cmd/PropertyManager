@@ -16519,16 +16519,30 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const loginIpAddress = req.ip || req.socket.remoteAddress || '';
           updateUserLocationFromIp(user[0].id, loginIpAddress).catch(() => {});
           
-          console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${user[0].role}) logged in`);
+          // Auto-apply any pending staff invitations for this email (no
+          // need for the user to first click the invite link).
+          let inviteRedirect = '/';
+          try {
+            const { applyPendingInvitesForUser } = await import("./replitAuth");
+            inviteRedirect = await applyPendingInvitesForUser(user[0].id, user[0].email || '');
+          } catch (inviteErr) {
+            console.warn("[EMAIL-LOGIN] invite auto-apply failed:", inviteErr);
+          }
+
+          // Re-read role in case an invite just elevated/changed it
+          const finalUser = await storage.getUser(user[0].id);
+
+          console.log(`[EMAIL-LOGIN] ✓ SUCCESS - User ${user[0].email} (${finalUser?.role || user[0].role}) logged in`);
           res.json({ 
             message: "Login successful", 
+            redirectTo: inviteRedirect !== '/' ? inviteRedirect : undefined,
             user: { 
               id: user[0].id, 
               email: user[0].email, 
-              role: user[0].role,
+              role: finalUser?.role || user[0].role,
               firstName: user[0].firstName,
               lastName: user[0].lastName,
-              verificationStatus: user[0].verificationStatus,
+              verificationStatus: finalUser?.verificationStatus || user[0].verificationStatus,
             } 
           });
         });

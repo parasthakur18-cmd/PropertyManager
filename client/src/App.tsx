@@ -267,10 +267,27 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Kitchen-role users land on the KDS by default rather than the full
+  // admin dashboard. Runs once per session, never blocks deep links — if
+  // the user explicitly navigated somewhere else we leave them alone.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !user) return;
+    const redirected = sessionStorage.getItem('hostezee_role_redirect_done');
+    if (redirected) return;
+    const path = window.location.pathname;
+    if ((user as any).role === 'kitchen' && (path === '/' || path === '/dashboard')) {
+      sessionStorage.setItem('hostezee_role_redirect_done', '1');
+      setLocation('/restaurant');
+    } else {
+      sessionStorage.setItem('hostezee_role_redirect_done', '1');
+    }
+  }, [isLoading, isAuthenticated, user, setLocation]);
+
   // Save intended URL when unauthenticated user hits a protected route,
   // then redirect to login so they land on the right page after signing in.
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
+      sessionStorage.removeItem('hostezee_role_redirect_done');
       const publicPaths = [
         '/', '/login', '/signup', '/register', '/forgot-password',
         '/verify-otp', '/reset-password', '/accept-invite', '/report-issue',

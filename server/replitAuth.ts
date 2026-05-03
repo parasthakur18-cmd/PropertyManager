@@ -6,7 +6,7 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { db } from "./db";
 import { users, staffInvitations } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // IP Geolocation helper - uses free ip-api.com service
 async function getLocationFromIp(ip: string): Promise<{ city: string; state: string; country: string } | null> {
@@ -189,6 +189,67 @@ async function upsertUser(
     // Note: Admin users only see properties they're explicitly assigned to
     // Super Admin has unlimited access via tenantIsolation.ts
   }
+}
+
+/**
+ * Apply any still-pending staff invitation(s) for `email` to the user with
+ * `userId`. Returns a recommended landing path (e.g. "/restaurant" for
+ * kitchen staff), or "/" when no invite-driven redirect is needed.
+ *
+ * Role MERGE rule: never downgrades. If the user is already an admin and
+ * accepts a kitchen invite, they keep admin role and just gain access to
+ * the new property.
+ *
+ * Used by both Google OAuth callback and email/password login so the
+ * invite is honoured no matter how the invitee chooses to sign in.
+ */
+export async function applyPendingInvitesForUser(userId: string, email: string): Promise<string> {
+  if (!email || !userId) return '/';
+  const lowerEmail = email.toLowerCase();
+  let landing = '/';
+  try {
+    const matchingInvites = await db.select().from(staffInvitations).where(and(
+      eq(staffInvitations.email, lowerEmail),
+      eq(staffInvitations.status, 'pending'),
+    ));
+    if (matchingInvites.length === 0) return '/';
+
+    const ROLE_RANK: Record<string, number> = {
+      'super-admin': 100, admin: 80, manager: 60, staff: 40, kitchen: 20,
+    };
+
+    for (const invitation of matchingInvites) {
+      if (new Date(invitation.expiresAt) < new Date()) continue;
+
+      const freshUser = await storage.getUser(userId);
+      const currentProps: string[] = (freshUser?.assignedPropertyIds as string[] | null) ?? [];
+      const propIdStr = String(invitation.propertyId);
+      const updatedProps = currentProps.includes(propIdStr) ? currentProps : [...currentProps, propIdStr];
+
+      const existingRole = (freshUser?.role || 'staff') as string;
+      const finalRole = (ROLE_RANK[invitation.role] ?? 0) > (ROLE_RANK[existingRole] ?? 0)
+        ? invitation.role
+        : existingRole;
+
+      await db.update(users).set({
+        role: finalRole as any,
+        assignedPropertyIds: updatedProps,
+        status: 'active',
+        verificationStatus: 'approved',
+      }).where(eq(users.id, userId));
+
+      await db.update(staffInvitations)
+        .set({ status: 'accepted', acceptedAt: new Date() })
+        .where(eq(staffInvitations.id, invitation.id));
+
+      if (invitation.role === 'kitchen' && landing === '/') landing = '/restaurant';
+
+      console.log(`[INVITE-APPLY] user=${userId} property=${invitation.propertyId} invitedRole=${invitation.role} finalRole=${finalRole} (existing=${existingRole})`);
+    }
+  } catch (err) {
+    console.error('[INVITE-APPLY] error:', err);
+  }
+  return landing;
 }
 
 export async function setupAuth(app: Express) {
@@ -412,48 +473,34 @@ export async function setupAuth(app: Express) {
           console.log(`[GOOGLE-AUTH] Login successful for user ${userId}`);
 
           // --- Invite processing ---
-          const pendingInviteToken = req.session?.pendingInviteToken as string | undefined;
-          if (pendingInviteToken) {
-            delete req.session.pendingInviteToken;
+          // Honour invites whether the user clicked the special invite link
+          // (sessionInviteToken set) or just signed in normally with Google
+          // (fallback by email). Prevents the silent "treated as new admin"
+          // bug when invitees land on hostezee.in directly.
+          const sessionInviteToken = req.session?.pendingInviteToken as string | undefined;
+          if (sessionInviteToken) delete req.session.pendingInviteToken;
+          const googleEmail = (user?.claims?.email || dbUser?.email || '').toLowerCase();
+
+          // If the user explicitly clicked an invite link with a different
+          // Google account, bounce them back with the mismatch message.
+          if (sessionInviteToken) {
             try {
-              const [invitation] = await db.select().from(staffInvitations)
-                .where(eq(staffInvitations.inviteToken, pendingInviteToken));
-
-              if (invitation && invitation.status === 'pending' && new Date(invitation.expiresAt) >= new Date()) {
-                const googleEmail = user?.claims?.email || dbUser?.email || '';
-                if (googleEmail.toLowerCase() !== invitation.email.toLowerCase()) {
-                  console.warn(`[GOOGLE-AUTH] Invite email mismatch: invited ${invitation.email}, signed in as ${googleEmail}`);
-                  return res.redirect(`/accept-invite?token=${pendingInviteToken}&error=email_mismatch`);
-                }
-
-                // Apply invite: set role and property access on the user
-                const currentProps: string[] = dbUser?.assignedPropertyIds ?? [];
-                const propIdStr = String(invitation.propertyId);
-                const updatedProps = currentProps.includes(propIdStr)
-                  ? currentProps
-                  : [...currentProps, propIdStr];
-
-                await db.update(users)
-                  .set({
-                    role: invitation.role as any,
-                    assignedPropertyIds: updatedProps,
-                    status: 'active',
-                    verificationStatus: 'approved',
-                  })
-                  .where(eq(users.id, userId));
-
-                await db.update(staffInvitations)
-                  .set({ status: 'accepted' })
-                  .where(eq(staffInvitations.id, invitation.id));
-
-                console.log(`[GOOGLE-AUTH] Invite accepted via Google for user ${userId}, property ${invitation.propertyId}, role ${invitation.role}`);
+              const [tokenInvite] = await db.select().from(staffInvitations)
+                .where(eq(staffInvitations.inviteToken, sessionInviteToken));
+              if (tokenInvite && tokenInvite.email.toLowerCase() !== googleEmail) {
+                console.warn(`[GOOGLE-AUTH] Invite email mismatch: invited ${tokenInvite.email}, signed in as ${googleEmail}`);
+                return res.redirect(`/accept-invite?token=${sessionInviteToken}&error=email_mismatch`);
               }
-            } catch (inviteErr) {
-              console.error('[GOOGLE-AUTH] Error processing invite:', inviteErr);
+            } catch (mismatchErr) {
+              console.warn('[GOOGLE-AUTH] mismatch check failed:', mismatchErr);
             }
           }
+
+          const landingRedirect = await applyPendingInvitesForUser(userId, googleEmail);
+          res.redirect(landingRedirect);
+          return;
         }
-        
+
         res.redirect('/');
       } catch (error) {
         console.error('[GOOGLE-AUTH] Callback error:', error);
