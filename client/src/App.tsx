@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ReportIssueButton } from "@/components/report-issue";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { connectToEventStream } from "@/lib/eventHandlers";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
@@ -267,21 +268,33 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Kitchen-role users land on the KDS by default rather than the full
-  // admin dashboard. Runs once per session, never blocks deep links — if
-  // the user explicitly navigated somewhere else we leave them alone.
+  // Restaurant-only users (kitchen role, OR staff/manager with foodOrders
+  // permission and nothing else) must not see the admin dashboard. We
+  // bounce them to /restaurant whenever they hit / or /dashboard. No
+  // sessionStorage one-shot — running every render is cheap and prevents
+  // them from typing the URL back in to bypass the redirect.
+  const { permissions: dashPerms } = usePermissions();
   useEffect(() => {
     if (isLoading || !isAuthenticated || !user) return;
-    const redirected = sessionStorage.getItem('hostezee_role_redirect_done');
-    if (redirected) return;
     const path = window.location.pathname;
-    if ((user as any).role === 'kitchen' && (path === '/' || path === '/dashboard')) {
-      sessionStorage.setItem('hostezee_role_redirect_done', '1');
-      setLocation('/restaurant');
-    } else {
-      sessionStorage.setItem('hostezee_role_redirect_done', '1');
-    }
-  }, [isLoading, isAuthenticated, user, setLocation]);
+    if (path !== '/' && path !== '/dashboard') return;
+    const role = (user as any).role;
+    if (role === 'admin' || role === 'super-admin' || role === 'super_admin' || role === 'manager') return;
+    if (role === 'kitchen') { setLocation('/restaurant'); return; }
+    // Staff: only redirect when permissions are loaded, foodOrders is the
+    // only granted module, and at least one other module is restricted.
+    if (!dashPerms) return;
+    const restaurantOnly =
+      dashPerms.foodOrders !== 'none' &&
+      dashPerms.bookings === 'none' &&
+      dashPerms.calendar === 'none' &&
+      dashPerms.rooms === 'none' &&
+      dashPerms.guests === 'none' &&
+      dashPerms.payments === 'none' &&
+      dashPerms.reports === 'none' &&
+      dashPerms.staff === 'none';
+    if (restaurantOnly) setLocation('/restaurant');
+  }, [isLoading, isAuthenticated, user, setLocation, dashPerms]);
 
   // Save intended URL when unauthenticated user hits a protected route,
   // then redirect to login so they land on the right page after signing in.
