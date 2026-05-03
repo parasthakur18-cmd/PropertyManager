@@ -889,6 +889,17 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Dine-in QR feature — orders.table_number ('T1', 'A5', etc.) for
+    // restaurant orders placed via a table QR. Idempotent.
+    name: "add_orders_table_number",
+    async run() {
+      await runRaw(`
+        ALTER TABLE orders
+          ADD COLUMN IF NOT EXISTS table_number VARCHAR(50);
+      `);
+    },
+  },
+  {
     // Restaurant Tables — physical table list per property (used by QR
     // dine-in flow + table reservations). Idempotent.
     name: "create_restaurant_tables",

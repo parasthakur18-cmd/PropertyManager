@@ -1,0 +1,31 @@
+0|propertymanager  | 2026-05-03 16:03:14 +00:00: 4:03:14 PM [express] GET /api/bills/booking/1484 404 in 21ms :: Bill not found
+0|propertymanager  | 2026-05-03 16:03:25 +00:00: 4:03:25 PM [express] GET /api/bills/booking/1479 404 in 18ms :: Bill not found
+0|propertymanager  | 2026-05-03 16:03:25 +00:00: 4:03:25 PM [express] GET /api/prebill/booking/1479 200 in 6ms
+0|propertymanager  | 2026-05-03 16:03:29 +00:00: 4:03:29 PM [express] GET /api/notifications 500 in 12ms :: column "table_number" does not exist
+0|propertymanager  | 2026-05-03 16:03:32 +00:00: [Active Bookings] Could not fetch orders - continuing without order data: error: column "table_number" does not exist
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:     at /var/www/myapp/node_modules/pg-pool/index.js:45:11
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:     at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:     at async file:///var/www/myapp/node_modules/drizzle-orm/node-postgres/session.js:83:22
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:     at async file:///var/www/myapp/dist/index.js:13526:21 {
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   length: 113,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   severity: 'ERROR',
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   code: '42703',
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   detail: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   hint: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   position: '254',
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   internalPosition: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   internalQuery: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   where: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   schema: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   table: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   column: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   dataType: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   constraint: undefined,
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   file: 'parse_relation.c',
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   line: '3722',
+0|propertymanager  | 2026-05-03 16:03:32 +00:00:   routine: 'errorMissingColumn'
+0|propertymanager  | 2026-05-03 16:03:32 +00:00: }
+0|propertymanager  | 2026-05-03 16:03:32 +00:00: 4:03:32 PM [express] GET /api/bookings/active 304 in 44ms
+0|propertymanager  | 2026-05-03 16:03:32 +00:00: 4:03:32 PM [express] GET /api/notifications 500 in 13ms :: column "table_number" does not exist
+0|propertymanager  | 2026-05-03 16:03:33 +00:00: 4:03:33 PM [express] GET /api/pending-items 304 in 26ms
+0|propertymanager  | 2026-05-03 16:03:35 +00:00: 4:03:35 PM [express] GET /api/notifications 500 in 10ms :: column "table_number" does not exist
