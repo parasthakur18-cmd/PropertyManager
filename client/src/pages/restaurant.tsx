@@ -29,12 +29,36 @@ import { Smartphone } from "lucide-react";
 // Payment dialog state type
 type PaymentDialogState = { open: false } | { open: true; orderId: number; total: number; customerName: string };
 
-const statusColors = {
-  pending: "bg-amber-500 text-white",
-  preparing: "bg-chart-2 text-white",
-  ready: "bg-chart-5 text-white",
-  delivered: "bg-muted text-muted-foreground",
-  rejected: "bg-destructive text-destructive-foreground",
+// Bilingual labels (English + Hindi) for kitchen-staff readability.
+// Used in tabs, column headers, and status badges across the KDS.
+const STATUS_LABELS: Record<string, { en: string; hi: string }> = {
+  pending:   { en: "Pending",   hi: "ऑर्डर आया है" },
+  preparing: { en: "Preparing", hi: "बन रहा है" },
+  ready:     { en: "Ready",     hi: "तैयार है" },
+  delivered: { en: "Completed", hi: "दे दिया" },
+  completed: { en: "Completed", hi: "दे दिया" },
+  rejected:  { en: "Rejected",  hi: "रद्द" },
+};
+
+// Consistent color system across tabs, badges, card borders, and counters.
+// Background-only utility (for solid badges).
+const statusColors: Record<string, string> = {
+  pending:   "bg-yellow-400 text-black border-0 font-semibold",
+  preparing: "bg-orange-400 text-white border-0 font-semibold",
+  ready:     "bg-green-500 text-white border-0 font-semibold",
+  delivered: "bg-gray-400 text-white border-0 font-semibold",
+  completed: "bg-gray-400 text-white border-0 font-semibold",
+  rejected:  "bg-red-500 text-white border-0 font-semibold",
+};
+
+// Soft-tint variant for column counter circles + tab triggers.
+const statusTints: Record<string, string> = {
+  pending:   "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300",
+  preparing: "bg-orange-100 text-orange-800 dark:bg-orange-500/20 dark:text-orange-300",
+  ready:     "bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-300",
+  delivered: "bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300",
+  completed: "bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300",
+  rejected:  "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300",
 };
 
 export default function Kitchen() {
@@ -623,8 +647,16 @@ export default function Kitchen() {
                 )}
               </div>
             </div>
-            <Badge className={statusColors[order.status as keyof typeof statusColors]} data-testid={`badge-order-status-${order.id}`}>
-              {order.status}
+            <Badge
+              className={`${statusColors[order.status] || "bg-muted text-foreground"} flex flex-col items-center leading-tight px-2 py-1`}
+              data-testid={`badge-order-status-${order.id}`}
+            >
+              <span className="text-[11px] uppercase tracking-wide">
+                {STATUS_LABELS[order.status]?.en || order.status}
+              </span>
+              <span className="text-[12px] font-bold">
+                {STATUS_LABELS[order.status]?.hi || ""}
+              </span>
             </Badge>
           </div>
         </CardHeader>
@@ -1255,18 +1287,25 @@ export default function Kitchen() {
       )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-6">
-          <TabsTrigger value="active" data-testid="tab-active-orders">
-            Active <Badge variant="secondary" className="ml-2">{orderCounts.active}</Badge>
+        <TabsList className="mb-6 flex-wrap h-auto gap-1">
+          <TabsTrigger value="active" data-testid="tab-active-orders" className="flex-col h-auto py-1.5">
+            <span className="text-sm font-semibold">Active</span>
+            <Badge variant="secondary" className="mt-0.5">{orderCounts.active}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="pending" data-testid="tab-pending-orders">
-            Pending <Badge variant="secondary" className="ml-2">{orderCounts.pending}</Badge>
+          <TabsTrigger value="pending" data-testid="tab-pending-orders" className="flex-col h-auto py-1.5 data-[state=active]:bg-yellow-100 dark:data-[state=active]:bg-yellow-500/20">
+            <span className="text-sm font-semibold">Pending</span>
+            <span className="text-[11px] text-yellow-800 dark:text-yellow-300 font-medium leading-tight">ऑर्डर आया है</span>
+            <Badge className={`${statusTints.pending} mt-0.5 border-0`}>{orderCounts.pending}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="completed" data-testid="tab-completed-orders">
-            Completed <Badge variant="secondary" className="ml-2">{orderCounts.completed}</Badge>
+          <TabsTrigger value="completed" data-testid="tab-completed-orders" className="flex-col h-auto py-1.5 data-[state=active]:bg-gray-100 dark:data-[state=active]:bg-gray-500/20">
+            <span className="text-sm font-semibold">Completed</span>
+            <span className="text-[11px] text-gray-700 dark:text-gray-300 font-medium leading-tight">दे दिया</span>
+            <Badge className={`${statusTints.completed} mt-0.5 border-0`}>{orderCounts.completed}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="rejected" data-testid="tab-rejected-orders">
-            Rejected <Badge variant="secondary" className="ml-2">{orderCounts.rejected}</Badge>
+          <TabsTrigger value="rejected" data-testid="tab-rejected-orders" className="flex-col h-auto py-1.5 data-[state=active]:bg-red-100 dark:data-[state=active]:bg-red-500/20">
+            <span className="text-sm font-semibold">Rejected</span>
+            <span className="text-[11px] text-red-800 dark:text-red-300 font-medium leading-tight">रद्द</span>
+            <Badge className={`${statusTints.rejected} mt-0.5 border-0`}>{orderCounts.rejected}</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -1274,11 +1313,14 @@ export default function Kitchen() {
           {activeTab === "active" ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-bold">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 border-l-4 border-yellow-400 pl-2">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${statusTints.pending} text-sm font-bold`}>
                     {filteredPendingOrders.length}
                   </span>
-                  Pending
+                  <span className="flex flex-col leading-tight">
+                    <span>Pending</span>
+                    <span className="text-sm font-medium text-yellow-700 dark:text-yellow-300">ऑर्डर आया है</span>
+                  </span>
                 </h2>
                 <div className="space-y-4">
                   {filteredPendingOrders.length === 0 ? (
@@ -1292,11 +1334,14 @@ export default function Kitchen() {
               </div>
 
               <div>
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-2/10 text-chart-2 text-xs font-bold">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 border-l-4 border-orange-400 pl-2">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${statusTints.preparing} text-sm font-bold`}>
                     {filteredPreparingOrders.length}
                   </span>
-                  Preparing
+                  <span className="flex flex-col leading-tight">
+                    <span>Preparing</span>
+                    <span className="text-sm font-medium text-orange-700 dark:text-orange-300">बन रहा है</span>
+                  </span>
                 </h2>
                 <div className="space-y-4">
                   {filteredPreparingOrders.length === 0 ? (
@@ -1310,11 +1355,14 @@ export default function Kitchen() {
               </div>
 
               <div>
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-chart-5/10 text-chart-5 text-xs font-bold">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 border-l-4 border-green-500 pl-2">
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full ${statusTints.ready} text-sm font-bold`}>
                     {filteredReadyOrders.length}
                   </span>
-                  Ready
+                  <span className="flex flex-col leading-tight">
+                    <span>Ready</span>
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">तैयार है</span>
+                  </span>
                 </h2>
                 <div className="space-y-4">
                   {filteredReadyOrders.length === 0 ? (
