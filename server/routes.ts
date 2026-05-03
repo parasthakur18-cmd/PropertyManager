@@ -19940,6 +19940,203 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // ════════════════════════════════════════════════════════════════════════
+  // DYNAMIC PRICING — add-on layer (does NOT modify booking/inventory logic)
+  // ════════════════════════════════════════════════════════════════════════
+  const { getOrCreateConfig, applyPreset, runPricingCycle, startDynamicPricingCron, PRESETS } =
+    await import("./dynamic-pricing");
+  const { pricingConfig, pricingHistory, roomPricingSettings, rooms: roomsTable } = await import("@shared/schema");
+  const { db: pdb } = await import("./db");
+  const { eq: peq, desc: pdesc } = await import("drizzle-orm");
+
+  // Property-access guard for all pricing routes (multi-tenant isolation)
+  async function pricingGuard(req: any, res: any, propertyId: number): Promise<boolean> {
+    if (!Number.isFinite(propertyId)) {
+      res.status(400).json({ message: "Invalid propertyId" });
+      return false;
+    }
+    const auth = await getAuthenticatedTenant(req);
+    if (!auth) {
+      res.status(401).json({ message: "Unauthorized" });
+      return false;
+    }
+    if (!canAccessProperty(auth.tenant, propertyId)) {
+      res.status(403).json({ message: "You do not have access to this property" });
+      return false;
+    }
+    return true;
+  }
+
+  app.get("/api/pricing/config/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const cfg = await getOrCreateConfig(propertyId);
+      res.json(cfg);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Alias to support useQuery key ['/api/pricing/config', propertyId] which fetches /api/pricing/config/<id>
+  app.get("/api/pricing/config", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.query.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const cfg = await getOrCreateConfig(propertyId);
+      res.json(cfg);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.patch("/api/pricing/config/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      await getOrCreateConfig(propertyId);
+      const allowed = [
+        "autoPricingEnabled", "occupancyEnabled", "demandEnabled", "dayEnabled",
+        "festivalEnabled", "otaPushEnabled", "directBookingEnabled",
+        "enforceMinMax", "thresholdEnabled", "thresholdPercent",
+        "updateFrequencyMinutes", "festivalDates",
+      ];
+      const patch: any = { updatedAt: new Date(), preset: "custom" };
+      for (const k of allowed) if (k in req.body) patch[k] = req.body[k];
+      if ("thresholdPercent" in patch) patch.thresholdPercent = String(patch.thresholdPercent);
+      if ("updateFrequencyMinutes" in patch) patch.updateFrequencyMinutes = Math.max(5, Number(patch.updateFrequencyMinutes) || 30);
+      const [updated] = await pdb.update(pricingConfig).set(patch).where(peq(pricingConfig.propertyId, propertyId)).returning();
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/pricing/config/:propertyId/preset", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const preset = req.body?.preset;
+      if (!PRESETS[preset as keyof typeof PRESETS]) return res.status(400).json({ message: "Invalid preset" });
+      const updated = await applyPreset(propertyId, preset);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/pricing/emergency-stop", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.body?.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      await getOrCreateConfig(propertyId);
+      const [updated] = await pdb.update(pricingConfig)
+        .set({ emergencyStop: true, autoPricingEnabled: false, updatedAt: new Date(), lastChangeReason: "Emergency stop activated" })
+        .where(peq(pricingConfig.propertyId, propertyId)).returning();
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/pricing/clear-emergency-stop", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.body?.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const [updated] = await pdb.update(pricingConfig)
+        .set({ emergencyStop: false, updatedAt: new Date() })
+        .where(peq(pricingConfig.propertyId, propertyId)).returning();
+      res.json(updated);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.post("/api/pricing/run-now/:propertyId", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const result = await runPricingCycle(propertyId, { force: true, source: "manual" });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/pricing/rooms", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.query.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const propertyRooms = await pdb.select().from(roomsTable).where(peq(roomsTable.propertyId, propertyId));
+      const settings = await pdb.select().from(roomPricingSettings).where(peq(roomPricingSettings.propertyId, propertyId));
+      type RPS = typeof settings[number];
+      const sMap = new Map<number, RPS>(settings.map((s: RPS) => [s.roomId, s] as const));
+      const rows = propertyRooms.map((r: typeof propertyRooms[number]) => {
+        const s = sMap.get(r.id);
+        return {
+          roomId: r.id,
+          roomNumber: r.roomNumber,
+          roomType: r.roomType,
+          pricePerNight: r.pricePerNight,
+          minPrice: s?.minPrice ?? null,
+          maxPrice: s?.maxPrice ?? null,
+          manualOverride: s?.manualOverride ?? false,
+          manualPrice: s?.manualPrice ?? null,
+        };
+      });
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.patch("/api/pricing/rooms/:roomId", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = Number(req.params.roomId);
+      if (!Number.isFinite(roomId)) return res.status(400).json({ message: "Invalid roomId" });
+      const room = await pdb.select().from(roomsTable).where(peq(roomsTable.id, roomId)).limit(1);
+      if (!room[0]) return res.status(404).json({ message: "Room not found" });
+      const propertyId = room[0].propertyId;
+      if (!(await pricingGuard(req, res, propertyId))) return;
+
+      const existing = await pdb.select().from(roomPricingSettings).where(peq(roomPricingSettings.roomId, roomId)).limit(1);
+      const patch: any = {
+        minPrice: req.body?.minPrice ? String(req.body.minPrice) : null,
+        maxPrice: req.body?.maxPrice ? String(req.body.maxPrice) : null,
+        manualOverride: !!req.body?.manualOverride,
+        manualPrice: req.body?.manualPrice ? String(req.body.manualPrice) : null,
+        updatedAt: new Date(),
+      };
+      if (existing[0]) {
+        const [u] = await pdb.update(roomPricingSettings).set(patch).where(peq(roomPricingSettings.roomId, roomId)).returning();
+        res.json(u);
+      } else {
+        const [c] = await pdb.insert(roomPricingSettings).values({ roomId, propertyId, ...patch }).returning();
+        res.json(c);
+      }
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  app.get("/api/pricing/history", isAuthenticated, async (req, res) => {
+    try {
+      const propertyId = Number(req.query.propertyId);
+      if (!(await pricingGuard(req, res, propertyId))) return;
+      const limit = Math.min(200, Number(req.query.limit) || 50);
+      const rows = await pdb.select().from(pricingHistory)
+        .where(peq(pricingHistory.propertyId, propertyId))
+        .orderBy(pdesc(pricingHistory.createdAt))
+        .limit(limit);
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // Start dynamic pricing cron heartbeat
+  startDynamicPricingCron();
+
   // Start daily report cron
   startDailyReportJob();
 

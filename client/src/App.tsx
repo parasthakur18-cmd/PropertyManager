@@ -34,6 +34,7 @@ const Rooms = lazy(() => import("@/pages/rooms"));
 const Bookings = lazy(() => import("@/pages/bookings"));
 const Guests = lazy(() => import("@/pages/guests/page"));
 const Kitchen = lazy(() => import("@/pages/restaurant"));
+const DynamicPricing = lazy(() => import("@/pages/dynamic-pricing"));
 const Billing = lazy(() => import("@/pages/billing"));
 const Analytics = lazy(() => import("@/pages/analytics"));
 const Settings = lazy(() => import("@/pages/settings"));
@@ -155,6 +156,7 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/room-calendar" component={CalendarView} />
           <Route path="/guests" component={Guests} />
           <Route path="/restaurant" component={Kitchen} />
+          <Route path="/dynamic-pricing" component={DynamicPricing} />
           <Route path="/kitchen" component={Kitchen} />
           <Route path="/quick-order" component={QuickOrder} />
           <Route path="/menu-management" component={MenuManagement} />

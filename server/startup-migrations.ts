@@ -855,6 +855,75 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       }
     },
   },
+  {
+    // Dynamic pricing add-on — creates 3 tables. Idempotent (IF NOT EXISTS).
+    // Does NOT touch any existing booking/inventory/OTA tables.
+    name: "create_dynamic_pricing_tables",
+    async run() {
+      await runRaw(`
+        CREATE TABLE IF NOT EXISTS pricing_config (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER NOT NULL UNIQUE REFERENCES properties(id) ON DELETE CASCADE,
+          auto_pricing_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          emergency_stop BOOLEAN NOT NULL DEFAULT FALSE,
+          occupancy_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          demand_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          day_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          festival_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          ota_push_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          direct_booking_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+          enforce_min_max BOOLEAN NOT NULL DEFAULT TRUE,
+          threshold_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+          threshold_percent DECIMAL(5,2) NOT NULL DEFAULT 5.00,
+          update_frequency_minutes INTEGER NOT NULL DEFAULT 30,
+          preset VARCHAR(20) NOT NULL DEFAULT 'balanced',
+          festival_dates JSONB NOT NULL DEFAULT '[]'::jsonb,
+          last_run_at TIMESTAMP,
+          last_change_at TIMESTAMP,
+          last_change_reason TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS room_pricing_settings (
+          id SERIAL PRIMARY KEY,
+          room_id INTEGER NOT NULL UNIQUE REFERENCES rooms(id) ON DELETE CASCADE,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          min_price DECIMAL(10,2),
+          max_price DECIMAL(10,2),
+          manual_override BOOLEAN NOT NULL DEFAULT FALSE,
+          manual_price DECIMAL(10,2),
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS pricing_history (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+          room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+          for_date DATE NOT NULL,
+          base_price DECIMAL(10,2) NOT NULL,
+          old_price DECIMAL(10,2),
+          new_price DECIMAL(10,2) NOT NULL,
+          occupancy_factor DECIMAL(5,3),
+          demand_factor DECIMAL(5,3),
+          day_factor DECIMAL(5,3),
+          festival_factor DECIMAL(5,3),
+          reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+          source VARCHAR(20) NOT NULL DEFAULT 'auto',
+          ota_pushed BOOLEAN NOT NULL DEFAULT FALSE,
+          ota_push_error TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pricing_history_property_date
+          ON pricing_history(property_id, for_date DESC, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_pricing_history_room_date
+          ON pricing_history(room_id, for_date);
+      `);
+      console.log("[MIGRATIONS] Dynamic pricing tables ready");
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

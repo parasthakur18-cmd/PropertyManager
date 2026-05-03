@@ -1941,3 +1941,100 @@ export const insertSalaryCorrectionSchema = createInsertSchema(salaryCorrections
   createdAt: true,
 });
 export type InsertSalaryCorrection = z.infer<typeof insertSalaryCorrectionSchema>;
+
+// ════════════════════════════════════════════════════════════════════════════
+// DYNAMIC PRICING (add-on layer — does NOT modify booking/inventory logic)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Per-property control panel: master switch, factor toggles, safety, preset
+export const pricingConfig = pgTable("pricing_config", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().unique().references(() => properties.id, { onDelete: 'cascade' }),
+
+  // Master controls
+  autoPricingEnabled: boolean("auto_pricing_enabled").notNull().default(false),
+  emergencyStop: boolean("emergency_stop").notNull().default(false),
+
+  // Factor toggles (each independently enables/disables a pricing factor)
+  occupancyEnabled: boolean("occupancy_enabled").notNull().default(true),
+  demandEnabled: boolean("demand_enabled").notNull().default(true),
+  dayEnabled: boolean("day_enabled").notNull().default(true),
+  festivalEnabled: boolean("festival_enabled").notNull().default(true),
+  otaPushEnabled: boolean("ota_push_enabled").notNull().default(false),
+  directBookingEnabled: boolean("direct_booking_enabled").notNull().default(false),
+
+  // Safety controls
+  enforceMinMax: boolean("enforce_min_max").notNull().default(true),
+  thresholdEnabled: boolean("threshold_enabled").notNull().default(true),
+  thresholdPercent: decimal("threshold_percent", { precision: 5, scale: 2 }).notNull().default("5.00"),
+  updateFrequencyMinutes: integer("update_frequency_minutes").notNull().default(30),
+
+  // Preset mode: 'conservative' | 'balanced' | 'aggressive' | 'custom'
+  preset: varchar("preset", { length: 20 }).notNull().default("balanced"),
+
+  // Festival list: [{ name, date: 'YYYY-MM-DD', uplift: 0.30 }]
+  festivalDates: jsonb("festival_dates").$type<Array<{ name: string; date: string; uplift: number }>>().notNull().default([]),
+
+  // Status
+  lastRunAt: timestamp("last_run_at"),
+  lastChangeAt: timestamp("last_change_at"),
+  lastChangeReason: text("last_change_reason"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPricingConfigSchema = createInsertSchema(pricingConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastRunAt: true,
+  lastChangeAt: true,
+  lastChangeReason: true,
+});
+export type PricingConfig = typeof pricingConfig.$inferSelect;
+export type InsertPricingConfig = z.infer<typeof insertPricingConfigSchema>;
+
+// Per-room min/max & manual override (kept separate from rooms table — non-invasive)
+export const roomPricingSettings = pgTable("room_pricing_settings", {
+  id: serial("id").primaryKey(),
+  roomId: integer("room_id").notNull().unique().references(() => rooms.id, { onDelete: 'cascade' }),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
+  manualOverride: boolean("manual_override").notNull().default(false),
+  manualPrice: decimal("manual_price", { precision: 10, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRoomPricingSettingsSchema = createInsertSchema(roomPricingSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type RoomPricingSettings = typeof roomPricingSettings.$inferSelect;
+export type InsertRoomPricingSettings = z.infer<typeof insertRoomPricingSettingsSchema>;
+
+// Audit log: every recommended/applied price change
+export const pricingHistory = pgTable("pricing_history", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull().references(() => properties.id, { onDelete: 'cascade' }),
+  roomId: integer("room_id").notNull().references(() => rooms.id, { onDelete: 'cascade' }),
+  forDate: date("for_date").notNull(),
+  basePrice: decimal("base_price", { precision: 10, scale: 2 }).notNull(),
+  oldPrice: decimal("old_price", { precision: 10, scale: 2 }),
+  newPrice: decimal("new_price", { precision: 10, scale: 2 }).notNull(),
+  occupancyFactor: decimal("occupancy_factor", { precision: 5, scale: 3 }),
+  demandFactor: decimal("demand_factor", { precision: 5, scale: 3 }),
+  dayFactor: decimal("day_factor", { precision: 5, scale: 3 }),
+  festivalFactor: decimal("festival_factor", { precision: 5, scale: 3 }),
+  reasons: jsonb("reasons").$type<string[]>().notNull().default([]),
+  source: varchar("source", { length: 20 }).notNull().default("auto"), // 'auto' | 'manual' | 'preset'
+  otaPushed: boolean("ota_pushed").notNull().default(false),
+  otaPushError: text("ota_push_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PricingHistory = typeof pricingHistory.$inferSelect;
+export type InsertPricingHistory = typeof pricingHistory.$inferInsert;
