@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon, Maximize2, Minimize2 } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon, Maximize2, Minimize2, FlaskConical } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -345,6 +345,41 @@ export default function Kitchen() {
     },
   });
   
+  // ─── TEST ORDER MODE — kitchen verification only, no revenue impact ─────
+  const sendTestOrderMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPropertyId) throw new Error("Select a property first");
+      return await apiRequest("/api/orders/test", "POST", { propertyId: selectedPropertyId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({
+        title: "🧪 Test Order Sent",
+        description: "Watch KDS, sound, push & WhatsApp. Will NOT affect revenue.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Test order failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const clearTestOrdersMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPropertyId) throw new Error("Select a property first");
+      return await apiRequest(`/api/orders/test/cleanup?propertyId=${selectedPropertyId}`, "DELETE");
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      toast({
+        title: "Test orders cleared",
+        description: `Deleted ${data?.deletedCount ?? 0} test order(s).`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Cleanup failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const updateOrderMutation = useMutation({
     mutationFn: async ({ id, items }: { id: number; items: any[] }) => {
       const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0);
@@ -512,7 +547,7 @@ export default function Kitchen() {
     return (
       <Card
         key={order.id}
-        className={`hover-elevate transition-all duration-500 ${kitchenMode ? "text-base" : ""} ${sla?.ring || ""} ${highlightedOrderId === order.id ? "ring-2 ring-teal-500 ring-offset-2 shadow-lg" : ""}`}
+        className={`hover-elevate transition-all duration-500 ${kitchenMode ? "text-base" : ""} ${sla?.ring || ""} ${highlightedOrderId === order.id ? "ring-2 ring-teal-500 ring-offset-2 shadow-lg" : ""} ${(order as any).isTest ? "border-2 border-dashed border-violet-500 bg-violet-50/40 dark:bg-violet-950/20" : ""}`}
         data-testid={`card-order-${order.id}`}
       >
         <CardHeader>
@@ -539,6 +574,14 @@ export default function Kitchen() {
                 </Badge>
                 {orderType === "restaurant" && (
                   <Badge variant="secondary" className="text-xs">Restaurant</Badge>
+                )}
+                {(order as any).isTest && (
+                  <Badge
+                    className="text-[10px] px-2 py-0 bg-violet-600 text-white border-0"
+                    data-testid={`badge-test-order-${order.id}`}
+                  >
+                    🧪 TEST ORDER
+                  </Badge>
                 )}
                 {isNewPending && (
                   <Badge
@@ -797,6 +840,35 @@ export default function Kitchen() {
             title={isEnabled ? "Disable notifications" : "Enable notifications"}
           >
             {isEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+          </Button>
+          {/* Test Order Mode — does NOT affect revenue/PnL/wallet */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sendTestOrderMutation.mutate()}
+            disabled={!selectedPropertyId || sendTestOrderMutation.isPending}
+            data-testid="button-send-test-order"
+            title="Send a TEST order to verify KDS, sound, push & WhatsApp. Will NOT affect revenue."
+            className="border-violet-400 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30"
+          >
+            <FlaskConical className="h-4 w-4 mr-1" />
+            {sendTestOrderMutation.isPending ? "Sending..." : "Send Test Order"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (confirm("Delete all test orders for this property? Real orders are not affected.")) {
+                clearTestOrdersMutation.mutate();
+              }
+            }}
+            disabled={!selectedPropertyId || clearTestOrdersMutation.isPending}
+            data-testid="button-clear-test-orders"
+            title="Delete all test orders for this property"
+            className="text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30"
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Clear Tests
           </Button>
         </div>
       </div>

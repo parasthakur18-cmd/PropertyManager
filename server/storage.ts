@@ -3356,12 +3356,14 @@ export class DatabaseStorage implements IStorage {
         );
 
       // Get walk-in restaurant revenue during lease period (orders with this propertyId, status delivered/completed)
+      // Test orders (is_test=true) are excluded from financial calculations.
       const [restaurantRevenueResult] = await db
         .select({ total: sql<string>`COALESCE(SUM(CAST(${orders.totalAmount} AS NUMERIC)), 0)` })
         .from(orders)
         .where(
           and(
             eq(orders.propertyId, propertyId),
+            eq(orders.isTest, false),
             inArray(orders.status, ['delivered', 'completed']),
             gte(orders.createdAt, leaseStartDate),
             lte(orders.createdAt, leaseEndDate)
@@ -3520,12 +3522,14 @@ export class DatabaseStorage implements IStorage {
     const usedPropertyRent = false;
 
     // Get restaurant (walk-in dine-in) revenue during the month
+    // Test orders (is_test=true) are excluded from financial calculations.
     const [restaurantRevenueResult] = await db
       .select({ total: sql<string>`COALESCE(SUM(CAST(${orders.totalAmount} AS NUMERIC)), 0)` })
       .from(orders)
       .where(
         and(
           eq(orders.propertyId, propertyId),
+          eq(orders.isTest, false),
           inArray(orders.status, ['delivered', 'completed']),
           gte(orders.createdAt, startDate),
           lte(orders.createdAt, endDate)

@@ -7579,7 +7579,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!auth) return res.status(403).json({ message: "User not found. Please log in again." });
       const { tenant } = auth;
 
-      let orderData = insertOrderSchema.parse(req.body) as any;
+      // Strip isTest — only the dedicated /api/orders/test endpoint may set it.
+      // This prevents real orders from being silently flagged as test (which
+      // would remove them from revenue, wallet, and reports).
+      const { isTest: _ignoreIsTest, ...sanitizedBody } = req.body || {};
+      let orderData = insertOrderSchema.parse(sanitizedBody) as any;
+      orderData.isTest = false;
 
       // Require customerName for restaurant walk-in orders (no room linked)
       if (orderData.orderType === "restaurant" && !orderData.roomId && !orderData.customerName?.trim()) {
@@ -7921,8 +7926,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const order = await storage.updateOrderStatus(orderId, status, updatePayload);
 
       // Record to wallet for restaurant walk-in orders paid on delivery
+      // Test orders (isTest=true) are NEVER recorded to the wallet.
       let walletWarning: string | null = null;
-      if (status === "delivered" && paymentMethod && order?.propertyId && order?.orderType === "restaurant") {
+      if (status === "delivered" && paymentMethod && order?.propertyId && order?.orderType === "restaurant" && !order?.isTest) {
         try {
           const auth = await getAuthenticatedTenant(req);
           const userId = auth?.userId || null;
@@ -7957,7 +7963,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (req.body && typeof req.body.status === "string" && req.body.status !== "pending") {
         cancelOrderEscalation(orderId);
       }
-      const order = await storage.updateOrder(orderId, req.body);
+      // Strip isTest — never allow flipping a real order into test mode (or vice versa)
+      // through the generic update endpoint. Test-mode is set only at creation.
+      const { isTest: _ignoreIsTest, ...safeBody } = req.body || {};
+      const order = await storage.updateOrder(orderId, safeBody);
       res.json(order);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -7969,6 +7978,160 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       await storage.deleteOrder(parseInt(req.params.id));
       res.status(204).send();
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // TEST ORDER MODE — kitchen/notification testing only.
+  // Flagged with isTest=true. Excluded from ALL revenue, P&L, wallet,
+  // and report calculations. Triggers full notification flow so staff can
+  // verify sound, push, WhatsApp, and KDS in real-time.
+  // ════════════════════════════════════════════════════════════════════════
+  app.post("/api/orders/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Unauthorized" });
+      const { tenant } = auth;
+
+      const propertyId = Number(req.body?.propertyId);
+      if (!Number.isFinite(propertyId)) {
+        return res.status(400).json({ message: "propertyId required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+
+      const property = await storage.getProperty(propertyId);
+      if (!property) return res.status(404).json({ message: "Property not found" });
+
+      // Build dummy order — fixed sample items, clearly labelled
+      const items = [
+        { name: "🧪 Tea (TEST)", quantity: 1, price: 20 },
+        { name: "🧪 Maggi (TEST)", quantity: 1, price: 50 },
+      ];
+      const totalAmount = items.reduce((s, i) => s + i.price * i.quantity, 0);
+
+      const order = await storage.createOrder({
+        propertyId,
+        roomId: null as any,
+        bookingId: null as any,
+        guestId: null as any,
+        items: items as any,
+        totalAmount: String(totalAmount),
+        status: "pending",
+        orderSource: "staff",
+        orderType: "restaurant",
+        customerName: "🧪 TEST ORDER — Room 999",
+        customerPhone: null as any,
+        paymentStatus: "unpaid",
+        paymentMethod: null as any,
+        specialInstructions: "TEST ORDER — kitchen verification only. Will NOT affect revenue or billing.",
+        isTest: true,
+      } as any);
+
+      // Fire same notification flow as real orders so sound/push/WA all get tested
+      try {
+        const allUsers = await storage.getAllUsers();
+        const adminUsers = allUsers.filter(u => u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen');
+        const totalAmountStr = String(totalAmount);
+
+        for (const admin of adminUsers) {
+          await db.insert(notifications).values({
+            userId: admin.id,
+            type: "new_order",
+            title: "🧪 TEST ORDER Placed",
+            message: `TEST order #${order.id} (no revenue impact). Amount: ₹${totalAmountStr}`,
+            soundType: "info",
+            relatedId: order.id,
+            relatedType: "order",
+          });
+        }
+
+        // WhatsApp staff alerts
+        try {
+          const recipients = await storage.resolveAlertRecipients("food_order_staff_alert", propertyId);
+          for (const phone of recipients) {
+            if (!isRealPhone(phone)) continue;
+            try {
+              await sendFoodOrderStaffAlert(phone, "🧪 TEST ORDER", property.name || "Property", "Room 999 (TEST)", order.id);
+            } catch (waErr: any) {
+              console.warn(`[TEST-ORDER][WhatsApp] alert failed for ${phone}:`, waErr.message);
+            }
+          }
+        } catch (waErr: any) {
+          console.warn(`[TEST-ORDER][WhatsApp] routing failed:`, waErr.message);
+        }
+
+        // PWA push
+        try {
+          const pushPayload = {
+            type: "new_order",
+            title: "🧪 TEST Order!",
+            body: `TEST order #${order.id} — ₹${totalAmountStr}. (Kitchen test — no revenue impact)`,
+            url: "/restaurant",
+            orderId: order.id,
+          };
+          const adminUserIds = adminUsers.map(u => u.id);
+          await sendPushToUsers(adminUserIds, pushPayload);
+          scheduleOrderEscalation(order.id, adminUserIds, `(🧪 TEST, ₹${totalAmountStr})`, propertyId);
+        } catch (pushErr: any) {
+          console.warn("[TEST-ORDER][Push] failed:", pushErr.message);
+        }
+
+        // Extra configured food order WhatsApp numbers (Feature Settings) —
+        // mirror the real order flow exactly so this end-to-end test is honest.
+        try {
+          const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(propertyId);
+          if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers && foodOrderSettings.phoneNumbers.length > 0) {
+            for (const phone of foodOrderSettings.phoneNumbers) {
+              if (!isRealPhone(phone)) continue;
+              try {
+                await sendFoodOrderStaffAlert(phone, "🧪 TEST ORDER", property.name || "Property", "Room 999 (TEST)", order.id);
+              } catch (waErr: any) {
+                console.warn(`[TEST-ORDER][WhatsApp-extra] failed for ${phone}:`, waErr.message);
+              }
+            }
+          }
+        } catch (extraErr: any) {
+          console.warn("[TEST-ORDER][WhatsApp-extra] settings lookup failed:", extraErr.message);
+        }
+      } catch (notifyErr: any) {
+        console.warn("[TEST-ORDER] notification dispatch failed:", notifyErr.message);
+      }
+
+      res.json(order);
+    } catch (error: any) {
+      console.error("[TEST-ORDER] create failed:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Cleanup — delete every test order for a property (safe: only is_test=true rows)
+  app.delete("/api/orders/test/cleanup", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Unauthorized" });
+      const { tenant } = auth;
+
+      const propertyId = Number(req.query.propertyId || req.body?.propertyId);
+      if (!Number.isFinite(propertyId)) {
+        return res.status(400).json({ message: "propertyId required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "You do not have access to this property" });
+      }
+
+      const { orders: ordersTbl } = await import("@shared/schema");
+      const { eq: deq, and: dand } = await import("drizzle-orm");
+      const deleted = await db
+        .delete(ordersTbl)
+        .where(dand(eq(ordersTbl.propertyId, propertyId), eq(ordersTbl.isTest, true)))
+        .returning({ id: ordersTbl.id });
+
+      res.json({ deletedCount: deleted.length });
+    } catch (error: any) {
+      console.error("[TEST-ORDER] cleanup failed:", error);
       res.status(500).json({ message: error.message });
     }
   });

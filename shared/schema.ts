@@ -454,6 +454,10 @@ export const orders = pgTable("orders", {
   customerPhone: varchar("customer_phone", { length: 20 }),
   paymentStatus: varchar("payment_status", { length: 20 }).default("unpaid"),
   paymentMethod: varchar("payment_method", { length: 20 }),
+  // Test Order Mode flag — when true, the order is excluded from ALL
+  // financial calculations (revenue, P&L, wallet, reports). Used only
+  // for kitchen/notification testing. Never set this on real orders.
+  isTest: boolean("is_test").default(false).notNull(),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({

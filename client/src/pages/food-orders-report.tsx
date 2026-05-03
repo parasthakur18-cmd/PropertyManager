@@ -203,7 +203,9 @@ export default function FoodOrdersReport() {
         const isInDateRange = orderDate >= startDate && orderDate <= endDate;
         // Exclude rejected and cancelled orders from revenue calculations
         const isValidStatus = order.status !== "rejected" && order.status !== "cancelled";
-        return isInDateRange && isValidStatus;
+        // Exclude TEST orders from all revenue/sales calculations
+        const isReal = !(order as any).isTest;
+        return isInDateRange && isValidStatus && isReal;
       });
 
   const getGuestName = (order: Order) => {

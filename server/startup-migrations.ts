@@ -856,6 +856,17 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Test Order Mode — adds is_test flag to orders so test orders can be
+    // excluded from all financial reports/wallets. Idempotent.
+    name: "add_orders_is_test_flag",
+    async run() {
+      await runRaw(`
+        ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
+        CREATE INDEX IF NOT EXISTS idx_orders_is_test ON orders(is_test);
+      `);
+    },
+  },
+  {
     // Dynamic pricing add-on — creates 3 tables. Idempotent (IF NOT EXISTS).
     // Does NOT touch any existing booking/inventory/OTA tables.
     name: "create_dynamic_pricing_tables",
