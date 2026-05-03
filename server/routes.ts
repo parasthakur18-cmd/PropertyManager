@@ -8002,6 +8002,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(403).json({ message: "You do not have access to this property" });
       }
 
+      // Optional: send a WhatsApp test alert to a specific phone (e.g. the
+      // logged-in user's phone) so they can tap the deep-link and verify the
+      // KDS end-to-end on their own device. Has no effect on financials.
+      const testPhone: string | null = (req.body?.testPhone || "").toString().trim() || null;
+
       const property = await storage.getProperty(propertyId);
       if (!property) return res.status(404).json({ message: "Property not found" });
 
@@ -8095,6 +8100,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           }
         } catch (extraErr: any) {
           console.warn("[TEST-ORDER][WhatsApp-extra] settings lookup failed:", extraErr.message);
+        }
+
+        // Direct-to-tester WhatsApp: if a specific phone was provided, send
+        // the alert there too. The template includes a deep link to
+        // /restaurant?order=<id> so the tester can tap and land on this
+        // order in the KDS.
+        if (testPhone && isRealPhone(testPhone)) {
+          try {
+            await sendFoodOrderStaffAlert(testPhone, "🧪 TEST ORDER", property.name || "Property", "Room 999 (TEST)", order.id);
+            console.log(`[TEST-ORDER][WhatsApp-direct] sent to tester ${testPhone} for order #${order.id}`);
+          } catch (testWaErr: any) {
+            console.warn(`[TEST-ORDER][WhatsApp-direct] failed for ${testPhone}:`, testWaErr.message);
+          }
         }
       } catch (notifyErr: any) {
         console.warn("[TEST-ORDER] notification dispatch failed:", notifyErr.message);

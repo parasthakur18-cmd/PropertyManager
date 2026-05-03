@@ -346,16 +346,27 @@ export default function Kitchen() {
   });
   
   // ─── TEST ORDER MODE — kitchen verification only, no revenue impact ─────
+  const [testOrderDialog, setTestOrderDialog] = useState(false);
+  const [testPhone, setTestPhone] = useState<string>(() =>
+    (typeof window !== "undefined" && localStorage.getItem("kitchen.testPhone")) || ""
+  );
   const sendTestOrderMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (phone: string) => {
       if (!selectedPropertyId) throw new Error("Select a property first");
-      return await apiRequest("/api/orders/test", "POST", { propertyId: selectedPropertyId });
+      return await apiRequest("/api/orders/test", "POST", {
+        propertyId: selectedPropertyId,
+        testPhone: phone || undefined,
+      });
     },
-    onSuccess: () => {
+    onSuccess: (_data, phone) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
+      if (phone) localStorage.setItem("kitchen.testPhone", phone);
+      setTestOrderDialog(false);
       toast({
         title: "🧪 Test Order Sent",
-        description: "Watch KDS, sound, push & WhatsApp. Will NOT affect revenue.",
+        description: phone
+          ? `Watch KDS + check WhatsApp on ${phone}. Tap the link to jump straight to this order.`
+          : "Watch KDS, sound, push & WhatsApp. Will NOT affect revenue.",
       });
     },
     onError: (error: Error) => {
@@ -845,14 +856,14 @@ export default function Kitchen() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => sendTestOrderMutation.mutate()}
-            disabled={!selectedPropertyId || sendTestOrderMutation.isPending}
+            onClick={() => setTestOrderDialog(true)}
+            disabled={!selectedPropertyId}
             data-testid="button-send-test-order"
             title="Send a TEST order to verify KDS, sound, push & WhatsApp. Will NOT affect revenue."
             className="border-violet-400 text-violet-700 hover:bg-violet-50 dark:text-violet-300 dark:hover:bg-violet-950/30"
           >
             <FlaskConical className="h-4 w-4 mr-1" />
-            {sendTestOrderMutation.isPending ? "Sending..." : "Send Test Order"}
+            Send Test Order
           </Button>
           <Button
             variant="ghost"
@@ -1576,6 +1587,59 @@ export default function Kitchen() {
               data-testid="button-confirm-payment"
             >
               {updateStatusMutation.isPending ? "Processing..." : `Confirm ₹${paymentDialog.open ? paymentDialog.total.toFixed(2) : "0"}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Order dialog — capture optional WhatsApp test number */}
+      <Dialog open={testOrderDialog} onOpenChange={setTestOrderDialog}>
+        <DialogContent className="max-w-md" data-testid="dialog-test-order">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-violet-600" />
+              Send Test Order
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Fires a dummy order (Tea + Maggi, ₹70, Room 999) through the full
+              real-order flow — KDS card, sound, push and WhatsApp alerts. It
+              will <b>not</b> affect revenue, P&amp;L, wallet or reports.
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Send WhatsApp test to (optional)
+              </label>
+              <Input
+                type="tel"
+                inputMode="numeric"
+                placeholder="10-digit phone, e.g. 9876543210"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value.replace(/[^0-9+]/g, ""))}
+                data-testid="input-test-phone"
+              />
+              <p className="text-xs text-muted-foreground">
+                The WhatsApp will include a tap-to-open link straight to this
+                order on the Kitchen page. Saved on this device for next time.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setTestOrderDialog(false)}
+              data-testid="button-test-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => sendTestOrderMutation.mutate(testPhone.trim())}
+              disabled={sendTestOrderMutation.isPending}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              data-testid="button-test-confirm"
+            >
+              {sendTestOrderMutation.isPending ? "Sending..." : "Send Test Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
