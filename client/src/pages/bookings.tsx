@@ -4721,7 +4721,7 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (bill && !initialized) {
+    if (bill && (bill as any).id && !initialized) {
       setCorrectedTotal(bill.totalAmount ?? "0");
       setCorrectedBalance(bill.balanceAmount ?? "0");
       setCorrectedPaymentStatus(bill.paymentStatus ?? "paid");

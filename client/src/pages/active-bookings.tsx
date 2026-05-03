@@ -1599,7 +1599,7 @@ export default function ActiveBookings() {
                         const billRes = await fetch(`/api/bills/booking/${booking.id}`);
                         if (billRes.ok) {
                           const bill = await billRes.json();
-                          if (bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
+                          if (bill && bill.mergedBookingIds && bill.mergedBookingIds.length > 0) {
                             const mergedDetails: Array<{
                               bookingId: number;
                               guestName: string;

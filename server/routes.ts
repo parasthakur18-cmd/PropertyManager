@@ -8983,10 +8983,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
   app.get("/api/bills/booking/:bookingId", isAuthenticated, async (req, res) => {
     try {
       const bill = await storage.getBillByBooking(parseInt(req.params.bookingId));
-      if (!bill) {
-        return res.status(404).json({ message: "Bill not found" });
-      }
-      res.json(bill);
+      // Return 200 + null when no bill exists yet (booking not checked out).
+      // The pre-bill / merged-bill flows poll this endpoint speculatively
+      // before any final bill row exists, so a 404 was generating noisy
+      // red entries in browser DevTools for a perfectly normal state.
+      res.json(bill || null);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
