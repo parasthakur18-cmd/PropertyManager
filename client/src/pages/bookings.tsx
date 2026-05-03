@@ -3765,7 +3765,7 @@ export default function Bookings() {
                     name="customPrice"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Custom Price Per Night (Optional)</FormLabel>
+                        <FormLabel>Custom Price <span className="text-amber-600 font-semibold">(per night)</span></FormLabel>
                         <FormControl>
                           <Input
                             type="text"
@@ -3782,7 +3782,7 @@ export default function Bookings() {
                           />
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
-                          Override room price with a custom rate
+                          Per-night rate — total bill = this × nights. See preview below.
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -3842,6 +3842,45 @@ export default function Bookings() {
                     />
                   </div>
                 </div>
+                {/* Live bill preview - updates as user types */}
+                {(() => {
+                  const ci = editForm.watch("checkInDate");
+                  const co = editForm.watch("checkOutDate");
+                  const cp = editForm.watch("customPrice");
+                  const adv = editForm.watch("advanceAmount");
+                  const roomId = editForm.watch("roomId");
+                  const room = rooms?.find(r => r.id === roomId);
+                  if (!ci || !co) return null;
+                  const ciDate = new Date(ci as any);
+                  const coDate = new Date(co as any);
+                  const nights = Math.max(1, Math.ceil((coDate.getTime() - ciDate.getTime()) / (1000 * 60 * 60 * 24)));
+                  const ratePerNight = cp != null && cp !== "" ? parseFloat(String(cp)) : (room ? parseFloat(String(room.pricePerNight)) : 0);
+                  if (!ratePerNight || isNaN(ratePerNight)) return null;
+                  const roomTotal = ratePerNight * nights;
+                  const advNum = adv != null && adv !== "" ? parseFloat(String(adv)) : 0;
+                  const balance = Math.max(0, roomTotal - (isNaN(advNum) ? 0 : advNum));
+                  const origRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
+                  const original = editingBooking?.customPrice
+                    ? parseFloat(String(editingBooking.customPrice)) * nights
+                    : (origRoom ? parseFloat(String(origRoom.pricePerNight)) * nights : 0);
+                  const changed = Math.abs(roomTotal - original) > 0.01;
+                  return (
+                    <div className="mt-3 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/30 p-3 text-xs space-y-1" data-testid="edit-bill-preview">
+                      <div className="font-semibold text-blue-900 dark:text-blue-200 mb-1">Bill Preview (after save)</div>
+                      <div className="flex justify-between"><span>Room charges ({nights} {nights === 1 ? "night" : "nights"} × ₹{ratePerNight.toLocaleString("en-IN")})</span><span className="font-medium">₹{roomTotal.toLocaleString("en-IN")}</span></div>
+                      {advNum > 0 && (
+                        <div className="flex justify-between text-green-700 dark:text-green-400"><span>Advance paid</span><span>−₹{advNum.toLocaleString("en-IN")}</span></div>
+                      )}
+                      <div className="flex justify-between border-t border-blue-200 dark:border-blue-900 pt-1 mt-1 font-semibold"><span>Balance due</span><span className={balance === 0 ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}>₹{balance.toLocaleString("en-IN")}</span></div>
+                      {changed && original > 0 && (
+                        <div className="text-[11px] text-blue-700 dark:text-blue-300 pt-1">Was ₹{original.toLocaleString("en-IN")} → now ₹{roomTotal.toLocaleString("en-IN")} ({roomTotal > original ? "+" : ""}₹{(roomTotal - original).toLocaleString("en-IN")})</div>
+                      )}
+                      {balance === 0 && roomTotal > 0 && (
+                        <div className="text-[11px] text-green-700 dark:text-green-400 pt-1">✓ Bill fully covered — guest can be checked out without further payment.</div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <div className="space-y-2 border rounded-lg p-4 bg-muted/30">
                 <h4 className="font-semibold text-sm mb-3">Booking Details</h4>
