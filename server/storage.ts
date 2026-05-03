@@ -2078,7 +2078,9 @@ export class DatabaseStorage implements IStorage {
     const subtotal = totalRoomCharges + totalFoodCharges + totalExtraCharges;
     const gstRate = 5;
     const serviceChargeRate = 10;
-    const gstAmount = (subtotal * gstRate) / 100;
+    // GST applies ONLY to room charges by default (gstOnRooms:true, gstOnFood:false below).
+    // Previously this was (subtotal * 5)/100 which incorrectly taxed food/extras too.
+    const gstAmount = (totalRoomCharges * gstRate) / 100;
     const serviceChargeAmount = 0; // Don't include service charge by default - only when user selects it
     const totalAmount = subtotal + gstAmount + serviceChargeAmount;
 

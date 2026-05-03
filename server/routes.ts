@@ -4817,17 +4817,34 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const serviceChargeRate = 10; // 10% Service Charge
       
       if (existingBill && existingBill.mergedBookingIds && Array.isArray(existingBill.mergedBookingIds) && existingBill.mergedBookingIds.length > 0) {
-        // MERGED BILL: Use existing calculated values (don't recalculate)
-        console.log(`[CHECKOUT] Merged bill detected for booking ${bookingId}. Using existing bill values.`);
+        // MERGED BILL: keep room/food/extra subtotals from the merged bill, but
+        // RECOMPUTE gst/service-charge/discount/total using the GST toggles the
+        // user set in the checkout dialog. Previously we blindly trusted the
+        // DB's gstAmount, which was wrong when food was added after merging.
+        console.log(`[CHECKOUT] Merged bill detected for booking ${bookingId}. Recomputing totals from dialog toggles.`);
         roomCharges = parseFloat(existingBill.roomCharges || "0");
         foodCharges = parseFloat(existingBill.foodCharges || "0");
         extraCharges = parseFloat(existingBill.extraCharges || "0");
-        subtotal = parseFloat(existingBill.subtotal || "0");
-        gstAmount = parseFloat(existingBill.gstAmount || "0");
-        serviceChargeAmount = parseFloat(existingBill.serviceChargeAmount || "0");
-        discountAmount = parseFloat(existingBill.discountAmount || "0");
+        subtotal = roomCharges + foodCharges + extraCharges;
+
+        const roomGst = gstOnRooms ? (roomCharges * gstRate) / 100 : 0;
+        const foodGst = gstOnFood ? (foodCharges * gstRate) / 100 : 0;
+        gstAmount = roomGst + foodGst;
+        serviceChargeAmount = includeServiceCharge ? (roomCharges * serviceChargeRate) / 100 : 0;
         totalAmountBeforeDiscount = subtotal + gstAmount + serviceChargeAmount;
-        totalAmount = parseFloat(existingBill.totalAmount || "0");
+
+        discountAmount = 0;
+        if (discountType && discountValue && discountType !== "none") {
+          const discount = parseFloat(discountValue);
+          let baseAmountForDiscount = totalAmountBeforeDiscount;
+          if (discountAppliesTo === "room") baseAmountForDiscount = roomCharges;
+          else if (discountAppliesTo === "food") baseAmountForDiscount = foodCharges;
+          if (discountType === "percentage") discountAmount = (baseAmountForDiscount * discount) / 100;
+          else if (discountType === "fixed") discountAmount = discount;
+        }
+
+        totalAmount = totalAmountBeforeDiscount - discountAmount;
+        console.log(`[CHECKOUT-MERGED] room:${roomCharges} food:${foodCharges} gstOnRooms:${gstOnRooms} gstOnFood:${gstOnFood} gst:${gstAmount} svc:${serviceChargeAmount} total:${totalAmount}`);
       } else {
         // REGULAR BOOKING: Recalculate charges
         // Fetch room(s) to get price
