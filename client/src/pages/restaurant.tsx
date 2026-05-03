@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon, Maximize2, Minimize2 } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,21 @@ export default function Kitchen() {
   useEffect(() => {
     localStorage.setItem("kitchen.repeatUntilAck", String(repeatUntilAck));
   }, [repeatUntilAck]);
+
+  // ─── Kitchen Mode (full-screen, larger UI) ────────────────────────────
+  const [kitchenMode, setKitchenMode] = useState<boolean>(() =>
+    typeof window !== "undefined" && localStorage.getItem("kitchen.mode") === "true"
+  );
+  useEffect(() => {
+    localStorage.setItem("kitchen.mode", String(kitchenMode));
+  }, [kitchenMode]);
+
+  // ─── Live tick — re-renders elapsed timers every 30 seconds ────────────
+  const [nowTs, setNowTs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
 
   // Diagnostics: VAPID configured + service worker active
   const [vapidConfigured, setVapidConfigured] = useState<boolean | null>(null);
@@ -458,6 +473,25 @@ export default function Kitchen() {
     );
   }
 
+  // ─── Live timer + SLA color helpers (read-only, no logic change) ──────
+  const getElapsedMinutes = (createdAt: any): number => {
+    if (!createdAt) return 0;
+    const ts = typeof createdAt === "string" || typeof createdAt === "number"
+      ? new Date(createdAt).getTime()
+      : (createdAt instanceof Date ? createdAt.getTime() : 0);
+    if (!ts) return 0;
+    return Math.max(0, Math.floor((nowTs - ts) / 60000));
+  };
+  const formatElapsed = (mins: number) =>
+    mins < 1 ? "just now" : mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  // Returns ring + badge classes by elapsed time. Only applied to active orders.
+  const getSlaStyle = (mins: number, status: string) => {
+    if (status !== "pending" && status !== "preparing") return null;
+    if (mins < 5)  return { ring: "ring-2 ring-green-500/60",  badge: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" };
+    if (mins < 10) return { ring: "ring-2 ring-amber-500/70",  badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" };
+    return            { ring: "ring-2 ring-red-500", badge: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 font-semibold animate-pulse" };
+  };
+
   const renderOrderCard = (order: any) => {
     const items = order.items as any[];
     const orderSource = order.orderSource || "staff";
@@ -469,11 +503,16 @@ export default function Kitchen() {
     
     // Show room number for any room-type order that has a room number
     const showRoomNumber = orderType !== "restaurant" && roomNumber;
+
+    // Live timer + SLA color
+    const elapsedMins = getElapsedMinutes(order.createdAt);
+    const sla = getSlaStyle(elapsedMins, order.status);
+    const isNewPending = order.status === "pending";
     
     return (
       <Card
         key={order.id}
-        className={`hover-elevate transition-all duration-500 ${highlightedOrderId === order.id ? "ring-2 ring-teal-500 ring-offset-2 shadow-lg" : ""}`}
+        className={`hover-elevate transition-all duration-500 ${kitchenMode ? "text-base" : ""} ${sla?.ring || ""} ${highlightedOrderId === order.id ? "ring-2 ring-teal-500 ring-offset-2 shadow-lg" : ""}`}
         data-testid={`card-order-${order.id}`}
       >
         <CardHeader>
@@ -501,15 +540,33 @@ export default function Kitchen() {
                 {orderType === "restaurant" && (
                   <Badge variant="secondary" className="text-xs">Restaurant</Badge>
                 )}
+                {isNewPending && (
+                  <Badge
+                    className="text-[10px] px-1.5 py-0 bg-red-500 text-white border-0 animate-pulse"
+                    data-testid={`badge-new-${order.id}`}
+                  >
+                    NEW
+                  </Badge>
+                )}
               </div>
               {customerPhone && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className={`text-muted-foreground mt-1 ${kitchenMode ? "text-sm" : "text-xs"}`}>
                   📞 {customerPhone}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground mt-1">
-                {format(new Date(order.createdAt!), "PPp")}
-              </p>
+              <div className={`flex items-center gap-2 mt-1 flex-wrap ${kitchenMode ? "text-sm" : "text-xs"}`}>
+                <span className="text-muted-foreground">
+                  {format(new Date(order.createdAt!), "PPp")}
+                </span>
+                {sla && (
+                  <Badge
+                    className={`${sla.badge} border-0 ${kitchenMode ? "text-sm px-2 py-0.5" : "text-[10px] px-1.5 py-0"}`}
+                    data-testid={`badge-elapsed-${order.id}`}
+                  >
+                    ⏱ {formatElapsed(elapsedMins)}
+                  </Badge>
+                )}
+              </div>
             </div>
             <Badge className={statusColors[order.status as keyof typeof statusColors]} data-testid={`badge-order-status-${order.id}`}>
               {order.status}
@@ -579,6 +636,7 @@ export default function Kitchen() {
                 <>
                   <Button
                     variant="destructive"
+                    size={kitchenMode ? "lg" : "default"}
                     onClick={() => updateStatusMutation.mutate({ id: order.id, status: "rejected" })}
                     disabled={updateStatusMutation.isPending}
                     data-testid={`button-reject-order-${order.id}`}
@@ -587,7 +645,8 @@ export default function Kitchen() {
                     Reject
                   </Button>
                   <Button
-                    className="flex-1"
+                    className={`flex-1 ${kitchenMode ? "text-base font-semibold" : ""}`}
+                    size={kitchenMode ? "lg" : "default"}
                     onClick={() => updateStatusMutation.mutate({ id: order.id, status: "preparing" })}
                     disabled={updateStatusMutation.isPending}
                     data-testid={`button-start-order-${order.id}`}
@@ -599,7 +658,8 @@ export default function Kitchen() {
               )}
               {order.status === "preparing" && (
                 <Button
-                  className="flex-1"
+                  className={`flex-1 ${kitchenMode ? "text-base font-semibold" : ""}`}
+                  size={kitchenMode ? "lg" : "default"}
                   onClick={() => updateStatusMutation.mutate({ id: order.id, status: "ready" })}
                   disabled={updateStatusMutation.isPending}
                   data-testid={`button-ready-order-${order.id}`}
@@ -610,7 +670,8 @@ export default function Kitchen() {
               )}
               {order.status === "ready" && (
                 <Button
-                  className="flex-1"
+                  className={`flex-1 ${kitchenMode ? "text-base font-semibold" : ""}`}
+                  size={kitchenMode ? "lg" : "default"}
                   onClick={() => {
                     if (orderType === "restaurant") {
                       // Open payment dialog for walk-in/dine-in orders
@@ -640,7 +701,10 @@ export default function Kitchen() {
   };
 
   return (
-    <div className="p-6 md:p-8">
+    <div className={kitchenMode
+      ? "fixed inset-0 z-50 bg-background overflow-auto p-4 md:p-6"
+      : "p-6 md:p-8"
+    } data-testid={kitchenMode ? "kitchen-mode-on" : "kitchen-mode-off"}>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="flex-1">
           <h1 className="text-3xl font-bold font-serif flex items-center gap-2">
@@ -707,6 +771,15 @@ export default function Kitchen() {
               )}
             </>
           )}
+          <Button
+            variant={kitchenMode ? "default" : "outline"}
+            size="icon"
+            onClick={() => setKitchenMode(!kitchenMode)}
+            data-testid="button-kitchen-mode"
+            title={kitchenMode ? "Exit Kitchen Mode" : "Enter full-screen Kitchen Mode"}
+          >
+            {kitchenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
           <Button
             variant="outline"
             size="icon"
