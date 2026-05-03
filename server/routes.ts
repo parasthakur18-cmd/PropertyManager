@@ -5328,13 +5328,33 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(404).json({ message: "Booking not found" });
       }
 
+      // Each order row stores its line items inside a JSON `items` column
+      // shaped like [{ name, quantity, price, ... }]. The previous code
+      // tried to read `o.itemName` / `o.quantity` / `o.price` directly off
+      // the order row, which don't exist — so the guest pre-bill page
+      // showed every item as "undefined x undefined  ₹NaN".
+      // Flatten all items from every non-cancelled, non-test order, and
+      // merge duplicates so one item ordered twice shows as "Tea x 2".
       const orders = await storage.getOrdersByBooking(bookingId);
-      const foodItems = orders.filter(o => o.status !== 'cancelled').map(o => ({
-        name: o.itemName,
-        quantity: o.quantity,
-        price: o.price,
-        total: (o.quantity * parseFloat(o.price?.toString() || '0'))
-      }));
+      const merged = new Map<string, { name: string; quantity: number; price: number; total: number }>();
+      for (const order of orders) {
+        if (order.status === 'cancelled' || (order as any).isTest) continue;
+        const lineItems = Array.isArray((order as any).items) ? ((order as any).items as any[]) : [];
+        for (const li of lineItems) {
+          const name = String(li?.name ?? li?.itemName ?? 'Item').trim();
+          const quantity = Number(li?.quantity ?? 1) || 1;
+          const price = parseFloat(String(li?.price ?? 0)) || 0;
+          const key = `${name}__${price}`;
+          const existing = merged.get(key);
+          if (existing) {
+            existing.quantity += quantity;
+            existing.total += quantity * price;
+          } else {
+            merged.set(key, { name, quantity, price, total: quantity * price });
+          }
+        }
+      }
+      const foodItems = Array.from(merged.values());
 
       const nights = Math.max(1, Math.ceil(
         (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24)
