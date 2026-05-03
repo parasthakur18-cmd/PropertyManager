@@ -266,6 +266,38 @@ async function syncWithRetry(propertyId: number, event: string, maxRetries = 3):
   console.error(`[SYNC_FAILED] event=${event} propertyId=${propertyId} allRetriesExhausted=true`);
 }
 
+// Defensive billable-orders lookup. Kitchen staff sometimes place orders
+// against a room/guest without setting booking_id — those orphan orders
+// were silently dropped from the bill, causing real revenue loss.
+// We additionally claim orphan orders (booking_id IS NULL) that:
+//   * were created within the stay window [check_in, check_out + 1d grace]
+//   * belong to the same property (no cross-property attachment)
+//   * AND EITHER match this guestId, OR (have no guestId AND match this room)
+// This protects against back-to-back stays in the same room: a new guest's
+// order with their own guestId will NOT be claimed by the prior booking.
+async function getBillableOrdersForBooking(booking: any): Promise<any[]> {
+  const direct = await db.select().from(orders).where(eq(orders.bookingId, booking.id));
+  const checkIn = new Date(booking.checkInDate).getTime();
+  const checkOut = new Date(booking.checkOutDate).getTime() + 24 * 60 * 60 * 1000;
+  const bookingRoomIds: number[] = booking.isGroupBooking && Array.isArray(booking.roomIds)
+    ? booking.roomIds
+    : (booking.roomId ? [booking.roomId] : []);
+  const orphans = await db.select().from(orders).where(isNull(orders.bookingId));
+  const claimed = orphans.filter((o: any) => {
+    const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+    if (created < checkIn || created > checkOut) return false;
+    // Property guard: never attach an order from a different property
+    if (booking.propertyId && o.propertyId && o.propertyId !== booking.propertyId) return false;
+    // Strong match: same guest
+    if (booking.guestId && o.guestId === booking.guestId) return true;
+    // Weak match: room match ONLY when the order has no guestId of its own
+    // (so we don't steal another guest's explicitly-tagged order).
+    if (!o.guestId && o.roomId && bookingRoomIds.includes(o.roomId)) return true;
+    return false;
+  });
+  return [...direct, ...claimed];
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
@@ -3412,11 +3444,35 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           roomCharges = customPrice * nightsStayed;
         }
 
-        const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
-        // Exclude rejected orders from food charges calculation
+        // Match orders to this booking defensively. Kitchen staff sometimes
+        // place orders against a room/guest without setting booking_id (or
+        // pointing it at a stale/old booking). Previously those orders were
+        // silently dropped from the bill — causing real revenue loss.
+        // We now ALSO claim any orphan order (booking_id IS NULL) that
+        // matches this guest OR this room, where the order was created
+        // within the stay window [check_in, check_out + 1d grace].
+        const stayStart = checkInDate.getTime();
+        const stayEnd = checkOutDate.getTime() + 24 * 60 * 60 * 1000; // +1 day grace for late-night orders
+        const bookingRoomIdsForMatch: number[] = booking.isGroupBooking && booking.roomIds
+          ? booking.roomIds
+          : (booking.roomId ? [booking.roomId] : []);
+        const bookingOrders = allOrders.filter((o: any) => {
+          if (o.bookingId === booking.id) return true;
+          if (o.bookingId != null) return false; // belongs to another booking
+          const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+          if (created < stayStart || created > stayEnd) return false;
+          // Property guard: never attach an order from a different property
+          if (booking.propertyId && o.propertyId && o.propertyId !== booking.propertyId) return false;
+          // Strong match: same guest
+          if (booking.guestId && o.guestId === booking.guestId) return true;
+          // Weak match: room match ONLY when the order has no guestId of its own
+          if (!o.guestId && o.roomId && bookingRoomIdsForMatch.includes(o.roomId)) return true;
+          return false;
+        });
+        // Exclude rejected AND test orders from food charges calculation
         const foodCharges = bookingOrders
-          .filter(order => order.status !== "rejected")
-          .reduce((sum, order) => {
+          .filter((order: any) => order.status !== "rejected" && !order.isTest)
+          .reduce((sum: number, order: any) => {
             const amount = order.totalAmount ? parseFloat(String(order.totalAmount)) : 0;
             return sum + (isNaN(amount) ? 0 : amount);
           }, 0);
@@ -4944,8 +5000,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
       
       // Check for open food orders (pending, preparing, or ready but not yet delivered)
-      const allOrders = await storage.getAllOrders();
-      const bookingOrders = allOrders.filter(o => o.bookingId === bookingId);
+      // Use defensive matching so orphan orders (booking_id NULL) placed against
+      // this guest/room within the stay window are also billed at checkout.
+      const bookingOrders = (await getBillableOrdersForBooking(booking))
+        .filter((o: any) => !o.isTest);
       const openOrders = bookingOrders.filter(order => 
         order.status === "pending" || order.status === "preparing" || order.status === "ready"
       );
@@ -5335,10 +5393,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // showed every item as "undefined x undefined  ₹NaN".
       // Flatten all items from every non-cancelled, non-test order, and
       // merge duplicates so one item ordered twice shows as "Tea x 2".
-      const orders = await storage.getOrdersByBooking(bookingId);
+      const orders = await getBillableOrdersForBooking(booking);
       const merged = new Map<string, { name: string; quantity: number; price: number; total: number }>();
       for (const order of orders) {
-        if (order.status === 'cancelled' || (order as any).isTest) continue;
+        if (order.status === 'cancelled' || order.status === 'rejected' || (order as any).isTest) continue;
         const lineItems = Array.isArray((order as any).items) ? ((order as any).items as any[]) : [];
         for (const li of lineItems) {
           const name = String(li?.name ?? li?.itemName ?? 'Item').trim();
@@ -5449,10 +5507,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Falls back to the saved snapshot only if the live lookup fails.
       let foodItems: any[] = Array.isArray(preBill.foodItems) ? (preBill.foodItems as any[]) : [];
       try {
-        const orders = await storage.getOrdersByBooking(preBill.bookingId);
+        const parentBooking = await storage.getBooking(preBill.bookingId);
+        const orders = parentBooking
+          ? await getBillableOrdersForBooking(parentBooking)
+          : await storage.getOrdersByBooking(preBill.bookingId);
         const merged = new Map<string, { name: string; quantity: number; price: number; total: number }>();
         for (const order of orders) {
-          if (order.status === 'cancelled' || (order as any).isTest) continue;
+          if (order.status === 'cancelled' || order.status === 'rejected' || (order as any).isTest) continue;
           const lineItems = Array.isArray((order as any).items) ? ((order as any).items as any[]) : [];
           for (const li of lineItems) {
             const name = String(li?.name ?? li?.itemName ?? 'Item').trim() || 'Item';
