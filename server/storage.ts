@@ -2052,15 +2052,42 @@ export class DatabaseStorage implements IStorage {
     }
     console.log(`[MERGE] Total room charges from ${bookingIds.length} bookings:`, totalRoomCharges);
 
-    // Get all orders for these bookings
-    const allOrders = await Promise.all(
+    // Get all orders for these bookings (defensive: also pull orphan orders
+    // booking_id IS NULL that match guest/room within each booking's stay
+    // window — same property only — so kitchen orders placed against the
+    // room without a booking_id are still billed).
+    const directOrdersPerBooking = await Promise.all(
       bookingIds.map(id => this.getOrdersByBooking(id))
     );
-    const flatOrders = allOrders.flat();
-    
-    // Calculate total food charges
-    const totalFoodCharges = flatOrders.reduce((sum, order) => {
-      return sum + parseFloat(order.totalAmount);
+    const orphanOrders = await db.select().from(orders).where(isNull(orders.bookingId));
+    const claimedOrphanIds = new Set<number>();
+    const claimedOrphans: any[] = [];
+    for (const booking of allBookings) {
+      if (!booking) continue;
+      const checkIn = new Date(booking.checkInDate).getTime();
+      const checkOut = new Date(booking.checkOutDate).getTime() + 24 * 60 * 60 * 1000;
+      const bookingRoomIds: number[] = booking.isGroupBooking && Array.isArray(booking.roomIds)
+        ? booking.roomIds
+        : (booking.roomId ? [booking.roomId] : []);
+      for (const o of orphanOrders as any[]) {
+        if (claimedOrphanIds.has(o.id)) continue;
+        const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+        if (created < checkIn || created > checkOut) continue;
+        if (booking.propertyId && o.propertyId && o.propertyId !== booking.propertyId) continue;
+        const guestMatch = booking.guestId && o.guestId === booking.guestId;
+        const roomMatch = !o.guestId && o.roomId && bookingRoomIds.includes(o.roomId);
+        if (guestMatch || roomMatch) {
+          claimedOrphanIds.add(o.id);
+          claimedOrphans.push(o);
+        }
+      }
+    }
+    const flatOrders = [...directOrdersPerBooking.flat(), ...claimedOrphans];
+
+    // Calculate total food charges (exclude rejected & test orders)
+    const totalFoodCharges = flatOrders.reduce((sum: number, order: any) => {
+      if (order.status === 'rejected' || order.isTest) return sum;
+      return sum + parseFloat(order.totalAmount || "0");
     }, 0);
 
     // Get all extra services for these bookings

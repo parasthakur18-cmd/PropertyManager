@@ -4408,12 +4408,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
               roomCharges = pricePerNight * nights;
             }
 
-            // Food charges from orders
-            const allOrders = await storage.getAllOrders();
-            const bookingOrders = allOrders.filter(o => o.bookingId === oldBooking.id);
+            // Food charges from orders (defensive: include orphan orders matching guest/room within stay)
+            const bookingOrders = await getBillableOrdersForBooking(oldBooking);
             const foodCharges = bookingOrders
-              .filter(o => o.status !== "rejected")
-              .reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
+              .filter((o: any) => o.status !== "rejected" && !o.isTest)
+              .reduce((sum: number, o: any) => sum + parseFloat(o.totalAmount || "0"), 0);
 
             // Extra service charges
             let extraCharges = 0;
@@ -5004,7 +5003,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // this guest/room within the stay window are also billed at checkout.
       const bookingOrders = (await getBillableOrdersForBooking(booking))
         .filter((o: any) => !o.isTest);
-      const openOrders = bookingOrders.filter(order => 
+      const openOrders = bookingOrders.filter((order: any) => 
         order.status === "pending" || order.status === "preparing" || order.status === "ready"
       );
       
@@ -6163,9 +6162,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             roomCharges = pricePerNight * nights;
           }
 
-          const allOrders = await storage.getAllOrders();
-          const bookingOrders = allOrders.filter(o => o.bookingId === booking.id);
-          const foodCharges = bookingOrders.filter(o => o.status !== "rejected").reduce((sum, o) => sum + parseFloat(o.totalAmount || "0"), 0);
+          // Defensive: include orphan orders matching guest/room within stay
+          const bookingOrders = await getBillableOrdersForBooking(booking);
+          const foodCharges = bookingOrders
+            .filter((o: any) => o.status !== "rejected" && !o.isTest)
+            .reduce((sum: number, o: any) => sum + parseFloat(o.totalAmount || "0"), 0);
           
           let bookingExtras: any[] = [];
           try {
@@ -8637,9 +8638,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         property = room?.propertyId ? await storage.getProperty(room.propertyId) : null;
       }
 
-      // Fetch orders for this booking
-      const allOrders = await storage.getAllOrders();
-      const orders = allOrders.filter(o => o.bookingId === booking.id);
+      // Fetch orders for this booking (defensive: include orphan orders matching guest/room within stay)
+      const orders = (await getBillableOrdersForBooking(booking))
+        .filter((o: any) => !o.isTest);
 
       // Fetch extra services for this booking (resilient: works even if property_id column is missing on older DBs)
       let extraServices: any[] = [];
