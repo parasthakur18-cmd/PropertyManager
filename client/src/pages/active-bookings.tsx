@@ -426,6 +426,15 @@ export default function ActiveBookings() {
     refetchOnWindowFocus: false,
   });
 
+  // Property-only filter for the Merge Bills dialog — must not be affected by
+  // the search bar, but MUST respect the selected property scope.
+  const mergeableBookings = activeBookings?.filter((booking) => {
+    if (propertyFilter && propertyFilter !== "all") {
+      if (String(booking.property?.id) !== propertyFilter) return false;
+    }
+    return true;
+  });
+
   const filteredBookings = activeBookings?.filter((booking) => {
     // Property filter
     if (propertyFilter && propertyFilter !== "all") {
@@ -1009,12 +1018,14 @@ export default function ActiveBookings() {
                     Select at least 2 bookings to merge into one bill
                   </p>
                   <div className="space-y-2 max-h-64 overflow-y-auto border rounded-lg p-3">
-                    {activeBookings && activeBookings.length === 0 ? (
+                    {mergeableBookings && mergeableBookings.length === 0 ? (
                       <p className="text-sm text-muted-foreground text-center py-4">
-                        No active bookings available
+                        {propertyFilter && propertyFilter !== "all"
+                          ? "No active bookings in the selected property"
+                          : "No active bookings available"}
                       </p>
                     ) : (
-                      activeBookings?.map((booking) => (
+                      mergeableBookings?.map((booking) => (
                         <div
                           key={booking.id}
                           className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted"
@@ -1061,7 +1072,7 @@ export default function ActiveBookings() {
                     </p>
                     <div className="space-y-2">
                       {selectedBookingsForMerge.map((bookingId) => {
-                        const booking = activeBookings?.find(b => b.id === bookingId);
+                        const booking = mergeableBookings?.find(b => b.id === bookingId);
                         if (!booking) return null;
                         return (
                           <div
