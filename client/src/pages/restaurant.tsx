@@ -574,30 +574,60 @@ export default function Kitchen() {
         <div className="flex gap-2 flex-wrap">
           {/* Push Notification toggle (mobile push - works even when app is closed) */}
           {pushStatus !== "unsupported" && (
-            <Button
-              variant={pushStatus === "subscribed" ? "default" : "outline"}
-              size="sm"
-              onClick={pushStatus === "subscribed" ? pushUnsubscribe : pushSubscribe}
-              disabled={pushStatus === "loading" || pushStatus === "denied"}
-              data-testid="button-push-notifications"
-              title={
-                pushStatus === "subscribed"
-                  ? "Mobile push ON — click to disable"
+            <>
+              <Button
+                variant={pushStatus === "subscribed" ? "default" : "outline"}
+                size="sm"
+                onClick={pushStatus === "subscribed" ? pushUnsubscribe : pushSubscribe}
+                disabled={pushStatus === "loading" || pushStatus === "denied"}
+                data-testid="button-push-notifications"
+                title={
+                  pushStatus === "subscribed"
+                    ? "Mobile push ON — click to disable"
+                    : pushStatus === "denied"
+                    ? "Notifications blocked in browser settings"
+                    : "Enable mobile push notifications (works even when app is closed)"
+                }
+                className="gap-1.5"
+              >
+                <Smartphone className="h-4 w-4" />
+                {pushStatus === "subscribed"
+                  ? "Push ON"
                   : pushStatus === "denied"
-                  ? "Notifications blocked in browser settings"
-                  : "Enable mobile push notifications (works even when app is closed)"
-              }
-              className="gap-1.5"
-            >
-              <Smartphone className="h-4 w-4" />
-              {pushStatus === "subscribed"
-                ? "Push ON"
-                : pushStatus === "denied"
-                ? "Blocked"
-                : pushStatus === "loading"
-                ? "..."
-                : "Enable Push"}
-            </Button>
+                  ? "Blocked"
+                  : pushStatus === "loading"
+                  ? "..."
+                  : "Enable Push"}
+              </Button>
+              {pushStatus === "subscribed" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-push-test"
+                  title="Send a test notification to this device"
+                  className="gap-1.5"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/push/test", { method: "POST", credentials: "include" });
+                      const data = await res.json().catch(() => ({}));
+                      if (res.ok && data.success) {
+                        toast({ title: "Test sent", description: data.message || "Check your device for the notification." });
+                      } else {
+                        toast({
+                          title: "Test failed",
+                          description: data.message || `HTTP ${res.status}`,
+                          variant: "destructive",
+                        });
+                      }
+                    } catch (err: any) {
+                      toast({ title: "Test failed", description: err?.message || "Network error", variant: "destructive" });
+                    }
+                  }}
+                >
+                  Test
+                </Button>
+              )}
+            </>
           )}
           <Button
             variant="outline"

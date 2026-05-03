@@ -1,11 +1,15 @@
 {
-  "name": "Hostezee",
+  "name": "Hostezee — Property Management",
   "short_name": "Hostezee",
   "description": "Smart Hotel Property Management System",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#1E3A5F",
   "background_color": "#ffffff",
+  "categories": ["business", "productivity"],
+  "gcm_sender_id": "103953800507",
   "icons": [
     {
       "src": "/favicon-16x16.png",

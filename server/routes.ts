@@ -157,24 +157,37 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 
 // Helper: send web push to all subscriptions for a list of user IDs
 async function sendPushToUsers(userIds: string[], payload: object) {
-  if (!process.env.VAPID_PUBLIC_KEY) return;
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    console.error("[Push] VAPID keys missing on this server — cannot send notifications. Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in env.");
+    return { sent: 0, failed: 0, skipped: true };
+  }
   const subs = await storage.getPushSubscriptionsByUserIds(userIds);
+  if (subs.length === 0) {
+    console.log(`[Push] No subscriptions found for users [${userIds.join(",")}]`);
+    return { sent: 0, failed: 0, skipped: false };
+  }
   const message = JSON.stringify(payload);
+  let sent = 0, failed = 0;
   for (const sub of subs) {
     try {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         message
       );
+      sent++;
     } catch (err: any) {
-      // 410 Gone = subscription expired/revoked — clean it up
+      failed++;
+      // 410 Gone / 404 = subscription expired/revoked — clean it up
       if (err.statusCode === 410 || err.statusCode === 404) {
+        console.log(`[Push] Cleaning up expired subscription (${err.statusCode}): ${sub.endpoint.slice(0, 60)}...`);
         await storage.deletePushSubscription(sub.endpoint);
       } else {
-        console.warn("[Push] Failed to send to", sub.endpoint, err.message);
+        console.error(`[Push] Send failed (status=${err.statusCode || "?"}) endpoint=${sub.endpoint.slice(0, 60)}... msg=${err.message}`);
       }
     }
   }
+  console.log(`[Push] Delivery summary: sent=${sent} failed=${failed} of ${subs.length} subs`);
+  return { sent, failed, skipped: false };
 }
 
 // Helper: sync inventory with automatic retry (up to 3 attempts, 2s back-off per attempt)
@@ -1273,6 +1286,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to remove subscription" });
+    }
+  });
+
+  // Send a TEST push notification to all of the current user's subscribed devices.
+  // Useful for verifying VAPID config + service worker registration end-to-end.
+  app.post("/api/push/test", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+        return res.status(503).json({
+          success: false,
+          message: "VAPID keys not configured on the server. Ask your admin to set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY.",
+        });
+      }
+
+      const result = await sendPushToUsers([userId], {
+        title: "Hostezee — Test Notification",
+        body: "Push notifications are working on this device.",
+        type: "test",
+        url: "/",
+      });
+
+      if (result.skipped) {
+        return res.status(503).json({ success: false, message: "Push system unavailable — VAPID keys missing." });
+      }
+      if (result.sent === 0 && result.failed === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No push subscriptions found for your account on this server. Click 'Enable Push' first.",
+        });
+      }
+      res.json({
+        success: result.sent > 0,
+        sent: result.sent,
+        failed: result.failed,
+        message: result.sent > 0
+          ? `Test notification sent to ${result.sent} device(s).`
+          : `Failed to deliver to all ${result.failed} device(s) — check server logs.`,
+      });
+    } catch (err: any) {
+      console.error("[Push] Test send error:", err);
+      res.status(500).json({ success: false, message: err.message || "Failed to send test notification" });
     }
   });
 
