@@ -25,11 +25,14 @@ function userAwareKey(req: Request): string {
 /**
  * General limiter — applied globally to /api/* before authentication runs.
  * Uses normalized IP (IPv6-safe) as the key since req.user is not populated yet.
- * 300 requests/min per IP.
+ * Raised to 1500/min/IP because in production multiple users share a NAT/proxy
+ * upstream, and dashboards fan out many concurrent requests on load (stats,
+ * properties, bookings, notifications, permissions, etc.). 300/min was being
+ * exhausted by a single active tab and surfaced as HTTP 429 on Settings.
  */
 export const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  max: 1500,
   keyGenerator: (req) => `ip:${ipKeyGenerator(req.ip ?? "")}`,
   standardHeaders: true,
   legacyHeaders: false,

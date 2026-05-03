@@ -59,15 +59,17 @@ export function usePushNotifications(isAuthenticated: boolean) {
   }, [isAuthenticated, isSupported]);
 
   const saveToServer = async (subJson: PushSubscriptionJSON) => {
-    try {
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(subJson),
-        credentials: "include",
-      });
-    } catch (err) {
-      console.warn("[Push] Failed to save subscription:", err);
+    const response = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subJson),
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.message || `Server error: ${response.status}`,
+      );
     }
   };
 
