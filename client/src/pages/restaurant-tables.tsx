@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, Download, QrCode as QrCodeIcon, Printer } from "lucide-react";
 import QRCodeGenerator from "qrcode";
@@ -54,7 +54,7 @@ export default function RestaurantTables() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [qrTable, setQrTable] = useState<RestaurantTable | null>(null);
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   const { data: properties } = useQuery<Property[]>({ queryKey: ["/api/properties"] });
 
@@ -136,25 +136,32 @@ export default function RestaurantTables() {
   }, [qrTable, propertyIdNum]);
 
   useEffect(() => {
-    if (!qrTable || !qrCanvasRef.current || !qrUrl) return;
-    QRCodeGenerator.toCanvas(qrCanvasRef.current, qrUrl, {
+    if (!qrTable || !qrUrl) {
+      setQrDataUrl("");
+      return;
+    }
+    QRCodeGenerator.toDataURL(qrUrl, {
       width: 320,
       margin: 2,
       color: { dark: "#000000", light: "#FFFFFF" },
-    });
-  }, [qrTable, qrUrl]);
+    })
+      .then(setQrDataUrl)
+      .catch((err) => {
+        console.error("QR generation failed", err);
+        toast({ title: "QR generation failed", description: err.message, variant: "destructive" });
+      });
+  }, [qrTable, qrUrl, toast]);
 
   const downloadQR = () => {
-    if (!qrCanvasRef.current || !qrTable) return;
+    if (!qrDataUrl || !qrTable) return;
     const link = document.createElement("a");
     link.download = `table-${qrTable.name}-qr.png`;
-    link.href = qrCanvasRef.current.toDataURL("image/png");
+    link.href = qrDataUrl;
     link.click();
   };
 
   const printQR = () => {
-    if (!qrCanvasRef.current || !qrTable) return;
-    const dataUrl = qrCanvasRef.current.toDataURL("image/png");
+    if (!qrDataUrl || !qrTable) return;
     const w = window.open("", "_blank");
     if (!w) return;
     const propName = properties?.find(p => p.id === propertyIdNum)?.name ?? "";
@@ -170,7 +177,7 @@ export default function RestaurantTables() {
       <body>
         <h1>Table ${qrTable.name}</h1>
         <h2>${propName}</h2>
-        <img src="${dataUrl}" />
+        <img src="${qrDataUrl}" />
         <p>Scan to view menu &amp; order</p>
         <script>setTimeout(()=>{window.print();window.close();},300);</script>
       </body></html>
@@ -344,11 +351,22 @@ export default function RestaurantTables() {
       <Dialog open={!!qrTable} onOpenChange={(o) => !o && setQrTable(null)}>
         <DialogContent className="max-w-sm" data-testid="dialog-qr">
           <DialogHeader>
-            <DialogTitle>Table {qrTable?.name} — QR Code</DialogTitle>
+            <DialogTitle data-testid="text-qr-title">{qrTable?.name} — QR Code</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col items-center gap-3 py-2">
-            <canvas ref={qrCanvasRef} className="border rounded" data-testid="canvas-qr" />
-            <p className="text-xs text-muted-foreground text-center break-all">{qrUrl}</p>
+            {qrDataUrl ? (
+              <img
+                src={qrDataUrl}
+                alt={`QR for ${qrTable?.name}`}
+                className="border rounded w-[320px] h-[320px]"
+                data-testid="img-qr"
+              />
+            ) : (
+              <div className="w-[320px] h-[320px] flex items-center justify-center text-sm text-muted-foreground border rounded">
+                Generating QR…
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground text-center break-all" data-testid="text-qr-url">{qrUrl}</p>
             <div className="flex gap-2 w-full">
               <Button onClick={downloadQR} variant="outline" className="flex-1" data-testid="button-download-qr">
                 <Download className="h-4 w-4 mr-1" /> Download
