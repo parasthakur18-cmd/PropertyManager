@@ -15,7 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertExtraServiceSchema, type ExtraService, type Booking } from "@shared/schema";
 import { z } from "zod";
 import { format } from "date-fns";
-import { Plus, Car, MapPin, Mountain, Percent, Trash2, CheckCircle2, Clock, Flame, Shirt, BedDouble, Bus } from "lucide-react";
+import { Plus, Car, MapPin, Mountain, Percent, Trash2, CheckCircle2, Clock, Flame, Shirt, BedDouble, Bus, Thermometer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ActiveBookingWithDetails extends Booking {
@@ -45,6 +45,7 @@ export const serviceTypeIcons: Record<string, any> = {
   laundry: Shirt,
   extra_bed: BedDouble,
   local_tour: Bus,
+  heater: Thermometer,
 };
 
 export const serviceTypeLabels: Record<string, string> = {
@@ -55,6 +56,7 @@ export const serviceTypeLabels: Record<string, string> = {
   bonfire: "Bonfire",
   laundry: "Laundry",
   extra_bed: "Extra Bed",
+  heater: "Room Heater",
   local_tour: "Local Tour",
   spa: "Spa / Massage",
   cycling: "Cycling / Bike Rental",
@@ -77,6 +79,7 @@ export const SERVICE_TYPES = [
   { value: "bonfire", label: "Bonfire" },
   { value: "laundry", label: "Laundry" },
   { value: "extra_bed", label: "Extra Bed" },
+  { value: "heater", label: "Room Heater" },
   { value: "local_tour", label: "Local Tour / Transport" },
   { value: "guide", label: "Local Guide" },
   { value: "adventure", label: "Adventure Package" },
