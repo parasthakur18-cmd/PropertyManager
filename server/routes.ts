@@ -155,6 +155,65 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
   );
 }
 
+// In-memory escalation tracker — if an order isn't acknowledged within 60s,
+// re-push an URGENT reminder to admin/kitchen + escalate to managers.
+// Cleared automatically when the order's status moves off "pending".
+const orderEscalationTimers = new Map<number, NodeJS.Timeout>();
+const ORDER_ESCALATION_MS = 60_000;
+
+function cancelOrderEscalation(orderId: number) {
+  const t = orderEscalationTimers.get(orderId);
+  if (t) {
+    clearTimeout(t);
+    orderEscalationTimers.delete(orderId);
+    console.log(`[Push] Escalation cancelled for order #${orderId} (acknowledged)`);
+  }
+}
+
+function scheduleOrderEscalation(orderId: number, baseUserIds: string[], summary: string, propertyId: number | null) {
+  cancelOrderEscalation(orderId);
+  const timer = setTimeout(async () => {
+    orderEscalationTimers.delete(orderId);
+    try {
+      const order = await storage.getOrder(orderId);
+      if (!order || order.status !== "pending") return;
+      // Add managers to the escalation list — but ONLY those who have access
+      // to this order's property (super-admins always; others must have the
+      // property in their assignedPropertyIds). Never leak across tenants.
+      let escalationIds = baseUserIds.slice();
+      try {
+        const allUsers = await storage.getAllUsers();
+        const orderPropId = propertyId ?? order.propertyId ?? null;
+        const orderPropIdStr = orderPropId !== null ? String(orderPropId) : null;
+        const managerIds = allUsers
+          .filter((u: any) => {
+            const isMgr = u.role === "manager" || u.role === "admin" || u.role === "super-admin";
+            if (!isMgr) return false;
+            if (u.role === "super-admin") return true;
+            if (orderPropIdStr === null) return false;
+            const assigned: string[] = Array.isArray(u.assignedPropertyIds) ? u.assignedPropertyIds.map(String) : [];
+            return assigned.includes(orderPropIdStr);
+          })
+          .map((u: any) => u.id);
+        escalationIds = Array.from(new Set([...escalationIds, ...managerIds]));
+      } catch {}
+      console.log(`[Push] ESCALATION: order #${orderId} unacknowledged after ${ORDER_ESCALATION_MS / 1000}s — re-pushing to ${escalationIds.length} users`);
+      await sendPushToUsers(escalationIds, {
+        type: "order_escalation",
+        title: "⚠️ URGENT: Unacknowledged Order",
+        body: `Order #${orderId} ${summary} still pending after ${ORDER_ESCALATION_MS / 1000}s.`,
+        url: `/restaurant?order=${orderId}`,
+        orderId,
+        urgent: true,
+      });
+    } catch (err: any) {
+      console.error(`[Push] Escalation failed for order #${orderId}:`, err.message);
+    }
+  }, ORDER_ESCALATION_MS);
+  orderEscalationTimers.set(orderId, timer);
+  console.log(`[Push] Escalation scheduled for order #${orderId} in ${ORDER_ESCALATION_MS / 1000}s`);
+}
+
 // Helper: send web push to all subscriptions for a list of user IDs
 async function sendPushToUsers(userIds: string[], payload: object) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
@@ -948,7 +1007,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           url: "/restaurant",
           orderId: order.id,
         };
-        await sendPushToUsers(relevantUsers.map(u => u.id), pushPayload);
+        const relevantIds = relevantUsers.map(u => u.id);
+        await sendPushToUsers(relevantIds, pushPayload);
+        // Schedule 60s escalation reminder if not acknowledged
+        scheduleOrderEscalation(order.id, relevantIds, `from ${custLabel}${roomLabel}`, order.propertyId ?? null);
       } catch (pushErr: any) {
         console.warn("[Push] Public order push failed:", pushErr.message);
       }
@@ -1286,6 +1348,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to remove subscription" });
+    }
+  });
+
+  // List the current user's push subscriptions (for Device Management UI).
+  app.get("/api/push/subscriptions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const subs = await storage.getPushSubscriptionsByUserIds([userId]);
+      // Don't expose the full endpoint — last 32 chars are enough to identify
+      res.json(subs.map(s => ({
+        id: s.id,
+        endpointHash: s.endpoint.slice(-32),
+        userAgent: s.userAgent || null,
+        createdAt: s.createdAt,
+      })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -7592,6 +7672,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const adminUserIds = adminUsers.map(u => u.id);
           await sendPushToUsers(adminUserIds, pushPayload);
           console.log(`[Push] Order push sent to ${adminUserIds.length} users`);
+          // Schedule 60s escalation reminder if not acknowledged
+          scheduleOrderEscalation(order.id, adminUserIds, `(${roomLabel}, ₹${totalAmountStr})`, order.propertyId ?? null);
         } catch (pushErr: any) {
           console.warn("[Push] Failed to send order push:", pushErr.message);
         }
@@ -7824,6 +7906,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const { status, paymentMethod } = req.body;
       const orderId = parseInt(req.params.id);
 
+      // Acknowledging the order — cancel any pending escalation reminder
+      cancelOrderEscalation(orderId);
+
       // Build update payload
       const updatePayload: Record<string, any> = { status };
 
@@ -7866,7 +7951,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
   app.patch("/api/orders/:id", isAuthenticated, async (req, res) => {
     try {
-      const order = await storage.updateOrder(parseInt(req.params.id), req.body);
+      const orderId = parseInt(req.params.id);
+      // If status is being changed off "pending" via this generic endpoint,
+      // cancel any pending escalation reminder.
+      if (req.body && typeof req.body.status === "string" && req.body.status !== "pending") {
+        cancelOrderEscalation(orderId);
+      }
+      const order = await storage.updateOrder(orderId, req.body);
       res.json(order);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

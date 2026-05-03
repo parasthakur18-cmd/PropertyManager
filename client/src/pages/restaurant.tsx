@@ -54,6 +54,74 @@ export default function Kitchen() {
   const previousOrderCountRef = useRef<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const { status: pushStatus, subscribe: pushSubscribe, unsubscribe: pushUnsubscribe } = usePushNotifications(true);
+
+  // ─── PRO Notification Layer state ─────────────────────────────────────────
+  // Sound preset: maps to volume/repeat/tone. Stored in localStorage.
+  type SoundPreset = "silent" | "normal" | "loud";
+  const SOUND_PRESETS: Record<SoundPreset, { isEnabled: boolean; volume: number; repeatCount: number; alarmTone: any }> = {
+    silent: { isEnabled: false, volume: 0.5, repeatCount: 1, alarmTone: "bell" },
+    normal: { isEnabled: true, volume: 0.5, repeatCount: 2, alarmTone: "bell" },
+    loud:   { isEnabled: true, volume: 1.0, repeatCount: 8, alarmTone: "urgent" },
+  };
+  const [soundPreset, setSoundPreset] = useState<SoundPreset>(() =>
+    ((typeof window !== "undefined" && (localStorage.getItem("kitchen.soundPreset") as SoundPreset)) || "loud")
+  );
+  const applySoundPreset = (preset: SoundPreset) => {
+    const p = SOUND_PRESETS[preset];
+    setIsEnabled(p.isEnabled);
+    setVolume(p.volume);
+    setRepeatCount(p.repeatCount);
+    setAlarmTone(p.alarmTone);
+    setSoundPreset(preset);
+    localStorage.setItem("kitchen.soundPreset", preset);
+  };
+  // Apply the saved preset on first mount
+  const presetAppliedRef = useRef(false);
+  useEffect(() => {
+    if (presetAppliedRef.current) return;
+    presetAppliedRef.current = true;
+    const p = SOUND_PRESETS[soundPreset];
+    setIsEnabled(p.isEnabled);
+    setVolume(p.volume);
+    setRepeatCount(p.repeatCount);
+    setAlarmTone(p.alarmTone);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Repeat-until-acknowledged: keeps ringing every 15s while pending orders exist.
+  const [repeatUntilAck, setRepeatUntilAck] = useState<boolean>(() =>
+    typeof window !== "undefined" && localStorage.getItem("kitchen.repeatUntilAck") === "true"
+  );
+  useEffect(() => {
+    localStorage.setItem("kitchen.repeatUntilAck", String(repeatUntilAck));
+  }, [repeatUntilAck]);
+
+  // Diagnostics: VAPID configured + service worker active
+  const [vapidConfigured, setVapidConfigured] = useState<boolean | null>(null);
+  const [swActive, setSwActive] = useState<boolean>(false);
+  const [devices, setDevices] = useState<Array<{ id: number; endpointHash: string; userAgent: string | null; createdAt: string }>>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/push/vapid-public-key", { credentials: "include" });
+        const j = await r.json();
+        setVapidConfigured(!!j?.publicKey);
+      } catch { setVapidConfigured(false); }
+      try {
+        if ("serviceWorker" in navigator) {
+          const reg = await navigator.serviceWorker.getRegistration();
+          setSwActive(!!reg?.active);
+        }
+      } catch { setSwActive(false); }
+    })();
+  }, [pushStatus]);
+  useEffect(() => {
+    if (!showSettings) return;
+    fetch("/api/push/subscriptions", { credentials: "include" })
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setDevices(Array.isArray(d) ? d : []))
+      .catch(() => setDevices([]));
+  }, [showSettings, pushStatus]);
   const [activeTab, setActiveTab] = useState("active");
   const [completedSearch, setCompletedSearch] = useState("");
   const [completedDate, setCompletedDate] = useState("");
@@ -214,8 +282,9 @@ export default function Kitchen() {
       // Skip only on initial load (when previousOrderCountRef is null)
       if (previousOrderCountRef.current !== null && pendingCount > previousOrderCountRef.current) {
         playNotification();
+        const newCount = pendingCount - previousOrderCountRef.current;
         toast({
-          title: "New Order Received!",
+          title: newCount > 1 ? `${newCount} new orders received!` : "New Order Received!",
           description: `You have ${pendingCount} pending order${pendingCount > 1 ? 's' : ''}`,
         });
       }
@@ -224,6 +293,15 @@ export default function Kitchen() {
       previousOrderCountRef.current = pendingCount;
     }
   }, [orders, playNotification, toast]);
+
+  // Repeat-until-acknowledged: re-ring every 15s while pending orders exist.
+  // Stops automatically as soon as staff marks the order preparing/ready/delivered.
+  const pendingCountForRepeat = (orders || []).filter(o => o.status === "pending").length;
+  useEffect(() => {
+    if (!repeatUntilAck || !isEnabled || pendingCountForRepeat === 0) return;
+    const id = setInterval(() => playNotification(), 15000);
+    return () => clearInterval(id);
+  }, [repeatUntilAck, isEnabled, pendingCountForRepeat, playNotification]);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, paymentMethod }: { id: number; status: string; paymentMethod?: string }) => {
@@ -854,10 +932,113 @@ export default function Kitchen() {
       {showSettings && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-lg">Alarm Settings</CardTitle>
+            <CardTitle className="text-lg">Notification Settings</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <CardContent className="space-y-6">
+            {/* ── Sound Mode Presets ─────────────────────────────────────── */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Sound Mode</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["silent", "normal", "loud"] as const).map(p => (
+                  <Button
+                    key={p}
+                    variant={soundPreset === p ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => applySoundPreset(p)}
+                    data-testid={`button-sound-preset-${p}`}
+                    className="capitalize"
+                  >
+                    {p === "silent" ? "🔇 Silent" : p === "normal" ? "🔔 Normal" : "🚨 Loud (Kitchen)"}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Loud mode rings 8 times at full volume with the urgent tone — recommended for noisy kitchens.
+              </p>
+            </div>
+
+            {/* ── Repeat Until Acknowledged ──────────────────────────────── */}
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/40">
+              <Switch
+                checked={repeatUntilAck}
+                onCheckedChange={setRepeatUntilAck}
+                data-testid="toggle-repeat-until-ack"
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <Label className="cursor-pointer font-medium">Repeat sound until acknowledged</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Keeps ringing every 15&nbsp;seconds as long as a pending order is on screen. Stops the moment you tap Accept / Preparing / Ready.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Diagnostics ────────────────────────────────────────────── */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">System Health</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                {[
+                  { label: "VAPID keys configured", ok: vapidConfigured === true, loading: vapidConfigured === null, hint: "Server-side push key" },
+                  { label: "Service worker active", ok: swActive, loading: false, hint: "Required for background push" },
+                  { label: "This device subscribed", ok: pushStatus === "subscribed", loading: pushStatus === "loading", hint: pushStatus === "denied" ? "Browser blocked notifications" : "Push permission granted" },
+                ].map(d => (
+                  <div key={d.label} className="flex items-center gap-2 p-2 rounded border bg-background" data-testid={`diag-${d.label.replace(/\s+/g,'-').toLowerCase()}`}>
+                    <span className={
+                      d.loading
+                        ? "h-2 w-2 rounded-full bg-amber-400 animate-pulse"
+                        : d.ok
+                        ? "h-2 w-2 rounded-full bg-green-500"
+                        : "h-2 w-2 rounded-full bg-red-500"
+                    } />
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{d.label}</div>
+                      <div className="text-muted-foreground truncate">{d.loading ? "Checking…" : d.ok ? "OK" : d.hint}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Subscribed Devices ─────────────────────────────────────── */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Your Subscribed Devices ({devices.length})</label>
+                {pushStatus !== "subscribed" && pushStatus !== "denied" && pushStatus !== "unsupported" && (
+                  <Button size="sm" variant="outline" onClick={pushSubscribe} data-testid="button-subscribe-this-device">
+                    Subscribe this device
+                  </Button>
+                )}
+              </div>
+              {devices.length === 0 ? (
+                <p className="text-xs text-muted-foreground p-3 border rounded bg-muted/30">
+                  No devices subscribed yet. Click "Enable Push" at the top of this page on every device that should receive order alerts (phone, kitchen tablet, manager laptop, etc).
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {devices.map(d => {
+                    const ua = d.userAgent || "";
+                    const friendly = /iphone/i.test(ua) ? "📱 iPhone" : /android/i.test(ua) ? "📱 Android" : /ipad/i.test(ua) ? "📱 iPad" : /macintosh|mac os/i.test(ua) ? "💻 Mac" : /windows/i.test(ua) ? "💻 Windows" : /linux/i.test(ua) ? "💻 Linux" : "🌐 Device";
+                    const browser = /edg\//i.test(ua) ? "Edge" : /chrome/i.test(ua) ? "Chrome" : /safari/i.test(ua) ? "Safari" : /firefox/i.test(ua) ? "Firefox" : "Browser";
+                    return (
+                      <div key={d.id} className="flex items-center justify-between gap-2 p-2 rounded border bg-background text-xs" data-testid={`device-${d.id}`}>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium">{friendly} · {browser}</div>
+                          <div className="text-muted-foreground truncate">
+                            Added {d.createdAt ? format(new Date(d.createdAt), "d MMM yyyy, HH:mm") : "—"} · ID …{d.endpointHash.slice(-8)}
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-medium">Active</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Advanced (existing controls) ───────────────────────────── */}
+            <details className="border rounded-lg">
+              <summary className="px-3 py-2 cursor-pointer text-sm font-medium hover:bg-muted/30">Advanced sound controls</summary>
+              <div className="p-3 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Alarm Tone</label>
                 <Select value={alarmTone} onValueChange={(value: any) => setAlarmTone(value)}>
@@ -875,16 +1056,14 @@ export default function Kitchen() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Repeat Times</label>
-                <Select value={String(repeatCount)} onValueChange={(value) => setRepeatCount(Number(value))}>
+                <Select value={String(repeatCount)} onValueChange={(value) => { setRepeatCount(Number(value)); setSoundPreset("normal"); localStorage.removeItem("kitchen.soundPreset"); }}>
                   <SelectTrigger data-testid="select-repeat-count">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 time</SelectItem>
-                    <SelectItem value="2">2 times</SelectItem>
-                    <SelectItem value="3">3 times</SelectItem>
-                    <SelectItem value="4">4 times</SelectItem>
-                    <SelectItem value="5">5 times</SelectItem>
+                    {[1,2,3,4,5,6,7,8,10].map(n => (
+                      <SelectItem key={n} value={String(n)}>{n} time{n > 1 ? "s" : ""}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -901,16 +1080,18 @@ export default function Kitchen() {
                   className="mt-2"
                 />
               </div>
-            </div>
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => playNotification()}
-              data-testid="button-test-alarm"
-            >
-              🔊 Test Alarm
-            </Button>
+              <div className="md:col-span-3">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => playNotification()}
+                  data-testid="button-test-alarm"
+                >
+                  🔊 Test Alarm
+                </Button>
+              </div>
+              </div>
+            </details>
           </CardContent>
         </Card>
       )}
