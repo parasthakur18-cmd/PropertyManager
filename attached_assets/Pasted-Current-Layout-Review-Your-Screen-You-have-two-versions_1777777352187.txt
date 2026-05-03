@@ -1,0 +1,141 @@
+Current Layout Review (Your Screen)
+
+You have two versions:
+
+With Guest column
+Without Guest (more compact)
+
+👉 Honestly: Version 1 (with Guest) is better — but still not optimized.
+
+❌ What’s Wrong (Real Problems)
+1. Too Many Columns → Brain Load
+
+Right now:
+
+Guest | Property | Room | Check-in | Check-out | Guests | Meal | Amount | Advance | Source | Status | Actions
+
+👉 This is too wide + too flat
+
+Result:
+
+Staff needs 3–5 seconds to read 1 row
+Important things (TBA, Pending) get lost
+2. No Visual Hierarchy
+
+Everything looks same:
+
+₹1701 = same weight as “TBA” ❌
+Booking.com = same as “Pending” ❌
+
+👉 Your eye doesn’t know where to look first
+
+3. TBA Not Highlighted (BIG ISSUE)
+
+Example:
+
+Room: TBA
+
+👉 This should be 🚨 critical
+But right now → looks normal
+
+4. Actions Are Overloaded
+Pay link
+Send
+WhatsApp
+Edit
+Delete
+
+👉 Too many small icons → high chance of wrong click
+
+5. Guest Info is Good but Not Structured
+
+You have:
+
+Name
+Phone
+Icons
+
+👉 Good, but spacing + alignment can improve
+
+🔥 Now Here’s the Correct Layout (For Hostezee)
+
+I’ll redesign your exact table — not changing system, only improving UX
+
+✅ FINAL RECOMMENDED LAYOUT
+🟢 1. Merge Columns (Reduce Width)
+Replace this:
+Check-in | Check-out | Guests | Meal
+With:
+03–04 May • 2 Guests • EP
+
+👉 Removes 3 columns instantly
+
+🟡 2. Strong Row Structure
+
+Each row should look like:
+
+[ Rahul Bangwal ] 📞 +91xxxxxx
+Woodpecker Inn | 03–04 May • 2 Guests • EP
+
+⚠️ Room: TBA        🟠 Pending Payment
+₹1701 | Booking.com
+
+[ Assign Room ]   [ Check-in ]   [ Manage ]
+🔴 3. Highlight Critical Things
+Make these impossible to miss:
+TBA → Red/Orange badge
+⚠️ Room Not Assigned
+Pending → Orange
+Checked-in → Green
+
+👉 Right now your system is too neutral
+
+🔵 4. Fix Actions (VERY IMPORTANT)
+Remove:
+
+❌ 5–6 small icons
+
+Replace with:
+[ Manage ]
+
+👉 On click → open side panel
+
+🟣 5. Keep Only Important Inline Actions
+
+Show only:
+
+Assign Room (if TBA)
+Check-in (if ready)
+Collect Payment (if pending)
+
+👉 Smart buttons, not static icons
+
+🟠 6. Improve Top Section (Small but Powerful)
+
+Your current:
+
+All | Active | Completed | Cancelled | No Show
+
+👉 Upgrade to:
+
+All | Active | Today Check-ins | Pending Payments ⚠️ | Issues 🚨
+⚡ 7. Add Row Color Coding
+Case	Color
+TBA	Light Red
+Pending Payment	Light Orange
+Checked-in	Light Green
+
+👉 You’ll scan 100 bookings in seconds
+
+🧠 Which Version to Keep?
+
+👉 Keep Version 1 (with Guest column)
+👉 Remove Version 2 (no guest = confusing)
+
+🚀 Final Result After Fix
+
+✅ No horizontal scrolling
+✅ Faster decision making
+✅ Staff friendly
+✅ Fewer mistakes
+✅ Premium PMS feel
