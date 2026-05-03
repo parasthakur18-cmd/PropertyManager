@@ -18991,11 +18991,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             || (incomingRoomCode || "").toLowerCase().includes("dorm")
             || (mapping.aiosellRoomCode || "").toLowerCase().includes("dorm");
 
+          // For regular rooms: exclude only truly blocked rooms (maintenance/out-of-order/blocked).
+          // Do NOT exclude "occupied" rooms — a room can be occupied by today's checkout and still
+          // be validly assigned to a new booking starting today (back-to-back). Date-based overlap
+          // check via overlappingRoomIds handles actual conflicts; room.status is only for maintenance.
           const mappedRoomRows = await db.select().from(rooms)
             .where(and(
               eq(rooms.propertyId, config.propertyId),
               eq(rooms.roomType, mapping.hostezeeRoomType),
-              ...(isDormMapping ? [] : [eq(rooms.status, "available")]),
+              ...(isDormMapping ? [] : [not(inArray(rooms.status, ["maintenance", "out-of-order", "blocked"]))]),
             ));
 
           // Determine true dormitory rooms by roomCategory
