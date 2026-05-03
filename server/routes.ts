@@ -1301,9 +1301,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(userWithProperty);
-    } catch (error) {
+    } catch (error: any) {
+      // TEMP DEBUG: surface the underlying DB/runtime error so the live
+      // server's 500 stops being opaque. Safe to revert once root cause
+      // is found.
       console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+      console.error("Error fetching user (stack):", error?.stack);
+      res.status(500).json({
+        message: "Failed to fetch user",
+        debug: {
+          name: error?.name || null,
+          code: error?.code || null,
+          detail: error?.detail || null,
+          message: error?.message || String(error),
+          where: error?.where || null,
+        },
+      });
     }
   });
 
