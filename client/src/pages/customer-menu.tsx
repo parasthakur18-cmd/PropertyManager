@@ -42,6 +42,8 @@ export default function CustomerMenu() {
   const urlProperty = new URLSearchParams(window.location.search).get("property") || "";
   const urlTable = new URLSearchParams(window.location.search).get("table") || "";
   const isTableMode = !!urlTable;
+  // Smart label: don't double-prefix if the table is already named "Table 1".
+  const tableLabel = /^table\b/i.test(urlTable.trim()) ? urlTable.trim() : `Table ${urlTable.trim()}`;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -327,7 +329,7 @@ export default function CustomerMenu() {
                   className="text-sm px-3 py-1 bg-white/95 text-primary border-0 font-semibold"
                   data-testid="badge-table-mode"
                 >
-                  Table {urlTable}
+                  {tableLabel}
                 </Badge>
               )}
             </div>
@@ -426,7 +428,15 @@ export default function CustomerMenu() {
         </div>
       )}
 
-      {selectedCategoryId === "none" && !searchQuery && (
+      {(!menuItems || menuItems.length === 0) ? (
+        <div className="max-w-7xl mx-auto px-4 py-16 text-center" data-testid="empty-menu">
+          <p className="text-2xl mb-2">🍽️</p>
+          <p className="text-lg font-semibold">Menu not available</p>
+          <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">
+            This restaurant hasn't added any items yet. Please ask the staff to scan you the correct table QR, or try again later.
+          </p>
+        </div>
+      ) : selectedCategoryId === "none" && !searchQuery && (
         <div className="max-w-7xl mx-auto px-4 py-12 text-center">
           <p className="text-muted-foreground text-lg">
             Tap a category above to browse the menu
@@ -745,7 +755,7 @@ export default function CustomerMenu() {
                 {isTableMode ? (
                   <div className="rounded-md border bg-muted/40 p-3 text-sm">
                     <div className="font-semibold flex items-center gap-2">
-                      🍽️ Ordering for <span className="text-primary">Table {urlTable}</span>
+                      🍽️ Ordering for <span className="text-primary">{tableLabel}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Your food will be served to this table.

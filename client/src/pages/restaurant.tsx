@@ -624,7 +624,7 @@ export default function Kitchen() {
                 <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
                   {orderType === "restaurant" ? (
                     order.tableNumber
-                      ? `Table ${order.tableNumber}${customerName ? ` - ${customerName}` : ""}`
+                      ? `${/^table\b/i.test(String(order.tableNumber).trim()) ? String(order.tableNumber).trim() : `Table ${String(order.tableNumber).trim()}`}${customerName ? ` - ${customerName}` : ""}`
                       : (customerName || "Dine-in Guest")
                   ) : showRoomNumber ? (
                     `Room ${roomNumber}${customerName ? ` - ${customerName}` : ""}`
