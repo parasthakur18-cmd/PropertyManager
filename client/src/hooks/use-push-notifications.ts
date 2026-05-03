@@ -39,8 +39,11 @@ export function usePushNotifications(isAuthenticated: boolean) {
         if (existingSub) {
           subRef.current = existingSub.toJSON();
           setStatus("subscribed");
-          // Re-save subscription to server in case it's a new device
-          await saveToServer(existingSub.toJSON());
+          // Re-save subscription to server in case it's a new device or the
+          // server lost it. Failures here are silent because we don't want
+          // to nag the user on every page load — but the subscribe() flow
+          // below will surface server failures loudly.
+          try { await saveToServer(existingSub.toJSON()); } catch {}
         } else if (Notification.permission === "denied") {
           setStatus("denied");
         } else {
