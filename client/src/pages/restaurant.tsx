@@ -1477,46 +1477,87 @@ export default function Kitchen() {
             <div className="space-y-4">
               <div className="space-y-3">
                 <Label>Order Items</Label>
-                {editedItems.map((item, index) => (
-                  <div key={index} className="flex gap-2 items-center">
-                    <div className="flex-1">
-                      <Input
-                        value={item.name}
-                        disabled
-                        className="bg-muted"
+                {editedItems.map((item, index) => {
+                  const lineTotal = (parseFloat(item.price) || 0) * item.quantity;
+                  return (
+                    <div
+                      key={index}
+                      className="rounded-md border p-3 space-y-2"
+                      data-testid={`row-edit-item-${index}`}
+                    >
+                      {/* Item name — full width, always readable */}
+                      <div
+                        className="text-sm font-semibold break-words leading-snug"
                         data-testid={`input-item-name-${index}`}
-                      />
-                    </div>
-                    <div className="w-24">
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
-                        data-testid={`input-item-quantity-${index}`}
-                      />
-                    </div>
-                    <div className="w-28">
-                      <Input
-                        value={`₹${item.price}`}
-                        disabled
-                        className="bg-muted"
-                        data-testid={`input-item-price-${index}`}
-                      />
-                    </div>
-                    {editedItems.length > 1 && (
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        onClick={() => removeItem(index)}
-                        data-testid={`button-remove-item-${index}`}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                        {item.name}
+                      </div>
+
+                      {/* Qty stepper + line total + delete */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            onClick={() => updateItemQuantity(index, Math.max(1, item.quantity - 1))}
+                            data-testid={`button-item-qty-down-${index}`}
+                            aria-label="Decrease quantity"
+                          >
+                            −
+                          </Button>
+                          <Input
+                            type="number"
+                            min="1"
+                            inputMode="numeric"
+                            value={item.quantity}
+                            onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
+                            className="h-9 w-14 text-center px-1"
+                            data-testid={`input-item-quantity-${index}`}
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9"
+                            onClick={() => updateItemQuantity(index, item.quantity + 1)}
+                            data-testid={`button-item-qty-up-${index}`}
+                            aria-label="Increase quantity"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="text-right">
+                          <div
+                            className="font-mono text-sm font-semibold"
+                            data-testid={`text-item-line-total-${index}`}
+                          >
+                            ₹{lineTotal.toFixed(2)}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            ₹{item.price} each
+                          </div>
+                        </div>
+
+                        {editedItems.length > 1 && (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9 text-destructive border-destructive/40 hover:bg-destructive/10"
+                            onClick={() => removeItem(index)}
+                            data-testid={`button-remove-item-${index}`}
+                            aria-label="Remove item"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
               
               <div className="space-y-2 pt-4 border-t">
