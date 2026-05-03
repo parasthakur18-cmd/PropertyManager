@@ -1176,13 +1176,13 @@ export default function ActiveBookings() {
             const balance = parseFloat(booking.charges.subtotal) - parseFloat(booking.advanceAmount || "0");
             return (
             <Card key={booking.id} data-testid={`card-active-booking-${booking.id}`}
-              className={`overflow-hidden ${isOverdueBooking(booking) ? "border-red-400 border-2" : ""}`}
+              className="overflow-hidden hover:shadow-md transition-shadow"
             >
-              {/* Overdue alert — compact */}
+              {/* Overdue alert — top strip only (no full-card red border) */}
               {isOverdueBooking(booking) && (
-                <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-800 px-3 py-1.5">
-                  <AlertCircle className="h-3.5 w-3.5 text-red-600 shrink-0" />
-                  <span className="text-red-700 dark:text-red-300 text-xs font-medium">
+                <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-xs font-semibold">
                     Overdue — was due {format(new Date(booking.checkOutDate), "dd MMM")}. Process checkout or extend.
                   </span>
                 </div>
@@ -1223,10 +1223,12 @@ export default function ActiveBookings() {
                   <div className="text-right shrink-0">
                     <div className="font-bold text-base leading-tight">₹{parseFloat(booking.charges.subtotal).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
                     {parseFloat(booking.advanceAmount) > 0 && (
-                      <div className="text-[10px] text-muted-foreground">Adv ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[10px] text-muted-foreground leading-tight">Adv ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
                     )}
                     {balance > 0 && (
-                      <div className="text-[10px] text-amber-600 font-medium">Bal ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                        Balance ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1563,12 +1565,12 @@ export default function ActiveBookings() {
                 </div>
               )}
 
-              {/* Primary action buttons */}
-              <div className="px-3 pb-3 pt-1 flex gap-2 border-t mt-0">
+              {/* Primary action buttons - Checkout is dominant; Service is secondary */}
+              <div className="px-3 pb-3 pt-1.5 flex flex-col sm:flex-row gap-2 border-t mt-0">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20"
+                  className="h-9 sm:h-9 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-900/20 sm:w-auto w-full sm:px-3 shrink-0"
                   onClick={() => setAddServiceDialog({ open: true, bookingId: booking.id, guestName: booking.guest.fullName })}
                   data-testid={`button-add-service-${booking.id}`}
                 >
@@ -1578,7 +1580,7 @@ export default function ActiveBookings() {
                 {booking.status !== "checked-out" && (
                   <Button
                     size="sm"
-                    className="flex-1 h-8 text-xs"
+                    className="flex-1 h-9 text-sm font-semibold w-full sm:w-auto shadow-sm"
                     variant="default"
                     onClick={async () => {
                       setMergedBookingDetails(null);
@@ -1657,7 +1659,7 @@ export default function ActiveBookings() {
                 {booking.status === "checked-out" && isAdmin && (
                   <Button
                     size="sm"
-                    className="flex-1 h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                    className="flex-1 h-9 text-sm font-semibold w-full sm:w-auto bg-teal-600 hover:bg-teal-700 text-white shadow-sm"
                     onClick={() => reopenBookingMutation.mutate(booking.id)}
                     disabled={reopenBookingMutation.isPending}
                     data-testid={`button-reopen-booking-${booking.id}`}
