@@ -2285,8 +2285,8 @@ export default function Bookings() {
                       : "";
 
                     const statusLabel: Record<string, string> = {
-                      pending: "🟠 Pending",
-                      pending_advance: "🟠 Pending Pay",
+                      pending: "🟠 Pending Payment",
+                      pending_advance: "🟠 Pending Payment",
                       confirmed: "Confirmed",
                       "checked-in": "🟢 Checked-in",
                       "checked-out": "Checked-out",
@@ -2299,7 +2299,7 @@ export default function Bookings() {
 
                     return (
                       <TableRow key={booking.id} className={`hover-elevate ${rowTint}`} data-testid={`row-booking-${booking.id}`}>
-                        <TableCell className="py-2" data-testid={`text-guest-${booking.id}`}>
+                        <TableCell className="py-1.5" data-testid={`text-guest-${booking.id}`}>
                           <div className="flex flex-col">
                             <div className="font-semibold text-sm leading-tight">
                               {guest?.fullName || "Unknown Guest"}
@@ -2342,22 +2342,22 @@ export default function Bookings() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="py-2 text-sm" data-testid={`text-property-${booking.id}`}>
+                        <TableCell className="py-1.5 text-sm" data-testid={`text-property-${booking.id}`}>
                           {property?.name || "Unknown"}
                           {booking.isGroupBooking && (
                             <Badge variant="secondary" className="ml-1 text-xs bg-blue-500 text-white">Group</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="py-2 text-sm" data-testid={`text-room-${booking.id}`}>
+                        <TableCell className="py-1.5 text-sm" data-testid={`text-room-${booking.id}`}>
                           {isTba ? (
                             <Badge className="bg-red-600 hover:bg-red-700 text-white text-xs whitespace-nowrap" data-testid={`badge-tba-${booking.id}`}>
-                              <AlertTriangle className="h-3 w-3 mr-1" /> TBA
+                              <AlertTriangle className="h-3 w-3 mr-1" /> TBA (Not Assigned)
                             </Badge>
                           ) : (
                             <span className="font-mono font-medium">{roomDisplay}</span>
                           )}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap py-2 text-sm" data-testid={`text-stay-${booking.id}`}>
+                        <TableCell className="whitespace-nowrap py-1.5 text-sm" data-testid={`text-stay-${booking.id}`}>
                           <div className="flex flex-col leading-tight">
                             <span className="font-medium">{stayLabel}</span>
                             <span className="text-xs text-muted-foreground">
@@ -2365,32 +2365,33 @@ export default function Bookings() {
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="font-mono font-semibold py-2 text-sm" data-testid={`text-amount-${booking.id}`}>
+                        <TableCell className="font-mono font-semibold py-1.5 text-sm" data-testid={`text-amount-${booking.id}`}>
                           {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
                         </TableCell>
-                        <TableCell className="py-2 text-sm" data-testid={`text-advance-${booking.id}`}>
+                        <TableCell className="py-1.5 text-sm" data-testid={`text-advance-${booking.id}`}>
                           {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? (
-                            <span className="flex items-center gap-1">
-                              <span className="font-mono text-green-600">₹{booking.advanceAmount}</span>
+                            <span className="text-sm">
+                              <span className="font-mono font-semibold text-green-600 dark:text-green-400">₹{booking.advanceAmount}</span>
+                              <span className="text-muted-foreground"> Paid</span>
                               {(booking as any).advancePaymentMethod && (
-                                <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-1.5 py-0.5 rounded">
-                                  {(booking as any).advancePaymentMethod === "cash" ? "Cash" : "UPI"}
+                                <span className="text-muted-foreground">
+                                  {" "}({(booking as any).advancePaymentMethod === "cash" ? "Cash" : "UPI"})
                                 </span>
                               )}
                             </span>
                           ) : <span className="text-muted-foreground">-</span>}
                         </TableCell>
-                        <TableCell className="py-2 text-sm" data-testid={`text-source-${booking.id}`}>
-                          <Badge variant="outline" className="text-xs">
+                        <TableCell className="py-1.5 text-sm" data-testid={`text-source-${booking.id}`}>
+                          <Badge variant="secondary" className="text-xs font-medium rounded-full px-2 py-0.5">
                             {normalizeSource(booking.source)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="py-2">
+                        <TableCell className="py-1.5">
                           <Badge className={`${statusColors[booking.status as keyof typeof statusColors]} text-xs whitespace-nowrap`} data-testid={`badge-status-${booking.id}`}>
                             {statusLabel[booking.status] || booking.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right py-2">
+                        <TableCell className="text-right py-1.5">
                           <div className="flex items-center justify-end gap-1">
                             {/* Smart contextual buttons (max 2) */}
                             {needsPayment && (
@@ -2404,7 +2405,7 @@ export default function Bookings() {
                                 data-testid={`button-collect-payment-${booking.id}`}
                               >
                                 <Wallet className="h-3.5 w-3.5 mr-1" />
-                                {booking.status === "pending_advance" ? "Resend Pay" : "Collect Pay"}
+                                {booking.status === "pending_advance" ? "Resend" : "Collect"}
                               </Button>
                             )}
                             {isTba && (
