@@ -10,7 +10,10 @@ export function usePropertyFilter() {
     queryKey: ["/api/properties"],
   });
 
-  const isSuperAdmin = user?.role === "super-admin" || user?.role === "admin";
+  // Only the platform super-admin gets the cross-property "All Properties"
+  // view. Regular property admins are tenant-scoped and must pick a single
+  // property even if they happen to be assigned to multiple.
+  const isSuperAdmin = user?.role === "super-admin";
 
   const availableProperties = useMemo(() => {
     if (!properties) return [];

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Building2, Check, ChevronDown } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -36,10 +37,18 @@ export function PropertyScopePicker({
   selectedPropertyId,
   onPropertyChange,
   allowAll = true,
-  isSuperAdmin = false,
+  isSuperAdmin: isSuperAdminProp,
   className,
 }: PropertyScopePickerProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Source the super-admin signal from the auth context so every call site
+  // gets correct tenant scoping without having to thread the prop through.
+  // The explicit prop, when provided, still wins (kept for back-compat).
+  const { user } = useAuth();
+  const isSuperAdmin =
+    typeof isSuperAdminProp === "boolean"
+      ? isSuperAdminProp
+      : (user as any)?.role === "super-admin";
 
   useEffect(() => {
     if (availableProperties.length === 1 && !isSuperAdmin && selectedPropertyId !== availableProperties[0].id) {
@@ -70,6 +79,11 @@ export function PropertyScopePicker({
     return null;
   }
 
+  // Only the platform super-admin should ever see "All Properties". A
+  // tenant-scoped admin or staff with multiple assigned properties must
+  // still pick one explicitly to prevent cross-property data aggregation.
+  const showAllOption = allowAll && isSuperAdmin;
+
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <Building2 className="h-4 w-4 text-muted-foreground hidden sm:block" />
@@ -77,7 +91,7 @@ export function PropertyScopePicker({
       {/* Desktop: Select dropdown */}
       <div className="hidden md:block">
         <Select
-          value={selectedPropertyId?.toString() || "all"}
+          value={selectedPropertyId?.toString() || (showAllOption ? "all" : "")}
           onValueChange={handleSelect}
         >
           <SelectTrigger
@@ -87,7 +101,7 @@ export function PropertyScopePicker({
             <SelectValue placeholder="Select property" />
           </SelectTrigger>
           <SelectContent>
-            {allowAll && (
+            {showAllOption && (
               <SelectItem value="all" data-testid="select-property-all">
                 All Properties
               </SelectItem>
@@ -127,7 +141,7 @@ export function PropertyScopePicker({
               <SheetTitle>Select Property</SheetTitle>
             </SheetHeader>
             <div className="space-y-1 overflow-y-auto">
-              {allowAll && (
+              {showAllOption && (
                 <button
                   onClick={() => handleSelect("all")}
                   className={cn(

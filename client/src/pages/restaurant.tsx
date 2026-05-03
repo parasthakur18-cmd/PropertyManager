@@ -891,6 +891,7 @@ export default function Kitchen() {
             availableProperties={availableProperties}
             selectedPropertyId={selectedPropertyId}
             onPropertyChange={setSelectedPropertyId}
+            isSuperAdmin={isSuperAdmin}
           />
         </div>
       )}

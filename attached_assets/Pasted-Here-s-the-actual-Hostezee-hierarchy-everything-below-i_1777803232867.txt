@@ -1,0 +1,157 @@
+Here's the actual Hostezee hierarchy — everything below is verified against the code, not invented.
+
+1. Super Admin (super-admin)
+Single platform owner. The only role with hasUnlimitedAccess = true.
+
+Capability	Allowed
+See & switch between all properties	✅
+Create new properties (POST /api/properties)	✅ Only role allowed
+Delete / disable properties	✅
+See all users (including other super-admins)	✅
+Create / promote any user (including other admins)	✅
+Bypass verification (login even when "pending")	✅
+All 11 permission modules forced to "edit"	✅ Hard-coded in usePermissions
+Channel manager, dynamic pricing, system settings	✅
+The seeded super-admin is admin@hostezee.in (auto-created on first boot). Regular admins cannot assign or downgrade the super-admin role (/api/users PATCH role rejects this).
+
+2. Admin (Property Owner)
+A property-scoped owner. Despite the name, an admin is not all-powerful — they're limited to the properties listed in their assignedPropertyIds.
+
+Capability	Allowed
+See properties in their assignedPropertyIds only	✅
+Create new properties	❌ (super-admin only)
+Edit properties they own	✅
+Manage staff/users (except super-admins)	✅
+Invite Staff / Manager / Kitchen users	✅
+Set granular per-module permissions for staff	✅
+Bookings, billing, reports, P&L, wallet, expenses	✅
+Restaurant, KDS, menu management	✅
+Channel manager, dynamic pricing	✅
+Multiple properties	✅ — can be assigned to any number
+Important quirk: an admin with no granular permissions row gets isFullAccess = true (full admin menu). An admin with any explicit granular permissions is restricted by them — this is how theforestpinnacle@gmail.com ended up with restaurant-only access despite being labelled "Admin".
+
+3. Manager
+Operations supervisor, scoped to assigned properties.
+
+Capability	Allowed
+Permission-driven menu (uses the same 11-module grid as Staff)	✅
+Forced extras over Staff: Menu Management always granted	✅
+Forced extras over Staff: Vendors page in Finance section	✅
+Forced extras over Staff: Attendance page in Staff/HR section	✅
+Cannot be promoted to admin/super-admin via UI	✅
+Cross-property access	❌ — only assigned properties
+Effectively a "Staff +" role: same permission system, with three small role-based bonuses baked in.
+
+4. Staff (default for any new invitation)
+Granular, permission-driven. The 11 modules each get one of three levels: none / view / edit.
+
+Module	Controls
+bookings	Bookings list, Active Bookings, Check-ins/outs
+calendar	Room Calendar (gated additionally on bookings)
+rooms	Rooms, QR Codes, Add-ons
+guests	Guest profiles
+foodOrders	Restaurant, Kitchen (KDS), Quick Order, Food Orders Report
+menuManagement	Menu Management
+payments	Billing
+reports	Monthly Report, Services Report, P&L (gated on payments)
+tasks	Tasks page
+staff	Users page (yes — staff with this permission can manage users)
+settings	Settings page
+Staff sees only the menu items their permissions explicitly grant. Everything else is hidden client-side and rejected server-side.
+
+5. Kitchen
+Hard-coded restaurant-only role. Zero granular permissions needed.
+
+Capability	Allowed
+/restaurant (POS / order list)	✅
+/kitchen (KDS)	✅
+Dashboard, bookings, billing, reports, anything else	❌
+Property selector	Limited to assigned properties
+Auto-redirected from / and /dashboard to /restaurant	✅
+Invitation links sent with role=kitchen automatically land on /restaurant after signup.
+
+6. Roles that do not exist in the code
+You asked about Reception / Front Desk and Housekeeping — these are not separate roles in the database. Conventionally they're handled as Staff with appropriate permissions:
+
+Real-world role	Implemented as	Suggested permissions
+Reception / Front Desk	Staff	bookings:edit, calendar:edit, rooms:view, guests:edit, payments:edit
+Housekeeping	Staff	tasks:edit, rooms:view, (everything else: none)
+Restaurant Server	Staff	foodOrders:edit only
+Accountant	Staff	payments:view, reports:view
+If you want any of these as first-class named roles, that's a code change.
+
+7. Access Control & Data Isolation
+Two independent dimensions enforced on every request:
+
+A. Property scope (tenant isolation) — server/tenantIsolation.ts
+super-admin           → hasUnlimitedAccess = true   → sees ALL properties
+everyone else         → filtered by assignedPropertyIds[]
+empty assignedIds     → sees NOTHING (empty arrays returned)
+
+Every property-bound query (/api/properties, /api/dashboard/stats, bookings, orders, billing, reports) calls canAccessProperty() or filterPropertiesByAccess(). Cross-property data leakage is prevented at the API layer — not the UI.
+
+B. Module permissions — user_permissions table
+Stored per-user as one row with none|view|edit per module
+Read by both client (usePermissions hook → menu visibility) and server (route guards → 403 on disallowed actions)
+Defaults to all-none for invited Staff/Manager/Kitchen users until an admin sets them
+Super-admin and admins-without-explicit-perms bypass this and get full access
+C. Verification gate
+New users are created with verificationStatus = "pending" and cannot log in to the app
+Owner/admin emails are auto-verified on signup
+Pending users hitting /api/dashboard/stats get an empty payload (defence in depth)
+Disabled users blocked at login
+8. Overall System Hierarchy
+┌─────────────────────────────────────────────────────────────────────┐
+│  SUPER-ADMIN  (admin@hostezee.in — single platform owner)           │
+│  - Cross-tenant: sees ALL properties & users                        │
+│  - Only role allowed to create properties                           │
+│  - Approves & promotes admins                                       │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+            ┌───────────────────┼───────────────────┐
+            ▼                   ▼                   ▼
+   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+   │   ADMIN      │    │   ADMIN      │    │   ADMIN      │
+   │ (Property A) │    │ (Property B) │    │ (Multi-prop) │
+   │ Owner-level  │    │ Owner-level  │    │ assignedIds  │
+   │ for assigned │    │ for assigned │    │ = [A, B, C]  │
+   │ properties   │    │ properties   │    │              │
+   └──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+          │                   │                   │
+   ┌──────┴──────┬──────┬─────┴────┐
+   ▼             ▼      ▼          ▼
+┌────────┐  ┌────────┐ ┌────────┐ ┌────────────────┐
+│MANAGER │  │ STAFF  │ │KITCHEN │ │ STAFF variants │
+│        │  │        │ │        │ │ (Reception,    │
+│Permis- │  │Permis- │ │Hard-   │ │  Housekeeping, │
+│sion +  │  │sion-   │ │coded   │ │  Server, etc.) │
+│Vendors,│  │driven  │ │restau- │ │ — same role,   │
+│Atten-  │  │menu    │ │rant    │ │   different    │
+│dance,  │  │        │ │only    │ │   permissions  │
+│Menu    │  │        │ │        │ │                │
+│Mgmt    │  │        │ │        │ │                │
+└────────┘  └────────┘ └────────┘ └────────────────┘
+
+Quick-reference matrix
+Capability	Super-Admin	Admin	Manager	Staff	Kitchen
+See all properties	✅	❌	❌	❌	❌
+Limited to assignedPropertyIds	—	✅	✅	✅	✅
+Create new properties	✅	❌	❌	❌	❌
+Edit owned properties	✅	✅	❌	❌	❌
+Manage users / invite staff	✅	✅	by perm staff	by perm staff	❌
+Set granular permissions	✅	✅	❌	❌	❌
+Dashboard (Occupancy/ADR/RevPAR)	✅	✅*	by perms	by perms	❌ (redirected)
+Bookings / Calendar / Rooms	✅	✅*	by perms	by perms	❌
+Billing / Wallet / P&L	✅	✅*	by perms	by perms	❌
+Restaurant POS / KDS	✅	✅*	by perms	by perms	✅
+Menu Management	✅	✅*	✅ forced	by perms	❌
+Vendors	✅	✅*	✅ forced	❌	❌
+Attendance	✅	✅*	✅ forced	❌	❌
+Channel Manager / Dynamic Pricing	✅	✅*	❌	❌	❌
+Settings	✅	✅*	by perms	by perms	❌
+✅* = admin gets full access only when no granular permissions are configured. The moment an admin has an explicit user_permissions row, they become permission-restricted (this is what tripped up theforestpinnacle@gmail.com).
+
+Two gaps worth knowing about (not bugs, but surprising defaults)
+An admin with restaurant-only granular perms still has the badge "Admin" in the UI — the role label and the effective access can diverge. After today's deploy, such a user will at least be redirected away from the dashboard.
+The staff permission lets non-admin users invite/manage other users. Only the role check on /api/users PATCH prevents promotion to admin/super-admin, but lower-level role swaps and property reassignments are gated by the staff permission, not by being an admin. If you want this to be admin-only, that's a one-line tightening.
+Want me to add a "Reception" and "Housekeeping" preset (one-click permission templates in the user-edit dialog) so you don't have to tick checkboxes every time?
