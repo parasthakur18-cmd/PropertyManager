@@ -2438,16 +2438,19 @@ export default function ActiveBookings() {
                         </div></body></html>`;
 
                         // Generate real PDF using html2pdf.js
+                        // BLANK-PDF FIX: render the element fully visible (opacity:1) but
+                        // inside a zero-size overflow:hidden wrapper. The child gets laid
+                        // out at its full 900px width so html2canvas captures real content,
+                        // while the wrapper clips it from screen. opacity:0 / left:-9999px
+                        // both produced blank captures — DO NOT use them.
                         const html2pdfLib = (await import('html2pdf.js')).default;
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1;';
                         const el = document.createElement('div');
+                        el.style.cssText = 'width:900px;background:#fff;';
                         el.innerHTML = html;
-                        // IMPORTANT: keep the element at (0,0) — html2canvas produces
-                        // a blank capture when the source element is positioned at
-                        // negative coordinates (the previous left:-9999px caused the
-                        // "white / blank bill PDF" bug). We hide it with opacity:0
-                        // + pointer-events:none + a low z-index instead.
-                        el.style.cssText = 'position:fixed;left:0;top:0;width:900px;opacity:0;pointer-events:none;z-index:-9999;background:#fff;';
-                        document.body.appendChild(el);
+                        wrapper.appendChild(el);
+                        document.body.appendChild(wrapper);
                         try {
                           await html2pdfLib().from(el).set({
                             margin: [8, 8, 8, 8],
@@ -2456,7 +2459,7 @@ export default function ActiveBookings() {
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                           }).save();
                         } finally {
-                          document.body.removeChild(el);
+                          document.body.removeChild(wrapper);
                         }
                       } catch (error) {
                         console.error("PDF download error:", error);
@@ -2507,13 +2510,18 @@ export default function ActiveBookings() {
 
                         const pdfHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:13px;color:#222;background:#fff}.page{max-width:680px;margin:0 auto;padding:32px 28px}.header{background:#1E3A5F;color:#fff;border-radius:8px 8px 0 0;padding:22px 24px 18px}.header h1{font-size:22px;font-weight:700}.header .tagline{font-size:12px;color:#2BB6A8;margin-top:2px}.header .property{font-size:14px;margin-top:8px;opacity:.9}.bill-meta{background:#f5f8ff;border:1px solid #dde5f5;border-top:none;border-radius:0 0 8px 8px;padding:16px 24px;display:flex;gap:32px;flex-wrap:wrap;margin-bottom:24px}.bill-meta div{min-width:140px}.bill-meta .label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}.bill-meta .value{font-size:13px;font-weight:600;color:#1E3A5F}.section{margin-bottom:20px}.section-title{font-size:13px;font-weight:700;color:#1E3A5F;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;background:#eef3fb;border-left:3px solid #2BB6A8}table{width:100%;border-collapse:collapse}table td{font-size:13px}.summary-table{border:1px solid #e0e7ef;border-radius:6px;overflow:hidden}.summary-table td{padding:8px 14px;border-bottom:1px solid #eef2f8}.total-row td{font-size:16px;font-weight:700;background:#1E3A5F;color:#fff;padding:10px 14px}.gst-row td{color:#15803d;font-weight:600;background:#f0fdf4}.discount-row td{color:#dc2626;font-weight:600;background:#fff5f5}.advance-row td{color:#16a34a;font-weight:600;background:#f0fdf4}.balance-row td{color:#dc2626;font-weight:700;background:#fff5f5;font-size:15px}.footer{margin-top:32px;border-top:1px solid #e0e7ef;padding-top:14px;text-align:center;color:#aaa;font-size:11px}</style></head><body><div class="page"><div class="header"><h1>Hostezee</h1><div class="tagline">Simplify Stays</div><div class="property">${propertyName}</div></div><div class="bill-meta"><div><div class="label">Guest</div><div class="value">${b.guest.fullName}</div></div><div><div class="label">Phone</div><div class="value">${b.guest.phone ?? "-"}</div></div><div><div class="label">Room</div><div class="value">${roomLabel}</div></div><div><div class="label">Check-in</div><div class="value">${checkIn}</div></div><div><div class="label">Check-out</div><div class="value">${checkOut}</div></div><div><div class="label">Nights</div><div class="value">${actualNights}</div></div></div><div class="section"><div class="section-title">Room Charges</div><table class="summary-table"><tbody><tr><td style="font-weight:600">${actualNights} night(s)</td><td style="text-align:right;font-weight:600">&#8377;${roomCharges.toFixed(2)}</td></tr></tbody></table></div>${(b.orders ?? []).filter((o: any) => o.status !== "rejected").length > 0 ? `<div class="section"><div class="section-title">Food Orders</div><table class="summary-table"><tbody>${ordersHtml}</tbody></table></div>` : ""}${(b.extraServices ?? []).length > 0 ? `<div class="section"><div class="section-title">Extra Services</div><table class="summary-table"><tbody>${extrasHtml}</tbody></table></div>` : ""}${manualHtml2 ? `<div class="section"><div class="section-title">Additional Charges</div><table class="summary-table"><tbody>${manualHtml2}</tbody></table></div>` : ""}<div class="section"><div class="section-title">Bill Summary</div><table class="summary-table"><tbody><tr><td>Room Charges</td><td style="text-align:right">&#8377;${roomCharges.toFixed(2)}</td></tr>${foodCharges > 0 ? `<tr><td>Food Charges</td><td style="text-align:right">&#8377;${foodCharges.toFixed(2)}</td></tr>` : ""}${extraCharges > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${extraCharges.toFixed(2)}</td></tr>` : ""}${manualChargesTotal > 0 ? `<tr><td>Additional</td><td style="text-align:right">&#8377;${manualChargesTotal.toFixed(2)}</td></tr>` : ""}${roomGst > 0 ? `<tr class="gst-row"><td>GST on Rooms</td><td style="text-align:right">&#8377;${roomGst.toFixed(2)}</td></tr>` : ""}${foodGst > 0 ? `<tr class="gst-row"><td>GST on Food</td><td style="text-align:right">&#8377;${foodGst.toFixed(2)}</td></tr>` : ""}${serviceCharge > 0 ? `<tr class="gst-row"><td>Service Charge</td><td style="text-align:right">&#8377;${serviceCharge.toFixed(2)}</td></tr>` : ""}${discount > 0 ? `<tr class="discount-row"><td>Discount</td><td style="text-align:right">-&#8377;${discount.toFixed(2)}</td></tr>` : ""}<tr class="total-row"><td>Grand Total</td><td style="text-align:right">&#8377;${grandTotal.toFixed(2)}</td></tr>${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${Math.max(0, grandTotal - advancePaid).toFixed(2)}</td></tr>` : ""}</tbody></table></div><div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div></div></body></html>`;
 
+                        // Same blank-PDF fix as the download button above — render fully
+                        // visible inside a zero-size overflow:hidden wrapper so html2canvas
+                        // captures real content. opacity:0 and left:-9999px both produce
+                        // blank PDFs.
                         const html2pdfLib = (await import('html2pdf.js')).default;
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1;';
                         const el = document.createElement('div');
+                        el.style.cssText = 'width:900px;background:#fff;';
                         el.innerHTML = pdfHtml;
-                        // Same blank-PDF fix as the download button above — never use
-                        // negative-left positioning with html2canvas.
-                        el.style.cssText = 'position:fixed;left:0;top:0;width:900px;opacity:0;pointer-events:none;z-index:-9999;background:#fff;';
-                        document.body.appendChild(el);
+                        wrapper.appendChild(el);
+                        document.body.appendChild(wrapper);
                         let pdfBlob: Blob;
                         try {
                           pdfBlob = await html2pdfLib().from(el).set({
@@ -2523,7 +2531,7 @@ export default function ActiveBookings() {
                             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                           }).outputPdf('blob');
                         } finally {
-                          document.body.removeChild(el);
+                          document.body.removeChild(wrapper);
                         }
 
                         const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
