@@ -173,12 +173,19 @@ export default function UsersManagement() {
 
   const inviteStaffMutation = useMutation({
     mutationFn: async (data: { email: string; propertyId: number; role: string; phone?: string }) => {
-      return await apiRequest("/api/staff-invitations", "POST", data);
+      const res = await apiRequest("/api/staff-invitations", "POST", data);
+      return await res.json();
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-invitations"] });
       if (result?.inviteUrl) {
         setGeneratedInviteLink(result.inviteUrl);
+      } else {
+        toast({
+          title: "Invitation created",
+          description: "But the link couldn't be displayed. Check Pending Invitations.",
+          variant: "destructive",
+        });
       }
     },
     onError: (error: any) => {
