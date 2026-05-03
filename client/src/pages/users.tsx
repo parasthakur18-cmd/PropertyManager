@@ -178,6 +178,19 @@ export default function UsersManagement() {
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/staff-invitations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+
+      // Existing-user direct-grant path: no invite link, the user already
+      // has an account and just gained property access.
+      if (result?.granted) {
+        toast({
+          title: result.alreadyHadAccess ? "Already had access" : "Access granted",
+          description: result.message || "Existing user was given access to this property.",
+        });
+        resetInviteDialog();
+        return;
+      }
+
       if (result?.inviteUrl) {
         setGeneratedInviteLink(result.inviteUrl);
         // Auto-copy so the admin can paste straight into WhatsApp / SMS / chat

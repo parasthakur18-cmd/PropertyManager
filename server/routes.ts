@@ -1705,11 +1705,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Check if user already exists with this email
+      // If a user with this email already exists, skip the invite flow and
+      // grant them access to the new property directly. This is the common
+      // case of "I want my existing kitchen guy to also help at Property B".
+      // Uses the same role-hierarchy MERGE rule as login-time invite apply
+      // so an existing admin is NEVER downgraded by being added as kitchen.
       const allUsers = await storage.getAllUsers();
       const existingUser = allUsers.find(u => u.email && u.email.toLowerCase() === email.toLowerCase());
       if (existingUser) {
-        return res.status(400).json({ message: "A user with this email already exists" });
+        const ROLE_RANK: Record<string, number> = {
+          'super-admin': 100, admin: 80, manager: 60, staff: 40, kitchen: 20,
+        };
+        const currentProps: string[] = (existingUser.assignedPropertyIds as string[] | null) ?? [];
+        const propIdStr = String(propertyId);
+        const alreadyHasAccess = currentProps.includes(propIdStr);
+        const updatedProps = alreadyHasAccess ? currentProps : [...currentProps, propIdStr];
+
+        const requestedRole = role || 'staff';
+        const existingRole = (existingUser.role || 'staff') as string;
+        const finalRole = (ROLE_RANK[requestedRole] ?? 0) > (ROLE_RANK[existingRole] ?? 0)
+          ? requestedRole
+          : existingRole;
+
+        await db.update(users).set({
+          role: finalRole as any,
+          assignedPropertyIds: updatedProps,
+          status: 'active',
+          verificationStatus: 'approved',
+        }).where(eq(users.id, existingUser.id));
+
+        console.log(`[INVITE-DIRECT] Granted existing user ${existingUser.email} access to property ${propertyId} (requestedRole=${requestedRole} existingRole=${existingRole} finalRole=${finalRole} alreadyHadAccess=${alreadyHasAccess})`);
+
+        return res.status(200).json({
+          granted: true,
+          alreadyHadAccess,
+          finalRole,
+          message: alreadyHasAccess
+            ? `${existingUser.email} already has access to this property as ${existingRole}.`
+            : `Access granted to ${existingUser.email} on this property. They can sign in with their existing account — no invite link needed.`,
+        });
       }
       
       // Auto-supersede any stale pending invitation(s) for this email+property.
