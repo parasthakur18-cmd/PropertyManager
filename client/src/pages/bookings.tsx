@@ -4783,8 +4783,6 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
               >
                 <option value="cash">Cash</option>
                 <option value="upi">UPI</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="card">Card</option>
                 <option value="split">Split (Cash + UPI)</option>
               </select>
             </div>
