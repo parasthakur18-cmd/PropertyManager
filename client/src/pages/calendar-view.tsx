@@ -108,7 +108,7 @@ export default function CalendarView() {
   const { toast } = useToast();
   const isMobile = useIsMobile();
   // On mobile, shrink the room sidebar so the main calendar gets more space
-  const sidebarWidth = isMobile ? 64 : SIDEBAR_WIDTH;
+  const sidebarWidth = isMobile ? 96 : SIDEBAR_WIDTH;
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
@@ -540,7 +540,7 @@ export default function CalendarView() {
                 className="sticky left-0 z-40 bg-white dark:bg-card border-r flex items-center justify-between px-2 flex-shrink-0"
                 style={{ width: sidebarWidth }}
               >
-                <span className="font-semibold text-xs text-muted-foreground truncate">{isMobile ? "Room" : "All Rooms"}</span>
+                <span className="font-semibold text-xs text-muted-foreground truncate">{isMobile ? "Rooms" : "All Rooms"}</span>
                 <Button
                   size="icon"
                   variant="ghost"
