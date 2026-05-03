@@ -1712,16 +1712,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "A user with this email already exists" });
       }
       
-      // Check for existing pending invitation
-      const existingInvites = await db.select().from(staffInvitations)
+      // Auto-supersede any stale pending invitation(s) for this email+property.
+      // Common cases: admin deleted the invitee user but the invite row remained,
+      // or admin simply wants to resend with a fresh link. Either way, delete
+      // the prior pending invite(s) before creating a new one so the flow never
+      // gets stuck. Real (accepted/expired) invites are kept for audit.
+      const supersededInvites = await db.delete(staffInvitations)
         .where(and(
           eq(staffInvitations.email, email.toLowerCase()),
           eq(staffInvitations.propertyId, propertyId),
           eq(staffInvitations.status, 'pending')
-        ));
-      
-      if (existingInvites.length > 0) {
-        return res.status(400).json({ message: "An invitation is already pending for this email" });
+        ))
+        .returning({ id: staffInvitations.id });
+      if (supersededInvites.length > 0) {
+        console.log(`[INVITE] Superseded ${supersededInvites.length} stale pending invite(s) for ${email} @ property ${propertyId}`);
       }
       
       // Generate invite token
