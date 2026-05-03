@@ -8171,11 +8171,32 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const property = await storage.getProperty(propertyId);
       if (!property) return res.status(404).json({ message: "Property not found" });
 
-      // Build dummy order — fixed sample items, clearly labelled
-      const items = [
-        { name: "🧪 Tea (TEST)", quantity: 1, price: 20 },
-        { name: "🧪 Maggi (TEST)", quantity: 1, price: 50 },
-      ];
+      // Build dummy order. The kitchen "Send Test Order" dialog can pass
+      // an optional `items` array (real menu picks) so staff can verify
+      // notifications with the actual dishes they cook. Each item is
+      // prefixed with 🧪 and "(TEST)" so it's never confused with a real
+      // order on the KDS. Falls back to a fixed Tea+Maggi sample.
+      type TestItem = { name?: string; price?: number | string; quantity?: number | string };
+      const rawItems: TestItem[] = Array.isArray(req.body?.items) ? req.body.items : [];
+      let items = rawItems
+        .map((i) => {
+          const qty = Math.max(1, Math.floor(Number(i?.quantity) || 0));
+          const price = Math.max(0, Number(i?.price) || 0);
+          const name = String(i?.name || "").trim();
+          if (!name || qty < 1) return null;
+          return {
+            name: name.startsWith("🧪") ? name : `🧪 ${name} (TEST)`,
+            quantity: qty,
+            price,
+          };
+        })
+        .filter((i): i is { name: string; quantity: number; price: number } => i !== null);
+      if (items.length === 0) {
+        items = [
+          { name: "🧪 Tea (TEST)", quantity: 1, price: 20 },
+          { name: "🧪 Maggi (TEST)", quantity: 1, price: 50 },
+        ];
+      }
       const totalAmount = items.reduce((s, i) => s + i.price * i.quantity, 0);
 
       const order = await storage.createOrder({

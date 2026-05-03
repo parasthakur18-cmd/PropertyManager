@@ -375,18 +375,49 @@ export default function Kitchen() {
   const [testPhone, setTestPhone] = useState<string>(() =>
     (typeof window !== "undefined" && localStorage.getItem("kitchen.testPhone")) || ""
   );
+  type TestCartItem = { menuItemId?: number; name: string; price: number; quantity: number };
+  const [testCart, setTestCart] = useState<TestCartItem[]>([]);
+  const addTestItem = (m: any) => {
+    setTestCart((prev) => {
+      const existing = prev.find((i) => i.menuItemId === m.id);
+      if (existing) {
+        return prev.map((i) =>
+          i.menuItemId === m.id ? { ...i, quantity: i.quantity + 1 } : i,
+        );
+      }
+      return [
+        ...prev,
+        { menuItemId: m.id, name: m.name, price: parseFloat(m.price), quantity: 1 },
+      ];
+    });
+  };
+  const updateTestQty = (idx: number, delta: number) => {
+    setTestCart((prev) =>
+      prev
+        .map((it, i) => (i === idx ? { ...it, quantity: it.quantity + delta } : it))
+        .filter((it) => it.quantity > 0),
+    );
+  };
+  const removeTestItem = (idx: number) =>
+    setTestCart((prev) => prev.filter((_, i) => i !== idx));
+  const testCartTotal = testCart.reduce((s, i) => s + i.price * i.quantity, 0);
+
   const sendTestOrderMutation = useMutation({
     mutationFn: async (phone: string) => {
       if (!selectedPropertyId) throw new Error("Select a property first");
       return await apiRequest("/api/orders/test", "POST", {
         propertyId: selectedPropertyId,
         testPhone: phone || undefined,
+        items: testCart.length > 0
+          ? testCart.map((i) => ({ name: i.name, price: i.price, quantity: i.quantity }))
+          : undefined,
       });
     },
     onSuccess: (_data, phone) => {
       queryClient.invalidateQueries({ queryKey: ["/api/orders"] });
       if (phone) localStorage.setItem("kitchen.testPhone", phone);
       setTestOrderDialog(false);
+      setTestCart([]);
       toast({
         title: "🧪 Test Order Sent",
         description: phone
@@ -1642,9 +1673,9 @@ export default function Kitchen() {
         </DialogContent>
       </Dialog>
 
-      {/* Test Order dialog — capture optional WhatsApp test number */}
+      {/* Test Order dialog — pick items + optional WhatsApp test number */}
       <Dialog open={testOrderDialog} onOpenChange={setTestOrderDialog}>
-        <DialogContent className="max-w-md" data-testid="dialog-test-order">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-test-order">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FlaskConical className="h-5 w-5 text-violet-600" />
@@ -1653,14 +1684,112 @@ export default function Kitchen() {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Fires a dummy order (Tea + Maggi, ₹70, Room 999) through the full
-              real-order flow — KDS card, sound, push and WhatsApp alerts. It
-              will <b>not</b> affect revenue, P&amp;L, wallet or reports.
+              Fires a dummy order through the full real-order flow — KDS card,
+              sound, push and WhatsApp alerts. Items are prefixed with 🧪 (TEST)
+              and the order will <b>not</b> affect revenue, P&amp;L, wallet or
+              reports.
             </p>
+
+            {/* Selected items */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Send WhatsApp test to (optional)
-              </label>
+              <Label className="text-sm font-medium">Items in this test order</Label>
+              {testCart.length === 0 ? (
+                <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                  No items selected — a default Tea + Maggi (₹70) sample will be sent.
+                </div>
+              ) : (
+                <div className="space-y-1 rounded-md border p-2">
+                  {testCart.map((it, idx) => (
+                    <div
+                      key={`${it.menuItemId ?? "x"}-${idx}`}
+                      className="flex items-center justify-between gap-2 text-sm"
+                      data-testid={`test-cart-item-${idx}`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate font-medium">{it.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          ₹{it.price.toFixed(2)} × {it.quantity} = ₹{(it.price * it.quantity).toFixed(2)}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={() => updateTestQty(idx, -1)}
+                          data-testid={`button-test-qty-down-${idx}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                        <span className="w-6 text-center text-sm font-semibold">{it.quantity}</span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={() => updateTestQty(idx, +1)}
+                          data-testid={`button-test-qty-up-${idx}`}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeTestItem(idx)}
+                          data-testid={`button-test-remove-${idx}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-between border-t pt-1.5 text-sm font-semibold">
+                    <span>Total</span>
+                    <span data-testid="text-test-cart-total">₹{testCartTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Menu picker */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Add items from menu</Label>
+              <Command className="rounded-lg border">
+                <CommandInput
+                  placeholder="Search menu items…"
+                  className="h-10"
+                  data-testid="input-test-menu-search"
+                />
+                <CommandList className="max-h-[180px]">
+                  <CommandEmpty>No menu items available.</CommandEmpty>
+                  <CommandGroup>
+                    {menuItems
+                      ?.filter((m) =>
+                        m.isAvailable &&
+                        (selectedPropertyId == null || m.propertyId == null || m.propertyId === selectedPropertyId),
+                      )
+                      .map((m) => (
+                        <CommandItem
+                          key={m.id}
+                          value={`${m.name} ${m.price}`}
+                          onSelect={() => addTestItem(m)}
+                          className="cursor-pointer py-2"
+                          data-testid={`test-menu-item-${m.id}`}
+                        >
+                          <div className="flex w-full items-center justify-between">
+                            <span className="truncate">{m.name}</span>
+                            <Badge variant="secondary">₹{m.price}</Badge>
+                          </div>
+                        </CommandItem>
+                      ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </div>
+
+            {/* WhatsApp test number */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Send WhatsApp test to (optional)</Label>
               <Input
                 type="tel"
                 inputMode="numeric"
@@ -1689,7 +1818,11 @@ export default function Kitchen() {
               className="bg-violet-600 hover:bg-violet-700 text-white"
               data-testid="button-test-confirm"
             >
-              {sendTestOrderMutation.isPending ? "Sending..." : "Send Test Order"}
+              {sendTestOrderMutation.isPending
+                ? "Sending..."
+                : testCart.length > 0
+                  ? `Send Test Order (₹${testCartTotal.toFixed(2)})`
+                  : "Send Test Order"}
             </Button>
           </DialogFooter>
         </DialogContent>
