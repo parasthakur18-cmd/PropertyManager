@@ -897,7 +897,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/public/orders", async (req, res) => {
     try {
       
-      const { orderType, roomId, propertyId, customerName, customerPhone, items, totalAmount, specialInstructions } = req.body;
+      const { orderType, roomId, propertyId, customerName, customerPhone, tableNumber, items, totalAmount, specialInstructions } = req.body;
       
       // Validate items
       if (!items || items.length === 0) {
@@ -976,12 +976,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         orderData.bookingId = activeBooking?.id || null;
         orderData.guestId = activeBooking?.guestId || null;
       } else {
-        // Handle restaurant/café orders
+        // Handle restaurant/café orders (dine-in)
         orderData.customerName = customerName;
         orderData.customerPhone = customerPhone;
         // Café orders now include property ID for kitchen filtering
         if (propertyId) {
           orderData.propertyId = parseInt(String(propertyId));
+        }
+        // Dine-in: capture the table number from the scanned QR (optional)
+        if (tableNumber && String(tableNumber).trim()) {
+          orderData.tableNumber = String(tableNumber).trim();
         }
       }
 

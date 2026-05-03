@@ -36,8 +36,12 @@ interface CartItem {
 }
 
 export default function CustomerMenu() {
-  // Read property from URL synchronously so queries are scoped immediately
+  // Read property + table from URL synchronously so queries are scoped immediately.
+  // ?table=T1 means the guest scanned a Table QR at a restaurant — we lock the
+  // property and tag the order with that table number.
   const urlProperty = new URLSearchParams(window.location.search).get("property") || "";
+  const urlTable = new URLSearchParams(window.location.search).get("table") || "";
+  const isTableMode = !!urlTable;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
@@ -280,6 +284,7 @@ export default function CustomerMenu() {
       propertyId: selectedPropertyId,
       customerName,
       customerPhone,
+      tableNumber: urlTable || undefined,
       items: cart.map(item => ({
         id: item.menuItem.id,
         name: item.menuItem.name,
@@ -312,9 +317,20 @@ export default function CustomerMenu() {
       <div className="sticky top-0 z-20 bg-primary/95 backdrop-blur-sm text-primary-foreground shadow-lg">
         <div className="p-4 max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-3">
-            <h1 className="text-2xl font-bold font-serif" data-testid="heading-customer-menu">
-              Our Menu
-            </h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold font-serif" data-testid="heading-customer-menu">
+                Our Menu
+              </h1>
+              {isTableMode && (
+                <Badge
+                  variant="secondary"
+                  className="text-sm px-3 py-1 bg-white/95 text-primary border-0 font-semibold"
+                  data-testid="badge-table-mode"
+                >
+                  Table {urlTable}
+                </Badge>
+              )}
+            </div>
             <Button
               size="icon"
               variant="secondary"
@@ -725,22 +741,33 @@ export default function CustomerMenu() {
           {cart.length > 0 && (
             <SheetFooter className="border-t pt-4">
               <div className="w-full space-y-3">
-                {/* Property Selector */}
-                <div className="space-y-2">
-                  <Label htmlFor="property">Select Property *</Label>
-                  <Select value={selectedPropertyId?.toString() || ""} onValueChange={(val) => setSelectedPropertyId(parseInt(val))}>
-                    <SelectTrigger id="property" data-testid="select-property">
-                      <SelectValue placeholder="Choose your property" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {properties?.map((property) => (
-                        <SelectItem key={property.id} value={property.id.toString()}>
-                          {property.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Property Selector — hidden in table mode (QR already locks it) */}
+                {isTableMode ? (
+                  <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                    <div className="font-semibold flex items-center gap-2">
+                      🍽️ Ordering for <span className="text-primary">Table {urlTable}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Your food will be served to this table.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="property">Select Property *</Label>
+                    <Select value={selectedPropertyId?.toString() || ""} onValueChange={(val) => setSelectedPropertyId(parseInt(val))}>
+                      <SelectTrigger id="property" data-testid="select-property">
+                        <SelectValue placeholder="Choose your property" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {properties?.map((property) => (
+                          <SelectItem key={property.id} value={property.id.toString()}>
+                            {property.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Customer Info */}
                 <div className="space-y-2">

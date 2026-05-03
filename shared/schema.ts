@@ -476,6 +476,9 @@ export const orders = pgTable("orders", {
   customerPhone: varchar("customer_phone", { length: 20 }),
   paymentStatus: varchar("payment_status", { length: 20 }).default("unpaid"),
   paymentMethod: varchar("payment_method", { length: 20 }),
+  // Dine-in table identifier (e.g. "T1", "A5"). Set for restaurant orders
+  // placed via the table QR. Standalone — independent of hotel rooms.
+  tableNumber: varchar("table_number", { length: 50 }),
   // Test Order Mode flag — when true, the order is excluded from ALL
   // financial calculations (revenue, P&L, wallet, reports). Used only
   // for kitchen/notification testing. Never set this on real orders.

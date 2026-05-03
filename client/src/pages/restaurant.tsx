@@ -623,7 +623,9 @@ export default function Kitchen() {
               <div className="flex items-center gap-2 flex-wrap">
                 <CardTitle className="text-lg" data-testid={`text-order-room-${order.id}`}>
                   {orderType === "restaurant" ? (
-                    customerName || "Dine-in Guest"
+                    order.tableNumber
+                      ? `Table ${order.tableNumber}${customerName ? ` - ${customerName}` : ""}`
+                      : (customerName || "Dine-in Guest")
                   ) : showRoomNumber ? (
                     `Room ${roomNumber}${customerName ? ` - ${customerName}` : ""}`
                   ) : customerName ? (
