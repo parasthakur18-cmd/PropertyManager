@@ -39,6 +39,7 @@ import {
   Package,
   MessageCircle,
   TrendingUp as TrendingUpIcon,
+  Users2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -92,6 +93,7 @@ const adminRestaurantItems = [
   { title: "Quick Order", url: "/quick-order", icon: Phone },
   { title: "Menu Management", url: "/enhanced-menu", icon: MenuSquare },
   { title: "Tables & QR", url: "/restaurant-tables", icon: QrCode },
+  { title: "Live Tables", url: "/restaurant-live", icon: Users2 },
   { title: "Food Orders Report", url: "/food-orders-report", icon: FileBarChart },
 ];
 
