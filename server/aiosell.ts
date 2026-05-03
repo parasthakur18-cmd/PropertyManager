@@ -624,6 +624,51 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       }
     }
 
+    // ── Step 1: Load active stopSell restrictions from Hostezee DB ────────────────
+    // These must be respected so a closure set via Hostezee's restriction push
+    // is never silently overridden by a fresh inventory count push.
+    const todayStr = today.toISOString().split("T")[0];
+    const horizonStr = horizon.toISOString().split("T")[0];
+
+    const activeRestrictions = await db.select().from(aiosellInventoryRestrictions)
+      .where(and(
+        eq(aiosellInventoryRestrictions.configId, config.id),
+        gte(aiosellInventoryRestrictions.endDate, todayStr), // still active or future
+      ));
+
+    // Build a fast lookup: roomCode → list of {startDate, endDate} ranges where stopSell=true
+    const stopSellRanges = new Map<string, { start: string; end: string }[]>();
+    for (const restriction of activeRestrictions) {
+      if (!restriction.stopSell) continue;
+      const mapping = mappings.find(m => m.id === restriction.roomMappingId);
+      if (!mapping) continue;
+      const code = mapping.aiosellRoomCode;
+      if (!stopSellRanges.has(code)) stopSellRanges.set(code, []);
+      stopSellRanges.get(code)!.push({
+        start: restriction.startDate as string,
+        end: restriction.endDate as string,
+      });
+    }
+
+    // ── Step 2: Override availability to 0 for any stopSell-restricted date ──────
+    // If the property has manually closed certain dates via Hostezee's restriction
+    // feature, forcing available=0 here prevents the inventory push from re-opening
+    // those dates on connected OTAs (Booking.com, etc.).
+    if (stopSellRanges.size > 0) {
+      for (const dateStr of Object.keys(dateAvailability)) {
+        for (const [roomCode, ranges_] of stopSellRanges) {
+          const isClosed = ranges_.some(r => dateStr >= r.start && dateStr <= r.end);
+          if (isClosed && dateAvailability[dateStr][roomCode] !== undefined) {
+            const was = dateAvailability[dateStr][roomCode];
+            dateAvailability[dateStr][roomCode] = 0;
+            if (was > 0) {
+              console.log(`[AIOSELL] stopSell override: ${roomCode} on ${dateStr} forced 0 (was ${was})`);
+            }
+          }
+        }
+      }
+    }
+
     // Group consecutive dates with same availability counts into ranges
     const dates = Object.keys(dateAvailability).sort();
     if (dates.length === 0) return;
@@ -679,7 +724,10 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       const totalMapped = firstUpdate.rooms.length;
       const availableTotal = firstUpdate.rooms.reduce((sum, r) => sum + r.available, 0);
       const bookedTotal = allRooms.length - blockedTotal - availableTotal;
-      console.log(`[SYNC_DATA] property=${propertyId} total_rooms=${allRooms.length} blocked=${blockedTotal} booked=${Math.max(0, bookedTotal)} available=${availableTotal} mapped_types=${totalMapped} ranges=${inventoryUpdates.length} breakdown=[${availSummary}]`);
+      const stopSellInfo = stopSellRanges.size > 0
+        ? ` stopSell_active=[${[...stopSellRanges.keys()].join(",")}]`
+        : "";
+      console.log(`[SYNC_DATA] property=${propertyId} total_rooms=${allRooms.length} blocked=${blockedTotal} booked=${Math.max(0, bookedTotal)} available=${availableTotal} mapped_types=${totalMapped} ranges=${inventoryUpdates.length} breakdown=[${availSummary}]${stopSellInfo}`);
 
       // Per-room push log (production visibility)
       for (const update of inventoryUpdates) {
@@ -697,6 +745,42 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       await pushInventory(config, inventoryUpdates);
       const sentSummary = inventoryUpdates[0]?.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ") ?? "none";
       console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} todayAvailability=[${sentSummary}]`);
+    }
+
+    // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────
+    // Critical: the inventory push (available count) can implicitly open dates on
+    // AioSell/Booking.com even if a stopSell restriction was previously in place.
+    // Re-sending restrictions immediately after the count push ensures closures
+    // set via Hostezee remain in effect on all connected channels.
+    if (activeRestrictions.length > 0) {
+      const restrictionUpdates: InventoryRestrictionUpdate[] = [];
+      for (const restriction of activeRestrictions) {
+        const mapping = mappings.find(m => m.id === restriction.roomMappingId);
+        if (!mapping) continue;
+        restrictionUpdates.push({
+          startDate: restriction.startDate as string,
+          endDate: restriction.endDate as string,
+          rooms: [{
+            roomCode: mapping.aiosellRoomCode,
+            restrictions: {
+              stopSell: restriction.stopSell,
+              minimumStay: restriction.minimumStay ?? null,
+              closeOnArrival: restriction.closeOnArrival,
+              closeOnDeparture: restriction.closeOnDeparture,
+              exactStayArrival: null,
+              maximumStayArrival: null,
+              minimumAdvanceReservation: null,
+              maximumStay: null,
+              maximumAdvanceReservation: null,
+              minimumStayArrival: null,
+            },
+          }],
+        });
+      }
+      if (restrictionUpdates.length > 0) {
+        await pushInventoryRestrictions(config, restrictionUpdates);
+        console.log(`[AIOSELL] Re-pushed ${restrictionUpdates.length} active restriction(s) after inventory sync to prevent OTA re-opening closed dates`);
+      }
     }
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);

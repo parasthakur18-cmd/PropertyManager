@@ -1,0 +1,100 @@
+We have a critical bug in our PMS (Hostezee) related to dormitory inventory management and channel manager sync (Aiosell + Booking.com).
+
+Current Issue:
+- Dorm room has FIXED capacity (e.g., 6 beds)
+- Aiosell sends "available rooms to sell" (e.g., 5 when 1 is booked)
+- Our system (Hostezee) is incorrectly:
+  1. Treating available beds as total capacity
+  2. OR dynamically creating new beds when bookings are received
+- This results in:
+  - Total beds increasing (6 → 7 → 8)
+  - Wrong availability shown
+  - Booking.com reopening inventory automatically
+  - Overbooking risk
+
+⚠️ IMPORTANT:
+There may also be an issue in mapping, sync flow, or interpretation of data between Aiosell and Hostezee. The system must audit this fully and not assume the issue is only in booking logic.
+
+Possible Additional Problem Areas to Investigate:
+
+1. Mapping Issue:
+- Check if dorm room type is mapped correctly between Aiosell and Hostezee
+- Ensure 1 room type = 1 fixed capacity (no duplication or extra virtual beds)
+- Verify no duplicate room/bed entries exist in DB
+
+2. Data Interpretation Issue:
+- Aiosell sends "available inventory"
+- Ensure system does NOT treat this as "total capacity"
+- Validate API response handling layer
+
+3. Sync Direction Issue:
+- Check if Hostezee is pushing inventory back to Aiosell or Booking.com incorrectly
+- Ensure Aiosell remains source of truth for availability
+- Prevent overwrite loops (push → pull → push)
+
+4. Booking.com Reopening Inventory:
+- Investigate why Booking.com receives increased availability after each booking
+- Check if incorrect inventory push is triggered on booking creation
+
+5. Hidden Auto-Creation Logic:
+- Audit code for any logic like:
+  "if bed not found → create new bed"
+- Remove this completely
+
+6. Capacity Mismatch:
+- Validate if total_beds in DB is correct (e.g., 6)
+- Check if any API or sync is modifying this value dynamically
+
+Expected Correct Logic:
+
+1. Total Capacity (FIXED)
+- total_beds = 6 (constant, never changes dynamically)
+
+2. Available Inventory (FROM Aiosell)
+- available_beds = 5
+
+3. Booked Beds (CALCULATED)
+- booked_beds = total_beds - available_beds
+
+4. Booking Handling
+- Assign booking to existing available bed
+- Reduce availability
+- DO NOT create new bed
+- If no availability → block or flag overbooking
+
+5. Strict Rules:
+- NEVER increase total_beds dynamically
+- NEVER create new bed on booking
+- ALWAYS treat Aiosell as source of truth for availability
+- available != total (must never be confused)
+
+6. Sync Rules:
+- availability = 0 → push CLOSED
+- availability > 0 → push correct value
+- Do not reopen inventory unless explicitly updated
+
+7. Fix Required:
+- Audit mapping (room type + bed structure)
+- Fix API data handling (available vs total)
+- Remove dynamic bed creation logic
+- Ensure total_beds always comes from room configuration table
+
+8. Add Validation:
+- If total_beds changes → throw error
+- If available > total → block immediately
+- Add logs for:
+  - Incoming Aiosell data
+  - Booking creation
+  - Inventory before/after update
+  - Data pushed to Booking.com
+
+Deliverables:
+- Fix backend logic (Node.js / DB)
+- Fix mapping + sync flow
+- Fix booking assignment logic
+- Prevent incorrect inventory push
+- Add logging for debugging
+
+Goal:
+Dorm inventory must behave like airline seats:
+Fixed capacity, controlled availability, no dynamic creation, no sync mismatch.

@@ -1166,11 +1166,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void> {
-    for (const update of updates) {
-      await db
-        .update(menuItems)
-        .set({ displayOrder: update.displayOrder, updatedAt: new Date() })
-        .where(eq(menuItems.id, update.id));
+    if (updates.length === 0) return;
+    // Single atomic batch update: CASE id WHEN $1 THEN $2 WHEN $3 THEN $4 ... END
+    // Parameter indices are reused in the WHERE IN clause (valid in PostgreSQL).
+    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}`).join(' ');
+    const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
+    const params = updates.flatMap(u => [u.id, u.displayOrder]);
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE menu_items SET display_order = CASE id ${cases} END, updated_at = NOW() WHERE id IN (${inClause})`,
+        params
+      );
+    } finally {
+      client.release();
     }
   }
 
@@ -1211,11 +1220,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {
-    for (const update of updates) {
-      await db
-        .update(menuCategories)
-        .set({ displayOrder: update.displayOrder, updatedAt: new Date() })
-        .where(eq(menuCategories.id, update.id));
+    if (updates.length === 0) return;
+    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}`).join(' ');
+    const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
+    const params = updates.flatMap(u => [u.id, u.displayOrder]);
+    const client = await pool.connect();
+    try {
+      await client.query(
+        `UPDATE menu_categories SET display_order = CASE id ${cases} END, updated_at = NOW() WHERE id IN (${inClause})`,
+        params
+      );
+    } finally {
+      client.release();
     }
   }
 
