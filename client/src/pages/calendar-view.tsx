@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,9 @@ const SIDEBAR_WIDTH = 180;
 export default function CalendarView() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  // On mobile, shrink the room sidebar so the main calendar gets more space
+  const sidebarWidth = isMobile ? 64 : SIDEBAR_WIDTH;
   const today = startOfDay(new Date());
   const [startDate, setStartDate] = useState<Date>(today);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | "all">(() => {
@@ -526,7 +530,7 @@ export default function CalendarView() {
         ref={calendarRef}
         className="flex-1 overflow-auto"
       >
-        <div style={{ minWidth: `${(showRoomSidebar ? SIDEBAR_WIDTH : 0) + dates.length * CELL_WIDTH}px` }}>
+        <div style={{ minWidth: `${(showRoomSidebar ? sidebarWidth : 0) + dates.length * CELL_WIDTH}px` }}>
 
           {/* ── Sticky date-header row ───────────────────────────────────── */}
           <div className="sticky top-0 z-30 flex bg-white dark:bg-card border-b">
@@ -534,9 +538,9 @@ export default function CalendarView() {
             {showRoomSidebar && (
               <div
                 className="sticky left-0 z-40 bg-white dark:bg-card border-r flex items-center justify-between px-2 flex-shrink-0"
-                style={{ width: SIDEBAR_WIDTH }}
+                style={{ width: sidebarWidth }}
               >
-                <span className="font-semibold text-xs text-muted-foreground truncate">All Rooms</span>
+                <span className="font-semibold text-xs text-muted-foreground truncate">{isMobile ? "Room" : "All Rooms"}</span>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -595,7 +599,7 @@ export default function CalendarView() {
                 {showRoomSidebar && (
                   <div
                     className="sticky left-0 z-10 bg-amber-50 dark:bg-amber-950/30 border-r flex items-center gap-2 px-3 flex-shrink-0"
-                    style={{ width: SIDEBAR_WIDTH, height: TYPE_ROW_HEIGHT }}
+                    style={{ width: sidebarWidth, height: TYPE_ROW_HEIGHT }}
                   >
                     <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                     <span className="font-semibold text-xs text-amber-800 dark:text-amber-300 truncate">
@@ -630,7 +634,7 @@ export default function CalendarView() {
                     {showRoomSidebar && (
                       <div
                         className="sticky left-0 z-10 bg-amber-50/60 dark:bg-amber-950/20 border-r flex items-center justify-between px-2 flex-shrink-0 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-colors"
-                        style={{ width: SIDEBAR_WIDTH, height: ROW_HEIGHT }}
+                        style={{ width: sidebarWidth, height: ROW_HEIGHT }}
                         onClick={() => navigate(`/bookings/${b.id}`)}
                         data-testid={`unassigned-sidebar-${b.id}`}
                       >
@@ -679,12 +683,12 @@ export default function CalendarView() {
           {/* ── Room Types + Room Rows ───────────────────────────────────── */}
           {Object.entries(roomsByType).map(([type, typeRooms]) => (
             <div key={type}>
-              {/* Type header / price row */}
-              <div className="flex border-b bg-slate-50 dark:bg-muted/10">
+              {/* Type header / price row — hidden on mobile to maximise calendar visibility */}
+              <div className={cn("border-b bg-slate-50 dark:bg-muted/10", isMobile ? "hidden" : "flex")}>
                 {showRoomSidebar && (
                   <div
                     className="sticky left-0 z-10 bg-slate-50 dark:bg-muted/20 border-r flex items-center justify-between px-3 flex-shrink-0 cursor-pointer hover:bg-slate-100 dark:hover:bg-muted/30 transition-colors"
-                    style={{ width: SIDEBAR_WIDTH, height: TYPE_ROW_HEIGHT }}
+                    style={{ width: sidebarWidth, height: TYPE_ROW_HEIGHT }}
                     onClick={() => toggleType(type)}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -709,8 +713,8 @@ export default function CalendarView() {
                 })}
               </div>
 
-              {/* Individual room rows */}
-              {expandedTypes[type] && typeRooms.map(room => {
+              {/* Individual room rows — on mobile, type collapse is disabled so always show */}
+              {(isMobile || expandedTypes[type]) && typeRooms.map(room => {
                 const isDorm = isDormitoryRoom(room);
                 const roomBookings = isDorm
                   ? getAllDormitoryBookingsInRange(room.id)
@@ -740,7 +744,7 @@ export default function CalendarView() {
                     {showRoomSidebar && (
                       <div
                         className="sticky left-0 z-10 bg-white dark:bg-card border-r flex items-center justify-between px-2 flex-shrink-0 group hover:bg-slate-50 dark:hover:bg-muted/10 transition-colors"
-                        style={{ width: SIDEBAR_WIDTH, height: ROW_HEIGHT }}
+                        style={{ width: sidebarWidth, height: ROW_HEIGHT }}
                       >
                         <div
                           className="flex items-center gap-1.5 cursor-pointer min-w-0 flex-1"
