@@ -4634,6 +4634,7 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
   const [correctedTotal, setCorrectedTotal] = useState("");
   const [correctedBalance, setCorrectedBalance] = useState("");
   const [correctedPaymentStatus, setCorrectedPaymentStatus] = useState("paid");
+  const [correctedPaymentMethod, setCorrectedPaymentMethod] = useState("cash");
   const [correctionNote, setCorrectionNote] = useState("");
   const [initialized, setInitialized] = useState(false);
 
@@ -4642,6 +4643,7 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
       setCorrectedTotal(bill.totalAmount ?? "0");
       setCorrectedBalance(bill.balanceAmount ?? "0");
       setCorrectedPaymentStatus(bill.paymentStatus ?? "paid");
+      setCorrectedPaymentMethod(bill.paymentMethod ?? "cash");
       setInitialized(true);
     }
   }, [bill, initialized]);
@@ -4654,6 +4656,7 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
           totalAmount: correctedTotal,
           balanceAmount: correctedBalance,
           paymentStatus: correctedPaymentStatus,
+          paymentMethod: correctedPaymentStatus === "paid" ? correctedPaymentMethod : null,
           pendingReason: correctionNote,
         }),
       });
@@ -4755,18 +4758,37 @@ function BillCorrectionForm({ bookingId, onClose }: { bookingId: number; onClose
           </div>
         </div>
 
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Payment Status</label>
-          <select
-            className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            value={correctedPaymentStatus}
-            onChange={(e) => setCorrectedPaymentStatus(e.target.value)}
-            data-testid="select-corrected-payment-status"
-          >
-            <option value="paid">Paid — fully settled</option>
-            <option value="pending">Pending — balance still due</option>
-            <option value="partial">Partial — partially paid</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Payment Status</label>
+            <select
+              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={correctedPaymentStatus}
+              onChange={(e) => setCorrectedPaymentStatus(e.target.value)}
+              data-testid="select-corrected-payment-status"
+            >
+              <option value="paid">Paid — fully settled</option>
+              <option value="pending">Pending — balance still due</option>
+              <option value="partial">Partial — partially paid</option>
+            </select>
+          </div>
+          {correctedPaymentStatus === "paid" && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Payment Method</label>
+              <select
+                className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={correctedPaymentMethod}
+                onChange={(e) => setCorrectedPaymentMethod(e.target.value)}
+                data-testid="select-corrected-payment-method"
+              >
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="card">Card</option>
+                <option value="split">Split (Cash + UPI)</option>
+              </select>
+            </div>
+          )}
         </div>
 
         <div>

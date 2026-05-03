@@ -161,7 +161,7 @@ export default function ActiveBookings() {
     open: false,
     booking: null,
   });
-  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
+  const [paymentMethod, setPaymentMethod] = useState<string>("upi");
   const [paymentStatus, setPaymentStatus] = useState<string>("paid");
   const [dueDate, setDueDate] = useState<string>("");
   const [pendingReason, setPendingReason] = useState<string>("");
@@ -384,7 +384,7 @@ export default function ActiveBookings() {
       setPreBillStatus("pending");
       setSkipPreBill(false);
       setPaymentLinkSent(false);
-      setPaymentMethod("cash");
+      setPaymentMethod("upi");
       setPaymentStatus("paid");
       setAutoCompletingCheckout(false);
       setCashAmount("");
@@ -638,7 +638,7 @@ export default function ActiveBookings() {
         }, 500);
       }
       setCheckoutDialog({ open: false, booking: null });
-      setPaymentMethod("cash");
+      setPaymentMethod("upi");
       setCashAmount("");
       setPaymentStatus("paid");
       setDueDate("");
@@ -1733,7 +1733,7 @@ export default function ActiveBookings() {
           setManualCharges([{ name: "", amount: "" }]);
           setDiscountType("none");
           setDiscountValue("");
-          setPaymentMethod("cash");
+          setPaymentMethod("upi");
           setExtendedStayHandled(false);
           setExtendedStayChoice(null);
           setCustomExtendedAmount("");
