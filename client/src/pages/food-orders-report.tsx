@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Download, UtensilsCrossed, IndianRupee, Plus } from "lucide-react";
+import { Calendar, Download, UtensilsCrossed, IndianRupee, Plus, Search, X } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -68,6 +68,7 @@ export default function FoodOrdersReport() {
   });
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: properties } = useQuery<Property[]>({
     queryKey: ["/api/properties?includeDisabled=true"],
@@ -194,20 +195,6 @@ export default function FoodOrdersReport() {
     return { startDate, endDate };
   };
 
-  const isCustomRangeIncomplete = dateRange === "custom" && (!customStartDate || !customEndDate);
-  const { startDate, endDate } = getDateRange();
-  const filteredOrders = isCustomRangeIncomplete 
-    ? [] 
-    : filteredOrdersByProperty?.filter((order) => {
-        const orderDate = new Date(order.createdAt);
-        const isInDateRange = orderDate >= startDate && orderDate <= endDate;
-        // Exclude rejected and cancelled orders from revenue calculations
-        const isValidStatus = order.status !== "rejected" && order.status !== "cancelled";
-        // Exclude TEST orders from all revenue/sales calculations
-        const isReal = !(order as any).isTest;
-        return isInDateRange && isValidStatus && isReal;
-      });
-
   const getGuestName = (order: Order) => {
     if (order.customerName) return order.customerName;
     if (order.guestId) {
@@ -223,6 +210,33 @@ export default function FoodOrdersReport() {
     }
     return order.orderSource === "guest" ? "Guest Order" : "Walk-in Customer";
   };
+
+  const isCustomRangeIncomplete = dateRange === "custom" && (!customStartDate || !customEndDate);
+  const { startDate, endDate } = getDateRange();
+
+  const dateAndPropertyFilteredOrders = useMemo(() => {
+    if (isCustomRangeIncomplete || !filteredOrdersByProperty) return [];
+    return filteredOrdersByProperty.filter((order) => {
+      const orderDate = new Date(order.createdAt);
+      const isInDateRange = orderDate >= startDate && orderDate <= endDate;
+      const isValidStatus = order.status !== "rejected" && order.status !== "cancelled";
+      const isReal = !(order as any).isTest;
+      return isInDateRange && isValidStatus && isReal;
+    });
+  }, [filteredOrdersByProperty, isCustomRangeIncomplete, startDate, endDate]);
+
+  const filteredOrders = useMemo(() => {
+    if (!searchQuery.trim()) return dateAndPropertyFilteredOrders;
+    const q = searchQuery.toLowerCase().trim();
+    return dateAndPropertyFilteredOrders.filter((order) => {
+      if (String(order.id).includes(q)) return true;
+      if ((order.roomNumber || "").toLowerCase().includes(q)) return true;
+      if (getGuestName(order).toLowerCase().includes(q)) return true;
+      if ((order.customerPhone || "").includes(q)) return true;
+      if (Array.isArray(order.items) && order.items.some((item: any) => item.name?.toLowerCase().includes(q))) return true;
+      return false;
+    });
+  }, [dateAndPropertyFilteredOrders, searchQuery, guests, bookings]);
 
   const totalOrders = filteredOrders?.length || 0;
   const totalRevenue = filteredOrders?.reduce((sum, order) => {
@@ -300,13 +314,13 @@ export default function FoodOrdersReport() {
         </Button>
       </div>
 
-      {/* Filters row: property + date hot tabs */}
+      {/* Filters row: property + search + date hot tabs */}
       <Card className="mb-6">
         <CardContent className="pt-4 pb-4">
           <div className="flex flex-wrap items-center gap-4">
             {/* Property filter — always visible */}
             {availableProperties.length > 0 && (
-              <div className="min-w-[200px] flex-1">
+              <div className="min-w-[180px] w-[200px]">
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">Property</label>
                 <Select
                   value={selectedPropertyId !== null ? String(selectedPropertyId) : "all"}
@@ -325,8 +339,32 @@ export default function FoodOrdersReport() {
               </div>
             )}
 
+            {/* Search box */}
+            <div className="min-w-[200px] flex-1">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">Search</label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Guest, room, order ID, item…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-9 pl-8 pr-8"
+                  data-testid="input-search-orders"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    data-testid="button-clear-search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Hot tab date buttons */}
-            <div className="flex-1">
+            <div className="flex-1 min-w-[260px]">
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block uppercase tracking-wide">Period</label>
               <div className="flex flex-wrap gap-1.5">
                 {[
@@ -439,13 +477,30 @@ export default function FoodOrdersReport() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Order Details</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>Order Details</CardTitle>
+            {searchQuery.trim() && (
+              <span className="text-xs text-muted-foreground font-normal">
+                {filteredOrders.length} of {dateAndPropertyFilteredOrders.length} matching
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="ml-1.5 text-primary hover:underline"
+                  data-testid="button-clear-search-inline"
+                >
+                  Clear
+                </button>
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {!filteredOrders || filteredOrders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <UtensilsCrossed className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>No orders found for the selected date range</p>
+              {searchQuery.trim()
+                ? <><p className="font-medium">No orders match "{searchQuery}"</p><p className="text-xs mt-1">Try a different guest name, room number, order ID, or item.</p></>
+                : <p>No orders found for the selected date range</p>
+              }
             </div>
           ) : (
             <div className="overflow-x-auto">
