@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Order, RestaurantTable, Property, TableReservation } from "@shared/schema";
 import { formatDistanceToNowStrict, format } from "date-fns";
 
-type PayMethod = "cash" | "upi" | "card";
+type PayMethod = "cash" | "upi" | "card" | "split" | "room";
 
 interface TableState {
   table: RestaurantTable;
@@ -32,6 +32,9 @@ export default function RestaurantLive() {
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [settleTable, setSettleTable] = useState<TableState | null>(null);
   const [payMethod, setPayMethod] = useState<PayMethod>("cash");
+  const [splitCashAmount, setSplitCashAmount] = useState("");
+  const [splitUpiAmount, setSplitUpiAmount] = useState("");
+  const [chargeToRoom, setChargeToRoom] = useState(false);
 
   const { data: properties } = useQuery<Property[]>({ queryKey: ["/api/properties"] });
   const { data: tables, isLoading: tablesLoading } = useQuery<RestaurantTable[]>({
@@ -386,7 +389,7 @@ export default function RestaurantLive() {
                   [
                     { key: "cash", label: "Cash", icon: Banknote },
                     { key: "upi", label: "UPI", icon: Smartphone },
-                    { key: "card", label: "Card", icon: CreditCard },
+                    { key: "split", label: "Split", icon: CreditCard },
                   ] as { key: PayMethod; label: string; icon: any }[]
                 ).map(({ key, label, icon: Icon }) => (
                   <Button
@@ -400,6 +403,52 @@ export default function RestaurantLive() {
                   </Button>
                 ))}
               </div>
+
+              {payMethod === "split" && (
+                <div className="space-y-3 rounded-lg border p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Cash (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={splitCashAmount}
+                        onChange={(e) => setSplitCashAmount(e.target.value)}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        data-testid="input-split-cash"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">UPI (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={splitUpiAmount}
+                        onChange={(e) => setSplitUpiAmount(e.target.value)}
+                        className="w-full rounded-md border px-3 py-2 text-sm"
+                        data-testid="input-split-upi"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {payMethod === "room" && (
+                <div className="flex items-center gap-2 rounded-lg border p-3">
+                  <input
+                    id="charge-to-room"
+                    type="checkbox"
+                    checked={chargeToRoom}
+                    onChange={(e) => setChargeToRoom(e.target.checked)}
+                    data-testid="checkbox-charge-to-room"
+                  />
+                  <label htmlFor="charge-to-room" className="text-sm">
+                    Add this bill to room
+                  </label>
+                </div>
+              )}
             </div>
           )}
 
@@ -410,9 +459,17 @@ export default function RestaurantLive() {
             <Button
               onClick={() => {
                 if (!settleTable) return;
+                const total = Number(settleTable.total || 0);
                 settleMutation.mutate({
                   orderIds: settleTable.openOrders.map((o) => o.id),
                   method: payMethod,
+                  ...(payMethod === "split"
+                    ? {
+                        cashAmount: Number(splitCashAmount || 0) || total,
+                        upiAmount: Number(splitUpiAmount || 0),
+                      }
+                    : {}),
+                  ...(payMethod === "room" ? { chargeToRoom } : {}),
                 });
               }}
               disabled={settleMutation.isPending || !settleTable?.openOrders.length}
