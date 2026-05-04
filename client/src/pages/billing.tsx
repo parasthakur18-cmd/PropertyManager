@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2 } from "lucide-react";
+import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2, MessageCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ export default function Billing() {
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [sendingBillId, setSendingBillId] = useState<number | null>(null);
 
   const { data: bills, isLoading } = useQuery<Bill[]>({
     queryKey: ["/api/bills"],
@@ -133,6 +134,30 @@ export default function Billing() {
       toast({
         title: "Error updating bill",
         description: error.message || "Failed to mark bill as paid",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const sendBillWhatsappMutation = useMutation({
+    mutationFn: async (billId: number) => {
+      return await apiRequest(`/api/bills/${billId}/send-whatsapp`, "POST", {});
+    },
+    onMutate: (billId) => setSendingBillId(billId),
+    onSuccess: (_data, billId) => {
+      setSendingBillId(null);
+      const bill = bills?.find(b => b.id === billId);
+      const guestName = (bill as any)?.guestName || "Guest";
+      toast({
+        title: "Bill Sent via WhatsApp",
+        description: `Bill link sent to ${guestName} successfully.`,
+      });
+    },
+    onError: (error: any) => {
+      setSendingBillId(null);
+      toast({
+        title: "Failed to Send Bill",
+        description: error.message || "Could not send bill via WhatsApp. Check guest phone number.",
         variant: "destructive",
       });
     },
@@ -631,7 +656,7 @@ export default function Billing() {
                     </div>
                   )}
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2 flex-wrap">
                   {bill.paymentStatus === "pending" && (
                     <Button
                       variant="default"
@@ -645,6 +670,17 @@ export default function Billing() {
                       Mark as Paid
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-green-700 border-green-300 hover:bg-green-50 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-900/20"
+                    onClick={() => sendBillWhatsappMutation.mutate(bill.id)}
+                    disabled={sendingBillId === bill.id}
+                    data-testid={`button-send-bill-whatsapp-${bill.id}`}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    {sendingBillId === bill.id ? "Sending…" : "Send via WhatsApp"}
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

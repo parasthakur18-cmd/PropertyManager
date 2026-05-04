@@ -5497,6 +5497,103 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // POST /api/bills/:id/send-whatsapp — resend a generated bill to the guest via WhatsApp
+  app.post("/api/bills/:id/send-whatsapp", isAuthenticated, async (req, res) => {
+    try {
+      const billId = parseInt(req.params.id);
+      const bill = await storage.getBill(billId);
+      if (!bill) return res.status(404).json({ message: "Bill not found" });
+
+      const booking = await storage.getBooking(bill.bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+
+      const guest = await storage.getGuest(booking.guestId);
+      if (!guest || !guest.phone) return res.status(400).json({ message: "Guest has no phone number" });
+
+      const waPhone = (guest as any).whatsappPhone || guest.phone;
+      if (!isRealPhone(waPhone)) return res.status(400).json({ message: "No valid phone number" });
+
+      const totalAmount = parseFloat(bill.totalAmount || "0");
+      const roomChargesNum = parseFloat(bill.roomCharges || "0");
+      const foodChargesNum = parseFloat(bill.foodCharges || "0");
+      const extraChargesNum = parseFloat(bill.extraCharges || "0");
+      const gstAmountNum = parseFloat(bill.gstAmount || "0");
+      const advancePaymentNum = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
+      const discountNum = parseFloat(bill.discountAmount || "0");
+      const balanceDueNum = bill.paymentStatus === "paid" ? 0 : Math.max(0, totalAmount - advancePaymentNum);
+
+      const guestName = guest.fullName || "Guest";
+      const roomNumber = booking.roomNumber || "N/A";
+
+      // Build food items from orders for the pre-bill viewer
+      const bookingOrders = await getBillableOrdersForBooking(booking);
+      const merged = new Map<string, { name: string; quantity: number; price: number; total: number }>();
+      for (const order of bookingOrders) {
+        if (order.status === 'cancelled' || order.status === 'rejected' || (order as any).isTest) continue;
+        const lineItems = Array.isArray((order as any).items) ? ((order as any).items as any[]) : [];
+        for (const li of lineItems) {
+          const name = String(li?.name ?? li?.itemName ?? 'Item').trim();
+          const quantity = Number(li?.quantity ?? 1) || 1;
+          const price = parseFloat(String(li?.price ?? 0)) || 0;
+          const key = `${name}__${price}`;
+          const existing = merged.get(key);
+          if (existing) { existing.quantity += quantity; existing.total += quantity * price; }
+          else merged.set(key, { name, quantity, price, total: quantity * price });
+        }
+      }
+      const foodItems = Array.from(merged.values());
+
+      const nights = Math.max(1, Math.ceil(
+        (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime()) / (1000 * 60 * 60 * 24)
+      ));
+
+      const token = randomUUID().replace(/-/g, '').substring(0, 32);
+      await db.insert(preBills).values({
+        bookingId: booking.id,
+        token,
+        totalAmount: totalAmount.toString(),
+        balanceDue: balanceDueNum.toString(),
+        roomNumber,
+        roomCharges: roomChargesNum.toString(),
+        foodCharges: foodChargesNum.toString(),
+        extraCharges: extraChargesNum.toString(),
+        gstAmount: gstAmountNum.toString(),
+        discount: discountNum.toString(),
+        advancePayment: advancePaymentNum.toString(),
+        foodItems,
+        guestName,
+        guestPhone: waPhone,
+        guestEmail: guest.email || '',
+        propertyId: booking.propertyId,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        nights,
+        status: bill.paymentStatus === 'paid' ? 'approved' : 'pending',
+      });
+
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : "https://hostezee.in";
+      const billLink = `${baseUrl}/guest/prebill/${token}`;
+
+      const result = await sendCustomWhatsAppMessage(
+        waPhone,
+        process.env.AUTHKEY_WA_PREBILL_LINK || "30849",
+        [guestName, roomNumber, balanceDueNum.toFixed(2), billLink]
+      );
+
+      if (result.success) {
+        console.log(`[BILL-WA] Bill #${billId} sent to ${guestName} (${waPhone})`);
+        res.json({ success: true, message: `Bill sent to ${waPhone}` });
+      } else {
+        res.status(500).json({ message: result.error || "Failed to send bill via WhatsApp" });
+      }
+    } catch (error: any) {
+      console.error("[BILL-WA] Error:", error.message);
+      res.status(500).json({ message: error.message || "Failed to send bill" });
+    }
+  });
+
   // Public route: Get pre-bill by token
   app.get("/api/public/prebill/:token", async (req, res) => {
     try {
