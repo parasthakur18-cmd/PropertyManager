@@ -162,7 +162,6 @@ export default function QuickOrder() {
     if (startStep === "3") {
       setStep(3);
       setOrderType("restaurant");
-      setRestaurantCustomerType("walk-in");
     }
   }, [startStep]);
 
@@ -384,10 +383,6 @@ export default function QuickOrder() {
         }
       }
       if (orderType === "restaurant") {
-        if (restaurantCustomerType === "walk-in" && (!customerName || !customerPhone)) {
-          toast({ title: "Customer Info Required", description: "Enter name and phone", variant: "destructive" });
-          return;
-        }
         if (restaurantCustomerType === "in-house" && !selectedRoom) {
           toast({ title: "Room Required", description: "Select the in-house guest's room", variant: "destructive" });
           return;
@@ -488,10 +483,14 @@ export default function QuickOrder() {
   }, [selectedRoom, filteredRooms]);
 
   useEffect(() => {
-    if (!preselectedTable || orderType !== "restaurant") return;
-    setRestaurantCustomerType("walk-in");
-    setSelectedRoom("");
-  }, [preselectedTable, orderType]);
+    if (!preselectedTable) return;
+    if (orderType !== "restaurant") setOrderType("restaurant");
+    setRestaurantCustomerType("in-house");
+    if (!selectedRoom && filteredRooms.length > 0) {
+      const target = filteredRooms.find((room) => String(room.roomNumber).toLowerCase() === preselectedTable.trim().toLowerCase());
+      if (target) setSelectedRoom(String(target.roomId));
+    }
+  }, [preselectedTable, orderType, filteredRooms, selectedRoom]);
 
   if (menuLoading) {
     return (
