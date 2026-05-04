@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { RestaurantPopup } from "@/components/restaurant-popup";
 import { Search, ShoppingCart, X, Plus, Minus, ChevronRight, Clock, ArrowLeft, UtensilsCrossed } from "lucide-react";
@@ -83,7 +83,6 @@ export default function CustomerMenu() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
-  const [previousOrders, setPreviousOrders] = useState<Array<{ id: number; title: string; totalAmount: number; items: Array<{ id: number; name: string; price: number; quantity: number }> }>>([]);
   const { toast } = useToast();
 
   const KITCHEN_OPEN_HOUR = 8;
@@ -132,11 +131,6 @@ export default function CustomerMenu() {
   const { data: properties } = useQuery<any[]>({
     queryKey: ["/api/public/properties"],
     queryFn: () => publicFetch("/api/public/properties"),
-  });
-
-  const { data: orderHistory } = useQuery<any[]>({
-    queryKey: ["/api/orders"],
-    enabled: isTableMode,
   });
 
   const orderMutation = useMutation({
@@ -197,32 +191,6 @@ export default function CustomerMenu() {
     return availableItems.filter(i => i.name.toLowerCase().includes(q) || (i.description && i.description.toLowerCase().includes(q)));
   }, [availableItems, searchQuery]);
 
-  useEffect(() => {
-    if (!isTableMode || !orderHistory || !urlTable) return;
-    const tableKey = urlTable.trim().toLowerCase();
-    const prev = orderHistory
-      .filter((order) => {
-        const roomLabel = String(order.roomNumber || order.roomId || "").toLowerCase();
-        const orderMode = String(order.orderMode || "").toLowerCase();
-        return orderMode === "room" && roomLabel.includes(tableKey);
-      })
-      .slice(0, 4)
-      .map((order) => ({
-        id: order.id,
-        title: `Order #${order.id}`,
-        totalAmount: parseFloat(order.totalAmount || "0"),
-        items: Array.isArray(order.items)
-          ? order.items.slice(0, 3).map((item: any) => ({
-              id: item.id,
-              name: item.name,
-              price: Number(item.price || 0),
-              quantity: Number(item.quantity || 1),
-            }))
-          : [],
-      }));
-    setPreviousOrders(prev);
-  }, [isTableMode, orderHistory, urlTable]);
-
   const handleSelectItem = (item: MenuItem) => {
     setSelectedItem(item);
     setQuantity(1);
@@ -273,6 +241,10 @@ export default function CustomerMenu() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
+  const previousOrders = useMemo(() => {
+    if (!isTableMode || !urlTable) return [];
+    return [];
+  }, [isTableMode, urlTable]);
 
   const handlePlaceOrder = () => {
     if (!isKitchenOpen) {
@@ -382,16 +354,25 @@ export default function CustomerMenu() {
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        const match = order.items
-                          .map((item) => availableItems.find((menuItem) => menuItem.id === item.id))
-                          .filter(Boolean) as MenuItem[];
-                        if (match.length > 0) {
-                          match.forEach((item) => {
-                            const qty = order.items.find((x) => x.id === item.id)?.quantity || 1;
-                            for (let i = 0; i < qty; i += 1) {
-                              setCart((current) => [...current, { menuItem: item, quantity: 1, selectedAddOns: [], totalPrice: parseFloat(item.discountedPrice || item.actualPrice || item.price) }]);
-                            }
-                          });
+                        const mappedItems = order.items
+                          .map((item) => {
+                            const menuItem = availableItems.find((candidate) => candidate.id === item.id || candidate.name.toLowerCase() === item.name.toLowerCase());
+                            return menuItem ? { menuItem, qty: item.quantity } : null;
+                          })
+                          .filter(Boolean) as Array<{ menuItem: MenuItem; qty: number }>;
+                        if (mappedItems.length > 0) {
+                          setCart((current) => [
+                            ...current,
+                            ...mappedItems.flatMap(({ menuItem, qty }) =>
+                              Array.from({ length: qty }, () => ({
+                                menuItem,
+                                quantity: 1,
+                                selectedVariant: undefined,
+                                selectedAddOns: [],
+                                totalPrice: parseFloat(menuItem.discountedPrice || menuItem.actualPrice || menuItem.price),
+                              }))
+                            ),
+                          ]);
                           toast({ title: "Added to cart", description: "Previous items were added to your cart." });
                         }
                       }}
