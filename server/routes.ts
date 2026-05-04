@@ -8163,8 +8163,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           : (orderData.tableNumber ? "dine-in" : "dine-in");
       }
 
-      // Require customerName for restaurant walk-in orders (no room linked)
-      if (orderData.orderType === "restaurant" && !orderData.roomId && !orderData.customerName?.trim()) {
+      // Require customerName only for true restaurant walk-in orders.
+      // Table-attached orders can be submitted without guest details.
+      if (orderData.orderType === "restaurant" && !orderData.roomId && !orderData.tableNumber && !orderData.customerName?.trim()) {
         return res.status(400).json({ message: "Customer name is required for restaurant walk-in orders." });
       }
       

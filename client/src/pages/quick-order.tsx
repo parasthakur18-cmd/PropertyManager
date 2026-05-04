@@ -123,6 +123,7 @@ export default function QuickOrder() {
   const preselectedTable = urlParams.get("table") || "";
   const preselectedProperty = urlParams.get("property") || "";
   const startStep = urlParams.get("step");
+  const isTableOrder = urlParams.get("mode") === "table";
   // ── Step state ─────────────────────────────────────────────────────────────
   const [step, setStep] = useState(startStep === "3" ? 3 : 1);
   const [orderType, setOrderType] = useState<OrderType>(null);
@@ -164,6 +165,13 @@ export default function QuickOrder() {
       setOrderType("restaurant");
     }
   }, [startStep]);
+
+  useEffect(() => {
+    if (!isTableOrder) return;
+    setStep(3);
+    setOrderType("restaurant");
+    setRestaurantCustomerType("walk-in");
+  }, [isTableOrder]);
 
   // ── Data queries ───────────────────────────────────────────────────────────
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
@@ -456,7 +464,12 @@ export default function QuickOrder() {
       orderData.customerPhone = customerPhone;
     } else if (orderType === "restaurant") {
       orderData.orderMode = "dine-in";
-      if (restaurantCustomerType === "in-house") {
+      if (isTableOrder) {
+        orderData.propertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
+        orderData.tableNumber = preselectedTable || null;
+        orderData.customerName = customerName || "Table Order";
+        orderData.customerPhone = customerPhone || "";
+      } else if (restaurantCustomerType === "in-house") {
         orderData.roomId = parseInt(selectedRoom);
         const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
         if (roomGuest) {
@@ -483,7 +496,7 @@ export default function QuickOrder() {
   }, [selectedRoom, filteredRooms]);
 
   useEffect(() => {
-    if (!preselectedTable) return;
+    if (!preselectedTable || isTableOrder) return;
     if (orderType !== "restaurant") setOrderType("restaurant");
     setRestaurantCustomerType("in-house");
     if (!selectedRoom && filteredRooms.length > 0) {
