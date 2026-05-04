@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { RestaurantPopup } from "@/components/restaurant-popup";
 import { Search, ShoppingCart, X, Plus, Minus, ChevronRight, Clock, ArrowLeft, UtensilsCrossed } from "lucide-react";
@@ -83,6 +83,7 @@ export default function CustomerMenu() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
+  const [previousOrders, setPreviousOrders] = useState<Array<{ id: number; title: string; totalAmount: number; items: Array<{ id: number; name: string; price: number; quantity: number }> }>>([]);
   const { toast } = useToast();
 
   const KITCHEN_OPEN_HOUR = 8;
@@ -131,6 +132,11 @@ export default function CustomerMenu() {
   const { data: properties } = useQuery<any[]>({
     queryKey: ["/api/public/properties"],
     queryFn: () => publicFetch("/api/public/properties"),
+  });
+
+  const { data: orderHistory } = useQuery<any[]>({
+    queryKey: ["/api/orders"],
+    enabled: isTableMode,
   });
 
   const orderMutation = useMutation({
@@ -190,6 +196,32 @@ export default function CustomerMenu() {
     const q = searchQuery.toLowerCase();
     return availableItems.filter(i => i.name.toLowerCase().includes(q) || (i.description && i.description.toLowerCase().includes(q)));
   }, [availableItems, searchQuery]);
+
+  useEffect(() => {
+    if (!isTableMode || !orderHistory || !urlTable) return;
+    const tableKey = urlTable.trim().toLowerCase();
+    const prev = orderHistory
+      .filter((order) => {
+        const roomLabel = String(order.roomNumber || order.roomId || "").toLowerCase();
+        const orderMode = String(order.orderMode || "").toLowerCase();
+        return orderMode === "room" && roomLabel.includes(tableKey);
+      })
+      .slice(0, 4)
+      .map((order) => ({
+        id: order.id,
+        title: `Order #${order.id}`,
+        totalAmount: parseFloat(order.totalAmount || "0"),
+        items: Array.isArray(order.items)
+          ? order.items.slice(0, 3).map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              price: Number(item.price || 0),
+              quantity: Number(item.quantity || 1),
+            }))
+          : [],
+      }));
+    setPreviousOrders(prev);
+  }, [isTableMode, orderHistory, urlTable]);
 
   const handleSelectItem = (item: MenuItem) => {
     setSelectedItem(item);
@@ -321,6 +353,58 @@ export default function CustomerMenu() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pt-4 space-y-5">
+        {isTableMode && previousOrders.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-gray-700">Previous Orders</h2>
+              <span className="text-xs text-muted-foreground">Tap to reorder</span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {previousOrders.map((order) => (
+                <div key={order.id} className="min-w-[220px] max-w-[220px] rounded-2xl border bg-white shadow-sm p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{order.title}</p>
+                      <p className="text-xs text-muted-foreground">{order.items.length} item{order.items.length !== 1 ? "s" : ""}</p>
+                    </div>
+                    <Badge variant="secondary">Room</Badge>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {order.items.map((item) => (
+                      <p key={`${order.id}-${item.id}`} className="text-xs text-gray-600 line-clamp-1">
+                        {item.quantity}x {item.name}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-sm font-bold">₹{order.totalAmount.toFixed(2)}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const match = order.items
+                          .map((item) => availableItems.find((menuItem) => menuItem.id === item.id))
+                          .filter(Boolean) as MenuItem[];
+                        if (match.length > 0) {
+                          match.forEach((item) => {
+                            const qty = order.items.find((x) => x.id === item.id)?.quantity || 1;
+                            for (let i = 0; i < qty; i += 1) {
+                              setCart((current) => [...current, { menuItem: item, quantity: 1, selectedAddOns: [], totalPrice: parseFloat(item.discountedPrice || item.actualPrice || item.price) }]);
+                            }
+                          });
+                          toast({ title: "Added to cart", description: "Previous items were added to your cart." });
+                        }
+                      }}
+                      data-testid={`button-reorder-${order.id}`}
+                    >
+                      Reorder
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {searchQuery ? (
           <div className="space-y-2">
             <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{searchResults.length} result{searchResults.length !== 1 ? "s" : ""}</p>
