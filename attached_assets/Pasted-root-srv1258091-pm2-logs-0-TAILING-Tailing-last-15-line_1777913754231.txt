@@ -1,0 +1,39 @@
+root@srv1258091:~# pm2 logs 0
+[TAILING] Tailing last 15 lines for [0] process (change the value with --lines option)
+/var/www/myapp/logs/pm2-error.log last 15 lines:
+0|property | 2026-05-04 16:46:47 +00:00:   hint: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   position: '13',
+0|property | 2026-05-04 16:46:47 +00:00:   internalPosition: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   internalQuery: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   where: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   schema: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   table: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   column: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   dataType: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   constraint: undefined,
+0|property | 2026-05-04 16:46:47 +00:00:   file: 'parse_relation.c',
+0|property | 2026-05-04 16:46:47 +00:00:   line: '1449',
+0|property | 2026-05-04 16:46:47 +00:00:   routine: 'parserOpenTable'
+0|property | 2026-05-04 16:46:47 +00:00: }
+0|property | 2026-05-04 16:46:52 +00:00: [/api/bookings/checkout-reminders] Error: column b.guest_name does not exist
+
+/var/www/myapp/logs/pm2-out.log last 15 lines:
+0|property | 2026-05-04 16:54:20 +00:00: 4:54:20 PM [express] GET /api/notifications 304 in 40ms
+0|property | 2026-05-04 16:54:29 +00:00: [isAuthenticated] Blocked deactivated user: user-1767538427980-9jvla28yz
+0|property | 2026-05-04 16:54:29 +00:00: 4:54:29 PM [express] GET /api/notifications 403 in 4ms :: Your account has been deactivated. Please contact your administrator.
+0|property | 2026-05-04 16:54:46 +00:00: [isAuthenticated] Blocked deactivated Google user: user-1767538427980-9jvla28yz
+0|property | 2026-05-04 16:54:46 +00:00: 4:54:46 PM [express] GET /api/auth/user 403 in 11ms :: Your account has been deactivated. Please contact your administrator.
+0|property | 2026-05-04 16:54:46 +00:00: 4:54:46 PM [express] GET /api/notifications 304 in 38ms
+0|property | 2026-05-04 16:54:51 +00:00: 4:54:51 PM [express] GET /api/auth/user 401 in 2ms :: Unauthorized
+0|property | 2026-05-04 16:54:51 +00:00: 4:54:51 PM [express] GET /api/staff-invitations/validate 200 in 5ms
+0|property | 2026-05-04 16:54:57 +00:00: 4:54:57 PM [express] GET /api/auth/google 302 in 4ms
+0|property | 2026-05-04 16:55:04 +00:00: [isAuthenticated] Blocked deactivated Google user: user-1767538427980-9jvla28yz
+0|property | 2026-05-04 16:55:04 +00:00: 4:55:04 PM [express] GET /api/auth/user 403 in 12ms :: Your account has been deactivated. Please contact your administrator.
+0|property | 2026-05-04 16:55:16 +00:00: 4:55:16 PM [express] GET /api/notifications 304 in 45ms
+0|property | 2026-05-04 16:55:21 +00:00: 4:55:21 PM [express] GET /api/notifications 304 in 37ms
+0|property | 2026-05-04 16:55:29 +00:00: [isAuthenticated] Blocked deactivated user: user-1767538427980-9jvla28yz
+0|property | 2026-05-04 16:55:29 +00:00: 4:55:29 PM [express] GET /api/notifications 403 in 4ms :: Your account has been deactivated. Please contact your administrator.
+
+0|propertymanager  | 2026-05-04 16:55:34 +00:00: [isAuthenticated] Blocked deactivated Google user: user-1767538427980-9jvla28yz
+0|propertymanager  | 2026-05-04 16:55:34 +00:00: 4:55:34 PM [express] GET /api/auth/user 403 in 10ms :: Your account has been deactivated. Please contact your administrator.
+0|propertymanager  | 2026-05-04 16:55:46 +00:00: 4:55:46 PM [express] GET /api/notifications 304 in 49ms
