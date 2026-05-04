@@ -194,6 +194,8 @@ export default function ActiveBookings() {
   const [extendedStayHandled, setExtendedStayHandled] = useState(false);
   const [extendedStayChoice, setExtendedStayChoice] = useState<"calculated" | "custom" | "skip" | null>(null);
   const [customExtendedAmount, setCustomExtendedAmount] = useState<string>("");
+  const [earlyCheckoutHandled, setEarlyCheckoutHandled] = useState(false);
+  const [earlyCheckoutChoice, setEarlyCheckoutChoice] = useState<"reduce" | "keep" | null>(null);
   const [mergedBookingDetails, setMergedBookingDetails] = useState<Array<{
     bookingId: number;
     guestName: string;
@@ -1750,6 +1752,8 @@ export default function ActiveBookings() {
           setExtendedStayHandled(false);
           setExtendedStayChoice(null);
           setCustomExtendedAmount("");
+          setEarlyCheckoutHandled(false);
+          setEarlyCheckoutChoice(null);
           setMergedBookingDetails(null);
         }
       }}>
@@ -1818,9 +1822,22 @@ export default function ActiveBookings() {
               }
               // "skip" means 0
             }
-            
+
+            // Early checkout detection — today is BEFORE the scheduled checkout date
+            // e.g. booked Apr 28 → May 5 (7N), checking out May 4 = 6 nights actually stayed
+            const daysEarly = Math.floor((checkoutDateOnly.getTime() - todayDateOnly.getTime()) / (1000 * 60 * 60 * 24));
+            const savedNights = Math.max(0, daysEarly);
+            const actualNightsToday = bookedNights - savedNights;
+            const earlyCheckoutDeductionAmount = savedNights * roomRate;
+
+            // Apply deduction if staff chose to reduce
+            let earlyCheckoutDeduction = 0;
+            if (savedNights > 0 && earlyCheckoutHandled && earlyCheckoutChoice === "reduce") {
+              earlyCheckoutDeduction = earlyCheckoutDeductionAmount;
+            }
+
             const baseRoomCharges = parseFloat(booking.charges.roomCharges) || 0;
-            const roomCharges = baseRoomCharges + extendedStayCharges;
+            const roomCharges = baseRoomCharges + extendedStayCharges - earlyCheckoutDeduction;
             const foodCharges = parseFloat(booking.charges.foodCharges) || 0;
             const extraCharges = parseFloat(booking.charges.extraCharges) || 0;
             
@@ -1956,6 +1973,80 @@ export default function ActiveBookings() {
                   </div>
                 )}
 
+                {/* Early Checkout Alert — guest is leaving before scheduled checkout */}
+                {savedNights > 0 && !earlyCheckoutHandled && (
+                  <Alert className="border-blue-300 bg-blue-50 dark:bg-blue-900/20" data-testid="alert-early-checkout">
+                    <AlertCircle className="h-4 w-4 text-blue-600" />
+                    <AlertDescription className="text-blue-800 dark:text-blue-300">
+                      <div className="font-semibold mb-2">Early Checkout</div>
+                      <div className="text-sm space-y-1 mb-3">
+                        <div>Booked Until: {format(originalCheckOutDate, "dd MMM yyyy")} ({bookedNights} nights)</div>
+                        <div>Checking Out: {format(todayDateOnly, "dd MMM yyyy")} ({actualNightsToday} nights stayed)</div>
+                        <div className="font-semibold text-blue-700 dark:text-blue-200">Early by {savedNights} night{savedNights > 1 ? "s" : ""}</div>
+                        <div className="mt-2">Room Rate: ₹{roomRate.toFixed(2)}/night</div>
+                        <div className="font-bold text-lg">Reduction: −₹{earlyCheckoutDeductionAmount.toFixed(2)}</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          className="w-full bg-blue-600 hover:bg-blue-700"
+                          onClick={() => {
+                            setEarlyCheckoutChoice("reduce");
+                            setEarlyCheckoutHandled(true);
+                          }}
+                          data-testid="button-apply-early-checkout"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Charge {actualNightsToday} nights only (−₹{earlyCheckoutDeductionAmount.toFixed(2)})
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="w-full text-muted-foreground"
+                          onClick={() => {
+                            setEarlyCheckoutChoice("keep");
+                            setEarlyCheckoutHandled(true);
+                          }}
+                          data-testid="button-keep-full-charges"
+                        >
+                          Keep Full {bookedNights} nights — No Reduction
+                        </Button>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Early Checkout Applied Badge */}
+                {savedNights > 0 && earlyCheckoutHandled && (
+                  <div className={`border p-3 rounded-md flex items-center justify-between ${earlyCheckoutChoice === "reduce" ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300" : "bg-muted/40 border-muted"}`}>
+                    <div className={`flex items-center gap-2 ${earlyCheckoutChoice === "reduce" ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground"}`}>
+                      <CheckCircle className="h-4 w-4" />
+                      <span className="font-medium">
+                        {earlyCheckoutChoice === "reduce"
+                          ? `Early Checkout: ${actualNightsToday} of ${bookedNights} nights charged`
+                          : `Early Checkout: Full ${bookedNights} nights kept`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {earlyCheckoutChoice === "reduce" && (
+                        <span className="font-bold text-blue-700 dark:text-blue-400">−₹{earlyCheckoutDeductionAmount.toFixed(2)}</span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs text-muted-foreground"
+                        onClick={() => {
+                          setEarlyCheckoutHandled(false);
+                          setEarlyCheckoutChoice(null);
+                        }}
+                        data-testid="button-undo-early-checkout"
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-muted/50 p-3 rounded-md space-y-2 text-sm">
                   <div className="font-semibold text-base mb-2">
                     Bill Breakdown
@@ -1996,7 +2087,11 @@ export default function ActiveBookings() {
                   
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      Room Charges ({bookedNights}{extraNights > 0 && extendedStayHandled && extendedStayChoice !== "skip" ? ` + ${extraNights} extended` : ""} nights):
+                      Room Charges ({
+                        earlyCheckoutHandled && earlyCheckoutChoice === "reduce"
+                          ? actualNightsToday
+                          : bookedNights
+                      }{extraNights > 0 && extendedStayHandled && extendedStayChoice !== "skip" ? ` + ${extraNights} extended` : ""} nights):
                     </span>
                     <span className="font-mono">₹{roomCharges.toFixed(2)}</span>
                   </div>
