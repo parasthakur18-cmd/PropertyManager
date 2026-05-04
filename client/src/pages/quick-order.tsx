@@ -168,7 +168,7 @@ export default function QuickOrder() {
 
   useEffect(() => {
     if (!isTableOrder) return;
-    setStep(3);
+    setStep(2);
     setOrderType("restaurant");
     setRestaurantCustomerType("walk-in");
   }, [isTableOrder]);
@@ -391,7 +391,16 @@ export default function QuickOrder() {
         }
       }
       if (orderType === "restaurant") {
-        if (restaurantCustomerType === "in-house" && !selectedRoom) {
+        if (isTableOrder) {
+          if (!customerName.trim()) {
+            toast({ title: "Name Required", description: "Enter the customer's name for this table order", variant: "destructive" });
+            return;
+          }
+          if (!customerPhone.trim()) {
+            toast({ title: "Phone Required", description: "Enter the customer's phone number to send WhatsApp updates", variant: "destructive" });
+            return;
+          }
+        } else if (restaurantCustomerType === "in-house" && !selectedRoom) {
           toast({ title: "Room Required", description: "Select the in-house guest's room", variant: "destructive" });
           return;
         }
@@ -467,8 +476,8 @@ export default function QuickOrder() {
       if (isTableOrder) {
         orderData.propertyId = selectedPropertyId ?? (availableProperties.length === 1 ? availableProperties[0].id : null);
         orderData.tableNumber = preselectedTable || null;
-        orderData.customerName = customerName || "Table Order";
-        orderData.customerPhone = customerPhone || "";
+        orderData.customerName = customerName;
+        orderData.customerPhone = customerPhone;
       } else if (restaurantCustomerType === "in-house") {
         orderData.roomId = parseInt(selectedRoom);
         const roomGuest = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
@@ -527,7 +536,7 @@ export default function QuickOrder() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Step {step} of 3 ·{" "}
-            {step === 1 ? "Select order type" : step === 2 ? "Customer details" : "Select items"}
+            {step === 1 ? "Select order type" : step === 2 ? (isTableOrder ? `Table ${preselectedTable} — customer details` : "Customer details") : "Select items"}
           </p>
         </div>
         {showPropertySwitcher && (
@@ -606,10 +615,47 @@ export default function QuickOrder() {
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>Step 2: {orderType === "room" ? "Select Room" : orderType === "takeaway" ? "Takeaway Customer" : "Customer Information"}</CardTitle>
+              <CardTitle>
+                {isTableOrder
+                  ? `Table ${preselectedTable} — Customer Details`
+                  : orderType === "room" ? "Step 2: Select Room"
+                  : orderType === "takeaway" ? "Step 2: Takeaway Customer"
+                  : "Step 2: Customer Information"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {orderType === "takeaway" ? (
+              {isTableOrder ? (
+                <>
+                  <div className="flex items-center gap-3 p-3 bg-[#1E3A5F]/5 border border-[#1E3A5F]/20 rounded-xl">
+                    <UtensilsCrossed className="h-5 w-5 text-[#1E3A5F] flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold text-[#1E3A5F] text-sm">Table {preselectedTable}</p>
+                      <p className="text-xs text-muted-foreground">Enter customer details to enable WhatsApp updates and billing</p>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="table-customer-name">Customer Name *</Label>
+                    <Input
+                      id="table-customer-name"
+                      placeholder="Enter customer name"
+                      value={customerName}
+                      onChange={e => setCustomerName(e.target.value)}
+                      data-testid="input-table-customer-name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="table-customer-phone">Phone Number *</Label>
+                    <Input
+                      id="table-customer-phone"
+                      placeholder="Enter phone number"
+                      value={customerPhone}
+                      onChange={e => setCustomerPhone(e.target.value)}
+                      data-testid="input-table-customer-phone"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Used to send WhatsApp bill and order updates</p>
+                  </div>
+                </>
+              ) : orderType === "takeaway" ? (
                 <>
                   <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/30">
                     🥡 Takeaway / parcel order — no table, no room. Just name & phone for pickup.
@@ -708,9 +754,16 @@ export default function QuickOrder() {
                 </>
               )}
               <div className="flex gap-3 mt-6">
-                <Button variant="outline" onClick={() => setStep(1)} className="flex-1" data-testid="button-back-step-2">
-                  <ArrowLeft className="h-5 w-5 mr-2" /> Back
-                </Button>
+                {!isTableOrder && (
+                  <Button variant="outline" onClick={() => setStep(1)} className="flex-1" data-testid="button-back-step-2">
+                    <ArrowLeft className="h-5 w-5 mr-2" /> Back
+                  </Button>
+                )}
+                {isTableOrder && (
+                  <Button variant="ghost" onClick={() => window.close()} className="flex-1" data-testid="button-cancel-table-order">
+                    Cancel
+                  </Button>
+                )}
                 <Button
                   className="flex-1"
                   onClick={handleNextStep}
