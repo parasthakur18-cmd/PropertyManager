@@ -284,7 +284,7 @@ export default function CustomerMenu() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-28 overflow-x-hidden">
+    <div className="min-h-screen bg-white pb-28 overflow-x-hidden">
       <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
         <div className="px-4 py-3 max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
@@ -294,14 +294,21 @@ export default function CustomerMenu() {
                 {isTableMode && <p className="text-xs text-[#2BB6A8] font-semibold">{tableLabel}</p>}
               </div>
             </div>
-            <Button size="icon" variant="secondary" className="relative" onClick={() => setShowCart(true)} data-testid="button-cart">
-              <ShoppingCart className="h-5 w-5" />
-              {cart.length > 0 && <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0">{cart.length}</Badge>}
-            </Button>
+            {cart.length > 0 && (
+              <button
+                onClick={() => setShowCart(true)}
+                className="relative flex items-center gap-1 bg-[#1E3A5F] text-white px-3 py-1.5 rounded-full text-sm font-semibold"
+                data-testid="button-header-cart"
+              >
+                <ShoppingCart className="h-4 w-4" />
+                <span>{cart.length}</span>
+                <span className="text-xs opacity-80">· ₹{cartTotal.toFixed(0)}</span>
+              </button>
+            )}
           </div>
           <div className="relative mt-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input placeholder="Search items like Dal Makhni, Paneer and so on..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 bg-background" data-testid="input-search" />
+            <Input placeholder="Search dishes..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 pr-10 rounded-xl bg-white border-gray-200" data-testid="input-search" />
           </div>
           <div className="mt-3 flex items-center justify-center">
             <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ${isKitchenOpen ? "bg-green-500/20 text-green-700 border border-green-400/40" : "bg-red-500/20 text-red-600 border border-red-400/40"}`} data-testid="badge-kitchen-status">
@@ -349,7 +356,7 @@ export default function CustomerMenu() {
                   <p className="text-sm">No menu items available</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   {categoriesWithCount.map(({ cat, count, gradient, emoji, photo }) => (
                     <button key={cat.id} onClick={() => { setSelectedCategoryId(cat.id); }} className="relative rounded-2xl overflow-hidden h-40 text-left shadow-md active:scale-95 transition-transform" data-testid={`button-category-${cat.id}`}>
                       {photo ? <img src={photo} alt={cat.name} className="absolute inset-0 w-full h-full object-cover" loading="lazy" onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} /> : <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />}
