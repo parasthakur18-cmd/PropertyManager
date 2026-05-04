@@ -119,6 +119,9 @@ function getFoodEmoji(item: { foodType?: string | null; name?: string }): string
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function QuickOrder() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const preselectedTable = urlParams.get("table") || "";
+  const preselectedProperty = urlParams.get("property") || "";
   // ── Step state ─────────────────────────────────────────────────────────────
   const [step, setStep] = useState(1);
   const [orderType, setOrderType] = useState<OrderType>(null);
@@ -147,6 +150,12 @@ export default function QuickOrder() {
     selectedPropertyId, setSelectedPropertyId,
     availableProperties, showPropertySwitcher,
   } = usePropertyFilter();
+
+  useEffect(() => {
+    if (preselectedProperty && selectedPropertyId !== parseInt(preselectedProperty)) {
+      setSelectedPropertyId(parseInt(preselectedProperty));
+    }
+  }, [preselectedProperty, selectedPropertyId, setSelectedPropertyId]);
 
   // ── Data queries ───────────────────────────────────────────────────────────
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({
@@ -468,6 +477,12 @@ export default function QuickOrder() {
     const r = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
     return r ? `Room ${r.roomNumber} — ${r.guestName}` : `Room ${selectedRoom}`;
   }, [selectedRoom, filteredRooms]);
+
+  useEffect(() => {
+    if (!preselectedTable || orderType !== "restaurant") return;
+    setRestaurantCustomerType("walk-in");
+    setSelectedRoom("");
+  }, [preselectedTable, orderType]);
 
   if (menuLoading) {
     return (

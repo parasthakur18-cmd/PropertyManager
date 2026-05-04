@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, Download, QrCode as QrCodeIcon, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, QrCode as QrCodeIcon, Printer, UtensilsCrossed } from "lucide-react";
 import QRCodeGenerator from "qrcode";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -253,6 +253,15 @@ export default function RestaurantTables() {
                     data-testid={`button-qr-${t.id}`}
                   >
                     <QrCodeIcon className="h-3.5 w-3.5 mr-1" /> QR
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 min-w-0"
+                    onClick={() => window.open(`/quick-order?property=${propertyIdNum}&table=${encodeURIComponent(t.name)}`, "_blank")}
+                    data-testid={`button-staff-order-${t.id}`}
+                  >
+                    <UtensilsCrossed className="h-3.5 w-3.5 mr-1" /> Order
                   </Button>
                   <Button
                     size="icon"
