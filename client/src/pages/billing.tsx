@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2, MessageCircle } from "lucide-react";
+import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2, MessageCircle, Share2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,7 @@ export default function Billing() {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [waDialogBill, setWaDialogBill] = useState<Bill | null>(null);
   const [waCustomPhone, setWaCustomPhone] = useState("");
+  const [sharingBillId, setSharingBillId] = useState<number | null>(null);
 
   const { data: bills, isLoading } = useQuery<Bill[]>({
     queryKey: ["/api/bills"],
@@ -693,6 +694,140 @@ export default function Billing() {
                   >
                     <MessageCircle className="h-4 w-4 mr-2" />
                     Send via WhatsApp
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-blue-700 border-blue-300 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-700 dark:hover:bg-blue-900/20"
+                    disabled={sharingBillId === bill.id}
+                    data-testid={`button-share-bill-pdf-${bill.id}`}
+                    onClick={async () => {
+                      setSharingBillId(bill.id);
+                      try {
+                        const res = await fetch(`/api/bills/${bill.id}/details`, { credentials: "include" });
+                        if (!res.ok) throw new Error("Could not load bill details");
+                        const d: BillDetails = await res.json();
+
+                        const guestName = d.guest?.fullName ?? "Guest";
+                        const guestPhone = d.guest?.phone ?? "";
+                        const propertyName = d.booking?.property?.name ?? "Hostezee";
+                        const roomLabel = d.booking?.rooms?.length
+                          ? `Rooms ${d.booking.rooms.map((r: any) => r.roomNumber).join(", ")}`
+                          : d.booking?.room?.roomNumber ?? "TBA";
+                        const checkIn = d.booking?.actualCheckInTime
+                          ? format(new Date(d.booking.actualCheckInTime), "dd MMM yyyy, h:mm a")
+                          : d.booking?.checkInDate ? format(new Date(d.booking.checkInDate), "dd MMM yyyy") : "—";
+                        const checkOut = d.booking?.checkOutDate ? format(new Date(d.booking.checkOutDate), "dd MMM yyyy") : "—";
+
+                        const ordersHtml = (d.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
+                          const items = (typeof order.items === "string" ? JSON.parse(order.items) : order.items ?? []).map((item: any) =>
+                            `<tr><td style="padding:3px 8px;color:#555">${item.name}${item.variant ? ` (${item.variant})` : ""} x${item.quantity || 1}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${item.totalPrice || (parseFloat(item.price) * (item.quantity || 1))}</td></tr>`
+                          ).join("");
+                          return `<tr style="background:#f9f9f9"><td style="padding:6px 8px;font-weight:600" colspan="2">Order #${order.id}</td></tr>${items}<tr><td style="padding:4px 8px;border-top:1px solid #eee;font-weight:600">Order Total</td><td style="padding:4px 8px;border-top:1px solid #eee;text-align:right;font-weight:600">&#8377;${parseFloat(order.totalAmount).toFixed(2)}</td></tr>`;
+                        }).join("");
+
+                        const extrasHtml = (d.extraServices ?? []).map((s: any) =>
+                          `<tr><td style="padding:3px 8px;color:#555">${s.serviceName}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(s.amount).toFixed(2)}</td></tr>`
+                        ).join("");
+
+                        const roomCharges = parseFloat(d.roomCharges || "0");
+                        const foodCharges = parseFloat(d.foodCharges || "0");
+                        const extraCharges = parseFloat(d.extraCharges || "0");
+                        const gstAmount = parseFloat(d.gstAmount || "0");
+                        const serviceChargeAmt = parseFloat((d as any).serviceChargeAmount || "0");
+                        const discount = parseFloat(d.discountAmount || "0");
+                        const totalAmount = parseFloat(d.totalAmount || "0");
+                        const advancePaid = parseFloat(d.advanceAmount || "0");
+                        const balanceDue = parseFloat(d.balanceAmount || "0");
+
+                        const dateSuffix = format(new Date(), "dd-MMM-yyyy");
+                        const guestNameClean = guestName.replace(/\s+/g, "_");
+                        const fileName = `Bill_${guestNameClean}_${dateSuffix}.pdf`;
+
+                        const pdfHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:13px;color:#222;background:#fff}.page{width:100%;margin:0;padding:20px 22px}.header{background:#1E3A5F;color:#fff;border-radius:8px 8px 0 0;padding:22px 24px 18px}.header h1{font-size:22px;font-weight:700}.header .tagline{font-size:12px;color:#2BB6A8;margin-top:2px}.header .property{font-size:14px;margin-top:8px;opacity:.9}.bill-meta{background:#f5f8ff;border:1px solid #dde5f5;border-top:none;border-radius:0 0 8px 8px;padding:14px 18px;display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px}.bill-meta div{min-width:110px}.bill-meta .label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}.bill-meta .value{font-size:13px;font-weight:600;color:#1E3A5F}.section{margin-bottom:20px}.section-title{font-size:13px;font-weight:700;color:#1E3A5F;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;background:#eef3fb;border-left:3px solid #2BB6A8}table{width:100%;border-collapse:collapse}table td{font-size:13px}.summary-table{border:1px solid #e0e7ef;border-radius:6px;overflow:hidden}.summary-table td{padding:8px 12px;border-bottom:1px solid #eef2f8;word-break:break-word}.total-row td{font-size:16px;font-weight:700;background:#1E3A5F;color:#fff;padding:10px 14px}.gst-row td{color:#15803d;font-weight:600;background:#f0fdf4}.discount-row td{color:#dc2626;font-weight:600;background:#fff5f5}.advance-row td{color:#16a34a;font-weight:600;background:#f0fdf4}.balance-row td{color:#dc2626;font-weight:700;background:#fff5f5;font-size:15px}.footer{margin-top:32px;border-top:1px solid #e0e7ef;padding-top:14px;text-align:center;color:#aaa;font-size:11px}</style></head><body><div class="page">
+<div class="header"><h1>Hostezee</h1><div class="tagline">Simplify Stays</div><div class="property">${propertyName}</div></div>
+<div class="bill-meta">
+  <div><div class="label">Guest</div><div class="value">${guestName}</div></div>
+  <div><div class="label">Phone</div><div class="value">${guestPhone || "—"}</div></div>
+  <div><div class="label">Room</div><div class="value">${roomLabel}</div></div>
+  <div><div class="label">Check-in</div><div class="value">${checkIn}</div></div>
+  <div><div class="label">Check-out</div><div class="value">${checkOut}</div></div>
+  <div><div class="label">Invoice #</div><div class="value">${d.id}</div></div>
+</div>
+${roomCharges > 0 ? `<div class="section"><div class="section-title">Room Charges</div><table class="summary-table"><tbody><tr><td style="font-weight:600">Room charges</td><td style="text-align:right;font-weight:600">&#8377;${roomCharges.toFixed(2)}</td></tr></tbody></table></div>` : ""}
+${ordersHtml ? `<div class="section"><div class="section-title">Food Orders</div><table class="summary-table"><tbody>${ordersHtml}</tbody></table></div>` : ""}
+${extrasHtml ? `<div class="section"><div class="section-title">Extra Services</div><table class="summary-table"><tbody>${extrasHtml}</tbody></table></div>` : ""}
+<div class="section"><div class="section-title">Bill Summary</div><table class="summary-table"><tbody>
+${roomCharges > 0 ? `<tr><td>Room Charges</td><td style="text-align:right">&#8377;${roomCharges.toFixed(2)}</td></tr>` : ""}
+${foodCharges > 0 ? `<tr><td>Food Charges</td><td style="text-align:right">&#8377;${foodCharges.toFixed(2)}</td></tr>` : ""}
+${extraCharges > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${extraCharges.toFixed(2)}</td></tr>` : ""}
+${gstAmount > 0 ? `<tr class="gst-row"><td>GST</td><td style="text-align:right">&#8377;${gstAmount.toFixed(2)}</td></tr>` : ""}
+${serviceChargeAmt > 0 ? `<tr class="gst-row"><td>Service Charge</td><td style="text-align:right">&#8377;${serviceChargeAmt.toFixed(2)}</td></tr>` : ""}
+${discount > 0 ? `<tr class="discount-row"><td>Discount</td><td style="text-align:right">-&#8377;${discount.toFixed(2)}</td></tr>` : ""}
+<tr class="total-row"><td>Grand Total</td><td style="text-align:right">&#8377;${totalAmount.toFixed(2)}</td></tr>
+${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}
+${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${balanceDue.toFixed(2)}</td></tr>` : ""}
+</tbody></table></div>
+<div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div>
+</div></body></html>`;
+
+                        const html2pdfLib = (await import('html2pdf.js')).default;
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1;';
+                        const el = document.createElement('div');
+                        el.style.cssText = 'width:760px;background:#fff;';
+                        el.innerHTML = pdfHtml;
+                        wrapper.appendChild(el);
+                        document.body.appendChild(wrapper);
+                        let pdfBlob: Blob;
+                        try {
+                          pdfBlob = await html2pdfLib().from(el).set({
+                            margin: [8, 8, 8, 8],
+                            filename: fileName,
+                            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
+                            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                          }).outputPdf('blob');
+                        } finally {
+                          document.body.removeChild(wrapper);
+                        }
+
+                        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+                        const canShareFiles = !!(navigator.share && (navigator as any).canShare && (navigator as any).canShare({ files: [file] }));
+                        if (canShareFiles) {
+                          try {
+                            await navigator.share({ files: [file], title: `Bill — ${guestName}` });
+                          } catch (shareErr: any) {
+                            if (shareErr?.name === 'AbortError') return;
+                            const blobUrl = URL.createObjectURL(pdfBlob);
+                            const link = document.createElement('a');
+                            link.href = blobUrl; link.download = fileName;
+                            document.body.appendChild(link); link.click();
+                            document.body.removeChild(link);
+                            URL.revokeObjectURL(blobUrl);
+                            toast({ title: "PDF Downloaded", description: "Share via WhatsApp manually." });
+                          }
+                        } else {
+                          const blobUrl = URL.createObjectURL(pdfBlob);
+                          const link = document.createElement('a');
+                          link.href = blobUrl; link.download = fileName;
+                          document.body.appendChild(link); link.click();
+                          document.body.removeChild(link);
+                          URL.revokeObjectURL(blobUrl);
+                          toast({ title: "PDF Downloaded", description: `Bill saved as "${fileName}"` });
+                        }
+                      } catch (error: any) {
+                        console.error("Share PDF error:", error);
+                        toast({ title: "Failed", description: error.message || "Could not generate bill PDF", variant: "destructive" });
+                      } finally {
+                        setSharingBillId(null);
+                      }
+                    }}
+                  >
+                    {sharingBillId === bill.id ? (
+                      <><span className="h-4 w-4 mr-2 animate-spin inline-block border-2 border-current border-t-transparent rounded-full" />Generating…</>
+                    ) : (
+                      <><Share2 className="h-4 w-4 mr-2" />Share PDF</>
+                    )}
                   </Button>
                   <Button
                     variant="outline"
