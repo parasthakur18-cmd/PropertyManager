@@ -16908,6 +16908,38 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // ===== EMERGENCY ACCOUNT RECOVERY (no auth required, uses secret token) =====
+  // Used when super-admin is locked out and cannot log in to fix accounts
+  app.post("/api/auth/emergency-reactivate", async (req, res) => {
+    try {
+      const { secret, userId, email } = req.body;
+      const RECOVERY_SECRET = process.env.RECOVERY_SECRET || "hostezee-recovery-2026";
+      if (secret !== RECOVERY_SECRET) {
+        return res.status(403).json({ message: "Invalid recovery secret." });
+      }
+      if (!userId && !email) {
+        return res.status(400).json({ message: "Provide userId or email." });
+      }
+      let targetUser: any = null;
+      if (userId) {
+        targetUser = await storage.getUser(userId);
+      }
+      if (!targetUser && email) {
+        const all = await storage.getAllUsers();
+        targetUser = all.find((u: any) => u.email?.toLowerCase() === email.toLowerCase());
+      }
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found." });
+      }
+      await db.update(users).set({ status: "active" } as any).where(eq(users.id, targetUser.id));
+      console.log(`[EMERGENCY-RECOVERY] Reactivated user ${targetUser.id} (${targetUser.email})`);
+      return res.json({ message: "Account reactivated successfully.", userId: targetUser.id, email: targetUser.email });
+    } catch (err: any) {
+      console.error("[EMERGENCY-RECOVERY] Error:", err);
+      return res.status(500).json({ message: "Recovery failed.", error: err.message });
+    }
+  });
+
   // ===== DEDICATED SUPER ADMIN LOGIN (separate from regular admin login) =====
   app.post("/api/auth/super-admin-login", async (req, res) => {
     try {
@@ -17045,7 +17077,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       // Check if user is deactivated (inactive or suspended)
-      if (user[0].status === 'inactive' || user[0].status === 'suspended') {
+      // Super-admins are never blocked — they must always be able to log in to fix issues
+      if ((user[0].status === 'inactive' || user[0].status === 'suspended') && user[0].role !== 'super-admin') {
         console.log(`[EMAIL-LOGIN] Blocked deactivated user: ${email}`);
         return res.status(403).json({ 
           message: "Your account has been deactivated. Please contact your administrator.",

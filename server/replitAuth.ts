@@ -535,7 +535,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       const dbUser = await storage.getUser(userId);
       if (dbUser) {
         // Check if user is deactivated (inactive or suspended)
-        if (dbUser.status === 'inactive' || dbUser.status === 'suspended') {
+        // Super-admins are never blocked — they must always be able to log in to fix issues
+        if ((dbUser.status === 'inactive' || dbUser.status === 'suspended') && dbUser.role !== 'super-admin') {
           console.log(`[isAuthenticated] Blocked deactivated user: ${userId}`);
           // Don't destroy session - let /api/auth/user detect deactivation and return proper response
           return res.status(403).json({ 
@@ -560,7 +561,8 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       try {
         const dbUser = await storage.getUser(userId);
         if (dbUser) {
-          if (dbUser.status === 'inactive' || dbUser.status === 'suspended') {
+          // Super-admins are never blocked — they must always be able to log in to fix issues
+          if ((dbUser.status === 'inactive' || dbUser.status === 'suspended') && dbUser.role !== 'super-admin') {
             console.log(`[isAuthenticated] Blocked deactivated Google user: ${userId}`);
             return res.status(403).json({ 
               message: "Your account has been deactivated. Please contact your administrator.",
