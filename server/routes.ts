@@ -9302,7 +9302,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const billId = parseInt(req.params.id);
-      const { paymentMethod } = req.body;
+      const { paymentMethod, cashAmount, upiAmount, chargeToRoom } = req.body;
       
       if (!paymentMethod) {
         return res.status(400).json({ message: "Payment method is required" });
@@ -9318,18 +9318,27 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       const pendingAmount = parseFloat(bill.balanceAmount || "0");
+      const recordedAmount = pendingAmount > 0 ? pendingAmount : parseFloat(bill.totalAmount || "0");
+      const normalizedPaymentMethod = paymentMethod === "room" ? "room" : paymentMethod === "split" ? "split" : paymentMethod;
+      const paymentMethods = paymentMethod === "split"
+        ? [
+            ...(cashAmount && cashAmount > 0 ? [{ method: "cash", amount: Number(cashAmount) }] : []),
+            ...(upiAmount && upiAmount > 0 ? [{ method: "upi", amount: Number(upiAmount) }] : []),
+          ]
+        : [{ method: normalizedPaymentMethod, amount: recordedAmount }];
 
       // Update bill to paid status
       const updatedBill = await storage.updateBill(billId, {
         paymentStatus: "paid",
-        paymentMethod,
+        paymentMethod: normalizedPaymentMethod,
+        paymentMethods,
         paidAt: new Date(),
         balanceAmount: "0.00",
       });
 
       // Record payment to wallet (same as checkout payment flow)
       let walletWarning: string | null = null;
-      if (pendingAmount > 0 && bill.bookingId) {
+      if (recordedAmount > 0 && bill.bookingId) {
         try {
           const booking = await storage.getBooking(bill.bookingId);
           const propertyId = booking?.propertyId;
@@ -9339,8 +9348,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             await storage.recordBillPaymentToWallet(
               propertyId,
               billId,
-              pendingAmount,
-              paymentMethod,
+              recordedAmount,
+              normalizedPaymentMethod,
               `Pending payment collected - ${guestName} (Bill #${billId})`,
               userId,
               bill.bookingId

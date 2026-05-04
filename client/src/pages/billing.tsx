@@ -59,6 +59,9 @@ export default function Billing() {
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [splitCashAmount, setSplitCashAmount] = useState("");
+  const [splitUpiAmount, setSplitUpiAmount] = useState("");
+  const [chargeToRoom, setChargeToRoom] = useState(false);
   const [waDialogBill, setWaDialogBill] = useState<Bill | null>(null);
   const [waCustomPhone, setWaCustomPhone] = useState("");
   const [sharingBillId, setSharingBillId] = useState<number | null>(null);
@@ -131,6 +134,9 @@ export default function Billing() {
       setMarkPaidDialogOpen(false);
       setBillToMarkPaid(null);
       setPaymentMethod("cash");
+      setSplitCashAmount("");
+      setSplitUpiAmount("");
+      setChargeToRoom(false);
     },
     onError: (error: any) => {
       toast({
@@ -1132,9 +1138,74 @@ ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text
                   <SelectContent>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="split">Split (Cash + UPI)</SelectItem>
+                    <SelectItem value="room">Add to Room</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {paymentMethod === "split" && (
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                  <p className="text-sm font-medium">
+                    Enter split amounts for ₹{parseFloat(billToMarkPaid.balanceAmount || "0").toFixed(2)}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Cash (₹)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={splitCashAmount}
+                        onChange={(e) => {
+                          setSplitCashAmount(e.target.value);
+                          const cash = parseFloat(e.target.value) || 0;
+                          const total = parseFloat(billToMarkPaid.balanceAmount || "0");
+                          const remaining = total - cash;
+                          setSplitUpiAmount(remaining > 0 ? remaining.toFixed(2) : "");
+                        }}
+                        data-testid="input-split-cash"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">UPI (₹)</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={splitUpiAmount}
+                        onChange={(e) => {
+                          setSplitUpiAmount(e.target.value);
+                          const upi = parseFloat(e.target.value) || 0;
+                          const total = parseFloat(billToMarkPaid.balanceAmount || "0");
+                          const remaining = total - upi;
+                          setSplitCashAmount(remaining > 0 ? remaining.toFixed(2) : "");
+                        }}
+                        data-testid="input-split-upi"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {paymentMethod === "room" && (
+                <div className="space-y-3 border rounded-lg p-4 bg-muted/30">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="charge-to-room"
+                      checked={chargeToRoom}
+                      onCheckedChange={(checked) => setChargeToRoom(checked as boolean)}
+                      data-testid="checkbox-charge-to-room"
+                    />
+                    <Label htmlFor="charge-to-room" className="cursor-pointer font-normal">
+                      Charge this bill to the room account
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use this for hotel guests who want the restaurant bill added to their room.
+                  </p>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button
@@ -1143,6 +1214,9 @@ ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text
                     setMarkPaidDialogOpen(false);
                     setBillToMarkPaid(null);
                     setPaymentMethod("cash");
+                    setSplitCashAmount("");
+                    setSplitUpiAmount("");
+                    setChargeToRoom(false);
                   }}
                   data-testid="button-cancel-mark-paid"
                 >
@@ -1151,16 +1225,35 @@ ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text
                 <Button
                   onClick={() => {
                     if (billToMarkPaid) {
+                      const totalAmount = parseFloat(billToMarkPaid.balanceAmount || "0");
+                      const cashAmount = parseFloat(splitCashAmount || "0");
+                      const upiAmount = parseFloat(splitUpiAmount || "0");
                       markAsPaidMutation.mutate({
                         billId: billToMarkPaid.id,
-                        paymentMethod,
+                        paymentMethod:
+                          paymentMethod === "split"
+                            ? "split"
+                            : paymentMethod === "room"
+                              ? "room"
+                              : paymentMethod,
+                        ...(paymentMethod === "split"
+                          ? {
+                              cashAmount: cashAmount || totalAmount,
+                              upiAmount: upiAmount || Math.max(0, totalAmount - cashAmount),
+                            }
+                          : {}),
+                        ...(paymentMethod === "room" ? { chargeToRoom } : {}),
                       });
                     }
                   }}
                   disabled={markAsPaidMutation.isPending}
                   data-testid="button-confirm-mark-paid"
                 >
-                  {markAsPaidMutation.isPending ? "Processing..." : "Confirm Payment"}
+                  {markAsPaidMutation.isPending
+                    ? "Processing..."
+                    : paymentMethod === "room"
+                      ? "Add to Room"
+                      : "Confirm Payment"}
                 </Button>
               </DialogFooter>
             </div>
