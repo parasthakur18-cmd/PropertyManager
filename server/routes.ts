@@ -20917,14 +20917,20 @@ function startKitchenAcceptanceEscalationJob() {
           // 3. WhatsApp re-alert (reuse approved staff-alert template;
           //    prefix guest name with "URGENT" so the template message
           //    visibly conveys the escalation context).
+          //    Send to BOTH alert-rule recipients AND Feature Settings extra numbers
+          //    (mirrors the first-level new-order alert behaviour).
+          const urgentGuest = `URGENT (${ageMin}m): ${guestLabel}`;
+          const sentPhones = new Set<string>();
+
+          // 3a. Alert rules recipients
           try {
             const recipients = await storage.resolveAlertRecipients(
               "food_order_staff_alert",
               property.id,
             );
-            const urgentGuest = `URGENT (${ageMin}m): ${guestLabel}`;
+            console.log(`[KITCHEN-ESCALATION] Alert-rule recipients for property ${property.id}: ${recipients.length} number(s)`);
             for (const phone of recipients) {
-              if (!isRealPhone(phone)) continue;
+              if (!isRealPhone(phone)) { console.log(`[KITCHEN-ESCALATION] Skipping invalid phone: ${phone}`); continue; }
               try {
                 await sendFoodOrderStaffAlert(
                   phone,
@@ -20933,12 +20939,46 @@ function startKitchenAcceptanceEscalationJob() {
                   roomLabel,
                   order.id,
                 );
+                sentPhones.add(phone.replace(/\D/g, "").slice(-10));
+                console.log(`[KITCHEN-ESCALATION] WA sent to ${phone} for order #${order.id}`);
               } catch (waErr: any) {
                 console.warn(`[KITCHEN-ESCALATION] WA failed for ${phone} order #${order.id}:`, waErr.message);
               }
             }
           } catch (e: any) {
             console.warn(`[KITCHEN-ESCALATION] WA routing failed for order #${order.id}:`, e.message);
+          }
+
+          // 3b. Feature Settings extra phone numbers
+          try {
+            const foodOrderSettings = await storage.getFoodOrderWhatsappSettings(property.id);
+            if (foodOrderSettings?.enabled && foodOrderSettings.phoneNumbers?.length > 0) {
+              console.log(`[KITCHEN-ESCALATION] Feature Settings extra numbers for property ${property.id}: ${foodOrderSettings.phoneNumbers.length}`);
+              for (const phone of foodOrderSettings.phoneNumbers) {
+                if (!isRealPhone(phone)) continue;
+                const normalized = phone.replace(/\D/g, "").slice(-10);
+                if (sentPhones.has(normalized)) continue;
+                try {
+                  await sendFoodOrderStaffAlert(
+                    phone,
+                    urgentGuest,
+                    property.name || "Property",
+                    roomLabel,
+                    order.id,
+                  );
+                  sentPhones.add(normalized);
+                  console.log(`[KITCHEN-ESCALATION] WA sent to extra number ${phone} for order #${order.id}`);
+                } catch (waErr: any) {
+                  console.warn(`[KITCHEN-ESCALATION] WA failed for extra number ${phone} order #${order.id}:`, waErr.message);
+                }
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[KITCHEN-ESCALATION] Feature Settings fetch failed for order #${order.id}:`, e.message);
+          }
+
+          if (sentPhones.size === 0) {
+            console.warn(`[KITCHEN-ESCALATION] ⚠️ NO WhatsApp sent for order #${order.id} (property ${property.id}) — check alert rules + Feature Settings phone numbers`);
           }
 
           // (Stamp happens atomically in the UPDATE…RETURNING above.)

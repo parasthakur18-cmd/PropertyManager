@@ -1,6 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon, Maximize2, Minimize2, FlaskConical } from "lucide-react";
+import { ChefHat, Clock, CheckCircle, User, Phone, Bell, BellOff, Settings, Edit, Trash2, Plus, X, Share2, Banknote, Smartphone as SmartphoneIcon, Maximize2, Minimize2, FlaskConical, Building2, ChevronDown } from "lucide-react";
 import { PropertyScopePicker } from "@/components/property-scope-picker";
+import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +24,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from "@/hooks/useAuth";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { Smartphone } from "lucide-react";
 
@@ -192,6 +195,45 @@ export default function Kitchen() {
     isSuperAdmin,
   } = usePropertyFilter();
 
+  // Multi-select property filter for kitchen view (overrides single-select)
+  const [kitchenPropertyIds, setKitchenPropertyIds] = useState<number[]>(() => {
+    try {
+      const saved = localStorage.getItem("kitchen.propertyIds");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+  useEffect(() => {
+    localStorage.setItem("kitchen.propertyIds", JSON.stringify(kitchenPropertyIds));
+  }, [kitchenPropertyIds]);
+
+  // Sanitize stale IDs when available properties load/change
+  useEffect(() => {
+    if (availableProperties.length === 0 || kitchenPropertyIds.length === 0) return;
+    const validIds = availableProperties.map(p => p.id);
+    const sanitized = kitchenPropertyIds.filter(id => validIds.includes(id));
+    if (sanitized.length !== kitchenPropertyIds.length) {
+      setKitchenPropertyIds(sanitized);
+    }
+  }, [availableProperties]);
+
+  const isAllProperties = kitchenPropertyIds.length === 0;
+  const toggleKitchenProperty = (id: number) => {
+    setKitchenPropertyIds(prev =>
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
+  };
+  const selectAllKitchenProperties = () => setKitchenPropertyIds([]);
+
+  // Keep single-select synced for features that depend on it (popup, test orders)
+  useEffect(() => {
+    if (kitchenPropertyIds.length === 1) {
+      setSelectedPropertyId(kitchenPropertyIds[0]);
+    } else if (kitchenPropertyIds.length === 0 && availableProperties.length > 0) {
+      if (!selectedPropertyId) setSelectedPropertyId(availableProperties[0].id);
+    }
+  }, [kitchenPropertyIds, availableProperties]);
+
   // Restaurant popup settings
   const { data: popupData, isLoading: popupLoading } = useQuery<any>({
     queryKey: ["/api/restaurant-popup", selectedPropertyId],
@@ -306,12 +348,12 @@ export default function Kitchen() {
     queryKey: ["/api/menu-items"],
   });
 
-  // Filter orders by selected property
+  // Filter orders by selected properties (multi-select)
   const filteredOrdersByProperty = useMemo(() => {
     if (!orders) return [];
-    if (selectedPropertyId === null) return orders;
-    return orders.filter(order => order.propertyId === selectedPropertyId);
-  }, [orders, selectedPropertyId]);
+    if (kitchenPropertyIds.length === 0) return orders;
+    return orders.filter(order => order.propertyId && kitchenPropertyIds.includes(order.propertyId));
+  }, [orders, kitchenPropertyIds]);
 
   // Play notification sound when new orders arrive
   useEffect(() => {
@@ -954,15 +996,58 @@ export default function Kitchen() {
         </div>
       </div>
 
-      {/* Property Filter */}
+      {/* Property Filter — multi-select with checkboxes */}
       {availableProperties.length > 1 && (
-        <div className="mb-6">
-          <PropertyScopePicker
-            availableProperties={availableProperties}
-            selectedPropertyId={selectedPropertyId}
-            onPropertyChange={setSelectedPropertyId}
-            isSuperAdmin={isSuperAdmin}
-          />
+        <div className="mb-6 flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground hidden sm:block" />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 gap-1.5" data-testid="button-property-multi-select">
+                <Building2 className="h-3.5 w-3.5" />
+                <span className="max-w-[200px] truncate text-xs">
+                  {isAllProperties
+                    ? "All Properties"
+                    : kitchenPropertyIds.length === 1
+                      ? availableProperties.find(p => p.id === kitchenPropertyIds[0])?.name || "1 property"
+                      : `${kitchenPropertyIds.length} properties`}
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="start">
+              <div className="space-y-1">
+                <button
+                  onClick={selectAllKitchenProperties}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                    isAllProperties ? "bg-primary/10 font-medium" : "hover:bg-muted"
+                  )}
+                  data-testid="checkbox-property-all"
+                >
+                  <Checkbox checked={isAllProperties} className="pointer-events-none" />
+                  <span>All Properties</span>
+                </button>
+                <div className="h-px bg-border my-1" />
+                {availableProperties.map(property => {
+                  const checked = kitchenPropertyIds.includes(property.id);
+                  return (
+                    <button
+                      key={property.id}
+                      onClick={() => toggleKitchenProperty(property.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                        checked ? "bg-primary/10 font-medium" : "hover:bg-muted"
+                      )}
+                      data-testid={`checkbox-property-${property.id}`}
+                    >
+                      <Checkbox checked={checked} className="pointer-events-none" />
+                      <span className="truncate">{property.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       )}
 
@@ -1813,7 +1898,7 @@ export default function Kitchen() {
                     {menuItems
                       ?.filter((m) =>
                         m.isAvailable &&
-                        (selectedPropertyId == null || m.propertyId == null || m.propertyId === selectedPropertyId),
+                        (kitchenPropertyIds.length === 0 || m.propertyId == null || kitchenPropertyIds.includes(m.propertyId)),
                       )
                       .map((m) => (
                         <CommandItem
