@@ -122,8 +122,9 @@ export default function QuickOrder() {
   const urlParams = new URLSearchParams(window.location.search);
   const preselectedTable = urlParams.get("table") || "";
   const preselectedProperty = urlParams.get("property") || "";
+  const startStep = urlParams.get("step");
   // ── Step state ─────────────────────────────────────────────────────────────
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(startStep === "3" ? 3 : 1);
   const [orderType, setOrderType] = useState<OrderType>(null);
   const [restaurantCustomerType, setRestaurantCustomerType] = useState<RestaurantCustomerType>("walk-in");
   const [selectedRoom, setSelectedRoom] = useState<string>("");
@@ -156,6 +157,14 @@ export default function QuickOrder() {
       setSelectedPropertyId(parseInt(preselectedProperty));
     }
   }, [preselectedProperty, selectedPropertyId, setSelectedPropertyId]);
+
+  useEffect(() => {
+    if (startStep === "3") {
+      setStep(3);
+      setOrderType("restaurant");
+      setRestaurantCustomerType("walk-in");
+    }
+  }, [startStep]);
 
   // ── Data queries ───────────────────────────────────────────────────────────
   const { data: menuItems, isLoading: menuLoading } = useQuery<MenuItem[]>({

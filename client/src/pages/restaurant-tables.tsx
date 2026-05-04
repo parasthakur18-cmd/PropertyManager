@@ -258,7 +258,7 @@ export default function RestaurantTables() {
                     size="sm"
                     variant="outline"
                     className="flex-1 min-w-0"
-                    onClick={() => window.open(`/quick-order?property=${propertyIdNum}&table=${encodeURIComponent(t.name)}`, "_blank")}
+                    onClick={() => window.open(`/quick-order?property=${propertyIdNum}&table=${encodeURIComponent(t.name)}&step=3`, "_blank")}
                     data-testid={`button-staff-order-${t.id}`}
                   >
                     <UtensilsCrossed className="h-3.5 w-3.5 mr-1" /> Order
