@@ -5508,9 +5508,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (!booking) return res.status(404).json({ message: "Booking not found" });
 
       const guest = await storage.getGuest(booking.guestId);
-      if (!guest || !guest.phone) return res.status(400).json({ message: "Guest has no phone number" });
 
-      const waPhone = (guest as any).whatsappPhone || guest.phone;
+      // Allow caller to supply a custom phone number (e.g. share with a family member)
+      const customPhone: string | undefined = req.body?.phoneNumber;
+      const defaultPhone = guest ? ((guest as any).whatsappPhone || guest.phone) : null;
+      const waPhone = customPhone && customPhone.trim() ? customPhone.trim() : defaultPhone;
+
+      if (!waPhone) return res.status(400).json({ message: "Guest has no phone number. Please provide a phone number." });
       if (!isRealPhone(waPhone)) return res.status(400).json({ message: "No valid phone number" });
 
       const totalAmount = parseFloat(bill.totalAmount || "0");
@@ -5591,6 +5595,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     } catch (error: any) {
       console.error("[BILL-WA] Error:", error.message);
       res.status(500).json({ message: error.message || "Failed to send bill" });
+    }
+  });
+
+  // GET /api/bills/:id/contact — lightweight: returns guest name + phone for pre-filling the WA dialog
+  app.get("/api/bills/:id/contact", isAuthenticated, async (req, res) => {
+    try {
+      const bill = await storage.getBill(parseInt(req.params.id));
+      if (!bill) return res.status(404).json({ message: "Bill not found" });
+      const booking = await storage.getBooking(bill.bookingId);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      const guest = await storage.getGuest(booking.guestId);
+      const phone = guest ? ((guest as any).whatsappPhone || guest.phone || "") : "";
+      const guestName = guest?.fullName || (bill as any).guestName || "Guest";
+      return res.json({ guestName, phone });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

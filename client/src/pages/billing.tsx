@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Receipt, CheckCircle, Clock, Merge, Eye, Printer, IndianRupee, DollarSign, Search, Building2, MessageCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,8 @@ export default function Billing() {
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [billToMarkPaid, setBillToMarkPaid] = useState<Bill | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [sendingBillId, setSendingBillId] = useState<number | null>(null);
+  const [waDialogBill, setWaDialogBill] = useState<Bill | null>(null);
+  const [waCustomPhone, setWaCustomPhone] = useState("");
 
   const { data: bills, isLoading } = useQuery<Bill[]>({
     queryKey: ["/api/bills"],
@@ -139,25 +140,38 @@ export default function Billing() {
     },
   });
 
+  // Fetch guest contact info when the WA dialog opens (for pre-filling the phone)
+  const { data: waContactInfo, isFetching: waContactLoading } = useQuery<{ guestName: string; phone: string }>({
+    queryKey: [`/api/bills/${waDialogBill?.id}/contact`],
+    enabled: !!waDialogBill,
+    staleTime: 60_000,
+  });
+
+  // Pre-fill phone when contact loads and field is still empty
+  useEffect(() => {
+    if (waContactInfo?.phone && !waCustomPhone) {
+      setWaCustomPhone(waContactInfo.phone);
+    }
+  }, [waContactInfo]);
+
   const sendBillWhatsappMutation = useMutation({
-    mutationFn: async (billId: number) => {
-      return await apiRequest(`/api/bills/${billId}/send-whatsapp`, "POST", {});
+    mutationFn: async ({ billId, phoneNumber }: { billId: number; phoneNumber: string }) => {
+      return await apiRequest(`/api/bills/${billId}/send-whatsapp`, "POST", { phoneNumber });
     },
-    onMutate: (billId) => setSendingBillId(billId),
-    onSuccess: (_data, billId) => {
-      setSendingBillId(null);
+    onSuccess: (_data, { billId }) => {
       const bill = bills?.find(b => b.id === billId);
       const guestName = (bill as any)?.guestName || "Guest";
       toast({
         title: "Bill Sent via WhatsApp",
-        description: `Bill link sent to ${guestName} successfully.`,
+        description: `Bill link sent to ${waCustomPhone || guestName} successfully.`,
       });
+      setWaDialogBill(null);
+      setWaCustomPhone("");
     },
     onError: (error: any) => {
-      setSendingBillId(null);
       toast({
         title: "Failed to Send Bill",
-        description: error.message || "Could not send bill via WhatsApp. Check guest phone number.",
+        description: error.message || "Could not send bill via WhatsApp. Check the phone number.",
         variant: "destructive",
       });
     },
@@ -674,12 +688,11 @@ export default function Billing() {
                     variant="outline"
                     size="sm"
                     className="text-green-700 border-green-300 hover:bg-green-50 dark:text-green-400 dark:border-green-700 dark:hover:bg-green-900/20"
-                    onClick={() => sendBillWhatsappMutation.mutate(bill.id)}
-                    disabled={sendingBillId === bill.id}
+                    onClick={() => { setWaDialogBill(bill); setWaCustomPhone(""); }}
                     data-testid={`button-send-bill-whatsapp-${bill.id}`}
                   >
                     <MessageCircle className="h-4 w-4 mr-2" />
-                    {sendingBillId === bill.id ? "Sending…" : "Send via WhatsApp"}
+                    Send via WhatsApp
                   </Button>
                   <Button
                     variant="outline"
@@ -1013,6 +1026,73 @@ export default function Billing() {
                   data-testid="button-confirm-mark-paid"
                 >
                   {markAsPaidMutation.isPending ? "Processing..." : "Confirm Payment"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Send Bill via WhatsApp Dialog */}
+      <Dialog open={!!waDialogBill} onOpenChange={(open) => { if (!open) { setWaDialogBill(null); setWaCustomPhone(""); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-600" />
+              Send Bill via WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          {waDialogBill && (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Guest</span>
+                  <span className="font-medium">{(waDialogBill as any).guestName || waContactInfo?.guestName || "—"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Invoice</span>
+                  <span className="font-mono">#{waDialogBill.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Amount</span>
+                  <span className="font-mono font-semibold">₹{parseFloat(waDialogBill.totalAmount || "0").toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="wa-phone">
+                  Send to WhatsApp Number
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Pre-filled with the guest's registered number. Change it to send to any other number (family member, agent, etc.).
+                </p>
+                <Input
+                  id="wa-phone"
+                  type="tel"
+                  placeholder={waContactLoading ? "Loading…" : "Enter phone number"}
+                  value={waCustomPhone}
+                  onChange={(e) => setWaCustomPhone(e.target.value)}
+                  disabled={waContactLoading}
+                  data-testid="input-wa-phone"
+                />
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => { setWaDialogBill(null); setWaCustomPhone(""); }}
+                  data-testid="button-cancel-wa-send"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  disabled={!waCustomPhone.trim() || sendBillWhatsappMutation.isPending}
+                  onClick={() => sendBillWhatsappMutation.mutate({ billId: waDialogBill.id, phoneNumber: waCustomPhone.trim() })}
+                  data-testid="button-confirm-wa-send"
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  {sendBillWhatsappMutation.isPending ? "Sending…" : "Send Bill"}
                 </Button>
               </DialogFooter>
             </div>
