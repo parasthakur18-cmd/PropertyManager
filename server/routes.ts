@@ -4375,14 +4375,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           });
         }
         
-        // Block check-in if the room already has another guest currently checked in
+        // Block check-in if the room already has another guest currently checked in.
+        // IMPORTANT: scope to the SAME property so a checked-in booking at another
+        // property can never block check-in here (rooms have globally-unique IDs but
+        // group bookings can have overlapping roomId references across properties).
         const allBookings = await storage.getAllBookings();
         const roomId = currentBooking.roomId;
-        const otherCheckedInBookings = allBookings.filter(b => 
-          b.roomId === roomId && 
-          b.id !== bookingId && 
-          b.status === "checked-in"
-        );
+        const currentPropertyId = currentBooking.propertyId;
+        const otherCheckedInBookings = allBookings.filter(b => {
+          if (b.id === bookingId || b.status !== "checked-in") return false;
+          // Must belong to the SAME property
+          if (b.propertyId !== currentPropertyId) return false;
+          // Match on roomId (single booking) OR roomIds array (group booking)
+          const matchesSingle = b.roomId === roomId;
+          const matchesGroup = Array.isArray(b.roomIds) && b.roomIds.includes(roomId!);
+          return matchesSingle || matchesGroup;
+        });
 
         if (otherCheckedInBookings.length > 0) {
           const occupantBooking = otherCheckedInBookings[0];
