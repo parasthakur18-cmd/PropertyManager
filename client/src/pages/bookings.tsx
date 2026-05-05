@@ -2397,12 +2397,22 @@ export default function Bookings() {
                         <TableCell className="py-1.5 text-sm" data-testid={`text-advance-${booking.id}`}>
                           {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? (
                             <span className="text-sm">
-                              <span className="font-mono font-semibold text-green-600 dark:text-green-400">₹{booking.advanceAmount}</span>
-                              <span className="text-muted-foreground"> Paid</span>
-                              {(booking as any).advancePaymentMethod && (
-                                <span className="text-muted-foreground">
-                                  {" "}({(booking as any).advancePaymentMethod === "cash" ? "Cash" : "UPI"})
-                                </span>
+                              <span className={`font-mono font-semibold ${(booking as any).advancePaymentStatus === "paid" ? "text-green-600 dark:text-green-400" : "text-orange-500 dark:text-orange-400"}`}>
+                                ₹{booking.advanceAmount}
+                              </span>
+                              {(booking as any).advancePaymentStatus === "paid" ? (
+                                <>
+                                  <span className="text-muted-foreground"> Paid</span>
+                                  {(booking as any).advancePaymentMethod && (
+                                    <span className="text-muted-foreground">
+                                      {" "}({(booking as any).advancePaymentMethod === "cash" ? "Cash" : (booking as any).advancePaymentMethod === "upi" ? "UPI" : (booking as any).advancePaymentMethod})
+                                    </span>
+                                  )}
+                                </>
+                              ) : (booking as any).advancePaymentStatus === "pending" ? (
+                                <span className="text-orange-500 dark:text-orange-400"> Link Shared</span>
+                              ) : (
+                                <span className="text-muted-foreground"> Pending</span>
                               )}
                             </span>
                           ) : <span className="text-muted-foreground">-</span>}
@@ -2432,6 +2442,20 @@ export default function Bookings() {
                               >
                                 <Wallet className="h-3.5 w-3.5 mr-1" />
                                 {booking.status === "pending_advance" ? "Resend" : "Collect"}
+                              </Button>
+                            )}
+                            {booking.status === "pending_advance" && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="h-8 px-2 text-xs bg-green-600 hover:bg-green-700 shrink-0 whitespace-nowrap"
+                                onClick={() => confirmAdvancePaymentMutation.mutate({ bookingId: booking.id })}
+                                disabled={confirmAdvancePaymentMutation.isPending}
+                                title="Mark advance as received and confirm booking"
+                                data-testid={`button-mark-received-${booking.id}`}
+                              >
+                                <Check className="h-3.5 w-3.5 mr-1" />
+                                Mark Received
                               </Button>
                             )}
                             {isTba && (
