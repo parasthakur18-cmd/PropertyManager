@@ -453,7 +453,7 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
                       <SelectTrigger data-testid="select-booking-source"><SelectValue placeholder="Select source" /></SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {["Walk-in","Online","Booking.com","MMT","Airbnb","OTA","Travel Agent","Others"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                      {["Walk-in","Online","Booking.com","MMT","Airbnb","Agoda","OTA","Travel Agent","Influencer Booking","Others"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                     </SelectContent>
                   </Select>
                   <FormMessage />

@@ -2059,8 +2059,10 @@ export default function Bookings() {
                             <SelectItem value="Booking.com">Booking.com</SelectItem>
                             <SelectItem value="MMT">MMT (MakeMyTrip)</SelectItem>
                             <SelectItem value="Airbnb">Airbnb</SelectItem>
+                            <SelectItem value="Agoda">Agoda</SelectItem>
                             <SelectItem value="OTA">OTA (Other)</SelectItem>
                             <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                            <SelectItem value="Influencer Booking">Influencer Booking</SelectItem>
                             <SelectItem value="Others">Others</SelectItem>
                           </SelectContent>
                         </Select>
@@ -3906,8 +3908,10 @@ export default function Bookings() {
                             <SelectItem value="Booking.com">Booking.com</SelectItem>
                             <SelectItem value="MMT">MMT (MakeMyTrip)</SelectItem>
                             <SelectItem value="Airbnb">Airbnb</SelectItem>
+                            <SelectItem value="Agoda">Agoda</SelectItem>
                             <SelectItem value="OTA">OTA (Other)</SelectItem>
                             <SelectItem value="Travel Agent">Travel Agent</SelectItem>
+                            <SelectItem value="Influencer Booking">Influencer Booking</SelectItem>
                             <SelectItem value="Others">Others</SelectItem>
                           </SelectContent>
                         </Select>
