@@ -967,10 +967,10 @@ export default function Bookings() {
           roomCharges = data.customPrice ? parseFloat(data.customPrice) : parseFloat(selectedRoom.pricePerNight.toString());
         }
       } else {
-        // Group booking - sum all room prices
+        // Group booking - customPrice is per room, sum all rooms
         const selectedRooms = rooms?.filter(r => selectedRoomIds.includes(r.id)) || [];
         roomCharges = selectedRooms.reduce((sum, r) => {
-          const roomPrice = data.customPrice ? parseFloat(data.customPrice) / selectedRooms.length : parseFloat(r.pricePerNight.toString());
+          const roomPrice = data.customPrice ? parseFloat(data.customPrice) : parseFloat(r.pricePerNight.toString());
           return sum + roomPrice;
         }, 0);
       }
@@ -996,7 +996,11 @@ export default function Bookings() {
         checkInDate: formatDateForDB(data.checkInDate),
         checkOutDate: formatDateForDB(data.checkOutDate),
         numberOfGuests,
-        customPrice: data.customPrice ? data.customPrice.toString() : null,
+        customPrice: data.customPrice
+          ? (bookingType === "group"
+              ? (parseFloat(data.customPrice) * (rooms?.filter(r => selectedRoomIds.includes(r.id)).length || 1)).toString()
+              : data.customPrice.toString())
+          : null,
         advanceAmount: data.advanceAmount ? data.advanceAmount.toString() : "0",
         advancePaymentMethod: data.advancePaymentMethod || "cash",
         totalAmount: totalAmount,
@@ -1077,7 +1081,11 @@ export default function Bookings() {
       checkOutDate: parseDateWithoutTimezone(booking.checkOutDate),
       status: booking.status,
       numberOfGuests: booking.numberOfGuests,
-      customPrice: booking.customPrice ? parseFloat(booking.customPrice) : null,
+      customPrice: booking.customPrice
+        ? (booking.roomIds && booking.roomIds.length > 1
+            ? parseFloat(booking.customPrice) / booking.roomIds.length
+            : parseFloat(booking.customPrice))
+        : null,
       advanceAmount: booking.advanceAmount ? parseFloat(booking.advanceAmount) : 0,
       advancePaymentMethod: (booking as any).advancePaymentMethod || "cash",
       specialRequests: booking.specialRequests || "",
@@ -1117,7 +1125,7 @@ export default function Bookings() {
       roomIds = editSelectedRoomIds;
       const selectedRooms = rooms?.filter(r => editSelectedRoomIds.includes(r.id)) || [];
       roomCharges = selectedRooms.reduce((sum, r) => {
-        const roomPrice = data.customPrice ? parseFloat(data.customPrice) / selectedRooms.length : parseFloat(r.pricePerNight.toString());
+        const roomPrice = data.customPrice ? parseFloat(data.customPrice) : parseFloat(r.pricePerNight.toString());
         return sum + roomPrice;
       }, 0);
     } else {
@@ -1145,7 +1153,11 @@ export default function Bookings() {
       checkInDate: formatDateForDB(data.checkInDate),
       checkOutDate: formatDateForDB(data.checkOutDate),
       numberOfGuests: parseInt(data.numberOfGuests),
-      customPrice: data.customPrice ? data.customPrice.toString() : null,
+      customPrice: data.customPrice
+        ? (editBookingType === "group"
+            ? (parseFloat(data.customPrice) * (rooms?.filter(r => editSelectedRoomIds.includes(r.id)).length || 1)).toString()
+            : data.customPrice.toString())
+        : null,
       advanceAmount: data.advanceAmount ? data.advanceAmount.toString() : "0",
       advancePaymentMethod: data.advancePaymentMethod || "cash",
       totalAmount: totalAmount,
@@ -1973,7 +1985,11 @@ export default function Bookings() {
                     name="customPrice"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Custom Price Per Night (Optional)</FormLabel>
+                        <FormLabel>
+                          {bookingType === "group"
+                            ? "Custom Price Per Room/Night (Optional)"
+                            : "Custom Price Per Night (Optional)"}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -1985,9 +2001,17 @@ export default function Bookings() {
                             data-testid="input-booking-custom-price"
                           />
                         </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Override room price with a custom rate
-                        </p>
+                        {bookingType === "group" && selectedRoomIds.length > 0 && field.value ? (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            ₹{parseFloat(String(field.value)).toLocaleString("en-IN")} × {selectedRoomIds.length} rooms = ₹{(parseFloat(String(field.value)) * selectedRoomIds.length).toLocaleString("en-IN")}/night total
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {bookingType === "group"
+                              ? `Enter price per room — total = price × ${selectedRoomIds.length || "N"} rooms`
+                              : "Override room price with a custom rate"}
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -3767,7 +3791,12 @@ export default function Bookings() {
                     name="customPrice"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Custom Price <span className="text-amber-600 font-semibold">(per night)</span></FormLabel>
+                        <FormLabel>
+                          Custom Price{" "}
+                          <span className="text-amber-600 font-semibold">
+                            {editBookingType === "group" ? "(per room/night)" : "(per night)"}
+                          </span>
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="text"
@@ -3783,9 +3812,17 @@ export default function Bookings() {
                             data-testid="input-edit-booking-custom-price"
                           />
                         </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Per-night rate — total bill = this × nights. See preview below.
-                        </p>
+                        {editBookingType === "group" && editSelectedRoomIds.length > 0 && field.value ? (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            ₹{parseFloat(String(field.value)).toLocaleString("en-IN")} × {editSelectedRoomIds.length} rooms = ₹{(parseFloat(String(field.value)) * editSelectedRoomIds.length).toLocaleString("en-IN")}/night total
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {editBookingType === "group"
+                              ? `Per room/night — total = price × ${editSelectedRoomIds.length || "N"} rooms × nights`
+                              : "Per-night rate — total bill = this × nights. See preview below."}
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}
