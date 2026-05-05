@@ -25,6 +25,24 @@ const paymentStatusColors = {
   partial: "bg-amber-500 text-white",
 };
 
+function formatPaymentMethod(method: string): string {
+  const map: Record<string, string> = {
+    cash: "Cash",
+    upi: "UPI",
+    card: "Card",
+    bank_transfer: "Bank Transfer",
+    online: "Online",
+    razorpay: "Razorpay",
+  };
+  return map[method?.toLowerCase()] || (method ? method.charAt(0).toUpperCase() + method.slice(1) : "Cash");
+}
+
+function methodBadgeClass(method: string): string {
+  const m = method?.toLowerCase();
+  if (m === "cash") return "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300";
+  return "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300";
+}
+
 interface ExtraService {
   id: number;
   serviceName: string;
@@ -649,27 +667,39 @@ export default function Billing() {
                     </p>
                   </div>
                   {/* Payment Method/Split Payment Display */}
-                  {bill.paymentMethods && Array.isArray(bill.paymentMethods) && bill.paymentMethods.length > 0 ? (
-                    <div className="col-span-2">
-                      <p className="text-muted-foreground mb-1">Payment Breakdown</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(bill.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
-                          <Badge 
-                            key={idx} 
-                            variant="outline" 
-                            className={pm.method === "cash" ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-200 text-blue-700"}
-                          >
-                            {pm.method === "cash" ? "Cash" : "Online"}: ₹{Number(pm.amount).toFixed(2)}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ) : bill.paymentMethod ? (
-                    <div>
-                      <p className="text-muted-foreground mb-1">Payment Method</p>
-                      <p className="font-semibold capitalize">{bill.paymentMethod}</p>
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const advanceAmt = parseFloat(String((bill as any).totalAdvance || bill.advancePaid || "0"));
+                    const advanceMethod = (bill as any).booking?.advancePaymentMethod || "cash";
+                    const hasMethods = bill.paymentMethods && Array.isArray(bill.paymentMethods) && (bill.paymentMethods as any[]).length > 0;
+                    if (hasMethods || advanceAmt > 0) {
+                      return (
+                        <div className="col-span-2">
+                          <p className="text-muted-foreground mb-1">Payment Breakdown</p>
+                          <div className="flex flex-wrap gap-2">
+                            {advanceAmt > 0 && (
+                              <Badge variant="outline" className={methodBadgeClass(advanceMethod)}>
+                                {formatPaymentMethod(advanceMethod)}: ₹{advanceAmt.toFixed(2)} <span className="ml-1 opacity-60 text-xs">(advance)</span>
+                              </Badge>
+                            )}
+                            {hasMethods && (bill.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
+                              <Badge key={idx} variant="outline" className={methodBadgeClass(pm.method)}>
+                                {formatPaymentMethod(pm.method)}: ₹{Number(pm.amount).toFixed(2)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    if (bill.paymentMethod) {
+                      return (
+                        <div>
+                          <p className="text-muted-foreground mb-1">Payment Method</p>
+                          <p className="font-semibold capitalize">{bill.paymentMethod}</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   {bill.paidAt && (
                     <div>
                       <p className="text-muted-foreground mb-1">Paid On</p>
@@ -1055,27 +1085,39 @@ ${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text
                   </Badge>
                 </div>
                 {/* Payment Method/Split Payment Display */}
-                {billDetails.paymentMethods && Array.isArray(billDetails.paymentMethods) && billDetails.paymentMethods.length > 0 ? (
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground mb-1">Payment Breakdown</p>
-                    <div className="flex flex-wrap gap-2">
-                      {(billDetails.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
-                        <Badge 
-                          key={idx} 
-                          variant="outline" 
-                          className={pm.method === "cash" ? "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-700 dark:text-green-300" : "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"}
-                        >
-                          {pm.method === "cash" ? "Cash" : "Online"}: ₹{Number(pm.amount).toFixed(2)}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                ) : billDetails.paymentMethod ? (
-                  <div>
-                    <p className="text-muted-foreground">Payment Method</p>
-                    <p className="font-semibold capitalize">{billDetails.paymentMethod}</p>
-                  </div>
-                ) : null}
+                {(() => {
+                  const advanceAmt = parseFloat(String((billDetails as any).totalAdvance || billDetails.advancePaid || "0"));
+                  const advanceMethod = (billDetails as any).booking?.advancePaymentMethod || "cash";
+                  const hasMethods = billDetails.paymentMethods && Array.isArray(billDetails.paymentMethods) && (billDetails.paymentMethods as any[]).length > 0;
+                  if (hasMethods || advanceAmt > 0) {
+                    return (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground mb-1">Payment Breakdown</p>
+                        <div className="flex flex-wrap gap-2">
+                          {advanceAmt > 0 && (
+                            <Badge variant="outline" className={methodBadgeClass(advanceMethod)}>
+                              {formatPaymentMethod(advanceMethod)}: ₹{advanceAmt.toFixed(2)} <span className="ml-1 opacity-60 text-xs">(advance)</span>
+                            </Badge>
+                          )}
+                          {hasMethods && (billDetails.paymentMethods as Array<{method: string, amount: number}>).map((pm, idx) => (
+                            <Badge key={idx} variant="outline" className={methodBadgeClass(pm.method)}>
+                              {formatPaymentMethod(pm.method)}: ₹{Number(pm.amount).toFixed(2)}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (billDetails.paymentMethod) {
+                    return (
+                      <div>
+                        <p className="text-muted-foreground">Payment Method</p>
+                        <p className="font-semibold capitalize">{billDetails.paymentMethod}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 {billDetails.paidAt && (
                   <div>
                     <p className="text-muted-foreground">Paid On</p>
