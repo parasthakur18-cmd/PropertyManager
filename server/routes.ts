@@ -285,6 +285,32 @@ async function getBillableOrdersForBooking(booking: any): Promise<any[]> {
     ? booking.roomIds
     : (booking.roomId ? [booking.roomId] : []);
   const orphans = await db.select().from(orders).where(isNull(orders.bookingId));
+
+  // For the weak room-match path: find any PRIOR bookings for the same rooms that
+  // were checking out around our check-in date.  An orphan order placed during a
+  // prior booking's stay window belongs to that guest, not to us — even when the
+  // dates overlap (e.g. A checks out May 7, B checks in May 7).
+  let priorBookingsForRooms: any[] = [];
+  if (bookingRoomIds.length > 0) {
+    priorBookingsForRooms = await db
+      .select()
+      .from(bookings)
+      .where(
+        and(
+          not(eq(bookings.id, booking.id)),
+          lt(bookings.checkInDate as any, booking.checkInDate as any),
+          gte(bookings.checkOutDate as any, booking.checkInDate as any),
+        )
+      );
+    // Keep only those that share at least one room with this booking
+    priorBookingsForRooms = priorBookingsForRooms.filter((pb: any) => {
+      if (pb.roomId && bookingRoomIds.includes(pb.roomId)) return true;
+      if (pb.roomIds && Array.isArray(pb.roomIds) &&
+          pb.roomIds.some((id: number) => bookingRoomIds.includes(id))) return true;
+      return false;
+    });
+  }
+
   const claimed = orphans.filter((o: any) => {
     const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
     if (created < checkIn || created > checkOut) return false;
@@ -294,7 +320,22 @@ async function getBillableOrdersForBooking(booking: any): Promise<any[]> {
     if (booking.guestId && o.guestId === booking.guestId) return true;
     // Weak match: room match ONLY when the order has no guestId of its own
     // (so we don't steal another guest's explicitly-tagged order).
-    if (!o.guestId && o.roomId && bookingRoomIds.includes(o.roomId)) return true;
+    if (!o.guestId && o.roomId && bookingRoomIds.includes(o.roomId)) {
+      // Don't claim if a prior booking for this room has a better claim on this order.
+      // A prior booking has a better claim when the order was created within its stay
+      // window — this handles the consecutive-guest scenario where A checks out and B
+      // checks in on the same date (A's checkout-day orders must not leak to B).
+      const hasPriorClaim = priorBookingsForRooms.some((pb: any) => {
+        const roomMatch = (pb.roomId === o.roomId) ||
+          (pb.roomIds && Array.isArray(pb.roomIds) && pb.roomIds.includes(o.roomId));
+        if (!roomMatch) return false;
+        const pbCheckIn  = new Date(pb.checkInDate  as any).getTime();
+        const pbCheckOut = new Date(pb.checkOutDate as any).getTime() + 24 * 60 * 60 * 1000;
+        return created >= pbCheckIn && created <= pbCheckOut;
+      });
+      if (hasPriorClaim) return false;
+      return true;
+    }
     return false;
   });
   return [...direct, ...claimed];
@@ -962,18 +1003,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // / pending bookings that are clearly the current guest in the room.
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayStr = now.toDateString();
         const bookings = await storage.getAllBookings();
         const candidateBookings = bookings.filter(b => {
           if (b.roomId !== room.id) return false;
-          if (["cancelled", "checked-out", "no_show"].includes(String(b.status))) return false;
-          const cin = new Date(b.checkInDate as any);
+          // Always exclude cancelled / no-show
+          if (b.status === "cancelled" || b.status === "no_show") return false;
+          const cin  = new Date(b.checkInDate  as any);
           const cout = new Date(b.checkOutDate as any);
-          // today within [checkIn, checkOut)
-          return cin <= now && startOfToday < cout;
+          // Include checked-out bookings ONLY if they checked out today — a guest may
+          // still be eating breakfast even though staff already pressed Check-Out in
+          // the system.  Orders on checkout day must land on the departing guest, not
+          // the arriving one.
+          if (b.status === "checked-out" && cout.toDateString() !== todayStr) return false;
+          // today within [checkIn, checkOut] (inclusive both ends for checkout day)
+          return cin <= now && startOfToday <= cout;
         });
-        // Prefer a checked-in booking, then confirmed, then anything else current
+        // Priority: checked-in  >  confirmed (already in-house, not arriving today)
+        //           >  checked-out today (departing, may still be ordering)
+        //           >  confirmed arriving today  >  anything else
         const activeBooking =
           candidateBookings.find(b => b.status === "checked-in") ||
+          candidateBookings.find(b => b.status === "confirmed" &&
+            new Date(b.checkInDate as any).toDateString() !== todayStr) ||
+          candidateBookings.find(b => b.status === "checked-out") ||
           candidateBookings.find(b => b.status === "confirmed") ||
           candidateBookings[0] ||
           null;
@@ -8182,6 +8235,41 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const room = await storage.getRoom(orderData.roomId);
         if (room) {
           orderData = { ...orderData, propertyId: room.propertyId };
+        }
+      }
+
+      // Auto-link room orders to the current active booking so they are never orphaned.
+      // Orphaned room orders (bookingId=null) are at risk of being claimed by the NEXT
+      // guest in the same room when dates are consecutive (the cross-contamination bug).
+      if (orderData.roomId && !orderData.bookingId &&
+          (orderData.orderType === "room" || orderData.orderMode === "room")) {
+        try {
+          const allBookingsForLink = await storage.getAllBookings();
+          const nowForLink   = new Date();
+          const todayForLink = new Date(nowForLink.getFullYear(), nowForLink.getMonth(), nowForLink.getDate());
+          const todayStrLink = nowForLink.toDateString();
+          const linkCandidates = allBookingsForLink.filter((b: any) => {
+            if (b.roomId !== orderData.roomId) return false;
+            if (b.status === "cancelled" || b.status === "no_show") return false;
+            const cin  = new Date(b.checkInDate  as any);
+            const cout = new Date(b.checkOutDate as any);
+            if (b.status === "checked-out" && cout.toDateString() !== todayStrLink) return false;
+            return cin <= nowForLink && todayForLink <= cout;
+          });
+          const linkedBooking =
+            linkCandidates.find((b: any) => b.status === "checked-in") ||
+            linkCandidates.find((b: any) => b.status === "confirmed" &&
+              new Date(b.checkInDate as any).toDateString() !== todayStrLink) ||
+            linkCandidates.find((b: any) => b.status === "checked-out") ||
+            linkCandidates.find((b: any) => b.status === "confirmed") ||
+            linkCandidates[0] || null;
+          if (linkedBooking) {
+            orderData = { ...orderData, bookingId: linkedBooking.id };
+            if (!orderData.guestId) orderData = { ...orderData, guestId: linkedBooking.guestId };
+            console.log(`[Order] Auto-linked room order to booking #${linkedBooking.id} (room ${orderData.roomId})`);
+          }
+        } catch (linkErr: any) {
+          console.warn(`[Order] Auto-link booking failed (non-critical): ${linkErr.message}`);
         }
       }
 
