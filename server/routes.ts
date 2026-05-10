@@ -2751,7 +2751,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Get all active bookings and filter in JavaScript (historical working solution)
       const { bookings, guests } = await import("@shared/schema");
       
-      // Fetch all active bookings for the property (exclude cancelled + checked-out, same as conflict check)
+      // Fetch all active bookings for the property
+      // Exclude: cancelled, checked-out, and no_show — all three release the room back to inventory.
       const allBookings = await db
         .select()
         .from(bookings)
@@ -2759,12 +2760,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           propertyId 
             ? and(
                 eq(bookings.propertyId, Number(propertyId)),
-                not(eq(bookings.status, "cancelled")),
-                not(eq(bookings.status, "checked-out"))
+                not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"]))
               )
             : and(
-                not(eq(bookings.status, "cancelled")),
-                not(eq(bookings.status, "checked-out"))
+                not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"]))
               )
         );
       
