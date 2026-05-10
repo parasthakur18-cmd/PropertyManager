@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, QrCode, Send, MessageCircle } from "lucide-react";
+import { Download, QrCode, Send, MessageCircle, Copy, Check } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,9 +17,10 @@ export default function QRCodes() {
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   const [sendPhone, setSendPhone] = useState<string>("");
   const [sendGuestName, setSendGuestName] = useState<string>("");
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const sendRoomQrMutation = useMutation({
-    mutationFn: async (vars: { propertyId: string; roomNumber: string; phone: string; guestName?: string }) => {
+    mutationFn: async (vars: { propertyId: string; roomNumber: string; phone: string; guestName?: string; menuLink: string }) => {
       return await apiRequest("/api/qr/send-room", "POST", vars);
     },
     onSuccess: () => {
@@ -59,13 +60,26 @@ export default function QRCodes() {
   
   const selectedRoom = allRooms?.find(r => r.id === parseInt(selectedRoomId));
   const selectedProperty = properties?.find(p => p.id === parseInt(selectedPropertyId));
-  
+
+  // Pre-compute the menu URL so both the QR canvas, copy button, and WhatsApp send all use the same URL
+  const roomMenuLink = selectedPropertyId && selectedRoom
+    ? `${window.location.origin}/menu?type=room&property=${selectedPropertyId}&room=${selectedRoom.roomNumber}`
+    : "";
+
+  const copyMenuLink = () => {
+    if (!roomMenuLink) return;
+    navigator.clipboard.writeText(roomMenuLink).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2500);
+      toast({ title: "Link copied", description: "Paste it anywhere to share with the guest." });
+    });
+  };
+
   // Generate Room-Specific QR Code when property and room are selected
   useEffect(() => {
     if (!selectedPropertyId || !selectedRoomId || !selectedRoom) return;
     
-    const baseUrl = window.location.origin;
-    const roomOrderUrl = `${baseUrl}/menu?type=room&property=${selectedPropertyId}&room=${selectedRoom.roomNumber}`;
+    const roomOrderUrl = roomMenuLink;
     
     if (roomQRRef.current) {
       QRCodeGenerator.toCanvas(
@@ -317,9 +331,21 @@ export default function QRCodes() {
 
                 {/* Send to guest via WhatsApp */}
                 <div className="rounded-lg border border-[#25D366]/30 bg-[#25D366]/5 p-3 space-y-2">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-[#128C7E]">
-                    <MessageCircle className="h-4 w-4" />
-                    Send menu link to guest
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-[#128C7E]">
+                      <MessageCircle className="h-4 w-4" />
+                      Send menu link to guest
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                      onClick={copyMenuLink}
+                      data-testid="button-copy-menu-link"
+                    >
+                      {linkCopied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+                      {linkCopied ? "Copied!" : "Copy Link"}
+                    </Button>
                   </div>
                   <Input
                     type="text"
@@ -350,6 +376,7 @@ export default function QRCodes() {
                         roomNumber: selectedRoom.roomNumber,
                         phone: sendPhone,
                         guestName: sendGuestName,
+                        menuLink: roomMenuLink,
                       })
                     }
                     data-testid="button-send-room-qr-whatsapp"

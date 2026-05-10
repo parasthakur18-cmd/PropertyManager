@@ -1195,7 +1195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Body: { propertyId: number, roomNumber: string, phone: string, guestName?: string }
   app.post("/api/qr/send-room", isAuthenticated, async (req: any, res) => {
     try {
-      const { propertyId, roomNumber, phone, guestName } = req.body || {};
+      const { propertyId, roomNumber, phone, guestName, menuLink: clientMenuLink } = req.body || {};
       if (!propertyId || !roomNumber || !phone) {
         return res.status(400).json({ message: "propertyId, roomNumber and phone are required" });
       }
@@ -1209,13 +1209,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Property not found" });
       }
 
-      // Build the same menu URL the QR encodes
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : process.env.REPLIT_DOMAINS?.split(",")[0]
-          ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
-          : `${req.protocol}://${req.get("host")}`;
-      const menuLink = `${baseUrl}/menu?type=room&property=${property.id}&room=${encodeURIComponent(String(roomNumber))}`;
+      // Prefer the URL built by the client (window.location.origin) — it always points to the
+      // correct public domain (e.g. hostezee.in). Fall back to server-side construction only
+      // when the client doesn't send it (e.g. old mobile clients).
+      const menuLink = clientMenuLink
+        ? String(clientMenuLink)
+        : (() => {
+            const baseUrl = process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : process.env.REPLIT_DOMAINS?.split(",")[0]
+                ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+                : `${req.protocol}://${req.get("host")}`;
+            return `${baseUrl}/menu?type=room&property=${property.id}&room=${encodeURIComponent(String(roomNumber))}`;
+          })();
 
       const { sendWelcomeWithMenuLink } = await import("./whatsapp");
       const result = await sendWelcomeWithMenuLink(
