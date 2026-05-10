@@ -4383,6 +4383,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const { status } = req.body;
       const bookingId = parseInt(req.params.id);
       const autoCheckedOutBookingIds: number[] = [];
+      let isDormCoOccupancy = false; // true when a dorm allows multiple check-ins simultaneously
       
       // Get current booking to validate status change
       const currentBooking = await storage.getBooking(bookingId);
@@ -4432,6 +4433,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         // IMPORTANT: scope to the SAME property so a checked-in booking at another
         // property can never block check-in here (rooms have globally-unique IDs but
         // group bookings can have overlapping roomId references across properties).
+        // EXCEPTION: dormitory rooms allow multiple simultaneous checked-in guests
+        // as long as there are enough beds for all of them.
         const allBookings = await storage.getAllBookings();
         const roomId = currentBooking.roomId;
         const currentPropertyId = currentBooking.propertyId;
@@ -4446,20 +4449,49 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         });
 
         if (otherCheckedInBookings.length > 0) {
-          const occupantBooking = otherCheckedInBookings[0];
-          const occupantGuest = await storage.getGuest(occupantBooking.guestId);
-          const guestName = occupantGuest?.fullName || "Another Guest";
-          return res.status(409).json({
-            message: `Room is already occupied — ${guestName} is currently checked in (Booking #${occupantBooking.id}). Please check them out first before checking in a new guest.`,
-            conflictBookingId: occupantBooking.id,
-            conflictGuestName: guestName,
-          });
+          // For dormitory rooms: only block if there are no remaining beds
+          const room = roomId ? await storage.getRoom(roomId) : null;
+          const isDormitory = room?.roomCategory === "dormitory" && (room?.totalBeds || 1) > 1;
+
+          if (isDormitory && room) {
+            const totalBeds = room.totalBeds || 1;
+            const bedsAlreadyOccupied = otherCheckedInBookings.reduce(
+              (sum, b) => sum + (b.bedsBooked || 1), 0
+            );
+            const bedsNeeded = currentBooking.bedsBooked || 1;
+            const bedsAvailable = totalBeds - bedsAlreadyOccupied;
+
+            if (bedsAvailable < bedsNeeded) {
+              return res.status(409).json({
+                message: `Dorm ${room.roomNumber} is fully booked — all ${totalBeds} beds are occupied. Cannot check in ${bedsNeeded} more bed(s).`,
+                conflictType: "dorm_full",
+              });
+            }
+            // Beds are available — allow check-in, fall through
+            isDormCoOccupancy = true;
+            console.log(`[Dorm-CheckIn] Room ${room.roomNumber}: ${bedsAlreadyOccupied}/${totalBeds} beds occupied, adding ${bedsNeeded} more — allowed.`);
+          } else {
+            // Regular (non-dorm) room: block if any other guest is checked in
+            const occupantBooking = otherCheckedInBookings[0];
+            const occupantGuest = await storage.getGuest(occupantBooking.guestId);
+            const guestName = occupantGuest?.fullName || "Another Guest";
+            return res.status(409).json({
+              message: `Room is already occupied — ${guestName} is currently checked in (Booking #${occupantBooking.id}). Please check them out first before checking in a new guest.`,
+              conflictBookingId: occupantBooking.id,
+              conflictGuestName: guestName,
+            });
+          }
         }
 
-        autoCheckedOutBookingIds.push(...otherCheckedInBookings.map(b => b.id));
-        
+        // For dorm co-occupancy, the other checked-in bookings are valid co-guests — do NOT
+        // push them as auto-checked-out or try to create bills for them.
+        if (!isDormCoOccupancy) {
+          autoCheckedOutBookingIds.push(...otherCheckedInBookings.map(b => b.id));
+        }
+
         // (No auto-checkout — handled above by blocking. This loop is now a no-op kept for safety)
-        for (const oldBooking of otherCheckedInBookings) {
+        // Skip entirely for dorm co-occupancy — existing guests stay checked-in.
+        for (const oldBooking of (isDormCoOccupancy ? [] : otherCheckedInBookings)) {
           console.log(`[Auto-Checkout] Checking out old booking ${oldBooking.id} for room ${roomId} before checking in booking ${bookingId}`);
           try {
             const checkInDate  = new Date(oldBooking.checkInDate);

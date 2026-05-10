@@ -71,6 +71,11 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; gradient: string
     text: "text-white",
     gradient: "linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)"
   },
+  no_show: {
+    bg: "bg-slate-400",
+    text: "text-white",
+    gradient: "linear-gradient(135deg, #94a3b8 0%, #64748b 100%)"
+  },
   "checked-in": { 
     bg: "bg-teal-500", 
     text: "text-white",
@@ -301,7 +306,7 @@ export default function CalendarView() {
     const rangeStart = format(startDate, "yyyy-MM-dd");
     const rangeEnd = format(addDays(startDate, 11), "yyyy-MM-dd");
     return bookings.filter(b => {
-      if (b.status === "cancelled") return false;
+      if (b.status === "cancelled" || b.status === "no_show") return false;
       if (b.roomId != null) return false;
       if (b.roomIds && b.roomIds.length > 0) return false;
       if (selectedPropertyId !== "all" && b.propertyId !== selectedPropertyId) return false;
@@ -319,8 +324,8 @@ export default function CalendarView() {
       const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
       
-      // Hide cancelled bookings only; checked-out bookings remain visible in gray
-      if (b.status === "cancelled") return false;
+      // Hide cancelled and no-show bookings; checked-out bookings remain visible in gray
+      if (b.status === "cancelled" || b.status === "no_show") return false;
       
       // Check date range
       return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
@@ -337,9 +342,9 @@ export default function CalendarView() {
       }
     });
     
-    // Also include group bookings that contain this room (exclude cancelled only)
+    // Also include group bookings that contain this room (exclude cancelled and no-show)
     bookings.forEach(booking => {
-      if (booking.status === "cancelled") return;
+      if (booking.status === "cancelled" || booking.status === "no_show") return;
       if (booking.roomIds && booking.roomIds.includes(roomId)) {
         // Check if this booking overlaps with our date range
         const bookingStart = new Date(booking.checkInDate);
@@ -362,7 +367,7 @@ export default function CalendarView() {
     return bookings.filter(b => {
       const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
-      if (b.status === "cancelled") return false;
+      if (b.status === "cancelled" || b.status === "no_show") return false;
       
       return format(new Date(b.checkInDate), "yyyy-MM-dd") <= dateStr &&
         format(new Date(b.checkOutDate), "yyyy-MM-dd") > dateStr;
@@ -398,7 +403,7 @@ export default function CalendarView() {
         const bookingEnd = format(new Date(b.checkOutDate), "yyyy-MM-dd");
         
         // Check if booking overlaps with the date range
-        return bookingStart < endStr && bookingEnd > startStr && b.status !== "cancelled" && b.status !== "checked-out";
+        return bookingStart < endStr && bookingEnd > startStr && b.status !== "cancelled" && b.status !== "checked-out" && b.status !== "no_show";
       })
       .reduce((total, b) => total + (b.bedsBooked || 1), 0);
   };
@@ -756,6 +761,7 @@ export default function CalendarView() {
                             className={cn(
                               "w-2 h-2 rounded-full flex-shrink-0 ring-1 ring-white shadow-sm",
                               roomBookings.some(b => {
+                                if (b.status === "no_show" || b.status === "cancelled") return false;
                                 const cin = startOfDay(new Date(b.checkInDate));
                                 const cout = startOfDay(new Date(b.checkOutDate));
                                 return today >= cin && today < cout;
