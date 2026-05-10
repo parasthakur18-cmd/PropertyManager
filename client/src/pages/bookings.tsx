@@ -1591,24 +1591,27 @@ export default function Bookings() {
                                     } />
                                   </SelectTrigger>
                                 </FormControl>
-                                <SelectContent>
+                                <SelectContent className="max-h-80">
                                   {(() => {
+                                    const sortByRoomNumber = (a: Room, b: Room) =>
+                                      (parseInt(a.roomNumber) || 0) - (parseInt(b.roomNumber) || 0);
                                     const datesSet = !!(checkInDate && checkOutDate && checkInDate < checkOutDate);
                                     const conflictMap = new Map(
                                       (roomAvailability ?? [])
                                         .filter(a => a.available === 0 && a.conflictBookingId)
                                         .map(a => [a.roomId, a])
                                     );
-                                    const allPropertySingleRooms = rooms?.filter(r =>
+                                    const allPropertySingleRooms = (rooms?.filter(r =>
                                       r.roomCategory !== "dormitory" &&
                                       (!selectedPropertyId || r.propertyId === selectedPropertyId)
-                                    ) ?? [];
+                                    ) ?? []).sort(sortByRoomNumber);
+                                    const sortedAvailable = [...availableSingleRooms].sort(sortByRoomNumber);
                                     const unavailableRooms = datesSet
-                                      ? allPropertySingleRooms.filter(r => !availableSingleRooms.find(a => a.id === r.id))
+                                      ? allPropertySingleRooms.filter(r => !sortedAvailable.find(a => a.id === r.id))
                                       : [];
                                     return (
                                       <>
-                                        {availableSingleRooms.map((room) => {
+                                        {sortedAvailable.map((room) => {
                                           const roomDescription = room.roomType || "Standard";
                                           return (
                                             <SelectItem key={room.id} value={room.id.toString()}>
@@ -3229,17 +3232,19 @@ export default function Bookings() {
                               <SelectValue placeholder={editSelectedPropertyId ? "Select room" : "Select a property first"} />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
+                          <SelectContent className="max-h-80">
                             {/* Show ALL non-dormitory rooms: available ones selectable, conflicted ones disabled with reason */}
                             {(() => {
                               const availableRooms = getRoomsForBookingType("single", { isEditMode: true, propertyId: editSelectedPropertyId });
                               const currentRoom = editingBooking?.roomId ? rooms?.find(r => r.id === editingBooking.roomId) : null;
 
                               // Also collect unavailable (conflicted) rooms for this property
-                              const allPropertyRooms = rooms?.filter(r =>
+                              const sortByRoomNum = (a: Room, b: Room) =>
+                                (parseInt(a.roomNumber) || 0) - (parseInt(b.roomNumber) || 0);
+                              const allPropertyRooms = (rooms?.filter(r =>
                                 r.roomCategory !== "dormitory" &&
                                 (!editSelectedPropertyId || r.propertyId === editSelectedPropertyId)
-                              ) ?? [];
+                              ) ?? []).sort(sortByRoomNum);
                               const conflictMap = new Map(
                                 (editRoomAvailability ?? [])
                                   .filter(a => a.available === 0 && a.conflictBookingId)
@@ -3252,7 +3257,7 @@ export default function Bookings() {
 
                               const roomsToShow = [
                                 ...(currentRoom && !availableRooms.find(r => r.id === currentRoom.id) ? [currentRoom] : []),
-                                ...availableRooms,
+                                ...[...availableRooms].sort(sortByRoomNum),
                               ];
 
                               if (roomsToShow.length === 0 && unavailableRooms.length === 0) {

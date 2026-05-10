@@ -1187,9 +1187,9 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuItems(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    // Single atomic batch update: CASE id WHEN $1 THEN $2 WHEN $3 THEN $4 ... END
-    // Parameter indices are reused in the WHERE IN clause (valid in PostgreSQL).
-    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}`).join(' ');
+    // Single atomic batch update: CASE id WHEN $1 THEN $2::integer WHEN $3 THEN $4::integer ... END
+    // Explicit ::integer cast prevents pg driver from inferring THEN values as text.
+    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}::integer`).join(' ');
     const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
     const params = updates.flatMap(u => [u.id, u.displayOrder]);
     const client = await pool.connect();
@@ -1302,7 +1302,7 @@ export class DatabaseStorage implements IStorage {
 
   async reorderMenuCategories(updates: { id: number; displayOrder: number }[]): Promise<void> {
     if (updates.length === 0) return;
-    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}`).join(' ');
+    const cases = updates.map((_u, i) => `WHEN $${i * 2 + 1} THEN $${i * 2 + 2}::integer`).join(' ');
     const inClause = updates.map((_u, i) => `$${i * 2 + 1}`).join(', ');
     const params = updates.flatMap(u => [u.id, u.displayOrder]);
     const client = await pool.connect();
