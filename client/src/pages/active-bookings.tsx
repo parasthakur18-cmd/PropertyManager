@@ -1424,7 +1424,9 @@ export default function ActiveBookings() {
                           View ID
                         </a>
                       )}
-                      <GuestIdsButton bookingId={booking.id} />
+                      {(booking.isGroupBooking || booking.numberOfGuests > 1) && (
+                        <GuestIdsButton bookingId={booking.id} />
+                      )}
                     </div>
                   </div>
                 </TabsContent>
