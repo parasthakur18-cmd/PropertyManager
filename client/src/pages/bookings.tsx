@@ -214,9 +214,11 @@ export default function Bookings() {
       const tabToStatus: Record<string, string | undefined> = {
         all: undefined,
         today_checkins: "active",
-        // pending_payment covers both 'pending' and 'pending_advance'; we fetch
-        // the broader 'active' set and filter client-side below.
+        // All payment-filter tabs fetch active set, then filter client-side
         pending_payment: "active",
+        advance_received: "active",
+        partially_paid: "active",
+        fully_paid: "active",
         tba: "active",
         cancelled: "cancelled",
       };
@@ -1213,18 +1215,50 @@ export default function Bookings() {
     return map;
   }, [rooms]);
 
+  // Helper: classify a booking's payment state for tab filtering + display
+  const getPaymentState = (b: Booking) => {
+    const advAmt = parseFloat(b.advanceAmount || "0");
+    const totalAmt = parseFloat(b.totalAmount || "0");
+    const advStatus = (b as any).advancePaymentStatus as string | undefined;
+    const linkPending = advStatus === "pending"; // Razorpay link sent, not confirmed
+    const advReceived = advAmt > 0 && !linkPending;
+    const fullyPaid = advReceived && totalAmt > 0 && advAmt >= totalAmt;
+    const partiallyPaid = advReceived && totalAmt > 0 && advAmt < totalAmt;
+    return { advAmt, totalAmt, advStatus, linkPending, advReceived, fullyPaid, partiallyPaid };
+  };
+
   const filteredBookings = useMemo(() => {
     if (!bookings) return [];
-    // For TBA tab, additionally filter to only bookings without an assigned room
+    const inactive = ["cancelled", "no_show"];
     if (activeTab === "tba") {
       return bookings.filter((b) => {
         const hasRoom = !!b.roomId || (Array.isArray(b.roomIds) && b.roomIds.length > 0);
         return !hasRoom;
       });
     }
-    // For Pending Payment tab, include both 'pending' and 'pending_advance'
     if (activeTab === "pending_payment") {
       return bookings.filter((b) => b.status === "pending" || b.status === "pending_advance");
+    }
+    if (activeTab === "advance_received") {
+      return bookings.filter((b) => {
+        if (inactive.includes(b.status)) return false;
+        const { advReceived } = getPaymentState(b);
+        return advReceived;
+      });
+    }
+    if (activeTab === "partially_paid") {
+      return bookings.filter((b) => {
+        if (inactive.includes(b.status)) return false;
+        const { partiallyPaid } = getPaymentState(b);
+        return partiallyPaid;
+      });
+    }
+    if (activeTab === "fully_paid") {
+      return bookings.filter((b) => {
+        if (inactive.includes(b.status)) return false;
+        const { fullyPaid } = getPaymentState(b);
+        return fullyPaid;
+      });
     }
     return bookings;
   }, [bookings, activeTab]);
@@ -2211,17 +2245,26 @@ export default function Bookings() {
         </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-6 flex-wrap h-auto">
+        <TabsList className="mb-6 flex-wrap h-auto gap-1">
           <TabsTrigger value="all" data-testid="tab-all-bookings">
             All <Badge variant="secondary" className="ml-2">{bookingCounts.all}</Badge>
           </TabsTrigger>
           <TabsTrigger value="today_checkins" data-testid="tab-today-checkins">
             Today Check-ins
           </TabsTrigger>
-          <TabsTrigger value="pending_payment" data-testid="tab-pending-payment" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white">
-            <span className="mr-1">⚠️</span> Pending Payment
+          <TabsTrigger value="advance_received" data-testid="tab-advance-received" className="data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            💚 Advance Received
           </TabsTrigger>
-          <TabsTrigger value="tba" data-testid="tab-tba" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
+          <TabsTrigger value="partially_paid" data-testid="tab-partially-paid" className="data-[state=active]:bg-amber-500 data-[state=active]:text-white">
+            🟡 Partially Paid
+          </TabsTrigger>
+          <TabsTrigger value="fully_paid" data-testid="tab-fully-paid" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+            💙 Fully Paid
+          </TabsTrigger>
+          <TabsTrigger value="pending_payment" data-testid="tab-pending-payment" className="data-[state=active]:bg-red-600 data-[state=active]:text-white">
+            🔴 No Advance
+          </TabsTrigger>
+          <TabsTrigger value="tba" data-testid="tab-tba" className="data-[state=active]:bg-red-700 data-[state=active]:text-white">
             <span className="mr-1">🚨</span> TBA
           </TabsTrigger>
           <TabsTrigger value="cancelled" data-testid="tab-cancelled-bookings">
@@ -2305,10 +2348,18 @@ export default function Bookings() {
                     const needsPayment = booking.status === "pending_advance" || booking.status === "pending";
                     const canCheckin = hasRoom && (booking.status === "confirmed" || booking.status === "pending");
 
+                    const { advAmt, totalAmt, advStatus, linkPending, advReceived, fullyPaid } = getPaymentState(booking);
+                    // Hide Collect button when advance is already confirmed/received or booking is fully paid
+                    const showCollect = needsPayment && !fullyPaid && advStatus !== "paid";
+
                     const rowTint = isTba
                       ? "bg-red-100/80 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/40"
-                      : needsPayment
-                      ? "bg-orange-100/80 hover:bg-orange-100 dark:bg-orange-950/30 dark:hover:bg-orange-950/40"
+                      : needsPayment && !advReceived
+                      ? "bg-red-50/80 hover:bg-red-50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
+                      : fullyPaid
+                      ? "bg-blue-50/70 hover:bg-blue-50 dark:bg-blue-950/20 dark:hover:bg-blue-950/30"
+                      : advReceived
+                      ? "bg-green-50/60 hover:bg-green-50 dark:bg-green-950/15 dark:hover:bg-green-950/25"
                       : booking.status === "checked-in"
                       ? "bg-green-100/70 hover:bg-green-100 dark:bg-green-950/25 dark:hover:bg-green-950/35"
                       : "hover:bg-muted/50 dark:hover:bg-muted/30";
@@ -2438,7 +2489,7 @@ export default function Bookings() {
                         <TableCell className="text-right py-1.5 whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1 min-w-[180px]">
                             {/* Smart contextual buttons (max 2) */}
-                            {needsPayment && (
+                            {showCollect && (
                               <Button
                                 size="sm"
                                 variant="default"
