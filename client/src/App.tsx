@@ -121,6 +121,16 @@ function DashboardGate() {
   if (role === 'kitchen') return <Redirect to="/restaurant" />;
   if (isFullAccess) return <Dashboard />;
   if (isLoading || !permissions) return null;
+
+  // Staff/manager with NO permissions configured at all → kitchen-mode fallback
+  const permValues = [
+    permissions.bookings, permissions.calendar, permissions.rooms, permissions.guests,
+    permissions.foodOrders, permissions.menuManagement, permissions.payments,
+    permissions.reports, permissions.settings, permissions.tasks, permissions.staff,
+  ];
+  const hasAnyPermission = permValues.some(v => v !== 'none');
+  if (!hasAnyPermission) return <Redirect to="/restaurant" />;
+
   const restaurantOnly =
     (permissions.foodOrders !== 'none' || permissions.menuManagement !== 'none') &&
     permissions.bookings === 'none' &&
@@ -318,10 +328,19 @@ function AuthWrapper({ children }: { children: React.ReactNode }) {
     // Kitchen role: hard redirect.
     if (role === 'kitchen') { setLocation('/restaurant'); return; }
     // Everyone else (admin / manager / staff) — check granular permissions.
+    if (!dashPerms) return;
+
+    // Staff/manager with NO permissions at all → kitchen-mode fallback
+    const permVals = [
+      dashPerms.bookings, dashPerms.calendar, dashPerms.rooms, dashPerms.guests,
+      dashPerms.foodOrders, dashPerms.menuManagement, dashPerms.payments,
+      dashPerms.reports, dashPerms.settings, dashPerms.tasks, dashPerms.staff,
+    ];
+    if (permVals.every(v => v === 'none')) { setLocation('/restaurant'); return; }
+
     // If the only granted module is foodOrders/menuManagement, bounce them
     // to /restaurant. This catches property-scoped admins who were given
     // restaurant-only access.
-    if (!dashPerms) return;
     const restaurantOnly =
       (dashPerms.foodOrders !== 'none' || dashPerms.menuManagement !== 'none') &&
       dashPerms.bookings === 'none' &&

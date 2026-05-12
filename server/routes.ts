@@ -1088,11 +1088,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn(`[WhatsApp] Food order confirmation failed (non-critical):`, waErr.message);
       }
 
-      // Send PWA push notification to admin/kitchen staff for this property
+      // Send PWA push notification to admin/kitchen/staff for this property
       try {
         const allUsers = await storage.getAllUsers();
         const relevantUsers = allUsers.filter(u =>
-          (u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen') &&
+          (u.role === 'admin' || u.role === 'super-admin' || u.role === 'kitchen' || u.role === 'staff') &&
           (orderData.propertyId
             ? !u.assignedPropertyIds || u.assignedPropertyIds.length === 0 || u.assignedPropertyIds.includes(String(orderData.propertyId))
             : true)
@@ -17957,12 +17957,15 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
     new_booking:             'bookings',
     booking_modified:        'bookings',
     booking_cancelled:       'bookings',
+    guest_checked_in:        'bookings',
+    guest_checked_out:       'bookings',
     bill_generated:          'payments',
     payment_received:        'payments',
     pending_payment_overdue: 'payments',
     vendor_due:              'payments',
     new_order:               'foodOrders',
     order_ready:             'foodOrders',
+    order_unaccepted:        'foodOrders',
   };
 
   // Notification types that are admin/staff-management only
@@ -18013,13 +18016,14 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
       // kitchen role always restricted to food-orders only
       const isKitchenRole = user?.role === 'kitchen';
 
-      // Admin with no granular restrictions → show all operational notifications
-      if (user?.role === 'admin' && !hasGranularPermissions) {
+      // Admin/manager with no granular restrictions → show all operational notifications
+      if ((user?.role === 'admin' || user?.role === 'manager') && !hasGranularPermissions) {
         // fall through to property filter only
-      } else if (isKitchenRole || hasGranularPermissions) {
+      } else if (isKitchenRole || hasGranularPermissions || user?.role === 'staff') {
         // Build the set of modules this user can access
         const allowedModules = new Set<string>();
-        if (isKitchenRole) {
+        if (isKitchenRole || (user?.role === 'staff' && !hasGranularPermissions)) {
+          // kitchen role or staff with no explicit permissions → food orders only
           allowedModules.add('foodOrders');
         } else if (userPermsRow) {
           for (const k of permKeys) {
@@ -21207,10 +21211,10 @@ function startKitchenAcceptanceEscalationJob() {
       const allProperties = await db.select().from(properties);
       if (allProperties.length === 0) return;
 
-      // Pre-load admin/kitchen users once per tick
+      // Pre-load admin/kitchen/staff users once per tick
       const allUsers = await storage.getAllUsers();
       const escalationUsers = allUsers.filter(
-        u => u.role === "admin" || u.role === "super-admin" || u.role === "kitchen",
+        u => u.role === "admin" || u.role === "super-admin" || u.role === "kitchen" || u.role === "staff",
       );
       const escalationUserIds = escalationUsers.map(u => u.id);
 

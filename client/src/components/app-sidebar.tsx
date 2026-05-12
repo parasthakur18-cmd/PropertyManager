@@ -236,8 +236,15 @@ export function AppSidebar() {
     }
 
     // Staff / manager — permission-filtered
+    // Only show Dashboard if the user has at least one non-none permission
+    // (staff with zero permissions are redirected to /restaurant by DashboardGate)
+    const hasAnyPermission = [
+      "bookings", "calendar", "rooms", "guests", "foodOrders",
+      "menuManagement", "payments", "reports", "settings", "tasks", "staff",
+    ].some(k => hasAccess(k as any));
+
     const mainItems = [
-      { title: "Dashboard", url: "/", icon: Home },
+      ...(hasAnyPermission ? [{ title: "Dashboard", url: "/", icon: Home }] : []),
       ...(hasAccess("tasks") ? [{ title: "Tasks", url: "/tasks", icon: ListTodo }] : []),
       { title: "Notifications", url: "/notifications", icon: Bell },
     ];
