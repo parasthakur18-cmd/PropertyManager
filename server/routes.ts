@@ -1345,6 +1345,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[AUTH] Auto-verified manager email: ${user?.email}`);
       }
       
+      // SAFETY NET: super-admin accounts are always allowed through, status is ignored
+      // If somehow a super-admin's status was set to inactive in the DB, auto-restore it
+      if (user && user.role === 'super-admin' && user.status !== 'active') {
+        await db.update(users).set({ status: 'active', updatedAt: new Date() }).where(eq(users.id, userId));
+        user = await storage.getUser(userId);
+        console.log(`[AUTH] Auto-restored super-admin status to active: ${user?.email}`);
+      }
+
       // CHECK VERIFICATION STATUS - Block pending/rejected/deactivated users (except super-admin)
       if (user && user.role !== 'super-admin') {
         // Check if user is deactivated (inactive or suspended status)
@@ -1783,10 +1791,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "You cannot deactivate your own account" });
       }
       
-      // Prevent deactivating super-admin users (only for regular admins)
+      // HARD GUARD: super-admin accounts can NEVER be deactivated by anyone
       const targetUser = await storage.getUser(id);
-      if (targetUser?.role === 'super-admin' && currentUser?.role !== 'super-admin') {
-        return res.status(403).json({ message: "Cannot modify super-admin users" });
+      if (targetUser?.role === 'super-admin') {
+        return res.status(403).json({ message: "Super-admin accounts cannot be deactivated." });
       }
       
       // For regular admins, check if they have access to this user's properties
