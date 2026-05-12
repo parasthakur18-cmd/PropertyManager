@@ -2398,27 +2398,32 @@ export default function Bookings() {
                           {booking.totalAmount && booking.totalAmount !== "0" ? `₹${booking.totalAmount}` : "₹-"}
                         </TableCell>
                         <TableCell className="py-1.5 text-sm" data-testid={`text-advance-${booking.id}`}>
-                          {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? (
-                            <span className="text-sm">
-                              <span className={`font-mono font-semibold ${(booking as any).advancePaymentStatus === "paid" ? "text-green-600 dark:text-green-400" : "text-orange-500 dark:text-orange-400"}`}>
-                                ₹{booking.advanceAmount}
+                          {booking.advanceAmount && parseFloat(booking.advanceAmount) > 0 ? (() => {
+                            const advStatus = (booking as any).advancePaymentStatus;
+                            const advMethod = (booking as any).advancePaymentMethod;
+                            // "pending" = link sent, awaiting Razorpay confirmation
+                            const isLinkPending = advStatus === "pending";
+                            // "paid" OR "not_required" with amount > 0 (manual entry) = received
+                            const isReceived = advStatus === "paid" || (!isLinkPending && advStatus !== "pending");
+                            const methodLabel: Record<string, string> = {
+                              cash: "Cash", upi: "UPI", online: "Online", card: "Card", bank_transfer: "Bank",
+                            };
+                            const mLabel = advMethod ? (methodLabel[advMethod] || advMethod) : null;
+                            return (
+                              <span className="text-sm">
+                                <span className={`font-mono font-semibold ${isLinkPending ? "text-orange-500 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}>
+                                  ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN")}
+                                </span>
+                                {isLinkPending ? (
+                                  <span className="text-orange-500 dark:text-orange-400 block text-[11px]">Link Shared</span>
+                                ) : (
+                                  <span className="text-green-600 dark:text-green-400 block text-[11px]">
+                                    Received{mLabel ? ` (${mLabel})` : ""}
+                                  </span>
+                                )}
                               </span>
-                              {(booking as any).advancePaymentStatus === "paid" ? (
-                                <>
-                                  <span className="text-muted-foreground"> Paid</span>
-                                  {(booking as any).advancePaymentMethod && (
-                                    <span className="text-muted-foreground">
-                                      {" "}({(booking as any).advancePaymentMethod === "cash" ? "Cash" : (booking as any).advancePaymentMethod === "upi" ? "UPI" : (booking as any).advancePaymentMethod})
-                                    </span>
-                                  )}
-                                </>
-                              ) : (booking as any).advancePaymentStatus === "pending" ? (
-                                <span className="text-orange-500 dark:text-orange-400"> Link Shared</span>
-                              ) : (
-                                <span className="text-muted-foreground"> Pending</span>
-                              )}
-                            </span>
-                          ) : <span className="text-muted-foreground">-</span>}
+                            );
+                          })() : <span className="text-muted-foreground">-</span>}
                         </TableCell>
                         <TableCell className="py-1.5 text-sm" data-testid={`text-source-${booking.id}`}>
                           <Badge variant="secondary" className="text-xs font-medium rounded-full px-2 py-0.5">
