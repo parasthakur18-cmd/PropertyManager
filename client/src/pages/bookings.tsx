@@ -4386,6 +4386,14 @@ function CheckoutBillSummary({
     queryKey: ["/api/extra-services"],
   });
 
+  // Fetch open orders via dedicated endpoint — catches orphan orders
+  // placed without a bookingId that local filtering would miss.
+  const { data: openOrders = [], isLoading: openOrdersLoading } = useQuery<any[]>({
+    queryKey: ["/api/bookings", bookingId, "open-orders"],
+    enabled: !!bookingId,
+    refetchInterval: 15000,
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("/api/bookings/checkout", "POST", data);
@@ -4544,21 +4552,46 @@ function CheckoutBillSummary({
 
       {/* Checkout Warnings */}
       {(() => {
-        const pendingOrders = bookingOrders.filter(o => o.status === 'pending' || o.status === 'preparing');
         const unpaidExtras = bookingExtras.filter(e => !e.isPaid);
         const warnings = [];
-        
-        if (pendingOrders.length > 0) {
+
+        if (openOrders.length > 0) {
           warnings.push(
-            <div key="pending-orders" className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Pending Food Orders</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {pendingOrders.length} order{pendingOrders.length > 1 ? 's are' : ' is'} still pending or being prepared. 
-                  Consider completing these before checkout.
-                </p>
+            <div key="open-orders" className="border border-red-300 dark:border-red-700 rounded-lg p-4 bg-red-50 dark:bg-red-950/30 space-y-2" data-testid="alert-open-orders">
+              <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-semibold">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                Checkout Blocked — {openOrders.length} open food order{openOrders.length !== 1 ? "s" : ""}
               </div>
+              <p className="text-sm text-red-600 dark:text-red-400">
+                All food orders must be delivered or cancelled before checkout.
+              </p>
+              <ul className="space-y-1 mt-1">
+                {openOrders.map((order: any) => (
+                  <li key={order.id} className="flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
+                    <span className="font-medium">Order #{order.id}</span>
+                    <Badge
+                      className={
+                        order.status === "pending"
+                          ? "bg-yellow-100 text-yellow-800 border-yellow-300"
+                          : order.status === "preparing"
+                          ? "bg-blue-100 text-blue-800 border-blue-300"
+                          : "bg-green-100 text-green-800 border-green-300"
+                      }
+                      variant="outline"
+                    >
+                      {order.status}
+                    </Badge>
+                    {order.items && (
+                      <span className="text-muted-foreground truncate max-w-[200px]">
+                        {Array.isArray(order.items) ? order.items.map((i: any) => i.name || i.itemName).join(", ") : ""}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                Go to the Restaurant section to mark these orders as delivered or cancel them.
+              </p>
             </div>
           );
         }
@@ -4821,10 +4854,17 @@ function CheckoutBillSummary({
         </Button>
         <Button 
           onClick={handleCheckout} 
-          disabled={checkoutMutation.isPending}
+          disabled={checkoutMutation.isPending || openOrdersLoading || openOrders.length > 0}
+          title={openOrders.length > 0 ? `${openOrders.length} food order(s) still open — resolve them first` : undefined}
           data-testid="button-confirm-checkout"
         >
-          {checkoutMutation.isPending ? "Processing..." : `Complete Checkout (₹${balanceAmount.toFixed(2)})`}
+          {checkoutMutation.isPending
+            ? "Processing..."
+            : openOrdersLoading
+            ? "Checking orders..."
+            : openOrders.length > 0
+            ? `${openOrders.length} Order(s) Pending`
+            : `Complete Checkout (₹${balanceAmount.toFixed(2)})`}
         </Button>
       </DialogFooter>
     </div>

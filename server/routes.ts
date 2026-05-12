@@ -5171,6 +5171,67 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
     }
   });
 
+  // Open orders check for a booking — broader than getBillableOrdersForBooking
+  // to catch any order associated with the guest/room during the stay window,
+  // even if placed without a bookingId. Used by the checkout dialog UI.
+  app.get("/api/bookings/:id/open-orders", isAuthenticated, async (req: any, res) => {
+    try {
+      const bookingId = parseInt(req.params.id);
+      if (isNaN(bookingId)) return res.json([]);
+
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.json([]);
+
+      const openStatuses = new Set(["pending", "preparing", "ready"]);
+      const seen = new Set<number>();
+      const result: any[] = [];
+
+      const addIfOpen = (o: any) => {
+        if (!seen.has(o.id) && openStatuses.has(o.status) && !o.isTest) {
+          seen.add(o.id);
+          result.push(o);
+        }
+      };
+
+      // 1. Direct: orders explicitly linked to this bookingId
+      const directOrders = await db.select().from(orders).where(eq(orders.bookingId, bookingId));
+      directOrders.forEach(addIfOpen);
+
+      // 2. Orphan orders (no bookingId) matched by guestId
+      if (booking.guestId) {
+        const guestOrders = await db.select().from(orders).where(
+          and(isNull(orders.bookingId), eq(orders.guestId, booking.guestId))
+        );
+        guestOrders.forEach(addIfOpen);
+      }
+
+      // 3. Orphan orders matched by room + stay-window time range
+      const bookingRoomIds: number[] =
+        booking.isGroupBooking && Array.isArray(booking.roomIds)
+          ? booking.roomIds
+          : booking.roomId ? [booking.roomId] : [];
+
+      if (bookingRoomIds.length > 0) {
+        const checkIn  = new Date(booking.checkInDate  as any).getTime();
+        const checkOut = new Date(booking.checkOutDate as any).getTime() + 24 * 60 * 60 * 1000;
+
+        const orphans = await db.select().from(orders).where(isNull(orders.bookingId));
+        orphans.forEach((o: any) => {
+          if (!bookingRoomIds.includes(o.roomId)) return;
+          if (booking.propertyId && o.propertyId && o.propertyId !== booking.propertyId) return;
+          const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+          if (created < checkIn || created > checkOut) return;
+          addIfOpen(o);
+        });
+      }
+
+      return res.json(result);
+    } catch (err: any) {
+      console.error("[open-orders]", err.message);
+      res.json([]);
+    }
+  });
+
   // Checkout endpoint
   app.post("/api/bookings/checkout", isAuthenticated, async (req, res) => {
     try {

@@ -59,6 +59,14 @@ export function CheckoutBillSummary({
     queryKey: ["/api/extra-services"],
   });
 
+  // Fetch open orders via the dedicated endpoint — catches orphan orders
+  // (placed without bookingId) that local filtering would miss.
+  const { data: openOrders = [], isLoading: openOrdersLoading } = useQuery<any[]>({
+    queryKey: ["/api/bookings", bookingId, "open-orders"],
+    enabled: !!bookingId,
+    refetchInterval: 15000,
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("/api/bookings/checkout", "POST", data);
@@ -103,10 +111,6 @@ export function CheckoutBillSummary({
 
   const bookingOrders = orders?.filter(o => o.bookingId === bookingId) || [];
   const bookingExtras = extraServices?.filter(e => e.bookingId === bookingId) || [];
-
-  const openOrders = bookingOrders.filter(o =>
-    o.status === "pending" || o.status === "preparing" || o.status === "ready"
-  );
 
   const checkInDate = new Date(booking.checkInDate);
   const checkOutDate = new Date(booking.checkOutDate);
