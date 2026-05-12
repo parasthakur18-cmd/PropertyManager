@@ -135,6 +135,7 @@ export default function Menu() {
   const urlProperty = urlParams.get("property") || "";
   const urlType = urlParams.get("type");
   const urlRoom = urlParams.get("room") || "";
+  const urlBookingId = urlParams.get("booking") || "";
   const isPreview = urlParams.get("preview") === "true";
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -214,6 +215,23 @@ export default function Menu() {
     const m = minutesUntilOpen % 60;
     return `Kitchen opens at ${openTimeStr} (in ${h}h ${m > 0 ? `${m}m` : ""})`;
   }, [isKitchenOpen, minutesUntilOpen, openTimeStr]);
+
+  // ── Booking session validation (room orders with per-stay link) ───────────
+  const { data: bookingSession, isLoading: sessionLoading } = useQuery<{
+    active: boolean; reason?: string; bookingId?: number;
+  }>({
+    queryKey: [`/api/public/booking-session/${urlBookingId}`],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/booking-session/${urlBookingId}`);
+      if (!res.ok) return { active: false, reason: "error" };
+      return res.json();
+    },
+    enabled: !!(urlBookingId && orderType === "room"),
+    staleTime: 60_000,
+  });
+
+  // If session is expired, the menu is still rendered but ordering is blocked
+  const sessionExpired = !!(urlBookingId && orderType === "room" && !sessionLoading && bookingSession && !bookingSession.active);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const menuCategoriesUrl = urlProperty
@@ -424,6 +442,7 @@ export default function Menu() {
     if (orderType === "room") {
       orderData.roomId = roomNumber;
       orderData.propertyId = propertyId;
+      if (urlBookingId) orderData.bookingId = parseInt(urlBookingId);
     } else {
       orderData.customerName = customerName;
       orderData.customerPhone = customerPhone;
@@ -509,6 +528,17 @@ export default function Menu() {
         <div className="bg-amber-400 text-amber-900 text-center py-2 px-4 text-sm font-semibold flex items-center justify-center gap-2 sticky top-0 z-50">
           <Eye className="h-4 w-4 flex-shrink-0" />
           Preview Mode — Orders will not be placed
+        </div>
+      )}
+
+      {/* ── Booking Session Expired Banner ───────────────────────────────── */}
+      {sessionExpired && (
+        <div className="bg-red-600 text-white text-center py-4 px-4 sticky top-0 z-50 shadow-lg">
+          <p className="font-bold text-base">Your room session has ended</p>
+          <p className="text-sm mt-1 opacity-90">
+            This menu link is linked to a booking that has been checked out.
+            Please contact the front desk or order directly at the restaurant counter.
+          </p>
         </div>
       )}
 
@@ -1103,17 +1133,20 @@ export default function Menu() {
                     disabled={
                       orderMutation.isPending ||
                       !isKitchenOpen ||
+                      sessionExpired ||
                       (orderType === "room" ? !roomNumber : !customerName || !customerPhone)
                     }
                     className={`w-full py-4 rounded-2xl font-bold text-base transition-all ${
-                      orderMutation.isPending || !isKitchenOpen ||
+                      orderMutation.isPending || !isKitchenOpen || sessionExpired ||
                       (orderType === "room" ? !roomNumber : !customerName || !customerPhone)
                         ? "bg-gray-200 text-gray-400 cursor-not-allowed"
                         : "bg-[#1E3A5F] text-white active:scale-95"
                     }`}
                     data-testid="button-place-order"
                   >
-                    {orderMutation.isPending
+                    {sessionExpired
+                      ? "Room session ended — contact front desk"
+                      : orderMutation.isPending
                       ? "Placing Order..."
                       : !isKitchenOpen
                       ? closedLabel

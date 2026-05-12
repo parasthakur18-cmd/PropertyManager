@@ -52,6 +52,24 @@ export default function QRCodes() {
   const { data: allRooms } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
   });
+
+  // Fetch the active booking for the selected room so we can attach a per-stay
+  // session token to the WhatsApp link — this makes the link expire on checkout.
+  const { data: activeBookingInfo } = useQuery<{
+    bookingId: number | null;
+    guestName?: string | null;
+    checkOutDate?: string | null;
+    status?: string | null;
+  }>({
+    queryKey: ["/api/rooms", selectedRoomId, "active-booking"],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms/${selectedRoomId}/active-booking`);
+      if (!res.ok) return { bookingId: null };
+      return res.json();
+    },
+    enabled: !!selectedRoomId,
+    staleTime: 30_000,
+  });
   
   // Filter rooms by selected property
   const filteredRooms = allRooms?.filter(
@@ -61,17 +79,25 @@ export default function QRCodes() {
   const selectedRoom = allRooms?.find(r => r.id === parseInt(selectedRoomId));
   const selectedProperty = properties?.find(p => p.id === parseInt(selectedPropertyId));
 
-  // Pre-compute the menu URL so both the QR canvas, copy button, and WhatsApp send all use the same URL
+  // Base QR URL (no bookingId) — used for the printed physical QR in the room.
+  // This is intentionally reusable across stays so staff don't need to reprint it.
   const roomMenuLink = selectedPropertyId && selectedRoom
     ? `${window.location.origin}/menu?type=room&property=${selectedPropertyId}&room=${selectedRoom.roomNumber}`
     : "";
 
+  // Per-stay WhatsApp link — includes bookingId so the link expires when guest checks out.
+  // Always prefer this over roomMenuLink when sending to a specific guest.
+  const whatsappMenuLink = roomMenuLink && activeBookingInfo?.bookingId
+    ? `${roomMenuLink}&booking=${activeBookingInfo.bookingId}`
+    : roomMenuLink;
+
   const copyMenuLink = () => {
-    if (!roomMenuLink) return;
-    navigator.clipboard.writeText(roomMenuLink).then(() => {
+    const link = whatsappMenuLink || roomMenuLink;
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2500);
-      toast({ title: "Link copied", description: "Paste it anywhere to share with the guest." });
+      toast({ title: "Link copied", description: activeBookingInfo?.bookingId ? "Per-stay link copied — expires on checkout." : "Paste it anywhere to share with the guest." });
     });
   };
 
@@ -347,6 +373,26 @@ export default function QRCodes() {
                       {linkCopied ? "Copied!" : "Copy Link"}
                     </Button>
                   </div>
+
+                  {/* Active booking info / warning */}
+                  {activeBookingInfo?.bookingId ? (
+                    <div className="flex items-start gap-2 rounded-md bg-blue-50 border border-blue-200 px-2.5 py-2 text-xs text-blue-800">
+                      <span className="mt-0.5">🔒</span>
+                      <span>
+                        Sending a <strong>per-stay link</strong> for{" "}
+                        {activeBookingInfo.guestName ? <strong>{activeBookingInfo.guestName}</strong> : "current guest"}.
+                        {activeBookingInfo.checkOutDate && (
+                          <> Expires at checkout ({new Date(activeBookingInfo.checkOutDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}).</>
+                        )}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-2 text-xs text-amber-800">
+                      <span className="mt-0.5">⚠️</span>
+                      <span>No active booking found for this room. The link will be a general menu link — orders may not attach correctly to a bill.</span>
+                    </div>
+                  )}
+
                   <Input
                     type="text"
                     placeholder="Guest name (optional)"
@@ -376,7 +422,7 @@ export default function QRCodes() {
                         roomNumber: selectedRoom.roomNumber,
                         phone: sendPhone,
                         guestName: sendGuestName,
-                        menuLink: roomMenuLink,
+                        menuLink: whatsappMenuLink,
                       })
                     }
                     data-testid="button-send-room-qr-whatsapp"
@@ -385,7 +431,7 @@ export default function QRCodes() {
                     {sendRoomQrMutation.isPending ? "Sending..." : "Send via WhatsApp"}
                   </Button>
                   <p className="text-[11px] text-muted-foreground leading-tight">
-                    Sends the same menu link the QR encodes. Order placed by the guest will auto-link to this room's bill.
+                    WhatsApp link is per-stay (expires on checkout). The printed QR above is permanent for the room.
                   </p>
                 </div>
               </>

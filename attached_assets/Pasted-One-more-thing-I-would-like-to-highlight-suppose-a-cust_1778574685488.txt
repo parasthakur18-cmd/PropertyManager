@@ -1,0 +1,30 @@
+One more thing I would like to highlight: suppose a customer has already checked out, but the WhatsApp template or QR code shared during check-in is still active.
+
+We faced a situation where a checked-out customer went to the café and placed a food order using the same QR/menu link, even though the guest was already checked out from the room.
+
+Please check and resolve this issue properly. I do not want to manually audit every time to identify what is going wrong. If changes are being implemented, they should be reliable, stable, and properly tested multiple times to ensure these mistakes do not happen again in the future.
+
+Ideally:
+
+* Once a guest is checked out, the QR code/menu access linked to that booking should automatically expire or deactivate.
+* Checked-out guests should not be able to place room-linked orders from the same QR/menu link.
+* The system should validate the booking status before accepting any order from the QR code or WhatsApp menu template.
+* There should be proper booking-session validation before mapping any order to a room or guest account.
+
+Please make sure this logic works properly to avoid incorrect order mapping and billing issues.
+
+There is also another major billing issue:
+
+Suppose Customer A checks out today at around 10:30 AM or 11:30 AM, and later in the evening Customer B checks into the same room at around 4:30 PM or 5:30 PM.
+
+Now when Customer B places an order and checks out the next day, the bill is also showing breakfast or food orders from Customer A’s stay. This means the previous guest’s pending room orders are getting mapped to the next guest staying in the same room.
+
+Please check this issue carefully and resolve it permanently. Ideally:
+
+* All food and service orders should be linked strictly with the booking ID or guest stay, not only with the room number.
+* Once a guest checks out, their billing cycle should close completely.
+* Pending or previous orders from the old booking should never appear in the next guest’s bill, even if the room number is the same.
+* The system should separate room occupancy history and billing history properly for every booking.
+* A new guest check-in should always start with a fresh and isolated billing session.
+
+Please fix this properly to avoid incorrect guest billing, operational confusion, and repeated manual audits in the future.

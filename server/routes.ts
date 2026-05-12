@@ -995,52 +995,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: `Room ${roomNumber} not found in the selected property. Please check your room number.` });
         }
 
-        // Find the active booking for this room so the order links to the room bill.
-        // We accept any booking whose stay window covers TODAY and is not cancelled /
-        // checked-out / no-show. Previously this only matched status === "checked-in",
-        // which meant orders placed before the front-desk pressed "Check-in" never made
-        // it onto the bill. We prefer status === "checked-in" but fall back to confirmed
-        // / pending bookings that are clearly the current guest in the room.
+        // --- Booking session validation ---
+        // If the request carries a bookingId (from the per-stay WhatsApp/menu link),
+        // validate THAT specific booking.  This prevents a checked-out guest from
+        // placing orders that accidentally land on the next guest's bill.
+        const reqBookingId = req.body.bookingId ? parseInt(String(req.body.bookingId)) : null;
         const now = new Date();
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const todayStr = now.toDateString();
-        const bookings = await storage.getAllBookings();
-        const candidateBookings = bookings.filter(b => {
-          if (b.roomId !== room.id) return false;
-          // Always exclude cancelled / no-show
-          if (b.status === "cancelled" || b.status === "no_show") return false;
-          const cin  = new Date(b.checkInDate  as any);
-          const cout = new Date(b.checkOutDate as any);
-          // Include checked-out bookings ONLY if they checked out today — a guest may
-          // still be eating breakfast even though staff already pressed Check-Out in
-          // the system.  Orders on checkout day must land on the departing guest, not
-          // the arriving one.
-          if (b.status === "checked-out" && cout.toDateString() !== todayStr) return false;
-          // today within [checkIn, checkOut] (inclusive both ends for checkout day)
-          return cin <= now && startOfToday <= cout;
-        });
-        // Priority: checked-in  >  confirmed (already in-house, not arriving today)
-        //           >  checked-out today (departing, may still be ordering)
-        //           >  confirmed arriving today  >  anything else
-        const activeBooking =
-          candidateBookings.find(b => b.status === "checked-in") ||
-          candidateBookings.find(b => b.status === "confirmed" &&
-            new Date(b.checkInDate as any).toDateString() !== todayStr) ||
-          candidateBookings.find(b => b.status === "checked-out") ||
-          candidateBookings.find(b => b.status === "confirmed") ||
-          candidateBookings[0] ||
-          null;
+        const allBookings = await storage.getAllBookings();
+        let activeBooking: any = null;
 
-        if (!activeBooking) {
-          console.warn(`[QR-Order] No active booking found for room ${room.roomNumber} (id=${room.id}). Order will be created unlinked — it will NOT show on a room bill.`);
+        if (reqBookingId && !isNaN(reqBookingId)) {
+          // Per-stay session token supplied — validate it strictly.
+          const specificBooking = allBookings.find(
+            b => b.id === reqBookingId && b.roomId === room.id
+          );
+          if (!specificBooking) {
+            return res.status(400).json({
+              message: "Invalid room session. Your menu link may be outdated — please contact the front desk.",
+            });
+          }
+          if (["checked-out", "cancelled", "no_show"].includes(specificBooking.status)) {
+            return res.status(400).json({
+              message: "Your room booking has ended. Orders via this link are no longer accepted. Please order at the restaurant counter or contact the front desk.",
+            });
+          }
+          activeBooking = specificBooking;
+          console.log(`[QR-Order] Session-validated: booking #${activeBooking.id} (${activeBooking.status}) for room ${room.roomNumber}`);
         } else {
-          console.log(`[QR-Order] Linking order to booking #${activeBooking.id} (status=${activeBooking.status}, guest=${activeBooking.guestId}) for room ${room.roomNumber}`);
+          // No session token — physical printed QR fallback.
+          // CRITICAL: never include checked-out bookings.  A checked-out guest scanning
+          // an old physical QR must NOT have their orders attached to the next occupant's bill.
+          const candidateBookings = allBookings.filter(b => {
+            if (b.roomId !== room.id) return false;
+            if (["checked-out", "cancelled", "no_show"].includes(b.status)) return false;
+            const cin  = new Date(b.checkInDate  as any);
+            const cout = new Date(b.checkOutDate as any);
+            return cin <= now && startOfToday <= cout;
+          });
+          // Priority: checked-in > confirmed (in-house) > confirmed (arriving today) > pending
+          activeBooking =
+            candidateBookings.find(b => b.status === "checked-in") ||
+            candidateBookings.find(b => b.status === "confirmed" &&
+              new Date(b.checkInDate as any).toDateString() !== now.toDateString()) ||
+            candidateBookings.find(b => b.status === "confirmed") ||
+            candidateBookings.find(b => b.status === "pending") ||
+            null;
+
+          if (!activeBooking) {
+            console.warn(`[QR-Order] No active booking for room ${room.roomNumber}. Rejecting order.`);
+            return res.status(400).json({
+              message: "No active booking found for this room. Please contact the front desk or order at the restaurant counter.",
+            });
+          }
+          console.log(`[QR-Order] Room-lookup: booking #${activeBooking.id} (${activeBooking.status}) for room ${room.roomNumber}`);
         }
 
         orderData.propertyId = room.propertyId;
         orderData.roomId = room.id;
-        orderData.bookingId = activeBooking?.id || null;
-        orderData.guestId = activeBooking?.guestId || null;
+        orderData.bookingId = activeBooking.id;
+        orderData.guestId = activeBooking.guestId || null;
       } else {
         // Handle restaurant/café orders (dine-in)
         orderData.customerName = customerName;
@@ -1239,6 +1253,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("[QR-Send] Failed:", error);
       res.status(500).json({ message: error.message || "Failed to send QR link" });
+    }
+  });
+
+  // Public: validate whether a booking session (per-stay link) is still active.
+  // Only exposes active/inactive status — no sensitive guest data.
+  app.get("/api/public/booking-session/:bookingId", async (req, res) => {
+    try {
+      const bookingId = parseInt(req.params.bookingId);
+      if (isNaN(bookingId)) return res.json({ active: false, reason: "invalid" });
+      const booking = await storage.getBooking(bookingId);
+      if (!booking) return res.json({ active: false, reason: "not-found" });
+      if (["checked-out", "cancelled", "no_show"].includes(booking.status)) {
+        return res.json({ active: false, reason: booking.status });
+      }
+      res.json({ active: true, bookingId: booking.id });
+    } catch (e: any) {
+      res.status(500).json({ active: false, reason: "error" });
     }
   });
 
@@ -2704,6 +2735,37 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       res.json(types);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Authenticated: return the current active booking for a room (used by QR codes page
+  // to build per-stay WhatsApp links that expire on checkout).
+  app.get("/api/rooms/:id/active-booking", isAuthenticated, async (req: any, res) => {
+    try {
+      const roomId = parseInt(req.params.id);
+      if (isNaN(roomId)) return res.status(400).json({ message: "Invalid room id" });
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const allBookings = await storage.getAllBookings();
+      const active = allBookings.find(b => {
+        if (b.roomId !== roomId) return false;
+        if (["checked-out", "cancelled", "no_show"].includes(b.status)) return false;
+        const cin  = new Date(b.checkInDate  as any);
+        const cout = new Date(b.checkOutDate as any);
+        return cin <= now && startOfToday <= cout;
+      });
+      if (!active) return res.json({ bookingId: null });
+      const guest = active.guestId ? await storage.getGuest(active.guestId) : null;
+      res.json({
+        bookingId: active.id,
+        guestId: active.guestId || null,
+        guestName: guest?.fullName || null,
+        checkInDate: active.checkInDate,
+        checkOutDate: active.checkOutDate,
+        status: active.status,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
     }
   });
 
