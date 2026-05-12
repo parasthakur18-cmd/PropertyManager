@@ -4208,6 +4208,14 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       
+      // Auto-derive advancePaymentStatus from the new advance amount when the
+      // caller (Edit Booking form) doesn't explicitly set it.
+      // Manual entry of any positive advance amount always means it was collected.
+      if (validatedData.advanceAmount !== undefined && (validatedData as any).advancePaymentStatus === undefined) {
+        const amt = parseFloat(String(validatedData.advanceAmount || "0"));
+        (validatedData as any).advancePaymentStatus = amt > 0 ? "paid" : "not_required";
+      }
+
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
       // Wallet sync on booking edit — handle both amount increase and payment method change

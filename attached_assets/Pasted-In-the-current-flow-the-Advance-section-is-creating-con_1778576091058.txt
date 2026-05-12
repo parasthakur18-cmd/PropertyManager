@@ -1,0 +1,34 @@
+In the current flow, the “Advance” section is creating confusion for checked-in guests.
+
+Right now, when we manually add advance payment from the “Edit Booking” option (especially cash collected at the time of check-in), the status is still showing as “Pending.” However, when payment is collected through the online payment link, it correctly shows as “Received via UPI.”
+
+What I would suggest is:
+
+* If advance payment is added manually during check-in (Cash / UPI), the system should immediately update the advance status as “Advance Received.”
+* The color coding should also change accordingly so the front desk team can instantly identify payment status visually.
+* “Pending” should only appear when no advance has actually been received.
+* Manual payment entries and online payment link collections should follow the same payment logic and status behavior.
+* There should also be a payment mode tag visible, such as:
+  • Advance Received (Cash)
+  • Advance Received (UPI)
+  • Pending Advance
+
+Also, when we receive payment through the “Collect” button via the online payment link and the payment is confirmed, the “Collect” button should automatically disappear or become disabled.
+
+Currently, even after receiving and confirming the payment, the collect link/button is still active and clickable, which may create confusion or result in duplicate payment requests being sent to the guest.
+
+Ideally:
+
+* Once payment is successfully received and confirmed, the “Collect” button should automatically hide or become inactive.
+* Clicking the button again after payment confirmation should not resend the payment link.
+* The system should clearly show the payment as “Received via UPI” with updated status and color coding.
+* Only pending payments should have an active “Collect” button available.
+
+Also, for checked-in guests, the system should clearly differentiate between:
+
+* Advance received
+* Partial payment pending
+* Fully paid
+* No advance received
+
+This will improve visibility for the operations and accounts team, avoid duplicate payment requests, and reduce manual verification work.

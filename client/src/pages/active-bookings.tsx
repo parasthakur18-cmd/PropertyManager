@@ -97,6 +97,8 @@ interface ActiveBooking {
   numberOfGuests: number;
   specialRequests: string | null;
   advanceAmount: string;
+  advancePaymentStatus: string;
+  advancePaymentMethod: string;
   customPrice: string | null;
   source: string | null;
   isGroupBooking: boolean;
@@ -1235,9 +1237,15 @@ export default function ActiveBookings() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-bold text-base leading-tight">₹{parseFloat(booking.charges.subtotal).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
-                    {parseFloat(booking.advanceAmount) > 0 && (
-                      <div className="text-[10px] text-muted-foreground leading-tight">Adv ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}</div>
-                    )}
+                    {parseFloat(booking.advanceAmount) > 0 && (() => {
+                      const s = booking.advancePaymentStatus || "not_required";
+                      const isPending = s === "pending";
+                      return (
+                        <div className={`text-[10px] leading-tight font-medium ${isPending ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}>
+                          {isPending ? "⏳" : "✓"} Adv ₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                        </div>
+                      );
+                    })()}
                     {balance > 0 && (
                       <div className="text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                         Balance ₹{balance.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
@@ -1454,12 +1462,43 @@ export default function ActiveBookings() {
                       <span>Subtotal</span>
                       <span>₹{parseFloat(booking.charges.subtotal).toLocaleString("en-IN")}</span>
                     </div>
-                    {parseFloat(booking.advanceAmount) > 0 && (
-                      <div className="flex justify-between text-green-600">
-                        <span>Advance paid</span>
-                        <span>−₹{parseFloat(booking.advanceAmount).toLocaleString("en-IN")}</span>
-                      </div>
-                    )}
+                    {(() => {
+                      const advAmt = parseFloat(booking.advanceAmount || "0");
+                      const advStatus = booking.advancePaymentStatus || "not_required";
+                      const advMethod = booking.advancePaymentMethod || "cash";
+                      const methodLabel: Record<string, string> = {
+                        cash: "Cash", upi: "UPI", online: "Online/UPI",
+                        card: "Card", bank_transfer: "Bank Transfer",
+                      };
+                      const mLabel = methodLabel[advMethod] || advMethod;
+
+                      if (advStatus === "pending") {
+                        return (
+                          <div className="flex justify-between items-center text-amber-600 font-medium bg-amber-50 dark:bg-amber-900/20 rounded px-1.5 py-1 -mx-1">
+                            <span className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                              Pending Advance
+                            </span>
+                            <span>₹{advAmt.toLocaleString("en-IN")}</span>
+                          </div>
+                        );
+                      }
+                      if (advAmt > 0) {
+                        const label = advStatus === "paid"
+                          ? `Advance Received (${mLabel})`
+                          : "Advance Paid";
+                        return (
+                          <div className="flex justify-between items-center text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded px-1.5 py-1 -mx-1">
+                            <span className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                              {label}
+                            </span>
+                            <span>−₹{advAmt.toLocaleString("en-IN")}</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     {balance > 0 && (
                       <div className="flex justify-between text-amber-600 font-semibold">
                         <span>Balance due</span>
@@ -1564,7 +1603,7 @@ export default function ActiveBookings() {
                 </div>
               )}
 
-              {booking.status === "confirmed" && (
+              {booking.status === "confirmed" && booking.advancePaymentStatus !== "paid" && (
                 <div className="px-3 pb-2 pt-1 border-t">
                   <Button
                     variant="outline"
@@ -1575,7 +1614,7 @@ export default function ActiveBookings() {
                     data-testid={`button-send-payment-${booking.id}`}
                   >
                     <CreditCard className="h-3.5 w-3.5 mr-1" />
-                    {sendAdvancePaymentMutation.isPending ? "Sending..." : "Send Payment Link"}
+                    {sendAdvancePaymentMutation.isPending ? "Sending..." : "Collect Advance"}
                   </Button>
                 </div>
               )}
