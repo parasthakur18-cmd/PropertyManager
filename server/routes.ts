@@ -68,7 +68,8 @@ import {
   sendOtaBookingNotification,
   sendFoodOrderReceived,
   sendFoodOrderStaffAlert,
-  sendBookingConfirmedNotification
+  sendBookingConfirmedNotification,
+  checkTemplateSetting
 } from "./whatsapp";
 import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
@@ -1115,18 +1116,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const order = await storage.createOrder(orderData);
 
-      // Send WhatsApp confirmation to guest (WID 28983)
+      // Send WhatsApp confirmation to guest (WID 28983) — only if template is enabled
       try {
-        if (orderType === "room" && orderData.guestId) {
-          const guest = await storage.getGuest(orderData.guestId);
-          if (guest?.phone) {
-            const waPhone = (guest as any).whatsappPhone || guest.phone;
-            await sendFoodOrderReceived(waPhone, guest.fullName || "Guest");
-            console.log(`[WhatsApp] Food order confirmation sent to guest ${guest.fullName} (room order #${order.id})`);
+        const propIdForCheck = orderData.propertyId;
+        const tplCheck = propIdForCheck
+          ? await checkTemplateSetting(propIdForCheck, 'food_order_received', storage)
+          : { send: true, delayMs: 0 };
+        if (tplCheck.send) {
+          if (orderType === "room" && orderData.guestId) {
+            const guest = await storage.getGuest(orderData.guestId);
+            if (guest?.phone) {
+              const waPhone = (guest as any).whatsappPhone || guest.phone;
+              await sendFoodOrderReceived(waPhone, guest.fullName || "Guest");
+              console.log(`[WhatsApp] Food order confirmation sent to guest ${guest.fullName} (room order #${order.id})`);
+            }
+          } else if (orderType === "restaurant" && customerPhone && customerName) {
+            await sendFoodOrderReceived(customerPhone, customerName);
+            console.log(`[WhatsApp] Food order confirmation sent to ${customerName} (restaurant order #${order.id})`);
           }
-        } else if (orderType === "restaurant" && customerPhone && customerName) {
-          await sendFoodOrderReceived(customerPhone, customerName);
-          console.log(`[WhatsApp] Food order confirmation sent to ${customerName} (restaurant order #${order.id})`);
+        } else {
+          console.log(`[WhatsApp] food_order_received template disabled for property ${propIdForCheck} — skipping guest confirmation`);
         }
       } catch (waErr: any) {
         console.warn(`[WhatsApp] Food order confirmation failed (non-critical):`, waErr.message);
@@ -8616,11 +8625,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           }
         }
 
-        // Send WhatsApp order confirmation to the guest (WID 28983)
+        // Send WhatsApp order confirmation to the guest (WID 28983) — only if enabled
         if (guest?.phone) {
           try {
-            await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
-            console.log(`[WhatsApp] Food order confirmation (WID 28983) sent to guest ${guest.fullName} (order #${order.id})`);
+            const adminPropId = orderData.propertyId;
+            const adminTplCheck = adminPropId
+              ? await checkTemplateSetting(adminPropId, 'food_order_received', storage)
+              : { send: true, delayMs: 0 };
+            if (adminTplCheck.send) {
+              await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
+              console.log(`[WhatsApp] Food order confirmation (WID 28983) sent to guest ${guest.fullName} (order #${order.id})`);
+            } else {
+              console.log(`[WhatsApp] food_order_received disabled for property ${adminPropId} — skipping guest confirmation`);
+            }
           } catch (guestWaErr: any) {
             console.warn(`[WhatsApp] Guest food order confirmation failed:`, guestWaErr.message);
           }

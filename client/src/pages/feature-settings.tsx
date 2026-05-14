@@ -296,6 +296,7 @@ const WHATSAPP_TEMPLATES = [
   { type: 'prebill_message', name: 'Pre-bill Verification', description: 'Send bill verification before checkout (19852)', icon: '📋' },
   { type: 'split_payment', name: 'Split Payment', description: 'Send split payment links (29412)', icon: '💰' },
   { type: 'welcome_menu', name: 'Welcome Menu', description: 'Send QR food ordering link (21932)', icon: '🍽️' },
+  { type: 'food_order_received', name: 'Food Order Confirmation (Guest)', description: 'Send "Order Received" confirmation to guest after ordering (28983)', icon: '🧾' },
 ];
 
 export default function FeatureSettings() {

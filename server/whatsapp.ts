@@ -887,7 +887,8 @@ export type TemplateType =
   | 'checkout_message'
   | 'prebill_message'
   | 'split_payment'
-  | 'welcome_menu';
+  | 'welcome_menu'
+  | 'food_order_received';
 
 interface TemplateSetting {
   templateType: string;
