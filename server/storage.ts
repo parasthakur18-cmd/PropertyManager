@@ -1130,6 +1130,22 @@ export class DatabaseStorage implements IStorage {
         if (status === "checked-in") {
           await this.updateRoomStatus(roomId, "occupied");
         } else if (status === "checked-out" || status === "cancelled") {
+          // DORM FIX: Only mark as cleaning if no other guest is still checked-in.
+          // In a dormitory, multiple guests share the same roomId — checking out
+          // one guest must not flip the room to "cleaning" while others remain.
+          const roomObj = await this.getRoom(roomId);
+          const isDorm = roomObj?.roomCategory === "dormitory";
+          if (isDorm) {
+            const coOccupants = await this.getBookingsByRoom(roomId);
+            const stillCheckedIn = coOccupants.filter(
+              b => b.id !== booking.id && b.status === "checked-in"
+            );
+            if (stillCheckedIn.length > 0) {
+              // Other guests still in this dorm bed — keep room "occupied"
+              console.log(`[Dorm-Checkout] Room ${roomId}: ${stillCheckedIn.length} co-guest(s) still checked-in, keeping room occupied`);
+              continue;
+            }
+          }
           await this.updateRoomStatus(roomId, "cleaning");
         }
       }

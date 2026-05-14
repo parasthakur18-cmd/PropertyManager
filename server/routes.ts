@@ -311,6 +311,28 @@ async function getBillableOrdersForBooking(booking: any): Promise<any[]> {
     });
   }
 
+  // DORM FIX: For dormitory rooms, find any CONCURRENT bookings (same room,
+  // overlapping dates, different guest) so we never claim an orphan order via
+  // weak room-match when another co-guest's booking could equally claim it.
+  let concurrentBookingsForRooms: any[] = [];
+  if (bookingRoomIds.length > 0) {
+    const allBks = await db.select().from(bookings);
+    concurrentBookingsForRooms = allBks.filter((cb: any) => {
+      if (cb.id === booking.id) return false;
+      if (cb.status === "cancelled" || cb.status === "no_show") return false;
+      // Must share at least one room with this booking
+      const shareRoom = (cb.roomId && bookingRoomIds.includes(cb.roomId)) ||
+        (cb.roomIds && Array.isArray(cb.roomIds) &&
+          cb.roomIds.some((id: number) => bookingRoomIds.includes(id)));
+      if (!shareRoom) return false;
+      // Stay windows must overlap with current booking
+      const cbIn  = new Date(cb.checkInDate  as any).getTime();
+      const cbOut = new Date(cb.checkOutDate as any).getTime() + 24 * 60 * 60 * 1000;
+      return cbIn < (new Date(booking.checkOutDate as any).getTime() + 24 * 60 * 60 * 1000)
+          && cbOut > new Date(booking.checkInDate as any).getTime();
+    });
+  }
+
   const claimed = orphans.filter((o: any) => {
     const created = o.createdAt ? new Date(o.createdAt).getTime() : 0;
     if (created < checkIn || created > checkOut) return false;
@@ -334,6 +356,14 @@ async function getBillableOrdersForBooking(booking: any): Promise<any[]> {
         return created >= pbCheckIn && created <= pbCheckOut;
       });
       if (hasPriorClaim) return false;
+      // DORM FIX: Don't claim via weak room-match when another concurrent booking
+      // for the same room exists — in a dorm the order is ambiguous between co-guests.
+      // Orders should be properly attributed via bookingId or guestId instead.
+      const hasConcurrentClaim = concurrentBookingsForRooms.some((cb: any) => {
+        return (cb.roomId === o.roomId) ||
+          (cb.roomIds && Array.isArray(cb.roomIds) && cb.roomIds.includes(o.roomId));
+      });
+      if (hasConcurrentClaim) return false;
       return true;
     }
     return false;
@@ -1033,6 +1063,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const cout = new Date(b.checkOutDate as any);
             return cin <= now && startOfToday <= cout;
           });
+
+          // DORM FIX: A physical QR sticker is fixed to the room, not to a bed.
+          // If multiple guests are simultaneously checked-in to the same dorm room,
+          // we cannot safely attribute the order to any single guest — the order
+          // would go to whoever happens to be first in the query result.
+          // Reject and ask the guest to use their personal per-stay link instead.
+          const checkedInCandidates = candidateBookings.filter(b => b.status === "checked-in");
+          if (checkedInCandidates.length > 1) {
+            console.warn(`[QR-Order] Dorm room ${room.roomNumber} has ${checkedInCandidates.length} checked-in guests — physical QR ambiguous. Rejecting.`);
+            return res.status(400).json({
+              message: "This room has multiple active guests. Please use the personal menu link sent to your WhatsApp, or ask the front desk to place your order.",
+            });
+          }
+
           // Priority: checked-in > confirmed (in-house) > confirmed (arriving today) > pending
           activeBooking =
             candidateBookings.find(b => b.status === "checked-in") ||
@@ -5356,8 +5400,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           }
         } else {
           // Single room booking
-          const pricePerNight = booking.customPrice ? parseFloat(booking.customPrice) : (room ? parseFloat(room.pricePerNight) : 0);
-          roomCharges = pricePerNight * nights;
+          // DORM FIX: for dorm beds, pricePerNight is the per-bed rate.
+          // If the guest booked more than 1 bed (bedsBooked > 1), multiply accordingly.
+          // customPrice is always a total already set by staff — don't multiply it.
+          const pricePerNight = booking.customPrice
+            ? parseFloat(booking.customPrice)
+            : (room ? parseFloat(room.pricePerNight) : 0);
+          const bedsMultiplier = (!booking.customPrice && room?.roomCategory === "dormitory")
+            ? (booking.bedsBooked || 1)
+            : 1;
+          roomCharges = pricePerNight * nights * bedsMultiplier;
         }
 
         // Calculate food charges (reusing allOrders and bookingOrders from pending order check above)
@@ -5564,7 +5616,16 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           }
         }
       }
-      
+
+      // OTA SYNC FIX: push updated inventory to AioSell now that bed(s) are freed.
+      // The PATCH /api/bookings/:id/status route triggers syncWithRetry, but the
+      // checkout endpoint calls storage.updateBookingStatus() directly — so we must
+      // call it explicitly here. This is especially critical for dorm rooms where
+      // releasing one bed should immediately open AioSell inventory.
+      syncWithRetry(booking.propertyId, "BOOKING_CHECKED_OUT").catch((syncErr: any) => {
+        console.warn(`[AioSell] Checkout inventory sync failed (non-critical): ${syncErr?.message}`);
+      });
+
       // Send WhatsApp checkout notification (if enabled)
       try {
         const guest = await storage.getGuest(booking.guestId);
@@ -8432,17 +8493,27 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             if (b.status === "checked-out" && cout.toDateString() !== todayStrLink) return false;
             return cin <= nowForLink && todayForLink <= cout;
           });
-          const linkedBooking =
-            linkCandidates.find((b: any) => b.status === "checked-in") ||
-            linkCandidates.find((b: any) => b.status === "confirmed" &&
-              new Date(b.checkInDate as any).toDateString() !== todayStrLink) ||
-            linkCandidates.find((b: any) => b.status === "checked-out") ||
-            linkCandidates.find((b: any) => b.status === "confirmed") ||
-            linkCandidates[0] || null;
-          if (linkedBooking) {
-            orderData = { ...orderData, bookingId: linkedBooking.id };
-            if (!orderData.guestId) orderData = { ...orderData, guestId: linkedBooking.guestId };
-            console.log(`[Order] Auto-linked room order to booking #${linkedBooking.id} (room ${orderData.roomId})`);
+
+          // DORM FIX: If multiple checked-in guests share this room (dorm scenario),
+          // silently picking one at random would mis-attribute the order.
+          // Skip auto-link and leave bookingId=null — getBillableOrdersForBooking
+          // will still claim it via the strong guestId match at checkout.
+          const checkedInCandidates = linkCandidates.filter((b: any) => b.status === "checked-in");
+          if (checkedInCandidates.length > 1) {
+            console.warn(`[Order] Dorm room ${orderData.roomId} has ${checkedInCandidates.length} checked-in guests — skipping auto-link to avoid mis-attribution. Order saved without bookingId.`);
+          } else {
+            const linkedBooking =
+              linkCandidates.find((b: any) => b.status === "checked-in") ||
+              linkCandidates.find((b: any) => b.status === "confirmed" &&
+                new Date(b.checkInDate as any).toDateString() !== todayStrLink) ||
+              linkCandidates.find((b: any) => b.status === "checked-out") ||
+              linkCandidates.find((b: any) => b.status === "confirmed") ||
+              linkCandidates[0] || null;
+            if (linkedBooking) {
+              orderData = { ...orderData, bookingId: linkedBooking.id };
+              if (!orderData.guestId) orderData = { ...orderData, guestId: linkedBooking.guestId };
+              console.log(`[Order] Auto-linked room order to booking #${linkedBooking.id} (room ${orderData.roomId})`);
+            }
           }
         } catch (linkErr: any) {
           console.warn(`[Order] Auto-link booking failed (non-critical): ${linkErr.message}`);
