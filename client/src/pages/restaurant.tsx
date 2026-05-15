@@ -166,7 +166,7 @@ export default function Kitchen() {
   }, [showSettings, pushStatus]);
   const [activeTab, setActiveTab] = useState("active");
   const [completedSearch, setCompletedSearch] = useState("");
-  const [completedDate, setCompletedDate] = useState("");
+  const [completedDate, setCompletedDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [editDialog, setEditDialog] = useState<{ open: boolean; order: any | null }>({
     open: false,
     order: null,

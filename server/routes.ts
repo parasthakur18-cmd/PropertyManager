@@ -1051,6 +1051,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: "Your room booking has ended. Orders via this link are no longer accepted. Please order at the restaurant counter or contact the front desk.",
             });
           }
+          // CROSS-GUEST FIX: If another guest is CURRENTLY checked-in to this room
+          // and this booking is only confirmed (not yet checked-in), reject the order.
+          // This prevents the "Akash confirmed link used while Nitin is checked-in" scenario
+          // where a pre-arrival or future-booking's menu link displaces the actual guest.
+          if (specificBooking.status !== "checked-in") {
+            const otherCheckedIn = allBookings.find(
+              b => b.id !== specificBooking.id && b.roomId === room.id && b.status === "checked-in"
+            );
+            if (otherCheckedIn) {
+              console.warn(`[QR-Order] Booking #${specificBooking.id} (${specificBooking.status}) for room ${room.roomNumber} — another guest (#${otherCheckedIn.id}) is already checked-in. Rejecting stale link.`);
+              return res.status(400).json({
+                message: "A different guest is currently checked in to this room. Please use the physical QR code in the room to place your order, or contact the front desk.",
+              });
+            }
+          }
           activeBooking = specificBooking;
           console.log(`[QR-Order] Session-validated: booking #${activeBooking.id} (${activeBooking.status}) for room ${room.roomNumber}`);
         } else {
