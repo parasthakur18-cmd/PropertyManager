@@ -4491,6 +4491,39 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Update the booking
       const updatedBooking = await storage.updateBooking(bookingId, bookingUpdates);
 
+      // Migrate food/room orders from old room to new room.
+      // Orders linked by bookingId follow the booking automatically in billing, but their
+      // roomId still points to the old room — fix that so the kitchen shows the correct room.
+      // Also migrate orphan orders (no bookingId) for the old room within the stay window.
+      let ordersMigrated = 0;
+      try {
+        // 1. Orders directly linked to this booking
+        if (oldRoomId) {
+          const bookingLinkedResult = await db.update(orders)
+            .set({ roomId: newRoomId })
+            .where(and(eq(orders.bookingId, bookingId), eq(orders.roomId, oldRoomId)));
+          ordersMigrated += (bookingLinkedResult as any)?.rowCount ?? 0;
+        }
+        // 2. Orphan room orders (no bookingId) for the old room within the stay window
+        if (oldRoomId) {
+          const checkInTime = new Date(booking.checkInDate as any);
+          const checkOutBuf = new Date(booking.checkOutDate as any);
+          checkOutBuf.setDate(checkOutBuf.getDate() + 1);
+          const orphanResult = await db.update(orders)
+            .set({ roomId: newRoomId })
+            .where(and(
+              eq(orders.roomId, oldRoomId),
+              isNull(orders.bookingId),
+              gte(orders.createdAt, checkInTime),
+              lte(orders.createdAt, checkOutBuf),
+            ));
+          ordersMigrated += (orphanResult as any)?.rowCount ?? 0;
+        }
+        console.log(`[CHANGE-ROOM] ${ordersMigrated} order(s) migrated: room ${oldRoom?.roomNumber} → ${newRoom.roomNumber} (booking #${bookingId})`);
+      } catch (orderErr: any) {
+        console.error("[CHANGE-ROOM] Order migration failed (non-critical):", orderErr.message);
+      }
+
       // Audit log
       await storage.createAuditLog({
         entityType: "booking",
@@ -4506,10 +4539,44 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           openOldRoomOnOTA: !!openOldRoomOnOTA,
           recalculatePrice: !!recalculatePrice,
           guestId: booking.guestId,
+          ordersMigrated,
         },
       });
 
-      // Trigger OTA inventory sync for the property
+      // Send WhatsApp to guest with the new room's food-ordering link.
+      // The old Room 304 link is automatically invalidated: the per-stay validation checks
+      // booking.roomId === room.id — since booking.roomId is now 401, any request still
+      // using the old ?room=304&booking=ID link will be rejected as "Invalid room session."
+      let whatsappSent = false;
+      try {
+        const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
+        const phone = guest ? ((guest as any).whatsappPhone || guest.phone) : null;
+        if (guest && phone) {
+          const templateSetting = await storage.getWhatsappTemplateSetting(newRoom.propertyId, 'checkin_message');
+          const isEnabled = templateSetting?.isEnabled !== false;
+          if (isEnabled) {
+            const property = await storage.getProperty(newRoom.propertyId);
+            const propertyName = property?.name || "Hotel";
+            const baseUrl = process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : "https://hostezee.in";
+            // Embed bookingId so the per-stay validation ties this link to the new room
+            const newMenuLink = `${baseUrl}/menu?type=room&property=${newRoom.propertyId}&room=${encodeURIComponent(newRoom.roomNumber)}&booking=${bookingId}`;
+            await sendWelcomeWithMenuLink(phone, propertyName, guest.fullName || "Guest", newMenuLink);
+            whatsappSent = true;
+            console.log(`[CHANGE-ROOM] WhatsApp new-room link sent → ${phone} (Room ${newRoom.roomNumber})`);
+          } else {
+            console.log(`[CHANGE-ROOM] checkin_message template disabled — skipping room-change WhatsApp`);
+          }
+        }
+      } catch (waErr: any) {
+        console.error("[CHANGE-ROOM] WhatsApp room-change notification failed (non-critical):", waErr.message);
+      }
+
+      // Trigger OTA inventory sync for the property.
+      // autoSyncInventoryForProperty recalculates availability for ALL rooms in the property
+      // based on current bookings, so Room 304 (now vacant) automatically reopens on OTAs
+      // and Room 401 (now occupied) is blocked — no extra calls needed.
       try {
         await autoSyncInventoryForProperty(newRoom.propertyId);
         console.log(`[CHANGE-ROOM] OTA sync triggered for property ${newRoom.propertyId}`);
@@ -4523,6 +4590,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         oldRoom: { id: oldRoomId, roomNumber: oldRoom?.roomNumber },
         newRoom: { id: newRoomId, roomNumber: newRoom.roomNumber },
         newTotal: newTotal ?? null,
+        whatsappSent,
+        ordersMigrated,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

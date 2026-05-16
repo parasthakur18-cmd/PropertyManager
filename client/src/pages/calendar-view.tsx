@@ -162,10 +162,12 @@ export default function CalendarView() {
       setChangeRoomBooking(null);
       setChangeRoomDialogOpen(false);
       setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
-      const priceNote = data?.newTotal ? ` Booking total updated to ₹${Number(data.newTotal).toLocaleString()}.` : "";
+      const priceNote = data?.newTotal ? ` Total updated to ₹${Number(data.newTotal).toLocaleString()}.` : "";
+      const waNote = data?.whatsappSent ? " WhatsApp sent to guest with new room link." : "";
+      const ordersNote = data?.ordersMigrated > 0 ? ` ${data.ordersMigrated} order(s) transferred.` : "";
       toast({
         title: "Room Changed",
-        description: `Booking moved to Room ${data?.newRoom?.roomNumber}.${priceNote} OTA inventory synced.`,
+        description: `Booking moved to Room ${data?.newRoom?.roomNumber}.${priceNote}${ordersNote}${waNote} OTA inventory synced.`,
       });
     },
     onError: (err: any) => {
