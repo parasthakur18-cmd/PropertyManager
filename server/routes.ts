@@ -4452,19 +4452,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const newRoom = await storage.getRoom(newRoomId);
       if (!newRoom) return res.status(404).json({ message: "Room not found" });
 
-      // Conflict check: make sure new room is free for these dates
-      const conflicting = await db.select({ id: bookings.id })
-        .from(bookings)
-        .where(and(
-          eq(bookings.roomId, newRoomId),
-          not(eq(bookings.id, bookingId)),
-          not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
-          lt(bookings.checkInDate, booking.checkOutDate),
-          gt(bookings.checkOutDate, booking.checkInDate),
-        ))
-        .limit(1);
+      // Conflict check: make sure new room is free for these dates.
+      // Check BOTH the primary roomId field AND the roomIds array (group bookings).
+      const dateOverlapConditions = and(
+        not(eq(bookings.id, bookingId)),
+        not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+        lt(bookings.checkInDate, booking.checkOutDate),
+        gt(bookings.checkOutDate, booking.checkInDate),
+      );
+      const [conflictingSingle, conflictingGroup] = await Promise.all([
+        db.select({ id: bookings.id }).from(bookings)
+          .where(and(eq(bookings.roomId, newRoomId), dateOverlapConditions!))
+          .limit(1),
+        db.select({ id: bookings.id }).from(bookings)
+          .where(and(sql`${newRoomId} = ANY(${bookings.roomIds})`, dateOverlapConditions!))
+          .limit(1),
+      ]);
 
-      if (conflicting.length > 0) {
+      if (conflictingSingle.length > 0 || conflictingGroup.length > 0) {
         return res.status(409).json({ message: "The selected room is already booked for these dates" });
       }
 
@@ -4476,6 +4481,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         roomId: newRoomId,
         propertyId: newRoom.propertyId,
       };
+
+      // GROUP BOOKING: also replace the old room ID inside the roomIds array.
+      // Without this, booking.roomId and booking.roomIds become permanently out of sync —
+      // the calendar shows phantom bars in the old room, and the active-bookings page
+      // shows incorrect room numbers.
+      if (booking.isGroupBooking && Array.isArray(booking.roomIds) && oldRoomId) {
+        if (booking.roomIds.includes(oldRoomId)) {
+          // Replace old room with new room in the array
+          bookingUpdates.roomIds = booking.roomIds.map((id: number) => id === oldRoomId ? newRoomId : id);
+        } else {
+          // Old roomId is not in roomIds (data was already inconsistent) — just append new room,
+          // removing any accidental duplicate of newRoomId first
+          bookingUpdates.roomIds = [...booking.roomIds.filter((id: number) => id !== newRoomId), newRoomId];
+        }
+      }
       if (recalculatePrice && newRoom.pricePerNight) {
         const nights = Math.max(1, Math.round(
           (new Date(booking.checkOutDate).getTime() - new Date(booking.checkInDate).getTime())
@@ -4490,6 +4510,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Update the booking
       const updatedBooking = await storage.updateBooking(bookingId, bookingUpdates);
+
+      // Update booking_room_stays to reflect the room change so that
+      // any downstream queries joining on this table stay consistent.
+      if (oldRoomId) {
+        try {
+          await db.update(bookingRoomStays)
+            .set({ roomId: newRoomId })
+            .where(and(
+              eq(bookingRoomStays.bookingId, bookingId),
+              eq(bookingRoomStays.roomId, oldRoomId),
+            ));
+          console.log(`[CHANGE-ROOM] booking_room_stays updated: room ${oldRoom?.roomNumber} → ${newRoom.roomNumber} for booking #${bookingId}`);
+        } catch (stayErr: any) {
+          console.error("[CHANGE-ROOM] booking_room_stays update failed (non-critical):", stayErr.message);
+        }
+      }
 
       // Migrate food/room orders from old room to new room.
       // Orders linked by bookingId follow the booking automatically in billing, but their

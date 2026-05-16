@@ -322,8 +322,13 @@ export default function CalendarView() {
   const getBookingForDate = (roomId: number, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.find(b => {
-      // Check if room matches (either roomId or in roomIds array for group bookings)
-      const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
+      // For group bookings that have a roomIds array, ONLY use that array for room matching.
+      // Never fall back to booking.roomId for group bookings — roomId on a group booking is
+      // the "primary" room and can diverge from roomIds after a room-change operation,
+      // causing phantom bars in rooms the guest does not actually occupy.
+      const roomMatches = (b.isGroupBooking && b.roomIds && b.roomIds.length > 0)
+        ? b.roomIds.includes(roomId)
+        : b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
       
       // Hide cancelled and no-show bookings; checked-out bookings remain visible in gray
@@ -367,7 +372,9 @@ export default function CalendarView() {
   const getAllDormitoryBookingsForDate = (roomId: number, date: Date): Booking[] => {
     const dateStr = format(date, "yyyy-MM-dd");
     return bookings.filter(b => {
-      const roomMatches = b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
+      const roomMatches = (b.isGroupBooking && b.roomIds && b.roomIds.length > 0)
+        ? b.roomIds.includes(roomId)
+        : b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
       if (!roomMatches) return false;
       if (b.status === "cancelled" || b.status === "no_show") return false;
       
