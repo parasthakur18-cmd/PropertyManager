@@ -4894,49 +4894,90 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         try {
           const guest = await storage.getGuest(booking.guestId);
           if (guest && guest.phone) {
-            let propertyName = "Your Property";
-            let roomNumbers = "TBD";
-            
-            if (booking.roomId) {
-              const room = await storage.getRoom(booking.roomId);
-              if (room) {
-                const property = await storage.getProperty(room.propertyId);
-                propertyName = property?.name || propertyName;
-                roomNumbers = room.roomNumber;
-              }
-            } else if (booking.roomIds && booking.roomIds.length > 0) {
-              const rooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
-              if (rooms.length > 0 && rooms[0]) {
-                const property = await storage.getProperty(rooms[0].propertyId);
-                propertyName = property?.name || propertyName;
-                roomNumbers = rooms.filter(r => r).map(r => r!.roomNumber).join(", ");
-              }
-            }
-            
+            const guestPhone = (guest as any).whatsappPhone || guest.phone;
             const guestName = guest.fullName || "Guest";
 
+            const baseUrl = process.env.REPLIT_DEV_DOMAIN
+              ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+              : "https://hostezee.in";
+
             // Check if check-in notifications are enabled via template controls
-            if (booking.propertyId) {
-              const templateSetting = await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message');
-              
-              // Template must be enabled (defaults to true if no setting exists)
-              const isTemplateEnabled = templateSetting?.isEnabled !== false;
-              
-              if (isTemplateEnabled) {
-                // Build food-order link for this booking (template 28769: {{3}} = food order link)
-                const baseUrl = process.env.REPLIT_DEV_DOMAIN
-                  ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-                  : "https://hostezee.in";
-                const foodOrderLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(roomNumbers)}`;
-                // Send check-in notification
-                // Template 28769 → Woodpecker Inn ONLY | Template 29292 → all other properties
-                const isWoodpeckerProperty = propertyName.toLowerCase().includes("woodpecker");
-                const checkinTemplateId = isWoodpeckerProperty ? "28769" : "29292";
-                await sendCheckInNotification((guest as any).whatsappPhone || guest.phone, guestName, propertyName, foodOrderLink, checkinTemplateId);
-                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${checkinTemplateId}, property: ${propertyName})`);
-              } else {
-                console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled`);
+            const templateSetting = booking.propertyId
+              ? await storage.getWhatsappTemplateSetting(booking.propertyId, 'checkin_message')
+              : null;
+            const isTemplateEnabled = templateSetting?.isEnabled !== false;
+
+            if (!isTemplateEnabled) {
+              console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification disabled`);
+            } else if (booking.isGroupBooking && booking.roomIds && booking.roomIds.length > 1) {
+              // ── GROUP BOOKING: send one message PER ROOM with a room-specific link ──
+              // This ensures each room's QR/link works correctly for food ordering.
+              // The lead booker receives one message per room and can forward each link
+              // to the respective guest in that room.
+              const allRooms = await Promise.all(booking.roomIds.map(id => storage.getRoom(id)));
+              const validRooms = allRooms.filter(r => r != null) as Awaited<ReturnType<typeof storage.getRoom>>[];
+              let propertyName = "Your Property";
+              if (validRooms.length > 0) {
+                const prop = await storage.getProperty(validRooms[0]!.propertyId);
+                propertyName = prop?.name || propertyName;
               }
+              const isWoodpecker = propertyName.toLowerCase().includes("woodpecker");
+              const checkinTemplateId = isWoodpecker ? "28769" : "29292";
+
+              // Also look for per-guest phones from booking_guests table
+              const allBookingGuests = await db
+                .select()
+                .from(bookingGuests)
+                .where(eq(bookingGuests.bookingId, booking.id));
+
+              // Build a map of phone → guestName for non-primary guests
+              const extraGuestPhones: { phone: string; name: string }[] = allBookingGuests
+                .filter(g => !g.isPrimary && g.phone)
+                .map(g => ({ phone: g.phone!, name: g.guestName }));
+
+              // Send one WhatsApp per room to the lead booker
+              for (const room of validRooms) {
+                if (!room) continue;
+                const roomLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(room.roomNumber)}&booking=${booking.id}`;
+                await sendCheckInNotification(guestPhone, guestName, propertyName, roomLink, checkinTemplateId);
+                console.log(`[WhatsApp] Booking #${booking.id} (GROUP) - Check-in msg for Room ${room.roomNumber} sent to lead ${guest.fullName}`);
+                // Small delay between messages to avoid rate-limiting
+                await new Promise(r => setTimeout(r, 800));
+              }
+
+              // Additionally, if individual guests have their own phones, send them the
+              // overall group link (all rooms) as a fallback welcome message
+              if (extraGuestPhones.length > 0) {
+                const groupRoomNumbers = validRooms.map(r => r!.roomNumber).join(", ");
+                const groupLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(validRooms[0]!.roomNumber)}&booking=${booking.id}`;
+                for (const eg of extraGuestPhones) {
+                  try {
+                    await sendCheckInNotification(eg.phone, eg.name, propertyName, groupLink, checkinTemplateId);
+                    console.log(`[WhatsApp] Booking #${booking.id} (GROUP) - Extra guest ${eg.name} notified at ${eg.phone}`);
+                    await new Promise(r => setTimeout(r, 600));
+                  } catch (egErr: any) {
+                    console.error(`[WhatsApp] Extra guest notification failed for ${eg.name}:`, egErr.message);
+                  }
+                }
+              }
+            } else {
+              // ── SINGLE / SIMPLE BOOKING ──
+              let propertyName = "Your Property";
+              let roomNumber = "TBD";
+              const roomId = booking.roomId || booking.roomIds?.[0];
+              if (roomId) {
+                const room = await storage.getRoom(roomId);
+                if (room) {
+                  const property = await storage.getProperty(room.propertyId);
+                  propertyName = property?.name || propertyName;
+                  roomNumber = room.roomNumber;
+                }
+              }
+              const isWoodpecker = propertyName.toLowerCase().includes("woodpecker");
+              const checkinTemplateId = isWoodpecker ? "28769" : "29292";
+              const foodOrderLink = `${baseUrl}/menu?type=room&property=${booking.propertyId}&room=${encodeURIComponent(roomNumber)}&booking=${booking.id}`;
+              await sendCheckInNotification(guestPhone, guestName, propertyName, foodOrderLink, checkinTemplateId);
+              console.log(`[WhatsApp] Booking #${booking.id} - Check-in notification sent to ${guest.fullName} (template: ${checkinTemplateId}, room: ${roomNumber})`);
             }
           }
         } catch (whatsappError: any) {
@@ -5333,6 +5374,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           idProofNumber: guest.idProofNumber || null,
           idProofFront: guest.idProofFront || null,
           idProofBack: guest.idProofBack || null,
+          additionalIdImages: Array.isArray(guest.additionalIdImages) && guest.additionalIdImages.length > 0
+            ? guest.additionalIdImages
+            : null,
           isPrimary: guest.isPrimary || false,
         }).returning();
         inserted.push(result);

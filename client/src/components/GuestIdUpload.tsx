@@ -3,11 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, Upload, X, Plus, Trash2, User } from "lucide-react";
+import { Camera, Upload, X, Plus, Trash2, User, Images } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 
-interface GuestIdEntry {
+export interface GuestIdEntry {
   guestName: string;
   phone: string;
   email: string;
@@ -15,6 +15,7 @@ interface GuestIdEntry {
   idProofNumber: string;
   idProofFront: string | null;
   idProofBack: string | null;
+  additionalIdImages: string[];
   isPrimary: boolean;
 }
 
@@ -60,6 +61,49 @@ async function compressImage(file: File): Promise<File> {
   });
 }
 
+async function uploadSingleFile(file: File, toast: ReturnType<typeof useToast>["toast"]): Promise<string | null> {
+  if (!file.type.startsWith('image/')) {
+    toast({ title: "Invalid file type", description: "Please upload an image file", variant: "destructive" });
+    return null;
+  }
+  try {
+    const compressed = await compressImage(file);
+    const uploadResponse = await fetch('/api/objects/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!uploadResponse.ok) throw new Error('Failed to get upload URL');
+    const { uploadURL, isVPS, isMinIO, objectName } = await uploadResponse.json();
+
+    if (isMinIO && objectName) {
+      const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
+      if (!putResponse.ok) throw new Error('Failed to upload file to MinIO');
+      return `/objects/${objectName}`;
+    } else if (isVPS || uploadURL.startsWith('/api/vps-upload')) {
+      const uploadRes = await fetch(uploadURL, { method: 'POST', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
+      if (!uploadRes.ok) throw new Error('Failed to upload file');
+      const { objectPath } = await uploadRes.json();
+      return objectPath;
+    } else {
+      const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
+      if (!putResponse.ok) throw new Error('Failed to upload file');
+      const aclResponse = await fetch('/api/guest-id-proofs', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idProofUrl: uploadURL }),
+      });
+      if (!aclResponse.ok) throw new Error('Failed to secure ID proof');
+      const { objectPath } = await aclResponse.json();
+      return objectPath;
+    }
+  } catch (error) {
+    console.error('Upload error:', error);
+    toast({ title: "Upload failed", description: "Failed to upload image. Please try again.", variant: "destructive" });
+    return null;
+  }
+}
+
 function ImageUploader({
   label,
   imageUrl,
@@ -78,63 +122,16 @@ function ImageUploader({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
-  const handleFileUpload = async (file: File) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      toast({ title: "Invalid file type", description: "Please upload an image file", variant: "destructive" });
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const compressed = await compressImage(file);
-
-      const uploadResponse = await fetch('/api/objects/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-
-      if (!uploadResponse.ok) throw new Error('Failed to get upload URL');
-      const { uploadURL, isVPS, isMinIO, objectName } = await uploadResponse.json();
-
-      let finalObjectPath: string;
-
-      if (isMinIO && objectName) {
-        const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
-        if (!putResponse.ok) throw new Error('Failed to upload file to MinIO');
-        finalObjectPath = `/objects/${objectName}`;
-      } else if (isVPS || uploadURL.startsWith('/api/vps-upload')) {
-        const uploadRes = await fetch(uploadURL, { method: 'POST', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
-        if (!uploadRes.ok) throw new Error('Failed to upload file');
-        const { objectPath } = await uploadRes.json();
-        finalObjectPath = objectPath;
-      } else {
-        const putResponse = await fetch(uploadURL, { method: 'PUT', body: compressed, headers: { 'Content-Type': 'image/jpeg' } });
-        if (!putResponse.ok) throw new Error('Failed to upload file');
-        const aclResponse = await fetch('/api/guest-id-proofs', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idProofUrl: uploadURL }),
-        });
-        if (!aclResponse.ok) throw new Error('Failed to secure ID proof');
-        const { objectPath } = await aclResponse.json();
-        finalObjectPath = objectPath;
-      }
-
-      onUploadComplete(finalObjectPath);
-      toast({ title: "Success", description: `${label} uploaded successfully` });
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast({ title: "Upload failed", description: `Failed to upload ${label}. Please try again.`, variant: "destructive" });
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) handleFileUpload(file);
+    if (!file) return;
+    setUploading(true);
+    const path = await uploadSingleFile(file, toast);
+    setUploading(false);
+    if (path) {
+      onUploadComplete(path);
+      toast({ title: "Success", description: `${label} uploaded successfully` });
+    }
   };
 
   return (
@@ -152,7 +149,7 @@ function ImageUploader({
         <Input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileInputChange} disabled={uploading} className="hidden" data-testid={`input-file-${testIdPrefix}`} />
         <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploading} data-testid={`button-upload-${testIdPrefix}`}>
           <Upload className="h-3 w-3 mr-1" />
-          {uploading ? "..." : "Upload"}
+          {uploading ? "Uploading..." : "Upload"}
         </Button>
         <Input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileInputChange} disabled={uploading} className="hidden" data-testid={`input-camera-${testIdPrefix}`} />
         <Button type="button" variant="outline" size="sm" onClick={() => cameraInputRef.current?.click()} disabled={uploading} data-testid={`button-camera-${testIdPrefix}`}>
@@ -160,6 +157,121 @@ function ImageUploader({
           {uploading ? "..." : "Photo"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function AdditionalImagesUploader({
+  images,
+  onAdd,
+  onRemove,
+  guestIndex,
+}: {
+  images: string[];
+  onAdd: (paths: string[]) => void;
+  onRemove: (idx: number) => void;
+  guestIndex: number;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const uploaded: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const path = await uploadSingleFile(files[i], toast);
+      if (path) uploaded.push(path);
+    }
+    setUploading(false);
+    if (uploaded.length > 0) {
+      onAdd(uploaded);
+      toast({ title: "Uploaded", description: `${uploaded.length} image${uploaded.length > 1 ? "s" : ""} added` });
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+          <Images className="h-3 w-3" />
+          Additional ID Documents {images.length > 0 && <span className="ml-1 text-xs bg-muted rounded-full px-1.5 py-0.5">{images.length}</span>}
+        </Label>
+        <div className="flex gap-1">
+          <Input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={(e) => handleFiles(e.target.files)}
+            className="hidden"
+            data-testid={`input-additional-${guestIndex}`}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            data-testid={`button-add-additional-${guestIndex}`}
+          >
+            <Upload className="h-3 w-3 mr-1" />
+            {uploading ? "Uploading..." : "Add More IDs"}
+          </Button>
+          <Input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => handleFiles(e.target.files)}
+            className="hidden"
+            data-testid={`input-camera-additional-${guestIndex}`}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={uploading}
+            data-testid={`button-camera-additional-${guestIndex}`}
+          >
+            <Camera className="h-3 w-3 mr-1" />
+            Scan
+          </Button>
+        </div>
+      </div>
+
+      {images.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {images.map((url, idx) => (
+            <div key={idx} className="relative group">
+              <img
+                src={url}
+                alt={`ID ${idx + 1}`}
+                className="w-full h-20 object-contain border rounded-md bg-muted"
+                data-testid={`img-additional-${guestIndex}-${idx}`}
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute top-0.5 right-0.5 h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => onRemove(idx)}
+                data-testid={`button-remove-additional-${guestIndex}-${idx}`}
+              >
+                <X className="h-2.5 w-2.5" />
+              </Button>
+              <span className="absolute bottom-0.5 left-0.5 text-[10px] bg-black/50 text-white rounded px-1">
+                #{idx + 1}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -182,6 +294,7 @@ export function GuestIdUpload({ guests, onChange, primaryGuestName, primaryPhone
     idProofNumber: "",
     idProofFront: null,
     idProofBack: null,
+    additionalIdImages: [],
     isPrimary,
   });
 
@@ -208,6 +321,19 @@ export function GuestIdUpload({ guests, onChange, primaryGuestName, primaryPhone
       updated[0].isPrimary = true;
     }
     onChange(updated);
+  };
+
+  const addAdditionalImages = (guestIndex: number, newPaths: string[]) => {
+    const guest = guests[guestIndex];
+    updateGuest(guestIndex, {
+      additionalIdImages: [...(guest.additionalIdImages || []), ...newPaths],
+    });
+  };
+
+  const removeAdditionalImage = (guestIndex: number, imgIdx: number) => {
+    const guest = guests[guestIndex];
+    const updated = (guest.additionalIdImages || []).filter((_, i) => i !== imgIdx);
+    updateGuest(guestIndex, { additionalIdImages: updated });
   };
 
   return (
@@ -301,6 +427,15 @@ export function GuestIdUpload({ guests, onChange, primaryGuestName, primaryPhone
                 onUploadComplete={(key) => updateGuest(index, { idProofBack: key })}
                 onClear={() => updateGuest(index, { idProofBack: null })}
                 testIdPrefix={`id-back-${index}`}
+              />
+            </div>
+
+            <div className="pt-1 border-t">
+              <AdditionalImagesUploader
+                images={guest.additionalIdImages || []}
+                onAdd={(paths) => addAdditionalImages(index, paths)}
+                onRemove={(imgIdx) => removeAdditionalImage(index, imgIdx)}
+                guestIndex={index}
               />
             </div>
           </CardContent>

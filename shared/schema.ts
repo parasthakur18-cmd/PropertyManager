@@ -308,6 +308,7 @@ export const bookingGuests = pgTable("booking_guests", {
   idProofNumber: varchar("id_proof_number", { length: 100 }),
   idProofFront: text("id_proof_front"),
   idProofBack: text("id_proof_back"),
+  additionalIdImages: text("additional_id_images").array(),
   isPrimary: boolean("is_primary").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });

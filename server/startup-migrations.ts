@@ -1027,6 +1027,19 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       console.log("[MIGRATIONS] Dynamic pricing tables ready");
     },
   },
+  {
+    // Multiple ID images per guest at check-in.
+    // Adds an array column to booking_guests so staff can store additional
+    // ID documents beyond the primary front/back pair (e.g. second ID,
+    // multiple occupants sharing a room, passport + visa, etc.).
+    name: "add_booking_guests_additional_id_images",
+    async run() {
+      await runRaw(`
+        ALTER TABLE booking_guests
+          ADD COLUMN IF NOT EXISTS additional_id_images text[];
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

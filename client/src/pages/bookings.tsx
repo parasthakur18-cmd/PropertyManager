@@ -145,7 +145,7 @@ export default function Bookings() {
   const [checkinIdProof, setCheckinIdProof] = useState<string | null>(null);
   const [checkinGuestEntries, setCheckinGuestEntries] = useState<Array<{
     guestName: string; phone: string; email: string; idProofType: string; idProofNumber: string;
-    idProofFront: string | null; idProofBack: string | null; isPrimary: boolean;
+    idProofFront: string | null; idProofBack: string | null; additionalIdImages: string[]; isPrimary: boolean;
   }>>([]);
   const [isAddAgentDialogOpen, setIsAddAgentDialogOpen] = useState(false);
   const [newAgentData, setNewAgentData] = useState({ name: "", contactPerson: "", phone: "", email: "" });
@@ -631,6 +631,7 @@ export default function Bookings() {
         idProofNumber: guest.idProofNumber || "",
         idProofFront: guest.idProofImage || null,
         idProofBack: null,
+        additionalIdImages: [],
         isPrimary: true,
       }]);
       setCheckinDialogOpen(true);
