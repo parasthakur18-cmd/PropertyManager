@@ -5363,7 +5363,32 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       await db.delete(bookingGuests).where(eq(bookingGuests.bookingId, bookingId));
 
-      const buildGuestValues = (guest: any, includeAdditional: boolean) => ({
+      // Proactively check whether the additional_id_images column exists on
+      // this database instance. If it doesn't (migration not yet applied on the
+      // live server), add it now so the inserts below can succeed.
+      let hasAdditionalIdCol = false;
+      try {
+        const colCheck = await db.execute(
+          sql`SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'booking_guests'
+                AND column_name = 'additional_id_images'
+              LIMIT 1`
+        );
+        hasAdditionalIdCol = (colCheck.rows?.length ?? 0) > 0;
+        if (!hasAdditionalIdCol) {
+          await db.execute(
+            sql`ALTER TABLE booking_guests
+                ADD COLUMN IF NOT EXISTS additional_id_images text[]`
+          );
+          hasAdditionalIdCol = true;
+          console.log("[MIGRATION] booking_guests.additional_id_images added on-demand");
+        }
+      } catch (colErr: any) {
+        console.error("[MIGRATION] Could not verify/add additional_id_images:", colErr.message);
+        hasAdditionalIdCol = false;
+      }
+
+      const buildGuestValues = (guest: any) => ({
         bookingId,
         guestName: guest.guestName,
         phone: guest.phone || null,
@@ -5372,7 +5397,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         idProofNumber: guest.idProofNumber || null,
         idProofFront: guest.idProofFront || null,
         idProofBack: guest.idProofBack || null,
-        ...(includeAdditional ? {
+        ...(hasAdditionalIdCol ? {
           additionalIdImages: Array.isArray(guest.additionalIdImages) && guest.additionalIdImages.length > 0
             ? guest.additionalIdImages
             : null,
@@ -5380,39 +5405,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         isPrimary: guest.isPrimary || false,
       });
 
-      // Try inserting with additionalIdImages; if the column doesn't exist on
-      // this database yet (migration pending), fall back to inserting without it
-      // and add the column immediately so subsequent inserts succeed.
-      let columnExists = true;
       const inserted = [];
       for (const guest of guestsData) {
-        try {
-          const [result] = await db.insert(bookingGuests)
-            .values(buildGuestValues(guest, columnExists))
-            .returning();
-          inserted.push(result);
-        } catch (insertErr: any) {
-          const isColMissing = insertErr?.code === '42703' ||
-            insertErr?.message?.includes('additional_id_images');
-          if (isColMissing && columnExists) {
-            // Column not yet on this DB — add it on the fly, then retry
-            columnExists = false;
-            try {
-              await db.execute(
-                sql`ALTER TABLE booking_guests ADD COLUMN IF NOT EXISTS additional_id_images text[]`
-              );
-              console.log("[MIGRATION] booking_guests.additional_id_images column added on-demand");
-            } catch (alterErr: any) {
-              console.error("[MIGRATION] Could not add additional_id_images:", alterErr.message);
-            }
-            const [result] = await db.insert(bookingGuests)
-              .values(buildGuestValues(guest, false))
-              .returning();
-            inserted.push(result);
-          } else {
-            throw insertErr;
-          }
-        }
+        const [result] = await db.insert(bookingGuests)
+          .values(buildGuestValues(guest))
+          .returning();
+        inserted.push(result);
       }
 
       res.json(inserted);
