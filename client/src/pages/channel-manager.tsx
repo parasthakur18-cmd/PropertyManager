@@ -1764,69 +1764,125 @@ function ConnectionHealthCard({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId && !!config,
   });
 
+  const configOk = !!(config?.hotelCode && config?.pmsName);
+
+  const { data: connTest, isLoading: connTestLoading } = useQuery<{ success: boolean; message: string }>({
+    queryKey: ["/api/aiosell/test-connection", propertyId],
+    queryFn: async () => {
+      const res = await fetch("/api/aiosell/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ propertyId }),
+      });
+      const text = await res.text();
+      try { return JSON.parse(text); } catch { return { success: false, message: "Server returned unexpected response" }; }
+    },
+    enabled: configOk && !!propertyId,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+
   if (!propertyId) return null;
 
-  const configOk = !!(config?.hotelCode && config?.pmsName);
   const mappingsOk = mappings.length > 0;
   const unlinkedPlans = ratePlans.filter(rp => !mappings.find(m => m.id === rp.roomMappingId));
   const ratePlansOk = ratePlans.length > 0 && unlinkedPlans.length === 0;
   const inventoryReady = configOk && mappingsOk;
   const ratesReady = configOk && mappingsOk && ratePlansOk;
-  const allOk = inventoryReady && ratesReady;
+  const authOk = !configOk ? true : connTestLoading ? true : !!connTest?.success;
+  const allOk = inventoryReady && ratesReady && authOk;
+
+  const authDetail = () => {
+    if (!configOk) return "Requires AioSell config first";
+    if (connTestLoading) return "Testing live connection…";
+    if (!connTest) return "Could not test — check network";
+    if (connTest.success) return "AioSell authentication OK";
+    if (connTest.message?.toLowerCase().includes("authentication required"))
+      return `Hotel code not linked on AioSell's side. Ask AioSell support to link hotel code "${config?.hotelCode}" to PMS name "hostezee".`;
+    return connTest.message || "Connection failed";
+  };
 
   const checks = [
     {
       label: "AioSell Config",
       ok: configOk,
+      loading: false,
       detail: configOk ? `Hotel: ${config?.hotelCode}` : "Go to Settings tab and save Hotel Code + PMS Name",
     },
     {
       label: "Room Mappings",
       ok: mappingsOk,
+      loading: false,
       detail: mappingsOk ? `${mappings.length} room${mappings.length !== 1 ? "s" : ""} mapped to AioSell` : "Go to Room Mapping tab and link your rooms",
     },
     {
       label: "Rate Plans",
       ok: ratePlansOk,
+      loading: false,
       detail: !config ? "Requires AioSell config first"
         : ratePlans.length === 0 ? "Go to Rate Plans tab and add rate plans"
         : unlinkedPlans.length > 0 ? `${unlinkedPlans.length} plan${unlinkedPlans.length !== 1 ? "s" : ""} not linked to a room — fix in Rate Plans tab`
         : `${ratePlans.length} plan${ratePlans.length !== 1 ? "s" : ""} linked and ready`,
     },
     {
+      label: "AioSell Auth",
+      ok: !configOk ? true : connTestLoading ? true : !!connTest?.success,
+      loading: configOk && connTestLoading,
+      detail: authDetail(),
+    },
+    {
       label: "Push Inventory",
       ok: inventoryReady,
+      loading: false,
       detail: inventoryReady ? "Ready — room availability can be pushed to OTAs" : "Fix issues above first",
     },
     {
       label: "Push Rates",
       ok: ratesReady,
+      loading: false,
       detail: ratesReady ? "Ready — rates can be pushed to OTAs" : "Fix issues above first",
     },
   ];
 
+  const statusLabel = allOk && !connTestLoading ? "All systems ready" : !allOk ? "Action required" : "Checking…";
+  const statusColor = allOk && !connTestLoading ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+    : connTestLoading ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+    : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300";
+
   return (
-    <Card className={allOk ? "border-green-200 dark:border-green-800" : "border-yellow-200 dark:border-yellow-800"} data-testid="card-connection-health">
+    <Card className={allOk && !connTestLoading ? "border-green-200 dark:border-green-800" : "border-yellow-200 dark:border-yellow-800"} data-testid="card-connection-health">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          {allOk
+          {allOk && !connTestLoading
             ? <CheckCircle className="h-4 w-4 text-green-500" />
+            : connTestLoading ? <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
             : <AlertCircle className="h-4 w-4 text-yellow-500" />}
           Setup Health Check
-          <span className={`ml-auto text-xs font-normal px-2 py-0.5 rounded-full ${allOk ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"}`}>
-            {allOk ? "All systems ready" : "Action required"}
+          <span className={`ml-auto text-xs font-normal px-2 py-0.5 rounded-full ${statusColor}`}>
+            {statusLabel}
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
           {checks.map(check => (
-            <div key={check.label} className={`rounded-lg border p-3 ${check.ok ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30" : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"}`}>
+            <div key={check.label} className={`rounded-lg border p-3 ${
+              check.loading ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30"
+              : check.ok ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
+              : "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+            }`}>
               <div className="flex items-center gap-1.5 mb-1">
-                {check.ok
+                {check.loading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-500 flex-shrink-0" />
+                  : check.ok
                   ? <CheckCircle className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
                   : <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />}
-                <span className={`text-xs font-semibold ${check.ok ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>{check.label}</span>
+                <span className={`text-xs font-semibold ${
+                  check.loading ? "text-blue-700 dark:text-blue-400"
+                  : check.ok ? "text-green-700 dark:text-green-400"
+                  : "text-red-700 dark:text-red-400"
+                }`}>{check.label}</span>
               </div>
               <p className="text-xs text-muted-foreground leading-snug">{check.detail}</p>
             </div>
