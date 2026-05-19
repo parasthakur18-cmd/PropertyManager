@@ -198,7 +198,8 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const testConn = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("/api/aiosell/test-connection", "POST", { propertyId });
-      return response.json();
+      const text = await response.text();
+      try { return JSON.parse(text); } catch { throw new Error("Server returned an unexpected response. Please redeploy and try again."); }
     },
     onSuccess: (data: any) => {
       toast({ title: data.success ? "Connection successful" : "Connection failed", description: data.message, variant: data.success ? "default" : "destructive" });
@@ -209,7 +210,8 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const forceSync = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("/api/aiosell/force-sync", "POST", { propertyId });
-      return response.json();
+      const text = await response.text();
+      try { return JSON.parse(text); } catch { throw new Error("Server returned an unexpected response. Please redeploy and try again."); }
     },
     onSuccess: (data: any) => {
       toast({ title: data.success ? "Sync pushed!" : "Sync failed", description: data.message, variant: data.success ? "default" : "destructive" });
@@ -221,7 +223,8 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const testWebhook = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("/api/aiosell/test-webhook", "POST", { propertyId });
-      return response.json();
+      const text = await response.text();
+      try { return JSON.parse(text); } catch { throw new Error("Server returned an unexpected response. Please redeploy and try again."); }
     },
     onSuccess: (data: any) => {
       toast({ title: data.success ? "Test Booking Created!" : "Test Failed", description: data.message, variant: data.success ? "default" : "destructive" });
