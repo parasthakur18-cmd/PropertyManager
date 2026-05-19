@@ -830,18 +830,27 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
   const [pushingSinglePlan, setPushingSinglePlan] = useState<string | null>(null);
 
+  const humanizeAiosellError = (msg: string | undefined) => {
+    if (!msg) return "Unknown error from AioSell";
+    if (msg.toLowerCase().includes("authentication required"))
+      return "AioSell rejected the credentials — your hotel code is not yet linked to the Hostezee PMS on AioSell's side. Contact AioSell support and ask them to link your hotel code to PMS name \"hostezee\".";
+    return msg;
+  };
+
   const doApiPush = async (rates: { roomCode: string; rate: number; rateplanCode: string }[]) => {
     if (rates.length === 0) throw new Error("Set at least one rate");
     const res = await apiRequest("/api/aiosell/push-rates", "POST", {
       propertyId,
       updates: [{ startDate, endDate, rates }],
     });
-    return res.json();
+    const text = await res.text();
+    try { return JSON.parse(text); } catch { throw new Error("Server returned an unexpected response. Please redeploy and try again."); }
   };
 
   const onPushSuccess = (data: any) => {
-    setLastPushResult({ success: data.success, message: data.message });
-    toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: data.message, variant: data.success ? "default" : "destructive" });
+    const msg = humanizeAiosellError(data.message);
+    setLastPushResult({ success: data.success, message: msg });
+    toast({ title: data.success ? "Rates pushed successfully" : "Push failed", description: msg, variant: data.success ? "default" : "destructive" });
     queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
     if (data.success) queryClient.invalidateQueries({ queryKey: ["/api/aiosell/latest-rates", { propertyId }] });
   };
