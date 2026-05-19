@@ -79,7 +79,7 @@ async function makeAiosellRequest(
 ): Promise<AiosellApiResponse> {
   const url = `${config.apiBaseUrl}/api/v2/cm/${endpoint}/${config.pmsName}`;
 
-  console.log(`[AIOSELL] ${syncType} → ${url}`);
+  console.log(`[AIOSELL] ${syncType} → ${url} | hotelCode=${config.hotelCode} | pmsName=${config.pmsName} | hasPassword=${!!config.pmsPassword}`);
 
   const logEntry: any = {
     configId: config.id,
