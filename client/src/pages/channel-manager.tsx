@@ -162,7 +162,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const [pmsPassword, setPmsPassword] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("https://live.aiosell.com");
   const [isSandbox, setIsSandbox] = useState(false);
-  const [initialized, setInitialized] = useState(false);
   const [showSandboxGuide, setShowSandboxGuide] = useState(false);
 
   const { data: config, isLoading } = useQuery<AiosellConfig | null>({
@@ -175,13 +174,13 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId,
   });
 
-  if (config && !initialized) {
-    setHotelCode(config.hotelCode || "");
-    setPmsName(config.pmsName || "hostezee");
-    setApiBaseUrl(config.apiBaseUrl || "https://live.aiosell.com");
-    setIsSandbox(config.isSandbox ?? false);
-    setInitialized(true);
-  }
+  useEffect(() => {
+    setHotelCode(config?.hotelCode || "");
+    setPmsName(config?.pmsName || "hostezee");
+    setPmsPassword("");
+    setApiBaseUrl(config?.apiBaseUrl || "https://live.aiosell.com");
+    setIsSandbox(config?.isSandbox ?? false);
+  }, [propertyId, config]);
 
   const saveConfig = useMutation({
     mutationFn: async () => {
