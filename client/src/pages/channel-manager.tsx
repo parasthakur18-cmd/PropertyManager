@@ -534,15 +534,17 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground">Hostezee Room Type</Label>
-                      {roomTypes.length > 0 ? (
-                        <Select value={mapping.hostezeeRoomType} onValueChange={v => updateMapping(index, "hostezeeRoomType", v)}>
-                          <SelectTrigger data-testid={`select-room-type-${index}`}><SelectValue placeholder="Select room type" /></SelectTrigger>
-                          <SelectContent>
-                            {roomTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input value={mapping.hostezeeRoomType} onChange={e => updateMapping(index, "hostezeeRoomType", e.target.value)} placeholder="Room type name" />
+                      <Input
+                        data-testid={`input-room-type-${index}`}
+                        value={mapping.hostezeeRoomType}
+                        onChange={e => updateMapping(index, "hostezeeRoomType", e.target.value)}
+                        placeholder="e.g. Queen Room with Balcony"
+                        list={`room-types-datalist-${index}`}
+                      />
+                      {roomTypes.length > 0 && (
+                        <datalist id={`room-types-datalist-${index}`}>
+                          {roomTypes.map(t => <option key={t} value={t} />)}
+                        </datalist>
                       )}
                     </div>
                     <ArrowUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-5" />

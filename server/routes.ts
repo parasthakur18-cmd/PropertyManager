@@ -19953,19 +19953,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         return res.status(400).json({ message: `Duplicate AioSell Room Mapping Detected: Hostezee room type(s) [${[...new Set(duplicateTypes)].join(", ")}] appear more than once.` });
       }
 
-      // Resolve room IDs before deleting/inserting to fail early if any room is not found
+      // Resolve room IDs — try to match by room_type but don't block if not found yet
+      // (rooms may not have room_type set until the user configures them)
       const resolvedMappings = [];
       for (const m of mappings) {
         const [room] = await db
           .select({ id: rooms.id })
           .from(rooms)
           .where(and(eq(rooms.propertyId, propertyId), eq(rooms.roomType, m.hostezeeRoomType)));
-        if (!room) {
-          return res.status(400).json({
-            message: `Room not found for type "${m.hostezeeRoomType}" in property ${propertyId}`,
-          });
-        }
-        resolvedMappings.push({ ...m, hostezeeRoomId: room.id });
+        resolvedMappings.push({ ...m, hostezeeRoomId: room?.id ?? null });
       }
 
       await db.delete(aiosellRoomMappings).where(eq(aiosellRoomMappings.configId, config.id));

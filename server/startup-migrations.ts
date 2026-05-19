@@ -1040,6 +1040,16 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "aiosell_room_mappings_hostezee_room_id_nullable",
+    async run() {
+      if (!(await tableExists("aiosell_room_mappings"))) return;
+      await runRaw(`
+        ALTER TABLE aiosell_room_mappings
+          ALTER COLUMN hostezee_room_id DROP NOT NULL;
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
