@@ -20391,6 +20391,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
   });
 
   // AIOSELL WEBHOOK - Receive reservations from AioSell (no auth required - external webhook)
+  app.get("/api/aiosell/reservation", (_req, res) => {
+    res.json({ status: "ok", message: "Hostezee AioSell webhook endpoint is active. Send POST requests to this URL." });
+  });
+
   app.post("/api/aiosell/reservation", async (req: any, res) => {
     try {
       const { action, hotelCode, channel, bookingId, cmBookingId, bookedOn, checkin, checkout, segment, specialRequests, pah, amount, guest: guestData, rooms: roomsData } = req.body;
