@@ -22,7 +22,7 @@ interface AiosellConfig {
   propertyId: number;
   hotelCode: string;
   pmsName: string;
-  pmsPassword: string | null;
+  hasPassword: boolean;
   apiBaseUrl: string;
   isActive: boolean;
   isSandbox: boolean;
@@ -189,6 +189,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/test-connection"] });
       toast({ title: "Configuration saved" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -344,8 +345,20 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
             </div>
             <div className="space-y-2">
               <Label>PMS Password</Label>
-              <Input data-testid="input-pms-password" type="password" placeholder="Leave blank to keep existing" value={pmsPassword} onChange={e => setPmsPassword(e.target.value)} />
-              <p className="text-xs text-muted-foreground">API password provided by AioSell</p>
+              <Input data-testid="input-pms-password" type="password" placeholder={config?.hasPassword ? "Password saved — enter to change" : "Enter PMS password (required)"} value={pmsPassword} onChange={e => setPmsPassword(e.target.value)} />
+              {config && !config.hasPassword && (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  No password saved — AioSell will reject all pushes. Enter <strong>Aiosell123</strong> and save.
+                </p>
+              )}
+              {config?.hasPassword && !pmsPassword && (
+                <p className="text-xs text-green-600 flex items-center gap-1">
+                  <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  Password saved — leave blank to keep existing
+                </p>
+              )}
+              {!config && <p className="text-xs text-muted-foreground">API password provided by AioSell</p>}
             </div>
             <div className="space-y-2">
               <Label>API Base URL</Label>

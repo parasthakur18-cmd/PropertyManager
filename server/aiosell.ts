@@ -257,8 +257,14 @@ export async function pushNoShow(
 }
 
 export async function testConnection(config: AiosellConfig): Promise<AiosellApiResponse> {
-  // Send a minimal inventory update payload — AioSell may return 500 for empty arrays,
-  // but any HTTP response means the server is reachable. Only a network error = no connection.
+  // Fail early if no PMS password is configured — AioSell requires Basic auth.
+  if (!config.pmsPassword) {
+    return {
+      success: false,
+      message: "PMS Password is not saved. Go to the Settings tab, enter the PMS Password (Aiosell123) and click Save.",
+    };
+  }
+
   const today = new Date().toISOString().split("T")[0];
   const payload = {
     hotelCode: config.hotelCode,
@@ -267,15 +273,10 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
 
   try {
     const url = `${config.apiBaseUrl}/api/v2/cm/update/${config.pmsName}`;
-    const authHeader = config.pmsPassword
-      ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
-      : undefined;
+    const authHeader = "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64");
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
+      headers: { "Content-Type": "application/json", Authorization: authHeader },
       body: JSON.stringify(payload),
     });
 
@@ -284,22 +285,38 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
     let data: any = null;
     try { data = JSON.parse(rawText); } catch { /* non-JSON response */ }
 
-    // Any HTTP response means we successfully reached AioSell's server.
-    // 400/500 can mean invalid payload (e.g. empty rooms), NOT a connection failure.
-    // Only a network-level throw means the server is unreachable.
-    const connected = true; // we got a response
-    const logStatus = (response.ok && data?.success) ? "success" : httpStatus >= 500 ? "failed" : "success";
+    // Detect authentication failures — AioSell returns HTTP 200 with success:false
+    // and message "Authentication Required!" instead of using HTTP 401.
+    const bodyMsg: string = (data?.message || "").toLowerCase();
+    const isAuthError =
+      httpStatus === 401 ||
+      httpStatus === 403 ||
+      bodyMsg.includes("authentication") ||
+      bodyMsg.includes("unauthorized") ||
+      bodyMsg.includes("not authorized");
+
+    let success: boolean;
     let message: string;
-    if (response.ok && data?.success) {
-      message = "Connection successful";
-    } else if (httpStatus === 401 || httpStatus === 403) {
-      message = `Authentication failed (HTTP ${httpStatus}) — check your PMS Name and PMS Password`;
+
+    if (isAuthError) {
+      success = false;
+      message = "Authentication Required — AioSell rejected the credentials. Make sure the PMS Password is correct (Aiosell123) and that AioSell has linked your hotel code to the 'hostezee' PMS.";
+    } else if (response.ok && data?.success) {
+      success = true;
+      message = "AioSell authentication OK";
     } else if (httpStatus >= 500) {
-      message = `AioSell server error (HTTP ${httpStatus}) — the server is reachable but returned an error. This may be a temporary issue or an invalid payload format.`;
+      // 500 usually means empty rooms[] — server is reachable and auth passed
+      success = true;
+      message = "AioSell authentication OK (server reachable, credentials accepted)";
     } else {
-      message = `Connected (HTTP ${httpStatus})${data?.message ? " — " + data.message : ""}`;
+      // Other non-auth errors (e.g. bad hotel code format) — auth passed but request rejected
+      success = !isAuthError;
+      message = data?.message
+        ? `AioSell responded: ${data.message}`
+        : `AioSell returned HTTP ${httpStatus}`;
     }
 
+    const logStatus = success ? "success" : "failed";
     await db.insert(aiosellSyncLogs).values({
       configId: config.id,
       propertyId: config.propertyId,
@@ -308,10 +325,11 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
       status: logStatus,
       requestPayload: payload,
       responsePayload: data ? { httpStatus, ...data } : { httpStatus, rawSnippet: rawText.slice(0, 200) },
-      errorMessage: logStatus !== "success" ? message : null,
+      errorMessage: !success ? message : null,
     });
 
-    return { success: connected, message };
+    console.log(`[AIOSELL] test-connection HTTP ${httpStatus} → success=${success} msg="${message}"`);
+    return { success, message };
   } catch (error: any) {
     return { success: false, message: `Cannot reach AioSell server: ${error.message}` };
   }

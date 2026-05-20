@@ -19829,7 +19829,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
       const [config] = await db.select().from(aiosellConfigurations)
         .where(and(eq(aiosellConfigurations.propertyId, propertyId), eq(aiosellConfigurations.isActive, true)));
-      res.json(config || null);
+      if (!config) return res.json(null);
+      // Return config but replace actual password with a boolean flag for security
+      const { pmsPassword, ...rest } = config;
+      res.json({ ...rest, hasPassword: !!pmsPassword });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
