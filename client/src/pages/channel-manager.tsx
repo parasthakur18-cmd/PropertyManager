@@ -349,7 +349,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               {config && !config.hasPassword && (
                 <p className="text-xs font-medium text-red-600 flex items-center gap-1">
                   <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  No password saved — AioSell will reject all pushes. Enter <strong>Aiosell123</strong> and save.
+                  No password saved — AioSell will reject all pushes. Enter the PMS password provided by AioSell and save.
                 </p>
               )}
               {config?.hasPassword && !pmsPassword && (

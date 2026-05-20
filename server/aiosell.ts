@@ -261,7 +261,7 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
   if (!config.pmsPassword) {
     return {
       success: false,
-      message: "PMS Password is not saved. Go to the Settings tab, enter the PMS Password (Aiosell123) and click Save.",
+      message: "PMS Password is not saved. Go to the Settings tab, enter the PMS Password provided by AioSell and click Save.",
     };
   }
 
@@ -300,7 +300,7 @@ export async function testConnection(config: AiosellConfig): Promise<AiosellApiR
 
     if (isAuthError) {
       success = false;
-      message = "Authentication Required — AioSell rejected the credentials. Make sure the PMS Password is correct (Aiosell123) and that AioSell has linked your hotel code to the 'hostezee' PMS.";
+      message = "Authentication Required — AioSell rejected the credentials. Make sure the PMS Password is correct and that AioSell has linked your hotel code to the 'hostezee' PMS.";
     } else if (response.ok && data?.success) {
       success = true;
       message = "AioSell authentication OK";
