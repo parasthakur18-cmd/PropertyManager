@@ -324,7 +324,7 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               <AlertDescription className="flex items-center gap-2">
                 {config.isActive ? <Wifi className="h-4 w-4 text-green-600" /> : <WifiOff className="h-4 w-4 text-yellow-600" />}
                 <span>
-                  {config.isActive ? "Connected" : "Inactive"} — Hotel Code: <strong>{config.hotelCode}</strong>
+                  Config saved — Hotel Code: <strong>{config.hotelCode}</strong>{!config.isActive && <span className="text-yellow-600 ml-1">(Inactive)</span>}
                   {config.isSandbox && <Badge variant="outline" className="ml-2 text-amber-600 border-amber-400 text-xs">Sandbox</Badge>}
                 </span>
                 {config.lastSyncAt && <span className="ml-auto text-xs text-muted-foreground">Last sync: {new Date(config.lastSyncAt).toLocaleString()}</span>}
@@ -1810,8 +1810,7 @@ function ConnectionHealthCard({ propertyId }: { propertyId: number }) {
     if (connTestLoading) return "Testing live connection…";
     if (!connTest) return "Could not test — check network";
     if (connTest.success) return "AioSell authentication OK";
-    if (connTest.message?.toLowerCase().includes("authentication required"))
-      return `Hotel code not linked on AioSell's side. Ask AioSell support to link hotel code "${config?.hotelCode}" to PMS name "hostezee".`;
+    // Show the exact diagnostic from testConnection — it already contains specific guidance
     return connTest.message || "Connection failed";
   };
 
