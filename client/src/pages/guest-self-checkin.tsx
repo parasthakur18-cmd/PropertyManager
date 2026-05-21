@@ -20,7 +20,7 @@ const findBookingSchema = z.object({
 
 const selfCheckinSchema = z.object({
   phone: z.string().min(10, "Valid phone required"),
-  email: z.string().email("Invalid email"),
+  email: z.string().email("Invalid email").optional().or(z.literal("")),
   fullName: z.string().min(1, "Name is required"),
 });
 
@@ -384,9 +384,9 @@ export default function GuestSelfCheckin() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Email <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
                       <FormControl>
-                        <Input type="email" placeholder="Your email" {...field} data-testid="input-guest-email" />
+                        <Input type="email" placeholder="Your email (optional)" {...field} data-testid="input-guest-email" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

@@ -17123,13 +17123,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       // Get all bookings and find matching guest by phone
       const allBookings = await storage.getAllBookings();
+
+      // Normalize phone: strip leading zeroes, +91, country code prefixes
+      const normalizePhone = (p: string) => p.replace(/\D/g, '').replace(/^(91|0)(\d{10})$/, '$2');
+      const normalizedInput = normalizePhone(phone);
       
       // Look for active booking (confirmed or pending) with matching phone
       for (const booking of allBookings) {
         const guest = await storage.getGuest(booking.guestId);
         
-        // Match phone number and only return active/upcoming bookings
-        if (guest?.phone === phone && (booking.status === "confirmed" || booking.status === "pending")) {
+        // Match phone number (normalized) and only return active/upcoming bookings
+        const guestPhone = guest?.phone ? normalizePhone(guest.phone) : null;
+        if (guestPhone && guestPhone === normalizedInput && (booking.status === "confirmed" || booking.status === "pending")) {
           const room = await storage.getRoom(booking.roomId);
           const property = room ? await storage.getProperty(room.propertyId) : null;
           
@@ -17168,7 +17173,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         return res.status(404).json({ message: "Booking not found" });
       }
 
-      // Validate check-in date - must be today or in the future
+      // Validate check-in date - must be today (not past, not future)
       const checkInDate = new Date(booking.checkInDate);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -17177,6 +17182,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       if (checkInDate < today) {
         return res.status(400).json({ 
           message: `Cannot check in for past date. Your check-in date was ${format(new Date(booking.checkInDate), "MMM d, yyyy")}. Please contact the front desk.` 
+        });
+      }
+
+      if (checkInDate > today) {
+        return res.status(400).json({ 
+          message: `Your check-in is scheduled for ${format(new Date(booking.checkInDate), "MMM d, yyyy")}. Self check-in is only available on the day of arrival. Please come back then!` 
         });
       }
 
@@ -17251,7 +17262,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             ? `https://${process.env.REPLIT_DEV_DOMAIN}`
             : process.env.REPLIT_DOMAINS?.split(',')[0] 
               ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`
-              : '';
+              : 'https://hostezee.in';
           
           const menuLink = `${baseUrl}/menu?type=room&property=${property.id}&room=${room?.roomNumber || ''}`;
           
