@@ -3964,13 +3964,27 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         roomIdsToCheck.push(...data.roomIds);
       }
       
+      // Normalize any Date/ISO string to YYYY-MM-DD for timezone-safe comparison.
+      // Using new Date() with IST timestamps (e.g. "2026-05-26T00:00:00+05:30") converts
+      // to UTC ("2026-05-25T18:30Z"), causing May 26 IST to falsely overlap a booking
+      // whose checkout is May 26 UTC midnight. Slicing to YYYY-MM-DD avoids this entirely.
+      const toDayStr = (d: Date | string): string =>
+        (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
+      const checkInDay  = toDayStr(checkIn);
+      const checkOutDay = toDayStr(checkOut);
+
       // Check each room for conflicts
       for (const roomId of roomIdsToCheck) {
         const room = await storage.getRoom(roomId);
         const existingBookings = await storage.getBookingsByRoom(roomId);
         const overlapping = existingBookings.filter(b => {
-          if (b.status === 'cancelled' || b.status === 'checked-out') return false;
-          return checkIn < new Date(b.checkOutDate) && checkOut > new Date(b.checkInDate);
+          // cancelled, checked-out, and no_show all release the room back to inventory
+          if (['cancelled', 'checked-out', 'no_show'].includes(b.status as string)) return false;
+          // Hotel-standard overlap: bOut > newCheckIn AND bIn < newCheckOut
+          // Same-day turnover (bOut == newCheckIn) is NOT an overlap — checkout frees the room
+          const bIn  = toDayStr(b.checkInDate  as any);
+          const bOut = toDayStr(b.checkOutDate as any);
+          return bOut > checkInDay && bIn < checkOutDay;
         });
 
         if (room?.roomCategory === 'dormitory') {
@@ -4059,8 +4073,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const freshRoom = await storage.getRoom(rId);
         const freshBookings = await storage.getBookingsByRoom(rId);
         const freshOverlapping = freshBookings.filter(b => {
-          if (b.status === "cancelled" || b.status === "checked-out") return false;
-          return checkIn < new Date(b.checkOutDate) && checkOut > new Date(b.checkInDate);
+          if (['cancelled', 'checked-out', 'no_show'].includes(b.status as string)) return false;
+          const bIn  = toDayStr(b.checkInDate  as any);
+          const bOut = toDayStr(b.checkOutDate as any);
+          return bOut > checkInDay && bIn < checkOutDay;
         });
         if (freshRoom?.roomCategory === "dormitory") {
           const totalBeds = freshRoom.totalBeds ?? 1;
@@ -10215,24 +10231,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Check for double-booking: Verify room isn't already booked for overlapping dates
       if (enquiry.roomId) {
         const existingBookings = await storage.getAllBookings();
+        // Normalize to YYYY-MM-DD to avoid IST→UTC timezone false-positives
+        const toDayStrEnq = (d: Date | string): string =>
+          (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
+        const enqInDay  = toDayStrEnq(enquiry.checkInDate  as any);
+        const enqOutDay = toDayStrEnq(enquiry.checkOutDate as any);
         const overlappingBooking = existingBookings.find(b => {
-          // Skip cancelled and checked-out bookings
-          if (b.status === "cancelled" || b.status === "checked-out") return false;
-          
-          // Check if same room
+          // cancelled, checked-out, and no_show all release the room
+          if (['cancelled', 'checked-out', 'no_show'].includes(b.status as string)) return false;
           if (b.roomId !== enquiry.roomId) return false;
-          
-          // Check for date overlap
-          const existingCheckIn = new Date(b.checkInDate);
-          const existingCheckOut = new Date(b.checkOutDate);
-          const newCheckIn = new Date(enquiry.checkInDate);
-          const newCheckOut = new Date(enquiry.checkOutDate);
-          
-          return (
-            (newCheckIn >= existingCheckIn && newCheckIn < existingCheckOut) ||
-            (newCheckOut > existingCheckIn && newCheckOut <= existingCheckOut) ||
-            (newCheckIn <= existingCheckIn && newCheckOut >= existingCheckOut)
-          );
+          // Hotel-standard: bOut > newCheckIn AND bIn < newCheckOut
+          const bIn  = toDayStrEnq(b.checkInDate  as any);
+          const bOut = toDayStrEnq(b.checkOutDate as any);
+          return bOut > enqInDay && bIn < enqOutDay;
         });
         
         if (overlappingBooking) {
