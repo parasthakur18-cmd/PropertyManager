@@ -363,8 +363,8 @@ export default function Bookings() {
     enabled: !!(checkInDate && checkOutDate && checkInDate < checkOutDate),
     queryFn: async () => {
       const params = new URLSearchParams({
-        checkIn: checkInDate.toISOString(),
-        checkOut: checkOutDate.toISOString(),
+        checkIn: format(checkInDate, "yyyy-MM-dd"),
+        checkOut: format(checkOutDate, "yyyy-MM-dd"),
       });
       if (selectedPropertyId) params.set("propertyId", selectedPropertyId.toString());
       const response = await fetch(`/api/rooms/availability?${params}`);
@@ -387,7 +387,7 @@ export default function Bookings() {
     enabled: !!(editCheckInDate && editCheckOutDate && editCheckInDate < editCheckOutDate && editingBooking),
     queryFn: async () => {
       const response = await fetch(
-        `/api/rooms/availability?checkIn=${editCheckInDate.toISOString()}&checkOut=${editCheckOutDate.toISOString()}&excludeBookingId=${editingBooking?.id}`
+        `/api/rooms/availability?checkIn=${format(editCheckInDate, "yyyy-MM-dd")}&checkOut=${format(editCheckOutDate, "yyyy-MM-dd")}&excludeBookingId=${editingBooking?.id}`
       );
       if (!response.ok) throw new Error("Failed to fetch availability");
       return response.json() as Promise<Array<{
