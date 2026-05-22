@@ -4308,6 +4308,76 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         (validatedData as any).advancePaymentStatus = amt > 0 ? "paid" : "not_required";
       }
 
+      // ── Overlap guard for booking edits ──────────────────────────────────────
+      // Only validate when dates or room assignment actually change.
+      const datesChanging  = validatedData.checkInDate !== undefined || validatedData.checkOutDate !== undefined;
+      const roomChanging   = validatedData.roomId !== undefined || validatedData.roomIds !== undefined;
+      if (datesChanging || roomChanging) {
+        const editToDayStr = (d: Date | string): string =>
+          (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10);
+
+        // Resolve the dates and rooms that will apply AFTER this edit
+        const newCheckInDay  = editToDayStr(validatedData.checkInDate  ?? existingBooking.checkInDate  as any);
+        const newCheckOutDay = editToDayStr(validatedData.checkOutDate ?? existingBooking.checkOutDate as any);
+
+        if (newCheckInDay >= newCheckOutDay) {
+          return res.status(400).json({ message: "Check-out date must be after check-in date." });
+        }
+
+        // Rooms that will apply after edit
+        const editRoomIds: number[] = [];
+        if (validatedData.roomId !== undefined) {
+          if (validatedData.roomId) editRoomIds.push(validatedData.roomId);
+        } else if (existingBooking.roomId) {
+          editRoomIds.push(existingBooking.roomId);
+        }
+        if (validatedData.roomIds?.length) {
+          editRoomIds.push(...validatedData.roomIds);
+        } else if (existingBooking.roomIds?.length && !editRoomIds.length) {
+          editRoomIds.push(...(existingBooking.roomIds as number[]));
+        }
+        // Deduplicate
+        const uniqueEditRoomIds = [...new Set(editRoomIds)];
+
+        for (const rId of uniqueEditRoomIds) {
+          const editRoom = await storage.getRoom(rId);
+          if (!editRoom) continue;
+
+          const roomBookings = await storage.getBookingsByRoom(rId);
+          const isDorm = editRoom.roomCategory === "dormitory";
+
+          const overlapping = roomBookings.filter(b => {
+            if (b.id === existingBooking.id) return false; // self
+            if (['cancelled', 'checked-out', 'no_show'].includes(b.status as string)) return false;
+            const bIn  = editToDayStr(b.checkInDate  as any);
+            const bOut = editToDayStr(b.checkOutDate as any);
+            return bOut > newCheckInDay && bIn < newCheckOutDay;
+          });
+
+          if (isDorm) {
+            const totalBeds  = editRoom.totalBeds ?? 1;
+            const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+            const bedsRequested     = (validatedData as any).bedsBooked ?? existingBooking.bedsBooked ?? 1;
+            if (bedsAlreadyBooked + bedsRequested > totalBeds) {
+              const guest = overlapping[0] ? await storage.getGuest(overlapping[0].guestId) : null;
+              return res.status(409).json({
+                message: `Room ${editRoom.roomNumber} only has ${totalBeds - bedsAlreadyBooked} bed(s) available for the selected dates.`,
+              });
+            }
+          } else {
+            if (overlapping.length > 0) {
+              const conflict = overlapping[0];
+              const guest = await storage.getGuest(conflict.guestId);
+              const gLabel = guest?.fullName ? ` (${guest.fullName})` : "";
+              return res.status(409).json({
+                message: `Room ${editRoom.roomNumber} is already booked from ${format(new Date(conflict.checkInDate as any), "MMM dd, yyyy")} to ${format(new Date(conflict.checkOutDate as any), "MMM dd, yyyy")}${gLabel}. Please choose different dates or a different room.`,
+              });
+            }
+          }
+        }
+      }
+      // ── End overlap guard ────────────────────────────────────────────────────
+
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
       // Wallet sync on booking edit — handle both amount increase and payment method change
