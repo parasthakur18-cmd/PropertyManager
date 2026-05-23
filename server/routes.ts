@@ -20542,19 +20542,58 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
 
       if (action === "book" || action === "modify") {
-        // ── Idempotency guard: skip if this exact external booking already exists ──
-        // Booking.com / AioSell sometimes sends the same webhook twice
-        if (action === "book") {
-          const alreadyExists = await db.select({ id: bookings.id })
-            .from(bookings)
+        // ── STEP 0: Early lookup for modify OR cancel+rebook ─────────────────────
+        // Must happen before the overlap check so we can exclude the existing
+        // booking's own room from the conflict set (it's being freed/updated).
+        // Also drops the source filter (channel names vary; externalBookingId is
+        // the reliable key) and searches non-cancelled bookings only.
+        let existingBookingRecord: typeof bookings.$inferSelect | null = null;
+
+        if (action === "modify") {
+          const [foundByBookingId] = await db.select().from(bookings)
             .where(and(
               eq(bookings.propertyId, config.propertyId),
               eq(bookings.externalBookingId, bookingId),
-            ))
-            .limit(1);
-          if (alreadyExists.length > 0) {
-            console.log(`[AIOSELL-WEBHOOK] Duplicate webhook — booking already exists for externalBookingId=${bookingId}, skipping`);
-            return res.json({ success: true, message: "Booking already exists (duplicate webhook)" });
+              not(eq(bookings.status, "cancelled")),
+            )).limit(1);
+          existingBookingRecord = foundByBookingId ?? null;
+
+          // Fallback: try cmBookingId if first lookup missed
+          if (!existingBookingRecord && cmBookingId && cmBookingId !== bookingId) {
+            const [foundByCm] = await db.select().from(bookings)
+              .where(and(
+                eq(bookings.propertyId, config.propertyId),
+                eq(bookings.externalBookingId, cmBookingId),
+                not(eq(bookings.status, "cancelled")),
+              )).limit(1);
+            existingBookingRecord = foundByCm ?? null;
+          }
+
+          if (!existingBookingRecord) {
+            console.warn(`[AIOSELL-WEBHOOK] Modify: no active booking found for bookingId=${bookingId} — will create new`);
+          } else {
+            console.log(`[AIOSELL-WEBHOOK] Modify: matched existing booking #${existingBookingRecord.id} (status=${existingBookingRecord.status})`);
+          }
+        }
+
+        // ── STEP 1: Idempotency guard (book only) ────────────────────────────────
+        // Booking.com / AioSell sometimes sends the same webhook twice.
+        // Exception: if the existing booking is cancelled, this is a cancel+rebook
+        // pattern — treat it as a reactivation (modify in place) instead of skipping.
+        if (action === "book") {
+          const [alreadyExists] = await db.select().from(bookings)
+            .where(and(
+              eq(bookings.propertyId, config.propertyId),
+              eq(bookings.externalBookingId, bookingId),
+            )).limit(1);
+          if (alreadyExists) {
+            if (alreadyExists.status !== "cancelled") {
+              console.log(`[AIOSELL-WEBHOOK] Duplicate webhook — booking #${alreadyExists.id} already exists for externalBookingId=${bookingId}, skipping`);
+              return res.json({ success: true, message: "Booking already exists (duplicate webhook)" });
+            }
+            // Cancel+rebook: reactivate the cancelled booking in place
+            console.log(`[AIOSELL-WEBHOOK] Cancel+rebook pattern: reactivating cancelled booking #${alreadyExists.id} for externalBookingId=${bookingId}`);
+            existingBookingRecord = alreadyExists;
           }
         }
 
@@ -20607,9 +20646,12 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const alreadyAssignedRoomIds = new Set<number>();
 
         // ── Build a set of room IDs that are already booked for overlapping dates ──
-        // This prevents the same physical room being double-booked by two OTA reservations
+        // This prevents the same physical room being double-booked by two OTA reservations.
+        // Exclude the booking being modified — its room is being freed/updated and must
+        // not count as a conflict against itself.
         const checkInDate = new Date(checkin);
         const checkOutDate = new Date(checkout);
+        const excludeExistingId = existingBookingRecord?.id ?? null;
         const conflictingFromBookings = await db.select({ roomId: bookings.roomId })
           .from(bookings)
           .where(and(
@@ -20618,6 +20660,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             lt(bookings.checkInDate, checkOutDate),
             gt(bookings.checkOutDate, checkInDate),
             isNotNull(bookings.roomId),
+            ...(excludeExistingId ? [not(eq(bookings.id, excludeExistingId))] : []),
           ));
         const conflictingFromStays = await db.select({ roomId: bookingRoomStays.roomId })
           .from(bookingRoomStays)
@@ -20628,12 +20671,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             lt(bookings.checkInDate, checkOutDate),
             gt(bookings.checkOutDate, checkInDate),
             isNotNull(bookingRoomStays.roomId),
+            ...(excludeExistingId ? [not(eq(bookings.id, excludeExistingId))] : []),
           ));
         const overlappingRoomIds = new Set<number>([
           ...conflictingFromBookings.map(b => b.roomId).filter((id): id is number => id !== null),
           ...conflictingFromStays.map(s => s.roomId).filter((id): id is number => id !== null),
         ]);
-        console.log(`[AIOSELL] Date overlap check: ${checkin}–${checkout}: ${overlappingRoomIds.size} room(s) already booked`);
+        console.log(`[AIOSELL] Date overlap check: ${checkin}–${checkout}: ${overlappingRoomIds.size} room(s) already booked (excludingBookingId=${excludeExistingId ?? "none"})`);
 
         for (const rd of rooms_) {
           const incomingRoomId = rd.roomId != null ? String(rd.roomId).trim() : null;
@@ -20801,52 +20845,90 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         const totalAdults = resolvedRooms.reduce((s, r) => s + r.adults, 0) || 1;
         const totalChildren = resolvedRooms.reduce((s, r) => s + r.children, 0) || 0;
 
-        if (action === "modify") {
-          const existingBookings = await db.select().from(bookings)
-            .where(and(
-              eq(bookings.propertyId, config.propertyId),
-              eq(bookings.source, `aiosell-${channel}`),
-            ));
-          const existingBooking = existingBookings.find(b =>
-            b.externalBookingId === bookingId ||
-            b.externalBookingId === cmBookingId
-          );
-          if (existingBooking) {
-            const modifyPrimaryResolved = resolvedRooms.find(r => r.roomId !== null);
-            const modifyBedsBooked = modifyPrimaryResolved?.bedsBooked ?? null;
-            await db.update(bookings).set({
-              checkInDate: new Date(checkin),
-              checkOutDate: new Date(checkout),
-              totalAmount: amount?.amountAfterTax?.toString() || "0",
-              numberOfGuests: totalAdults + totalChildren,
-              ...(primaryAssignedRoomId ? { roomId: primaryAssignedRoomId } : {}),
-              ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
-              updatedAt: new Date(),
-            }).where(eq(bookings.id, existingBooking.id));
-            // Update room stays: delete old ones and re-insert
-            await db.delete(bookingRoomStays)
-              .where(eq(bookingRoomStays.bookingId, existingBooking.id));
-            if (resolvedRooms.length > 0) {
-              await db.insert(bookingRoomStays).values(
-                resolvedRooms.map(r => ({
-                  bookingId: existingBooking.id,
-                  roomId: r.roomId,
-                  aiosellRoomCode: r.aiosellRoomCode,
-                  roomType: r.roomType,
-                  mealPlan: r.mealPlan,
-                  status: r.status,
-                  amount: r.amount.toFixed(2),
-                  adults: r.adults,
-                  children: r.children,
-                }))
-              );
-            }
-            storage.invalidateBookingsCache();
-            console.log(`[AIOSELL-WEBHOOK] Modified booking ${existingBooking.id} with ${resolvedRooms.length} room stay(s)`);
-            await autoSyncInventoryForProperty(config.propertyId);
-            return res.json({ success: true, message: "Reservation Modified Successfully" });
+        // ── STEP 6: Apply modify / cancel+rebook in place ────────────────────────
+        // Uses existingBookingRecord already fetched in STEP 0 (no second lookup).
+        // Handles three cases:
+        //   a) action=modify, booking found → update dates/room/amount in place
+        //   b) action=book, cancelled booking found (cancel+rebook) → reactivate
+        //   c) action=modify, no booking found → fall through to create new
+        if (existingBookingRecord) {
+          const previousStatus = existingBookingRecord.status;
+          // Preserve confirmed/checked-in status; reactivate cancelled → pending
+          const preservedStatus = previousStatus === "cancelled" ? "pending" : previousStatus as string;
+
+          const modifyPrimaryResolved = resolvedRooms.find(r => r.roomId !== null);
+          const modifyBedsBooked = modifyPrimaryResolved?.bedsBooked ?? null;
+
+          await db.update(bookings).set({
+            checkInDate: new Date(checkin),
+            checkOutDate: new Date(checkout),
+            totalAmount: amount?.amountAfterTax?.toString() || "0",
+            numberOfGuests: totalAdults + totalChildren,
+            ...(guestId ? { guestId } : {}),
+            ...(primaryAssignedRoomId ? { roomId: primaryAssignedRoomId } : {}),
+            ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
+            status: preservedStatus as any,
+            specialRequests: specialRequests || existingBookingRecord.specialRequests,
+            updatedAt: new Date(),
+          }).where(eq(bookings.id, existingBookingRecord.id));
+
+          // Rebuild room stays from scratch (date range changed)
+          await db.delete(bookingRoomStays)
+            .where(eq(bookingRoomStays.bookingId, existingBookingRecord.id));
+          if (resolvedRooms.length > 0) {
+            await db.insert(bookingRoomStays).values(
+              resolvedRooms.map(r => ({
+                bookingId: existingBookingRecord!.id,
+                roomId: r.roomId,
+                aiosellRoomCode: r.aiosellRoomCode,
+                roomType: r.roomType,
+                mealPlan: r.mealPlan,
+                status: r.status,
+                amount: r.amount.toFixed(2),
+                adults: r.adults,
+                children: r.children,
+              }))
+            );
           }
-          // If modify but not found, fall through to create new booking
+          storage.invalidateBookingsCache();
+
+          const isReactivation = previousStatus === "cancelled";
+          console.log(`[AIOSELL-WEBHOOK] ${isReactivation ? "Reactivated" : "Modified"} booking #${existingBookingRecord.id} (${previousStatus} → ${preservedStatus}): ${checkin}–${checkout}, ${resolvedRooms.length} stay(s), room=${primaryAssignedRoomId ?? "TBS"}`);
+
+          await autoSyncInventoryForProperty(config.propertyId);
+
+          // In-app notification for modification
+          try {
+            const allUsers = await storage.getAllUsers();
+            const notifyUsers = allUsers.filter(u =>
+              u.role === "admin" || u.role === "super-admin" ||
+              (u.assignedPropertyIds as number[] || []).includes(config.propertyId)
+            );
+            const modifyGuestName = guestData
+              ? `${guestData.firstName || ""} ${guestData.lastName || ""}`.trim() || "OTA Guest"
+              : "OTA Guest";
+            for (const u of notifyUsers) {
+              await db.insert(notifications).values({
+                userId: u.id,
+                type: "new_booking",
+                title: isReactivation ? "OTA Booking Reactivated" : "OTA Booking Modified",
+                message: isReactivation
+                  ? `Booking from ${channel} reactivated — Guest: ${modifyGuestName}. New dates: ${checkin} → ${checkout}.`
+                  : `Booking #${existingBookingRecord.id} from ${channel} modified — Guest: ${modifyGuestName}. Updated dates: ${checkin} → ${checkout}.`,
+                soundType: "info",
+                relatedId: existingBookingRecord.id,
+                relatedType: "booking",
+              });
+            }
+          } catch (notifErr: any) {
+            console.error(`[NOTIFICATIONS] Modify/reactivate in-app notification failed:`, notifErr.message);
+          }
+
+          return res.json({ success: true, message: isReactivation ? "Reservation Reactivated Successfully" : "Reservation Modified Successfully" });
+        }
+
+        if (action === "modify") {
+          // Modify arrived but no existing booking found — fall through to create
           console.warn(`[AIOSELL-WEBHOOK] Modify action but no existing booking found for bookingId=${bookingId} — creating new`);
         }
 
