@@ -1,0 +1,204 @@
+CRITICAL OTA MODIFICATION DUPLICATE BOOKING BUG
+
+We found a serious production issue in OTA booking modification handling.
+
+====================================================
+CURRENT BUG
+====================================================
+
+Scenario:
+
+Existing booking:
+Guest: Divya Jawalkar
+Room: 103
+Stay: 22–28 May
+Status: Checked-in
+
+Booking.com modifies reservation:
+New checkout: 25 May
+
+INSTEAD OF:
+- updating existing booking
+
+the system is:
+- creating a NEW TBA booking
+- leaving original booking active
+- causing duplicate guest rows
+- causing inventory inconsistency
+
+Current result:
+1. Original checked-in booking still exists
+2. New TBA (Not Assigned) booking gets created
+3. Same guest appears twice
+4. OTA inventory becomes incorrect
+
+====================================================
+EXPECTED BEHAVIOR
+====================================================
+
+When OTA sends a MODIFY webhook:
+
+System must:
+1. FIND existing booking
+2. UPDATE existing booking
+3. PRESERVE:
+   - room assignment
+   - checked-in status
+   - payment history
+   - booking history
+   - guest linkage
+4. MODIFY ONLY:
+   - checkout date
+   - checkin date
+   - occupancy
+   - amount
+5. RELEASE newly freed inventory
+6. PUSH OTA inventory update
+
+System must NEVER create a new booking for a modification webhook.
+
+====================================================
+CRITICAL AUDIT REQUIRED
+====================================================
+
+Audit ALL OTA modification flows.
+
+Check:
+- Booking.com webhook parser
+- Aiosell webhook parser
+- modify action handling
+- reservation matching logic
+- externalBookingId usage
+- roomstayId handling
+- booking lookup queries
+- update vs create routing
+
+====================================================
+MOST IMPORTANT CHECK
+====================================================
+
+Verify:
+OTA modify webhook NEVER calls:
+createBooking()
+
+Modification must ONLY call:
+updateBooking()
+
+====================================================
+VERIFY BOOKING MATCHING
+====================================================
+
+Check if existing booking lookup fails because of:
+- externalBookingId mismatch
+- reservationId mismatch
+- roomstayId mismatch
+- OTA source mismatch
+- property mismatch
+- whitespace/string normalization issue
+- partial matching issue
+
+Need SINGLE source of truth for OTA booking identity.
+
+====================================================
+REQUIRED FIX LOGIC
+====================================================
+
+When modify webhook arrives:
+
+STEP 1:
+Find booking by:
+- externalBookingId
+- otaReservationId
+- propertyId
+
+STEP 2:
+Lock booking transactionally.
+
+STEP 3:
+Update existing booking atomically.
+
+STEP 4:
+Update room stays safely.
+
+STEP 5:
+Recalculate inventory delta.
+
+STEP 6:
+Push inventory sync.
+
+====================================================
+IMPORTANT
+====================================================
+
+DO NOT:
+- create duplicate booking rows
+- create TBA booking
+- reset checked-in status
+- lose room assignment
+- duplicate guest entries
+- duplicate financial records
+
+====================================================
+TRANSACTION SAFETY REQUIRED
+====================================================
+
+Wrap OTA modification flow in single DB transaction.
+
+If ANY step fails:
+ROLLBACK everything.
+
+Never allow:
+- deleted room stays without recreation
+- partial booking updates
+- inventory mismatch
+- ghost occupancy
+
+====================================================
+EXPECTED RESULT
+====================================================
+
+Before:
+22–28 May
+Room 103
+Checked-in
+
+OTA modifies:
+22–25 May
+
+Final result should be:
+- SAME booking row
+- SAME room assignment
+- SAME checked-in state
+- checkout date updated to May 25
+- inventory released from May 25–28
+- OTA sync triggered
+
+NO duplicate booking.
+NO TBA booking.
+NO second guest row.
+
+====================================================
+TEST CASES REQUIRED
+====================================================
+
+Test:
+1. Shorten stay
+2. Extend stay
+3. Room type change
+4. Occupancy change
+5. Dorm bed modification
+6. Modification after check-in
+7. Multiple OTA modifications
+8. Same-day modification
+9. Booking.com modification
+10. MMT modification
+
+====================================================
+FINAL GOAL
+====================================================
+
+OTA modifications must behave like:
+UPDATE EXISTING BOOKING
+
+NOT:
+CREATE NEW BOOKING

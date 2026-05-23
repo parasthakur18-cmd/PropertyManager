@@ -20664,6 +20664,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         let existingBookingRecord: typeof bookings.$inferSelect | null = null;
 
         if (action === "modify") {
+          // ── Attempt 1: exact externalBookingId match (primary key, fastest) ──────
           const [foundByBookingId] = await db.select().from(bookings)
             .where(and(
               eq(bookings.propertyId, config.propertyId),
@@ -20672,7 +20673,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             )).limit(1);
           existingBookingRecord = foundByBookingId ?? null;
 
-          // Fallback: try cmBookingId if first lookup missed
+          // ── Attempt 2: try cmBookingId (AioSell internal ID) ─────────────────────
           if (!existingBookingRecord && cmBookingId && cmBookingId !== bookingId) {
             const [foundByCm] = await db.select().from(bookings)
               .where(and(
@@ -20683,11 +20684,72 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             existingBookingRecord = foundByCm ?? null;
           }
 
+          // ── Attempt 3: fuzzy match — same channel + check-in date ─────────────────
+          // Handles the production case where AioSell sends a different bookingId format
+          // in the modify webhook vs. the original book webhook (e.g. prefix changes).
+          // We match by source channel + exact check-in date (modification rarely changes
+          // check-in, only checkout). When matched this way we also self-heal the stored
+          // externalBookingId so future webhooks will match directly.
           if (!existingBookingRecord) {
-            console.warn(`[AIOSELL-WEBHOOK] Modify: no active booking found for bookingId=${bookingId} — will create new`);
-          } else {
-            console.log(`[AIOSELL-WEBHOOK] Modify: matched existing booking #${existingBookingRecord.id} (status=${existingBookingRecord.status})`);
+            const channelSource = `aiosell-${channel}`;
+            const fuzzyMatches = await db.select().from(bookings)
+              .where(and(
+                eq(bookings.propertyId, config.propertyId),
+                eq(bookings.source, channelSource),
+                not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+                eq(bookings.checkInDate, new Date(checkin)),
+              ));
+            // If exactly one match, it's unambiguous — safe to use
+            if (fuzzyMatches.length === 1) {
+              const fuzzyMatch = fuzzyMatches[0];
+              console.warn(
+                `[AIOSELL-WEBHOOK] Modify FUZZY MATCH (check-in date+channel): ` +
+                `booking #${fuzzyMatch.id} status=${fuzzyMatch.status}. ` +
+                `Stored externalBookingId="${fuzzyMatch.externalBookingId}" vs incoming bookingId="${bookingId}". ` +
+                `Self-healing stored ID to prevent future mismatches.`
+              );
+              // Self-heal: update stored externalBookingId to the value this webhook sends
+              // so all future modify/cancel webhooks match via Attempt 1.
+              await db.update(bookings)
+                .set({ externalBookingId: bookingId, updatedAt: new Date() })
+                .where(eq(bookings.id, fuzzyMatch.id));
+              existingBookingRecord = { ...fuzzyMatch, externalBookingId: bookingId };
+            } else if (fuzzyMatches.length > 1) {
+              // Ambiguous — log all candidates for manual investigation but don't guess
+              console.error(
+                `[AIOSELL-WEBHOOK] Modify FUZZY MATCH ambiguous: ` +
+                `${fuzzyMatches.length} bookings from ${channelSource} with check-in ${checkin} ` +
+                `(ids: ${fuzzyMatches.map(b => b.id).join(", ")}). Cannot auto-resolve.`
+              );
+            }
           }
+
+          // ── ABORT if no booking found — NEVER create a new booking for modify ────
+          // Creating a new booking on a failed modify lookup is the root cause of the
+          // TBA duplicate booking bug observed in production (Divya Jawalkar case).
+          if (!existingBookingRecord) {
+            console.error(
+              `[AIOSELL-WEBHOOK] CRITICAL: Modify action but no booking found for ` +
+              `bookingId=${bookingId}, cmBookingId=${cmBookingId ?? "none"}, ` +
+              `channel=${channel}, checkin=${checkin}, checkout=${checkout}. ` +
+              `BLOCKING fallthrough — will NOT create duplicate booking. Manual review required.`
+            );
+            // Log as failed sync for manual investigation
+            await db.insert(aiosellSyncLogs).values({
+              configId: config.id,
+              propertyId: config.propertyId,
+              syncType: "reservation_modify_unmatched",
+              direction: "inbound",
+              status: "failed",
+              requestPayload: req.body,
+              errorMessage: `No booking found for bookingId=${bookingId} / cmBookingId=${cmBookingId ?? "none"}. Payload preserved for manual review.`,
+            });
+            // Return 200 so AioSell doesn't keep retrying the same broken webhook.
+            // Staff will see this in sync logs / audit trail.
+            return res.json({ success: false, message: "Booking not found for modification — logged for manual review. No duplicate created." });
+          }
+
+          console.log(`[AIOSELL-WEBHOOK] Modify: matched existing booking #${existingBookingRecord.id} (status=${existingBookingRecord.status})`);
         }
 
         // ── STEP 1: Idempotency guard (book only) ────────────────────────────────
@@ -20961,10 +21023,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         // ── STEP 6: Apply modify / cancel+rebook in place ────────────────────────
         // Uses existingBookingRecord already fetched in STEP 0 (no second lookup).
-        // Handles three cases:
+        // Handles two cases:
         //   a) action=modify, booking found → update dates/room/amount in place
         //   b) action=book, cancelled booking found (cancel+rebook) → reactivate
-        //   c) action=modify, no booking found → fall through to create new
+        // NOTE: action=modify with no booking found is now BLOCKED in STEP 0 and
+        // never reaches here. The third case (fall through to create) is eliminated.
         if (existingBookingRecord) {
           const previousStatus = existingBookingRecord.status;
           // Preserve confirmed/checked-in status; reactivate cancelled → pending
@@ -20973,41 +21036,66 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           const modifyPrimaryResolved = resolvedRooms.find(r => r.roomId !== null);
           const modifyBedsBooked = modifyPrimaryResolved?.bedsBooked ?? null;
 
-          await db.update(bookings).set({
-            checkInDate: new Date(checkin),
-            checkOutDate: new Date(checkout),
-            totalAmount: amount?.amountAfterTax?.toString() || "0",
-            numberOfGuests: totalAdults + totalChildren,
-            ...(guestId ? { guestId } : {}),
-            ...(primaryAssignedRoomId ? { roomId: primaryAssignedRoomId } : {}),
-            ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
-            status: preservedStatus as any,
-            specialRequests: specialRequests || existingBookingRecord.specialRequests,
-            updatedAt: new Date(),
-          }).where(eq(bookings.id, existingBookingRecord.id));
+          // For checked-in bookings, always preserve the existing room assignment —
+          // the guest is physically in the room; OTA room-type changes should not
+          // evict them or clear the assignment. If a new room was resolved and the
+          // booking is NOT checked-in, allow the reassignment.
+          const isCheckedIn = existingBookingRecord.status === "checked-in";
+          const safeRoomId = isCheckedIn
+            ? existingBookingRecord.roomId   // preserve existing room
+            : (primaryAssignedRoomId ?? existingBookingRecord.roomId);  // use new or keep existing
 
-          // Rebuild room stays from scratch (date range changed)
-          await db.delete(bookingRoomStays)
-            .where(eq(bookingRoomStays.bookingId, existingBookingRecord.id));
-          if (resolvedRooms.length > 0) {
-            await db.insert(bookingRoomStays).values(
-              resolvedRooms.map(r => ({
-                bookingId: existingBookingRecord!.id,
-                roomId: r.roomId,
-                aiosellRoomCode: r.aiosellRoomCode,
-                roomType: r.roomType,
-                mealPlan: r.mealPlan,
-                status: r.status,
-                amount: r.amount.toFixed(2),
-                adults: r.adults,
-                children: r.children,
-              }))
-            );
-          }
+          // ── Atomic update: booking + room stays in one transaction ──────────────
+          // Prevents the "torn state" bug where stays are deleted but re-insert fails,
+          // leaving the booking with no room assignment and blocking OTA inventory.
+          await db.transaction(async (tx) => {
+            await tx.update(bookings).set({
+              checkInDate: new Date(checkin),
+              checkOutDate: new Date(checkout),
+              totalAmount: amount?.amountAfterTax?.toString() || "0",
+              numberOfGuests: totalAdults + totalChildren,
+              ...(guestId ? { guestId } : {}),
+              ...(safeRoomId !== undefined ? { roomId: safeRoomId } : {}),
+              ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
+              status: preservedStatus as any,
+              specialRequests: specialRequests || existingBookingRecord.specialRequests,
+              updatedAt: new Date(),
+            }).where(eq(bookings.id, existingBookingRecord.id));
+
+            // Rebuild room stays from scratch (date range changed).
+            // Done inside the same transaction so we never have a window where
+            // stays are deleted but not yet re-created.
+            await tx.delete(bookingRoomStays)
+              .where(eq(bookingRoomStays.bookingId, existingBookingRecord!.id));
+            if (resolvedRooms.length > 0) {
+              await tx.insert(bookingRoomStays).values(
+                resolvedRooms.map(r => ({
+                  bookingId: existingBookingRecord!.id,
+                  // For checked-in bookings, keep the existing room on the primary stay
+                  roomId: (isCheckedIn && r.roomId === primaryAssignedRoomId)
+                    ? safeRoomId
+                    : r.roomId,
+                  aiosellRoomCode: r.aiosellRoomCode,
+                  roomType: r.roomType,
+                  mealPlan: r.mealPlan,
+                  status: isCheckedIn ? "confirmed" : r.status,
+                  amount: r.amount.toFixed(2),
+                  adults: r.adults,
+                  children: r.children,
+                }))
+              );
+            }
+          });
+
           storage.invalidateBookingsCache();
 
           const isReactivation = previousStatus === "cancelled";
-          console.log(`[AIOSELL-WEBHOOK] ${isReactivation ? "Reactivated" : "Modified"} booking #${existingBookingRecord.id} (${previousStatus} → ${preservedStatus}): ${checkin}–${checkout}, ${resolvedRooms.length} stay(s), room=${primaryAssignedRoomId ?? "TBS"}`);
+          console.log(
+            `[AIOSELL-WEBHOOK] ${isReactivation ? "Reactivated" : "Modified"} booking #${existingBookingRecord.id} ` +
+            `(${previousStatus} → ${preservedStatus}): ${checkin}–${checkout}, ` +
+            `${resolvedRooms.length} stay(s), room=${safeRoomId ?? "TBS"}` +
+            (isCheckedIn ? " [room preserved — checked-in]" : "")
+          );
 
           await autoSyncInventoryForProperty(config.propertyId);
 
@@ -21042,8 +21130,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         }
 
         if (action === "modify") {
-          // Modify arrived but no existing booking found — fall through to create
-          console.warn(`[AIOSELL-WEBHOOK] Modify action but no existing booking found for bookingId=${bookingId} — creating new`);
+          // SAFETY NET: this path should be unreachable — STEP 0 now blocks any modify
+          // that doesn't find an existing booking and returns early. If somehow we reach
+          // here, abort immediately to prevent creating a duplicate booking.
+          console.error(`[AIOSELL-WEBHOOK] SAFETY NET TRIGGERED: modify reached booking-creation path — this should never happen. Aborting to prevent duplicate. bookingId=${bookingId}`);
+          return res.status(500).json({ success: false, message: "Internal error: modify without existing booking reached creation path" });
         }
 
         const totalAmount = amount?.amountAfterTax?.toString() || "0";
