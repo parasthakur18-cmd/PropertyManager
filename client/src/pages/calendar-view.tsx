@@ -266,7 +266,7 @@ export default function CalendarView() {
       const guest = (guests as any[]).find((g: any) => g.id === booking.guestId);
       const guestName = guest?.fullName || "Guest";
       // bedsBooked > 1: same guest occupies multiple consecutive bed slots
-      const bedsBooked = (booking as any).bedsBooked || 1;
+      const bedsBooked = (booking as any).bedsBooked || booking.numberOfGuests || 1;
       for (let i = 0; i < bedsBooked && bedCursor <= totalBeds; i++) {
         result.push({ bedNumber: bedCursor++, guestName, status: booking.status, booking });
       }
@@ -923,7 +923,11 @@ export default function CalendarView() {
                           const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
                           const displayName = isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds}` : guestName;
                           const handleClick = () => {
-                            setDormitoryPopup({ isOpen: true, room, bookings: isDorm ? allBookings : [booking], date: checkInDate });
+                            // If the booking already started (check-in ≤ today), use today as the
+                            // popup reference date so co-guests who arrived today are also shown.
+                            // If it's a future booking, use the actual check-in date.
+                            const popupDate = checkInDate <= today ? today : checkInDate;
+                            setDormitoryPopup({ isOpen: true, room, bookings: isDorm ? allBookings : [booking], date: popupDate });
                           };
                           return (
                             <div
