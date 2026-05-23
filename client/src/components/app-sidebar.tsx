@@ -249,13 +249,15 @@ export function AppSidebar() {
       { title: "Notifications", url: "/notifications", icon: Bell },
     ];
 
-    const bookingItems = hasAccess("bookings")
-      ? [
-          { title: "Bookings", url: "/bookings", icon: Calendar },
-          { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
-          ...(hasAccess("calendar") ? [{ title: "Room Calendar", url: "/calendar", icon: CalendarDays }] : []),
-        ]
-      : [];
+    const bookingItems = [
+      ...(hasAccess("bookings")
+        ? [
+            { title: "Bookings", url: "/bookings", icon: Calendar },
+            { title: "Active Bookings", url: "/active-bookings", icon: ClipboardCheck },
+          ]
+        : []),
+      ...(hasAccess("calendar") ? [{ title: "Room Calendar", url: "/calendar", icon: CalendarDays }] : []),
+    ];
 
     const roomItems = hasAccess("rooms")
       ? [
