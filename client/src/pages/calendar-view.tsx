@@ -32,6 +32,7 @@ import {
   Hotel,
   ArrowRightLeft,
   CheckCircle2,
+  BedDouble,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -214,6 +215,30 @@ export default function CalendarView() {
   const { data: guests = [] } = useQuery<any[]>({
     queryKey: ["/api/guests"],
   });
+
+  // ── Dorm bed layout: derive bed-to-guest mapping for the popup ────────────
+  const dormBedAssignments = useMemo(() => {
+    if (!dormitoryPopup.room || dormitoryPopup.room.roomCategory !== "dormitory") return [];
+    const totalBeds = dormitoryPopup.room.totalBeds || 0;
+    if (totalBeds === 0) return [];
+    const result: Array<{ bedNumber: number; guestName: string; status: string; booking: any | null }> = [];
+    let bedCursor = 1;
+    const activeBookings = dormitoryPopup.bookings.filter(
+      b => b.status !== "cancelled" && b.status !== "checked-out"
+    );
+    for (const booking of activeBookings) {
+      const guest = (guests as any[]).find((g: any) => g.id === booking.guestId);
+      const guestName = guest?.fullName || "Guest";
+      const bedsBooked = (booking as any).bedsBooked || 1;
+      for (let i = 0; i < bedsBooked && bedCursor <= totalBeds; i++) {
+        result.push({ bedNumber: bedCursor++, guestName, status: booking.status, booking });
+      }
+    }
+    while (bedCursor <= totalBeds) {
+      result.push({ bedNumber: bedCursor++, guestName: "", status: "vacant", booking: null });
+    }
+    return result;
+  }, [dormitoryPopup, guests]);
 
   const createBookingMutation = useMutation({
     mutationFn: async () => {
@@ -1042,6 +1067,91 @@ export default function CalendarView() {
           
           <ScrollArea className="max-h-[50vh] pr-4">
             <div className="space-y-4">
+
+              {/* ── Dorm Bed Layout ────────────────────────────────────────── */}
+              {dormitoryPopup.room?.roomCategory === "dormitory" && dormBedAssignments.length > 0 && (
+                <div className="border rounded-lg p-3 bg-muted/30">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BedDouble className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Bed Layout — {dormitoryPopup.room.totalBeds} Beds
+                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">
+                      {dormBedAssignments.filter(b => b.booking !== null).length} occupied ·{" "}
+                      {dormBedAssignments.filter(b => b.booking === null).length} vacant
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {dormBedAssignments.map(({ bedNumber, guestName, status, booking: bedBooking }) => {
+                      const isOccupied = bedBooking !== null;
+                      const isCheckedIn = status === "checked-in";
+                      return (
+                        <div
+                          key={bedNumber}
+                          className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
+                            isOccupied
+                              ? isCheckedIn
+                                ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+                                : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
+                              : "bg-background border-dashed border-muted-foreground/30"
+                          }`}
+                          data-testid={`bed-card-${bedNumber}`}
+                        >
+                          {/* Bed number badge */}
+                          <div className={`flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                            isOccupied
+                              ? isCheckedIn
+                                ? "bg-green-600 text-white"
+                                : "bg-blue-600 text-white"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            {bedNumber}
+                          </div>
+                          {/* Guest info */}
+                          <div className="min-w-0 flex-1">
+                            {isOccupied ? (
+                              <>
+                                <p className={`text-xs font-semibold truncate leading-tight ${
+                                  isCheckedIn
+                                    ? "text-green-800 dark:text-green-200"
+                                    : "text-blue-800 dark:text-blue-200"
+                                }`}>
+                                  {guestName}
+                                </p>
+                                <p className={`text-[10px] capitalize mt-0.5 ${
+                                  isCheckedIn
+                                    ? "text-green-600 dark:text-green-400"
+                                    : "text-blue-500 dark:text-blue-400"
+                                }`}>
+                                  {status}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="text-xs text-muted-foreground italic">Vacant</p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Legend */}
+                  <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted-foreground/10">
+                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full bg-green-600 inline-block" />
+                      Checked-in
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full bg-blue-600 inline-block" />
+                      Confirmed / Pending
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full bg-muted inline-block border" />
+                      Vacant
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {dormitoryPopup.bookings.map((booking, index) => {
                 const guest = guests.find(g => g.id === booking.guestId);
                 const guestName = guest?.fullName || "Guest";
