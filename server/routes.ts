@@ -4780,14 +4780,30 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         const allBookings = await storage.getAllBookings();
         const roomId = currentBooking.roomId;
         const currentPropertyId = currentBooking.propertyId;
+
+        // For GROUP bookings: use the roomIds array as the authoritative list of rooms.
+        // The roomId (single field) may be stale if the booking was edited after creation
+        // (e.g. rooms changed from 1003/1004 → 1001/1002 but roomId wasn't updated),
+        // which would cause a false occupancy conflict with whoever is in the old room.
+        const bookingRoomIds: number[] = (
+          currentBooking.isGroupBooking &&
+          Array.isArray(currentBooking.roomIds) &&
+          currentBooking.roomIds.length > 0
+        )
+          ? currentBooking.roomIds
+          : (roomId ? [roomId] : []);
+
         const otherCheckedInBookings = allBookings.filter(b => {
           if (b.id === bookingId || b.status !== "checked-in") return false;
           // Must belong to the SAME property
           if (b.propertyId !== currentPropertyId) return false;
-          // Match on roomId (single booking) OR roomIds array (group booking)
-          const matchesSingle = b.roomId === roomId;
-          const matchesGroup = Array.isArray(b.roomIds) && b.roomIds.includes(roomId!);
-          return matchesSingle || matchesGroup;
+          // Build the set of rooms used by the other booking
+          const otherRooms = new Set<number>([
+            ...(b.roomId ? [b.roomId] : []),
+            ...(Array.isArray(b.roomIds) ? b.roomIds : []),
+          ]);
+          // Conflict if ANY of the current booking's rooms overlap with the other booking
+          return bookingRoomIds.some(rid => otherRooms.has(rid));
         });
 
         if (otherCheckedInBookings.length > 0) {
