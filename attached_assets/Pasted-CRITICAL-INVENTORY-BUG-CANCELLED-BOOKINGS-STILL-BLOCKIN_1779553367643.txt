@@ -1,0 +1,191 @@
+CRITICAL INVENTORY BUG — CANCELLED BOOKINGS STILL BLOCKING AVAILABILITY
+
+We found a major production inventory issue.
+
+====================================================
+CURRENT BUG
+====================================================
+
+Room 1007:
+Booking:
+24–26 May
+
+Status:
+CANCELLED
+
+Problem:
+Even after cancellation:
+- room still appears occupied in availability logic
+- new booking creation says "already booked"
+- inventory remains blocked
+- calendar still treats room as occupied
+
+This issue is recurring frequently.
+
+====================================================
+EXPECTED BEHAVIOR
+====================================================
+
+Cancelled bookings must NEVER:
+- block room inventory
+- block bed inventory
+- appear in overlap calculations
+- reduce OTA inventory
+- prevent new bookings
+
+Cancelled bookings are historical records only.
+
+====================================================
+ROOT CAUSE AUDIT REQUIRED
+====================================================
+
+Audit ALL availability queries across the system.
+
+Check:
+- booking creation overlap checks
+- room calendar overlap checks
+- OTA inventory calculations
+- dorm bed calculations
+- room assignment logic
+- date modification logic
+- availability APIs
+- room search logic
+
+Find ALL places where cancelled bookings are still included.
+
+====================================================
+MOST IMPORTANT CHECK
+====================================================
+
+Every overlap query MUST exclude:
+
+- cancelled
+- checked-out
+- no_show
+
+Example required logic:
+
+status NOT IN (
+  'cancelled',
+  'checked-out',
+  'no_show'
+)
+
+====================================================
+VERIFY ALL STATUS VALUES
+====================================================
+
+Audit actual DB status values.
+
+Possible mismatch:
+- cancelled
+- canceled
+- Cancelled
+- CANCELLED
+
+Ensure:
+single normalized status enum everywhere.
+
+====================================================
+CHECK FOR DUPLICATED AVAILABILITY LOGIC
+====================================================
+
+Very important.
+
+Likely issue:
+some queries filter cancelled bookings correctly,
+others do not.
+
+Need centralized inventory logic.
+
+====================================================
+REQUIRED FIX
+====================================================
+
+Create centralized availability engine:
+
+server/inventory.ts
+
+Single source of truth for:
+- room overlap
+- dorm overlap
+- OTA inventory
+- calendar occupancy
+- room availability
+- booking creation checks
+
+ALL systems must use same logic.
+
+====================================================
+CORRECT OVERLAP RULE
+====================================================
+
+DO NOT change this:
+
+checkOutDate > requestedCheckIn
+AND
+checkInDate < requestedCheckOut
+
+This logic is already correct.
+
+ONLY fix status filtering.
+
+====================================================
+REQUIRED ACTIVE STATUS RULE
+====================================================
+
+ONLY these statuses should block inventory:
+
+- confirmed
+- checked-in
+- pending
+- upcoming
+- tba
+
+These should NOT block:
+- cancelled
+- checked-out
+- no_show
+
+====================================================
+TEST CASES REQUIRED
+====================================================
+
+1. Cancel booking
+→ room becomes available immediately
+
+2. OTA cancellation
+→ inventory restored
+
+3. Dorm cancellation
+→ beds released
+
+4. Checked-out booking
+→ no overlap
+
+5. No-show booking
+→ no overlap
+
+6. Same-day turnover still allowed
+
+7. Calendar reflects cancellation immediately
+
+8. OTA inventory updates after cancellation
+
+====================================================
+CRITICAL REQUIREMENT
+====================================================
+
+Fix WITHOUT breaking:
+- OTA sync
+- same-day turnover
+- dorm inventory
+- checked-in guests
+- room modifications
+- booking edits
+
+====================================================
+FINAL GOAL
+====================================================
+
+Cancelled bookings must NEVER block inventory anywhere in the PMS.

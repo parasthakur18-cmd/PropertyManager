@@ -3135,12 +3135,13 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const checkInStr  = toDateStrBed(checkIn  as string);
       const checkOutStr = toDateStrBed(checkOut as string);
       
-      // Get ALL non-cancelled bookings, then filter in JavaScript
+      // Get ALL active bookings (exclude cancelled, checked-out, no_show), then filter in JavaScript.
+      // checked-out and no_show must also be excluded — they release beds back to inventory.
       const { bookings: bookingsTable } = await import("@shared/schema");
       const allBookings = await db
         .select()
         .from(bookingsTable)
-        .where(not(eq(bookingsTable.status, "cancelled")));
+        .where(not(inArray(bookingsTable.status, ["cancelled", "checked-out", "no_show"])));
       
       // Filter for overlapping bookings in JavaScript
       const overlappingBookings = allBookings.filter(booking => {
@@ -10728,10 +10729,11 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         : await db.select().from(rooms);
       
       // Get all active bookings and filter in JavaScript (historical working solution)
+      // Exclude cancelled, checked-out, and no_show — all three release the room back to inventory.
       const allBookings = await db
         .select()
         .from(bookings)
-        .where(not(eq(bookings.status, "cancelled")));
+        .where(not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])));
       
       // Use date-string comparison to avoid UTC-vs-local timezone skew
       const toDateStrCal = (val: string | Date): string =>
