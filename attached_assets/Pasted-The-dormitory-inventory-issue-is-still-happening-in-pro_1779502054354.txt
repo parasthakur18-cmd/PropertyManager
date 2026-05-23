@@ -1,0 +1,141 @@
+The dormitory inventory issue is still happening in production and needs a proper defensive fix.
+
+Problem:
+Sometimes when a new OTA/Aiosell dorm booking arrives:
+
+* the bed gets booked correctly,
+  BUT
+* inventory later reopens automatically,
+  creating extra sellable beds and possible double booking.
+
+This same issue already happened earlier in Woodpecker dorms.
+
+Even if the sync logic looks correct in code review, production race conditions or stale sync pushes are still causing beds to reopen.
+
+Required Fixes:
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+1. Prevent Race Conditions During OTA Booking Creation
+   ━━━━━━━━━━━━━━━━━━━━━━
+
+When OTA webhook creates a booking:
+
+* inventory sync must NOT run before:
+
+  * booking insert
+  * stay rows insert
+  * bed allocation
+    are fully committed.
+
+Add:
+
+* DB transaction protection
+* transaction commit sync trigger
+* or queue/locking mechanism.
+
+Goal:
+Prevent availability calculation using incomplete booking data.
+
+━━━━━━━━━━━━━━━━━━━━━━
+2. Add Post-Booking Inventory Verification
+━━━━━━━━━━━━━━━━━━━━━━
+
+Immediately after booking creation:
+
+* recalculate actual occupied beds directly from DB.
+
+Compare:
+
+* total beds
+* occupied beds
+* sellable beds
+* pushed OTA inventory
+
+If mismatch exists:
+
+* auto-correct inventory before syncing to Aiosell.
+
+━━━━━━━━━━━━━━━━━━━━━━
+3. Add Sync Delay / Debounce Protection
+━━━━━━━━━━━━━━━━━━━━━━
+
+When OTA booking webhook arrives:
+
+* delay autoSyncInventoryForProperty slightly
+  OR
+* only run AFTER successful transaction commit.
+
+Possible issue:
+Inventory sync is firing before all booking rows/stay rows exist.
+
+━━━━━━━━━━━━━━━━━━━━━━
+4. Add Detailed Dorm Inventory Logs
+━━━━━━━━━━━━━━━━━━━━━━
+
+Add logs for every dorm inventory sync:
+
+[DORM_SYNC]
+Room ID:
+Room Name:
+Date:
+Total Beds:
+Occupied Beds:
+Available Beds:
+Booking ID:
+Webhook Timestamp:
+Availability Sent To OTA:
+
+This is required to identify exactly where the inventory reopens.
+
+━━━━━━━━━━━━━━━━━━━━━━
+5. Prevent Stale Inventory Overwrite
+━━━━━━━━━━━━━━━━━━━━━━
+
+Before pushing availability to Aiosell:
+
+* fetch fresh occupancy from DB again.
+
+Never allow:
+availableBeds > totalBeds - occupiedBeds
+
+This protection is mandatory.
+
+━━━━━━━━━━━━━━━━━━━━━━
+6. Dorm Inventory Must Always Use Bed Count
+━━━━━━━━━━━━━━━━━━━━━━
+
+Availability must calculate using:
+SUM(bedsBooked)
+
+NOT:
+total booking rows.
+
+Correct Example:
+7-bed dorm
+
+Booking A → 3 beds
+Booking B → 2 beds
+
+Occupied = 5
+Available = 2
+
+━━━━━━━━━━━━━━━━━━━━━━
+7. UI Logic Fixes Already Working
+━━━━━━━━━━━━━━━━━━━━━━
+
+Keep current UI fixes:
+
+* date-based filtering
+* future guests hidden correctly
+* multi-bed rendering
+* selected-date occupancy
+
+These are now correct and should remain unchanged.
+
+Only continue focusing on:
+
+* dorm inventory reopening protection
+* OTA sync safety
+* race condition prevention
+* stale inventory overwrite prevention

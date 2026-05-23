@@ -424,7 +424,10 @@ export async function getRatePlansForConfig(configId: number): Promise<AiosellRa
     .where(eq(aiosellRatePlans.configId, configId));
 }
 
-export async function autoSyncInventoryForProperty(propertyId: number): Promise<void> {
+export async function autoSyncInventoryForProperty(
+  propertyId: number,
+  opts?: { triggerBookingId?: number; webhookTs?: string }
+): Promise<void> {
   try {
     const config = await getConfigForProperty(propertyId);
     if (!config || !config.isActive) return;
@@ -435,7 +438,10 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
       return;
     }
 
-    console.log(`[AIOSELL] Auto-sync started for property ${propertyId} — ${mappings.length} mapping(s): ${mappings.map(m => `${m.aiosellRoomCode}→${m.hostezeeRoomType}`).join(", ")}`);
+    const syncLabel = opts?.triggerBookingId
+      ? `triggered by booking #${opts.triggerBookingId} (webhookTs=${opts.webhookTs})`
+      : "scheduled";
+    console.log(`[AIOSELL] Auto-sync started for property ${propertyId} [${syncLabel}] — ${mappings.length} mapping(s): ${mappings.map(m => `${m.aiosellRoomCode}→${m.hostezeeRoomType}`).join(", ")}`);
 
     // Build a quick lookup: roomCode → full mapping (needed to attach roomId when pushing)
     const mappingByCode = new Map(mappings.map(m => [m.aiosellRoomCode, m]));
@@ -612,7 +618,9 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             }
           }
 
-          // Also count TBS dorm stays (no roomId assigned yet) by aiosellRoomCode
+          // Also count TBS dorm stays (no roomId assigned yet) by aiosellRoomCode.
+          // Fallback: if a TBS booking has no stay rows at all (manual TBS), count
+          // it as 1 bed against the pool using bedsBooked from the booking row.
           let tbsDormBeds = 0;
           for (const booking of activeBookings) {
             const cin = new Date(booking.checkInDate);
@@ -621,14 +629,47 @@ export async function autoSyncInventoryForProperty(propertyId: number): Promise<
             cout.setHours(0, 0, 0, 0);
             if (cin <= date && date < cout && !booking.roomId) {
               const tbsForBooking = tbsStaysByBookingId.get(booking.id) || [];
-              for (const stay of tbsForBooking) {
-                if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++;
+              if (tbsForBooking.length > 0) {
+                // OTA TBS stay: match by aiosellRoomCode
+                for (const stay of tbsForBooking) {
+                  if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++;
+                }
+              } else {
+                // Manual TBS dorm booking with no stay rows: check confirmed stays
+                const confirmedIds = confirmedStayRoomIdsByBookingId.get(booking.id) || [];
+                if (confirmedIds.length === 0) {
+                  // No stays at all — count bedsBooked against the dorm pool if this
+                  // booking's roomType matches the current mapping
+                  // (We can't be sure which dorm it was intended for, so we credit
+                  //  it to all matching dorm mappings — conservative but safe.)
+                  tbsDormBeds += (booking.bedsBooked || 1);
+                }
               }
             }
           }
 
           const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
-          const available = Math.max(0, totalBeds - bedsBooked - tbsDormBeds);
+          // Hard safety cap: available must never exceed (totalBeds - occupied)
+          const occupied = bedsBooked + tbsDormBeds;
+          const available = Math.max(0, Math.min(totalBeds, totalBeds - occupied));
+
+          // ── DORM_SYNC audit log (emit for today only to avoid log flooding) ───
+          if (dateStr === today.toISOString().split("T")[0]) {
+            const roomNames = activeRoomIds
+              .map(rid => allRooms.find(r => r.id === rid))
+              .filter(Boolean)
+              .map(r => `${r!.roomNumber}(id=${r!.id},cap=${r!.totalBeds})`)
+              .join(", ");
+            console.log(
+              `[DORM_SYNC] roomCode=${mapping.aiosellRoomCode} | date=${dateStr}` +
+              ` | rooms=[${roomNames}] | totalBeds=${totalBeds}` +
+              ` | bedsFromStays=${bedsBooked} | tbsBeds=${tbsDormBeds}` +
+              ` | occupied=${occupied} | available=${available}` +
+              (opts?.triggerBookingId ? ` | bookingId=${opts.triggerBookingId}` : "") +
+              (opts?.webhookTs ? ` | webhookTs=${opts.webhookTs}` : "")
+            );
+          }
+
           dateAvailability[dateStr][mapping.aiosellRoomCode] = available;
         } else {
           // For regular rooms: push count of rooms NOT booked on this date

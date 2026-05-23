@@ -21080,39 +21080,48 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           }
         }
 
-        const [newBooking] = await db.insert(bookings).values({
-          propertyId: config.propertyId,
-          roomId: finalRoomId,
-          guestId: guestId || null,
-          checkInDate: new Date(checkin),
-          checkOutDate: new Date(checkout),
-          numberOfGuests: totalAdults + totalChildren,
-          totalAmount,
-          status: "pending",
-          source: `aiosell-${channel}`,
-          externalBookingId: bookingId,
-          externalSource: `aiosell-${channel}`,
-          ...(primaryBedsBooked !== null ? { bedsBooked: primaryBedsBooked } : {}),
-        }).returning();
-        storage.invalidateBookingsCache();
+        // ── Atomic insert: booking row + all stay rows in one transaction ────────
+        // autoSyncInventoryForProperty MUST only run after BOTH are committed.
+        // Without this, a sync triggered mid-insert (by a parallel request or a
+        // second webhook) would see the booking but no stay rows → miscounts dorm
+        // beds → pushes inflated availability back to AioSell ("reopening" bug).
+        const webhookTs = new Date().toISOString();
+        const newBooking = await db.transaction(async (tx) => {
+          const [bk] = await tx.insert(bookings).values({
+            propertyId: config.propertyId,
+            roomId: finalRoomId,
+            guestId: guestId || null,
+            checkInDate: new Date(checkin),
+            checkOutDate: new Date(checkout),
+            numberOfGuests: totalAdults + totalChildren,
+            totalAmount,
+            status: "pending",
+            source: `aiosell-${channel}`,
+            externalBookingId: bookingId,
+            externalSource: `aiosell-${channel}`,
+            ...(primaryBedsBooked !== null ? { bedsBooked: primaryBedsBooked } : {}),
+          }).returning();
 
-        // Insert one room_stay per room (the PMS industry-standard multi-room structure)
-        if (resolvedRooms.length > 0) {
-          await db.insert(bookingRoomStays).values(
-            resolvedRooms.map(r => ({
-              bookingId: newBooking.id,
-              roomId: r.roomId,
-              aiosellRoomCode: r.aiosellRoomCode,
-              roomType: r.roomType,
-              mealPlan: r.mealPlan,
-              status: r.status,
-              amount: r.amount.toFixed(2),
-              adults: r.adults,
-              children: r.children,
-            }))
-          );
-          console.log(`[AIOSELL-WEBHOOK] Created ${resolvedRooms.length} room stay(s) for booking ${newBooking.id}`);
-        }
+          // Insert one room_stay per room inside the same transaction
+          if (resolvedRooms.length > 0) {
+            await tx.insert(bookingRoomStays).values(
+              resolvedRooms.map(r => ({
+                bookingId: bk.id,
+                roomId: r.roomId,
+                aiosellRoomCode: r.aiosellRoomCode,
+                roomType: r.roomType,
+                mealPlan: r.mealPlan,
+                status: r.status,
+                amount: r.amount.toFixed(2),
+                adults: r.adults,
+                children: r.children,
+              }))
+            );
+            console.log(`[AIOSELL-WEBHOOK] Transaction: inserted booking ${bk.id} + ${resolvedRooms.length} stay(s) atomically`);
+          }
+          return bk;
+        });
+        storage.invalidateBookingsCache();
 
         // Do NOT mark room as occupied here — room occupation happens only on check-in.
         // Inventory availability is calculated from bookings (not room.status) during auto-sync.
@@ -21134,7 +21143,10 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           console.log(`[AIOSELL-WEBHOOK] Created booking ${newBooking.id} from ${channel} (status: pending — advance payment required)`);
         }
 
-        await autoSyncInventoryForProperty(config.propertyId);
+        // Sync inventory AFTER transaction is fully committed.
+        // Pass webhook metadata for dorm audit logging.
+        console.log(`[AIOSELL-WEBHOOK] Starting inventory sync for property ${config.propertyId} after booking ${newBooking.id} (webhookTs=${webhookTs})`);
+        await autoSyncInventoryForProperty(config.propertyId, { triggerBookingId: newBooking.id, webhookTs });
 
         const notifGuestName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
         const property = await storage.getProperty(config.propertyId);
