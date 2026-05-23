@@ -237,45 +237,68 @@ export default function CalendarView() {
   });
 
   // ── Dorm bed layout: derive bed-to-guest mapping for the popup ────────────
+  // ── Stay-Status Engine ────────────────────────────────────────────────────
+  // Single source of truth: derives a display-only stay state from dates + DB status.
+  const getDormStayStatus = useCallback((booking: any): "checkoutToday" | "inHouse" | "arrivingToday" | "upcoming" | "completed" => {
+    if (booking.status === "checked-out" || booking.status === "cancelled") return "completed";
+    const refDate = dormitoryPopup.date ? startOfDay(new Date(dormitoryPopup.date)) : startOfDay(new Date());
+    const checkIn  = startOfDay(new Date(booking.checkInDate));
+    const checkOut = startOfDay(new Date(booking.checkOutDate));
+    if (checkOut.getTime() === refDate.getTime()) return "checkoutToday";  // leaving today, bed still occupied
+    if (checkIn.getTime()  === refDate.getTime() && booking.status !== "checked-in") return "arrivingToday";
+    if (checkIn <= refDate && refDate < checkOut) return "inHouse";
+    if (checkIn > refDate) return "upcoming";
+    return "completed";
+  }, [dormitoryPopup.date]);
+
+  const STAY_STATUS_CONFIG = {
+    checkoutToday:  { label: "Checkout Today", color: "red",    priority: 0 },
+    inHouse:        { label: "In House",        color: "green",  priority: 1 },
+    arrivingToday:  { label: "Arriving Today",  color: "yellow", priority: 2 },
+    upcoming:       { label: "Upcoming",        color: "blue",   priority: 3 },
+    completed:      { label: "Completed",       color: "gray",   priority: 4 },
+  } as const;
+
   const dormBedAssignments = useMemo(() => {
     if (!dormitoryPopup.room || dormitoryPopup.room.roomCategory !== "dormitory") return [];
     const totalBeds = dormitoryPopup.room.totalBeds || 0;
     if (totalBeds === 0) return [];
-    const result: Array<{ bedNumber: number; guestName: string; status: string; booking: any | null }> = [];
+    const result: Array<{ bedNumber: number; guestName: string; stayStatus: keyof typeof STAY_STATUS_CONFIG; booking: any | null }> = [];
     let bedCursor = 1;
 
-    // Use the popup's date (= the clicked booking's check-in date) as the
-    // reference point so we only show guests who are actually staying on that
-    // date.  Without this, future bookings (e.g. Ekta check-in May 28) would
-    // appear in today's bed layout.
-    const selectedDate = dormitoryPopup.date ? new Date(dormitoryPopup.date) : null;
-    if (selectedDate) selectedDate.setHours(0, 0, 0, 0);
+    const refDate = dormitoryPopup.date ? startOfDay(new Date(dormitoryPopup.date)) : startOfDay(new Date());
 
-    const activeBookings = dormitoryPopup.bookings.filter(b => {
-      if (b.status === "cancelled" || b.status === "checked-out") return false;
-      if (!selectedDate) return true;
-      const checkIn = new Date(b.checkInDate);
-      checkIn.setHours(0, 0, 0, 0);
-      const checkOut = new Date(b.checkOutDate);
-      checkOut.setHours(0, 0, 0, 0);
-      // Only show bookings active on the selected date: checkIn <= date < checkOut
-      return checkIn <= selectedDate && selectedDate < checkOut;
-    });
+    // Include all non-cancelled/non-completed bookings that overlap the reference date,
+    // INCLUDING checkout-today (bed is still occupied until they physically leave).
+    const activeBookings = dormitoryPopup.bookings
+      .filter(b => {
+        if (b.status === "cancelled" || b.status === "checked-out") return false;
+        const checkIn  = startOfDay(new Date(b.checkInDate));
+        const checkOut = startOfDay(new Date(b.checkOutDate));
+        // Active on refDate: checkIn <= refDate <= checkOut
+        return checkIn <= refDate && refDate <= checkOut;
+      })
+      .sort((a, b) => {
+        // Priority order: checkoutToday → inHouse → arrivingToday → upcoming
+        const pa = STAY_STATUS_CONFIG[getDormStayStatus(a)].priority;
+        const pb = STAY_STATUS_CONFIG[getDormStayStatus(b)].priority;
+        return pa - pb;
+      });
 
     for (const booking of activeBookings) {
       const guest = (guests as any[]).find((g: any) => g.id === booking.guestId);
       const guestName = guest?.fullName || "Guest";
-      // bedsBooked > 1: same guest occupies multiple consecutive bed slots
       const bedsBooked = (booking as any).bedsBooked || booking.numberOfGuests || 1;
+      const stayStatus = getDormStayStatus(booking);
       for (let i = 0; i < bedsBooked && bedCursor <= totalBeds; i++) {
-        result.push({ bedNumber: bedCursor++, guestName, status: booking.status, booking });
+        result.push({ bedNumber: bedCursor++, guestName, stayStatus, booking });
       }
     }
     while (bedCursor <= totalBeds) {
-      result.push({ bedNumber: bedCursor++, guestName: "", status: "vacant", booking: null });
+      result.push({ bedNumber: bedCursor++, guestName: "", stayStatus: "completed", booking: null });
     }
     return result;
-  }, [dormitoryPopup, guests]);
+  }, [dormitoryPopup, guests, getDormStayStatus]);
 
   const createBookingMutation = useMutation({
     mutationFn: async () => {
@@ -1123,48 +1146,49 @@ export default function CalendarView() {
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    {dormBedAssignments.map(({ bedNumber, guestName, status, booking: bedBooking }) => {
-                      const isOccupied = bedBooking !== null;
-                      const isCheckedIn = status === "checked-in";
+                    {dormBedAssignments.map(({ bedNumber, guestName, stayStatus, booking: bedBooking }) => {
+                      const isVacant = bedBooking === null;
+                      const tileStyle = isVacant ? {
+                        tile: "bg-background border-dashed border-muted-foreground/30",
+                        badge: "bg-muted text-muted-foreground",
+                        name: "text-muted-foreground",
+                        label: "text-muted-foreground",
+                      } : stayStatus === "checkoutToday" ? {
+                        tile: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
+                        badge: "bg-red-600 text-white",
+                        name: "text-red-800 dark:text-red-200",
+                        label: "text-red-500 dark:text-red-400",
+                      } : stayStatus === "inHouse" ? {
+                        tile: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
+                        badge: "bg-green-600 text-white",
+                        name: "text-green-800 dark:text-green-200",
+                        label: "text-green-600 dark:text-green-400",
+                      } : stayStatus === "arrivingToday" ? {
+                        tile: "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700",
+                        badge: "bg-yellow-500 text-white",
+                        name: "text-yellow-800 dark:text-yellow-200",
+                        label: "text-yellow-600 dark:text-yellow-400",
+                      } : {
+                        tile: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800",
+                        badge: "bg-blue-600 text-white",
+                        name: "text-blue-800 dark:text-blue-200",
+                        label: "text-blue-500 dark:text-blue-400",
+                      };
                       return (
                         <div
                           key={bedNumber}
-                          className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${
-                            isOccupied
-                              ? isCheckedIn
-                                ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                                : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
-                              : "bg-background border-dashed border-muted-foreground/30"
-                          }`}
+                          className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${tileStyle.tile}`}
                           data-testid={`bed-card-${bedNumber}`}
                         >
-                          {/* Bed number badge */}
-                          <div className={`flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                            isOccupied
-                              ? isCheckedIn
-                                ? "bg-green-600 text-white"
-                                : "bg-blue-600 text-white"
-                              : "bg-muted text-muted-foreground"
-                          }`}>
+                          <div className={`flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${tileStyle.badge}`}>
                             {bedNumber}
                           </div>
-                          {/* Guest info */}
                           <div className="min-w-0 flex-1">
-                            {isOccupied ? (
+                            {!isVacant ? (
                               <>
-                                <p className={`text-xs font-semibold truncate leading-tight ${
-                                  isCheckedIn
-                                    ? "text-green-800 dark:text-green-200"
-                                    : "text-blue-800 dark:text-blue-200"
-                                }`}>
-                                  {guestName}
-                                </p>
-                                <p className={`text-[10px] capitalize mt-0.5 ${
-                                  isCheckedIn
-                                    ? "text-green-600 dark:text-green-400"
-                                    : "text-blue-500 dark:text-blue-400"
-                                }`}>
-                                  {status}
+                                <p className={`text-xs font-semibold truncate leading-tight ${tileStyle.name}`}>{guestName}</p>
+                                <p className={`text-[10px] mt-0.5 ${tileStyle.label}`}>
+                                  {STAY_STATUS_CONFIG[stayStatus].label}
                                 </p>
                               </>
                             ) : (
@@ -1176,196 +1200,198 @@ export default function CalendarView() {
                     })}
                   </div>
                   {/* Legend */}
-                  <div className="flex items-center gap-4 mt-3 pt-2 border-t border-muted-foreground/10">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-2 border-t border-muted-foreground/10">
                     <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-green-600 inline-block" />
-                      Checked-in
+                      <span className="h-2 w-2 rounded-full bg-green-600 inline-block" />In House
                     </span>
                     <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-blue-600 inline-block" />
-                      Confirmed / Pending
+                      <span className="h-2 w-2 rounded-full bg-yellow-500 inline-block" />Arriving Today
                     </span>
                     <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-muted inline-block border" />
-                      Vacant
+                      <span className="h-2 w-2 rounded-full bg-red-600 inline-block" />Checkout Today
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full bg-blue-600 inline-block" />Upcoming
+                    </span>
+                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full bg-muted inline-block border" />Vacant
                     </span>
                   </div>
                 </div>
               )}
 
-              {dormitoryPopup.bookings.map((booking, index) => {
-                const guest = guests.find(g => g.id === booking.guestId);
-                const guestName = guest?.fullName || "Guest";
-                const guestPhone = guest?.phone || "-";
-                const bedsBooked = booking.bedsBooked || 1;
-                const statusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
-                const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
-                
+              {(() => {
                 const sourceLabels: Record<string, string> = {
-                  direct: "Direct",
-                  "walk-in": "Walk-in",
-                  airbnb: "Airbnb",
-                  booking: "Booking.com",
-                  goibibo: "Goibibo",
-                  makemytrip: "MakeMyTrip",
-                  oyo: "OYO",
-                  agoda: "Agoda",
-                  other: "Other"
+                  direct: "Direct", "walk-in": "Walk-in", airbnb: "Airbnb",
+                  booking: "Booking.com", goibibo: "Goibibo", makemytrip: "MakeMyTrip",
+                  oyo: "OYO", agoda: "Agoda", other: "Other",
                 };
-                
-                return (
-                  <div 
-                    key={booking.id} 
-                    className="border rounded-lg p-4 space-y-3 hover:bg-muted/50 transition-colors"
-                    data-testid={`dormitory-booking-${booking.id}`}
-                  >
-                    {/* Header with guest name and status */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-semibold text-base">{guestName}</h4>
-                        <p className="text-sm text-muted-foreground">{guestPhone}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge 
-                          variant="outline"
-                          className="text-xs"
-                          style={{ background: statusStyle.gradient, color: statusStyle.text }}
-                        >
-                          {booking.status}
-                        </Badge>
-                        {isPaid ? (
-                          <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 text-xs">
-                            Paid
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100 text-xs">
-                            Unpaid
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    {/* Booking details grid */}
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Booking ID:</span>
-                        <span className="ml-2 font-medium">#{booking.id}</span>
-                      </div>
-                      {dormitoryPopup.room?.roomCategory === "dormitory" ? (
-                        <div className="flex items-center gap-1">
-                          <span className="text-muted-foreground">Beds Booked:</span>
-                          <button
-                            className="ml-1 h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
-                            disabled={bedsBooked <= 1 || updateBedsMutation.isPending}
-                            onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked - 1 })}
-                            data-testid={`btn-beds-minus-${booking.id}`}
-                          >−</button>
-                          <span className="font-bold text-sm min-w-[1.25rem] text-center">{bedsBooked}</span>
-                          <button
-                            className="h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
-                            disabled={bedsBooked >= (dormitoryPopup.room?.totalBeds || 99) || updateBedsMutation.isPending}
-                            onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked + 1 })}
-                            data-testid={`btn-beds-plus-${booking.id}`}
-                          >+</button>
-                        </div>
-                      ) : (
+
+                const sections: Array<{
+                  key: keyof typeof STAY_STATUS_CONFIG;
+                  headerClass: string;
+                  dotClass: string;
+                }> = [
+                  { key: "checkoutToday",  headerClass: "text-red-700 dark:text-red-400",    dotClass: "bg-red-500" },
+                  { key: "inHouse",        headerClass: "text-green-700 dark:text-green-400", dotClass: "bg-green-500" },
+                  { key: "arrivingToday",  headerClass: "text-yellow-700 dark:text-yellow-400", dotClass: "bg-yellow-500" },
+                  { key: "upcoming",       headerClass: "text-blue-700 dark:text-blue-400",   dotClass: "bg-blue-500" },
+                ];
+
+                const grouped = Object.fromEntries(
+                  sections.map(s => [s.key, dormitoryPopup.bookings.filter(b => getDormStayStatus(b) === s.key)])
+                );
+
+                const renderBookingCard = (booking: any) => {
+                  const guest = guests.find(g => g.id === booking.guestId);
+                  const guestName = guest?.fullName || "Guest";
+                  const guestPhone = guest?.phone || "-";
+                  const bedsBooked = booking.bedsBooked || booking.numberOfGuests || 1;
+                  const stayStatus = getDormStayStatus(booking);
+                  const stayConfig = STAY_STATUS_CONFIG[stayStatus];
+                  const isPaid = booking.advancePaymentStatus === "paid" || Number(booking.advanceAmount || 0) >= Number(booking.totalAmount || 0);
+
+                  const stayBadgeClass =
+                    stayStatus === "checkoutToday"  ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-200" :
+                    stayStatus === "inHouse"         ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 border-green-200" :
+                    stayStatus === "arrivingToday"   ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 border-yellow-200" :
+                                                       "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200";
+
+                  return (
+                    <div
+                      key={booking.id}
+                      className="border rounded-lg p-4 space-y-3 hover:bg-muted/50 transition-colors"
+                      data-testid={`dormitory-booking-${booking.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <span className="text-muted-foreground">Guests:</span>
-                          <span className="ml-2 font-medium">{booking.numberOfGuests || 1}</span>
+                          <h4 className="font-semibold text-base">{guestName}</h4>
+                          <p className="text-sm text-muted-foreground">{guestPhone}</p>
                         </div>
-                      )}
-                      <div>
-                        <span className="text-muted-foreground">Check-in:</span>
-                        <span className="ml-2 font-medium">
-                          {format(new Date(booking.checkInDate), "MMM d, yyyy")}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Check-out:</span>
-                        <span className="ml-2 font-medium">
-                          {format(new Date(booking.checkOutDate), "MMM d, yyyy")}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Source:</span>
-                        <span className="ml-2 font-medium">
-                          {sourceLabels[booking.source || "direct"] || booking.source}
-                        </span>
-                      </div>
-                      {booking.mealPlan && (
-                        <div>
-                          <span className="text-muted-foreground">Meal Plan:</span>
-                          <span className="ml-2 font-medium capitalize">{booking.mealPlan}</span>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <Badge variant="outline" className={`text-xs border ${stayBadgeClass}`}>
+                            {stayConfig.label}
+                          </Badge>
+                          {isPaid ? (
+                            <Badge variant="outline" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 text-xs">Paid</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100 text-xs">Unpaid</Badge>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    
-                    {/* Payment details section */}
-                    <div className="mt-3 pt-3 border-t border-dashed">
-                      <p className="text-xs text-muted-foreground mb-2 font-medium">Payment Details</p>
+                      </div>
+
+                      <Separator />
+
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <span className="text-muted-foreground">Total Amount:</span>
-                          <span className="ml-2 font-medium">
-                            ₹{Number(booking.totalAmount || 0).toLocaleString()}
-                          </span>
+                          <span className="text-muted-foreground">Booking ID:</span>
+                          <span className="ml-2 font-medium">#{booking.id}</span>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">Advance:</span>
-                          <span className="ml-2 font-medium">
-                            ₹{Number(booking.advanceAmount || 0).toLocaleString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Balance:</span>
-                          <span className="ml-2 font-medium">
-                            ₹{(Number(booking.totalAmount || 0) - Number(booking.advanceAmount || 0)).toLocaleString()}
-                          </span>
-                        </div>
-                        {booking.advancePaymentStatus && (
+                        {dormitoryPopup.room?.roomCategory === "dormitory" ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-muted-foreground">Beds:</span>
+                            <button
+                              className="ml-1 h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
+                              disabled={bedsBooked <= 1 || updateBedsMutation.isPending}
+                              onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked - 1 })}
+                              data-testid={`btn-beds-minus-${booking.id}`}
+                            >−</button>
+                            <span className="font-bold text-sm min-w-[1.25rem] text-center">{bedsBooked}</span>
+                            <button
+                              className="h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
+                              disabled={bedsBooked >= (dormitoryPopup.room?.totalBeds || 99) || updateBedsMutation.isPending}
+                              onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked + 1 })}
+                              data-testid={`btn-beds-plus-${booking.id}`}
+                            >+</button>
+                          </div>
+                        ) : (
                           <div>
-                            <span className="text-muted-foreground">Advance Status:</span>
-                            <span className="ml-2 font-medium capitalize">{booking.advancePaymentStatus}</span>
+                            <span className="text-muted-foreground">Guests:</span>
+                            <span className="ml-2 font-medium">{booking.numberOfGuests || 1}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-muted-foreground">Check-in:</span>
+                          <span className="ml-2 font-medium">{format(new Date(booking.checkInDate), "MMM d, yyyy")}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Check-out:</span>
+                          <span className="ml-2 font-medium">{format(new Date(booking.checkOutDate), "MMM d, yyyy")}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Source:</span>
+                          <span className="ml-2 font-medium">{sourceLabels[booking.source || "direct"] || booking.source}</span>
+                        </div>
+                        {booking.mealPlan && (
+                          <div>
+                            <span className="text-muted-foreground">Meal Plan:</span>
+                            <span className="ml-2 font-medium capitalize">{booking.mealPlan}</span>
                           </div>
                         )}
                       </div>
-                    </div>
-                    
-                    {/* Action buttons */}
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                        onClick={() => {
-                          setDormitoryPopup(prev => ({ ...prev, isOpen: false }));
-                          navigate(`/bookings/${booking.id}`);
-                        }}
-                        data-testid={`button-view-booking-${booking.id}`}
-                      >
-                        View Full Details
-                      </Button>
-                      {booking.status !== "checked-out" && booking.status !== "cancelled" && (
+
+                      <div className="mt-3 pt-3 border-t border-dashed">
+                        <p className="text-xs text-muted-foreground mb-2 font-medium">Payment Details</p>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Total:</span>
+                            <span className="ml-2 font-medium">₹{Number(booking.totalAmount || 0).toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Advance:</span>
+                            <span className="ml-2 font-medium">₹{Number(booking.advanceAmount || 0).toLocaleString()}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Balance:</span>
+                            <span className="ml-2 font-medium">₹{(Number(booking.totalAmount || 0) - Number(booking.advanceAmount || 0)).toLocaleString()}</span>
+                          </div>
+                          {booking.advancePaymentStatus && (
+                            <div>
+                              <span className="text-muted-foreground">Adv. Status:</span>
+                              <span className="ml-2 font-medium capitalize">{booking.advancePaymentStatus}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mt-2">
                         <Button
-                          size="sm"
-                          className="flex-1 bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
-                          onClick={() => {
-                            setChangeRoomBooking(booking);
-                            setChangeRoomNewRoomId("");
-                            setChangeRoomDialogOpen(true);
-                          }}
-                          data-testid={`button-change-room-${booking.id}`}
-                        >
-                          <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
-                          Change Room
-                        </Button>
-                      )}
+                          variant="outline" size="sm" className="flex-1"
+                          onClick={() => { setDormitoryPopup(prev => ({ ...prev, isOpen: false })); navigate(`/bookings/${booking.id}`); }}
+                          data-testid={`button-view-booking-${booking.id}`}
+                        >View Full Details</Button>
+                        {booking.status !== "checked-out" && booking.status !== "cancelled" && (
+                          <Button
+                            size="sm" className="flex-1 bg-[#1E3A5F] hover:bg-[#162d4a] text-white"
+                            onClick={() => { setChangeRoomBooking(booking); setChangeRoomNewRoomId(""); setChangeRoomDialogOpen(true); }}
+                            data-testid={`button-change-room-${booking.id}`}
+                          >
+                            <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />Change Room
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                };
+
+                return sections.map(({ key, headerClass, dotClass }) => {
+                  const bookingsInSection = grouped[key];
+                  if (!bookingsInSection || bookingsInSection.length === 0) return null;
+                  return (
+                    <div key={key}>
+                      <div className={`flex items-center gap-2 px-1 mb-2 mt-1`}>
+                        <span className={`h-2 w-2 rounded-full inline-block flex-shrink-0 ${dotClass}`} />
+                        <span className={`text-xs font-semibold uppercase tracking-wide ${headerClass}`}>
+                          {STAY_STATUS_CONFIG[key].label} ({bookingsInSection.length})
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {bookingsInSection.map(renderBookingCard)}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </ScrollArea>
           

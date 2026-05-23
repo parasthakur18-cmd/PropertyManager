@@ -1,0 +1,345 @@
+CRITICAL FIX — DORM BED MANAGEMENT & STAY STATUS LOGIC
+
+We need to redesign the dormitory guest management logic properly WITHOUT breaking existing booking, OTA sync, inventory sync, payment flow, or room allocation systems.
+
+This is a logic/UI improvement task only.
+Do NOT modify stable booking creation logic unless necessary.
+
+====================================================
+CURRENT PROBLEM
+====================================================
+
+Current dorm booking cards are extremely confusing.
+
+Staff cannot understand:
+- Who is arriving today
+- Who is already staying
+- Who is checking out today
+- Which guest occupies which bed
+- Which beds are empty
+- Which beds are reserved for future
+- Actual remaining inventory
+
+Example issue:
+Deepanshu booked 2 beds.
+Sachin booked 1 bed.
+But system does not clearly show:
+- which exact beds belong to whom
+- who leaves today
+- who continues stay
+- what inventory remains
+
+This creates operational mistakes and OTA inventory confusion.
+
+====================================================
+DO NOT BREAK THESE SYSTEMS
+====================================================
+
+IMPORTANT:
+Do NOT break:
+- Existing bookings
+- Existing database schema unless absolutely necessary
+- OTA sync
+- Aiosell sync
+- Booking.com sync
+- MMT sync
+- Payment logic
+- Room allocation logic
+- Check-in/check-out APIs
+- Existing reports
+
+This task should enhance logic safely.
+
+====================================================
+REQUIRED NEW LOGIC
+====================================================
+
+Create a proper stay-status engine.
+
+====================================================
+1. STAY STATUS ENGINE
+====================================================
+
+Each booking must belong to ONLY ONE state.
+
+----------------------------------------------------
+ARRIVING TODAY
+----------------------------------------------------
+
+Condition:
+checkInDate === today
+
+Example:
+Guest arrives today but not checked in yet.
+
+Status label:
+"Arriving Today"
+
+Color:
+Yellow
+
+----------------------------------------------------
+IN HOUSE / CONTINUING STAY
+----------------------------------------------------
+
+Condition:
+today >= checkInDate
+AND
+today < checkOutDate
+AND
+checkedIn = true
+
+Status label:
+"In House"
+
+Color:
+Green
+
+----------------------------------------------------
+CHECKOUT TODAY
+----------------------------------------------------
+
+Condition:
+checkOutDate === today
+
+Status label:
+"Checkout Today"
+
+Color:
+Red
+
+This guest still occupies bed UNTIL checkout completes.
+
+----------------------------------------------------
+FUTURE RESERVATION
+----------------------------------------------------
+
+Condition:
+today < checkInDate
+
+Status label:
+"Upcoming"
+
+Color:
+Blue
+
+----------------------------------------------------
+COMPLETED
+----------------------------------------------------
+
+Condition:
+today > checkOutDate
+OR
+checkedOut = true
+
+Do not show in active dorm screen.
+
+====================================================
+2. BED ASSIGNMENT SYSTEM
+====================================================
+
+Dormitory bookings MUST show exact bed allocation.
+
+Current:
+"Beds booked = 2"
+
+This is not operationally useful.
+
+Need:
+Assigned bed numbers.
+
+Example:
+
+Mixed Dorm 6 Bed
+
+A1 → Deepanshu
+A2 → Deepanshu
+B1 → Empty
+B2 → Sachin
+C1 → Checkout Today
+C2 → Reserved Tomorrow
+
+====================================================
+3. INVENTORY LOGIC
+====================================================
+
+Inventory must calculate by BED COUNT.
+
+Correct logic:
+
+availableBeds = totalBeds - occupiedBeds
+
+Example:
+
+Total beds = 6
+
+Deepanshu = 2 beds
+Sachin = 1 bed
+
+Available = 3 beds
+
+NOT:
+"room occupied"
+
+====================================================
+4. BED OCCUPANCY RULES
+====================================================
+
+A bed is OCCUPIED if:
+
+today >= checkInDate
+AND
+today < checkOutDate
+
+OR
+
+checkout today but not checked out yet.
+
+A bed becomes FREE only after:
+- checkout completed
+OR
+- guest marked checked-out.
+
+====================================================
+5. AUTO BED RELEASE
+====================================================
+
+On checkout completion:
+- release assigned beds automatically
+- update room availability
+- trigger OTA inventory sync
+- update Booking.com inventory
+- update MMT inventory
+- update Hostezee availability
+
+====================================================
+6. REQUIRED UI STRUCTURE
+====================================================
+
+Dorm room screen should have 4 sections.
+
+----------------------------------------------------
+A. ARRIVALS TODAY
+----------------------------------------------------
+
+Show:
+- Guest Name
+- Phone
+- Beds booked
+- Assigned Beds
+- Check-in
+- Check-out
+- Source
+- Payment Status
+
+----------------------------------------------------
+B. IN HOUSE
+----------------------------------------------------
+
+Currently staying guests.
+
+----------------------------------------------------
+C. CHECKOUT TODAY
+----------------------------------------------------
+
+Guests leaving today.
+
+Highlight clearly in RED.
+
+----------------------------------------------------
+D. FUTURE BOOKINGS
+----------------------------------------------------
+
+Future reservations only.
+
+====================================================
+7. BED MAP UI
+====================================================
+
+Create visual bed map.
+
+Example:
+
+[A1] Deepanshu
+[A2] Deepanshu
+[B1] Empty
+[B2] Sachin
+[C1] Checkout Today
+[C2] Reserved
+
+Color scheme:
+Green = Occupied
+Yellow = Arrival Today
+Red = Checkout Today
+Gray = Empty
+Blue = Future Reserved
+
+====================================================
+8. IMPORTANT BUG FIX
+====================================================
+
+The same guest must NEVER appear simultaneously in:
+- pending
+- checked-in
+- checkout today
+
+Only one state allowed.
+
+Need strict centralized stay-status calculation.
+
+====================================================
+9. DATE LOGIC
+====================================================
+
+Use standardized date logic everywhere.
+
+ARRIVING TODAY:
+checkInDate === today
+
+IN HOUSE:
+today >= checkInDate && today < checkOutDate
+
+CHECKOUT TODAY:
+checkOutDate === today
+
+COMPLETED:
+today > checkOutDate
+
+====================================================
+10. SAFE IMPLEMENTATION
+====================================================
+
+Implement safely.
+
+Prefer:
+- derived/computed status
+- helper functions
+- UI-layer grouping
+
+Avoid:
+- risky migrations
+- destructive DB changes
+- rewriting OTA logic
+
+====================================================
+11. FINAL EXPECTED RESULT
+====================================================
+
+At one glance staff should understand:
+- who arrived today
+- who is staying
+- who leaves today
+- which beds are occupied
+- which beds are free
+- which beds are future reserved
+- actual remaining inventory
+
+This should work cleanly for:
+- Hostezee PMS
+- Booking.com bookings
+- MMT bookings
+- Manual bookings
+- Walk-ins
+- Dormitory inventory sync
+
+WITHOUT breaking existing production functionality.
