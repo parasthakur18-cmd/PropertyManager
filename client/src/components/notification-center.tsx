@@ -16,6 +16,7 @@ interface Notification {
   createdAt: string;
   relatedId?: number | null;
   relatedType?: string | null;
+  linkedBookingCancelled?: boolean;
 }
 
 const playSound = (soundType: string) => {
@@ -210,26 +211,39 @@ export function NotificationCenter() {
                     <div
                       key={notification.id}
                       className={`p-3 transition-colors ${
-                        !notification.isRead ? "bg-muted/50" : ""
-                      } ${isClickable ? "hover:bg-accent cursor-pointer" : ""}`}
+                        !notification.isRead && !notification.linkedBookingCancelled ? "bg-muted/50" : ""
+                      } ${notification.linkedBookingCancelled ? "opacity-60" : ""} ${isClickable ? "hover:bg-accent cursor-pointer" : ""}`}
                       onClick={() => isClickable && handleNotificationClick(notification)}
                       data-testid={`notification-${notification.id}`}
                     >
                       <div className="flex items-start gap-3">
                         {getNotificationIcon(notification.type)}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-semibold text-sm leading-tight">{notification.title}</span>
-                            {!notification.isRead && (
-                              <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                            )}
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <span className={`font-semibold text-sm leading-tight ${notification.linkedBookingCancelled ? "line-through text-muted-foreground" : ""}`}>
+                              {notification.title}
+                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {notification.linkedBookingCancelled ? (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300 uppercase tracking-wide">
+                                  Cancelled
+                                </span>
+                              ) : !notification.isRead ? (
+                                <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+                              ) : null}
+                            </div>
                           </div>
                           <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{notification.message}</div>
+                          {notification.linkedBookingCancelled && (
+                            <div className="text-[10px] text-red-500 dark:text-red-400 mt-1">
+                              This booking has since been cancelled.
+                            </div>
+                          )}
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-xs text-muted-foreground">
                               {format(new Date(notification.createdAt), "MMM d, h:mm a")}
                             </span>
-                            {isClickable && (
+                            {isClickable && !notification.linkedBookingCancelled && (
                               <span className="text-xs text-primary flex items-center gap-0.5 font-medium">
                                 View <ArrowRight className="h-3 w-3" />
                               </span>

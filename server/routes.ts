@@ -5235,6 +5235,19 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         syncWithRetry(booking.propertyId, "BOOKING_CANCELLED").catch(() => {});
       }
 
+      // ── Notification lifecycle: remove stale "New Booking Created" alerts ──
+      // Staff cancelled this booking themselves — no new notification needed,
+      // but the old "New Booking Created" alert should be cleaned up.
+      try {
+        await db.delete(notifications).where(and(
+          eq(notifications.relatedId, bookingId),
+          eq(notifications.relatedType, "booking"),
+          eq(notifications.type, "new_booking"),
+        ));
+      } catch (notifErr: any) {
+        console.error(`[NOTIFICATIONS] Manual cancel cleanup failed:`, notifErr.message);
+      }
+
       res.json({
         success: true,
         booking: updatedBooking,
@@ -18519,6 +18532,35 @@ Be critical: only notify if 5+ pending items OR 3+ of one type OR multiple criti
         }
       }
       
+      // ── Annotate new_booking notifications with linked booking status ─────
+      // This lets the frontend visually flag "New OTA Booking" alerts whose
+      // booking has since been cancelled, so staff aren't confused by stale alerts.
+      const bookingTypeNotifs = userNotifications.filter(
+        (n: any) => n.type === "new_booking" && n.relatedType === "booking" && n.relatedId
+      );
+      if (bookingTypeNotifs.length > 0) {
+        try {
+          const bookingIds = bookingTypeNotifs.map((n: any) => n.relatedId as number);
+          const linkedBookings = await db
+            .select({ id: bookings.id, status: bookings.status })
+            .from(bookings)
+            .where(inArray(bookings.id, bookingIds));
+          const cancelledIds = new Set(
+            linkedBookings.filter(b => b.status === "cancelled").map(b => b.id)
+          );
+          if (cancelledIds.size > 0) {
+            userNotifications = userNotifications.map((n: any) =>
+              n.type === "new_booking" && n.relatedType === "booking" &&
+              n.relatedId && cancelledIds.has(n.relatedId)
+                ? { ...n, linkedBookingCancelled: true }
+                : n
+            );
+          }
+        } catch {
+          // non-critical — annotation failure doesn't block notification delivery
+        }
+      }
+
       res.json(userNotifications);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -20534,6 +20576,38 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             .where(eq(bookings.id, booking.id));
           storage.invalidateBookingsCache();
           console.log(`[AIOSELL-WEBHOOK] Cancelled booking ${booking.id}`);
+
+          // ── Notification lifecycle: clean up stale "New OTA Booking" alerts ──
+          // Delete old new_booking notifications for this booking so staff don't
+          // see a "New OTA Booking" that is already cancelled.
+          // Then insert a fresh "OTA Booking Cancelled" notification.
+          try {
+            await db.delete(notifications).where(and(
+              eq(notifications.relatedId, booking.id),
+              eq(notifications.relatedType, "booking"),
+              eq(notifications.type, "new_booking"),
+            ));
+            const allUsers = await storage.getAllUsers();
+            const guest = booking.guestId ? await storage.getGuest(booking.guestId) : null;
+            const notifyUsers = allUsers.filter(u =>
+              u.role === "admin" || u.role === "super-admin" ||
+              (u.assignedPropertyIds as number[] || []).includes(config.propertyId)
+            );
+            for (const u of notifyUsers) {
+              await db.insert(notifications).values({
+                userId: u.id,
+                type: "booking_cancelled",
+                title: "OTA Booking Cancelled",
+                message: `Booking from ${channel} cancelled — Guest: ${guest?.fullName || "Guest"}. Check-in was ${format(new Date(booking.checkInDate), "MMM d, yyyy")}.`,
+                soundType: "info",
+                relatedId: booking.id,
+                relatedType: "booking",
+              });
+            }
+            console.log(`[AIOSELL-WEBHOOK] Cancellation notifications updated for booking #${booking.id}`);
+          } catch (notifErr: any) {
+            console.error(`[AIOSELL-WEBHOOK] Cancel notification cleanup failed:`, notifErr.message);
+          }
         } else {
           console.warn(`[AIOSELL-WEBHOOK] Cancel: no booking found for bookingId=${bookingId} cmBookingId=${cmBookingId}`);
         }
