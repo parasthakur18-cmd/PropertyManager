@@ -1,0 +1,163 @@
+Fix two major issues in the Hostezee dormitory bed inventory system without changing the existing booking flow or PMS structure.
+
+━━━━━━━━━━━━━━━━━━━━━━
+ISSUE 1 — Dorm Bed Inventory Auto-Reopening Bug
+━━━━━━━━━━━━━━━━━━━━━━
+
+Current Problem:
+Whenever a new dorm booking comes from OTA/Aiosell:
+
+* One bed gets booked correctly
+  BUT
+* another bed automatically reopens again.
+
+This creates:
+
+* wrong availability count
+* multiple bookings for same bed/day
+* overbooking issues in dorms
+
+Example:
+Total beds = 7
+
+Before booking:
+Available = 7
+
+1 booking received:
+Expected:
+
+* Occupied = 1
+* Available = 6
+
+Current wrong behavior:
+
+* Occupied = 1
+* Available reopens back incorrectly
+* System again allows extra booking
+
+Root Cause:
+Inventory is being recalculated incorrectly during OTA sync.
+System is likely:
+
+* overwriting inventory
+  instead of
+* decrementing occupied bed count dynamically.
+
+Required Fix:
+
+1. Dorm inventory must always calculate from active bookings.
+2. Never reopen beds automatically after sync refresh.
+3. Bed availability must be:
+
+Available Beds =
+Total Beds
+
+* Active Occupied Beds
+* Pending Holds
+
+4. OTA/Aiosell sync must NOT overwrite local occupied beds.
+5. Prevent duplicate inventory adjustment from:
+
+* PMS local booking logic
+* OTA sync logic
+
+6. Every dorm booking must instantly reduce sellable bed count.
+
+Correct behavior:
+
+* 1 booking received
+  → available beds reduce immediately
+  → no automatic reopening.
+
+━━━━━━━━━━━━━━━━━━━━━━
+ISSUE 2 — Dorm Bed UI Visibility Logic
+━━━━━━━━━━━━━━━━━━━━━━
+
+Current Problem:
+Dorm bed popup is showing incorrect guest visibility.
+
+Problems:
+
+1. Multi-bed bookings show only one guest card.
+   Example:
+
+* Divya booked 3 beds
+* UI shows only one bed occupied.
+
+2. Future bookings are appearing on current dates.
+   Example:
+
+* Ekta check-in = May 28
+* But visible on May 23 bed layout.
+
+3. Bed occupancy is calculated using booking count instead of actual bed count.
+
+Required Fix:
+
+1. Bed layout popup must be date-filtered.
+   Show ONLY guests active on selected calendar date.
+
+Correct logic:
+
+check_in <= selected_date
+AND
+check_out > selected_date
+
+2. Multi-bed bookings must occupy multiple visible beds.
+
+Example:
+If Divya booked 3 beds:
+
+Bed 1 → Divya
+Bed 2 → Divya
+Bed 3 → Divya
+
+NOT:
+Only one Divya card.
+
+3. Future bookings should NOT appear before check-in date.
+
+4. Vacant beds should display as:
+
+* Vacant
+* Empty
+* Available
+
+5. Occupancy count must use:
+   SUM(beds_booked)
+   NOT:
+   total booking rows.
+
+Correct Example:
+4-bed dorm
+
+Divya → 3 beds
+Pallavi → 1 bed
+
+Result:
+Occupied = 4
+Vacant = 0
+
+UI should visually show:
+Bed 1 → Divya
+Bed 2 → Divya
+Bed 3 → Divya
+Bed 4 → Pallavi
+
+━━━━━━━━━━━━━━━━━━━━━━
+IMPORTANT
+━━━━━━━━━━━━━━━━━━━━━━
+
+Do NOT:
+
+* change existing PMS workflow
+* modify booking popup flow
+* redesign booking system
+* change OTA integration structure
+
+Only fix:
+
+1. Dorm inventory auto-reopen bug
+2. Bed-wise visual rendering logic
+3. Date-based occupancy filtering
+4. Multi-bed occupancy rendering

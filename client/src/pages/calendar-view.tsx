@@ -223,12 +223,29 @@ export default function CalendarView() {
     if (totalBeds === 0) return [];
     const result: Array<{ bedNumber: number; guestName: string; status: string; booking: any | null }> = [];
     let bedCursor = 1;
-    const activeBookings = dormitoryPopup.bookings.filter(
-      b => b.status !== "cancelled" && b.status !== "checked-out"
-    );
+
+    // Use the popup's date (= the clicked booking's check-in date) as the
+    // reference point so we only show guests who are actually staying on that
+    // date.  Without this, future bookings (e.g. Ekta check-in May 28) would
+    // appear in today's bed layout.
+    const selectedDate = dormitoryPopup.date ? new Date(dormitoryPopup.date) : null;
+    if (selectedDate) selectedDate.setHours(0, 0, 0, 0);
+
+    const activeBookings = dormitoryPopup.bookings.filter(b => {
+      if (b.status === "cancelled" || b.status === "checked-out") return false;
+      if (!selectedDate) return true;
+      const checkIn = new Date(b.checkInDate);
+      checkIn.setHours(0, 0, 0, 0);
+      const checkOut = new Date(b.checkOutDate);
+      checkOut.setHours(0, 0, 0, 0);
+      // Only show bookings active on the selected date: checkIn <= date < checkOut
+      return checkIn <= selectedDate && selectedDate < checkOut;
+    });
+
     for (const booking of activeBookings) {
       const guest = (guests as any[]).find((g: any) => g.id === booking.guestId);
       const guestName = guest?.fullName || "Guest";
+      // bedsBooked > 1: same guest occupies multiple consecutive bed slots
       const bedsBooked = (booking as any).bedsBooked || 1;
       for (let i = 0; i < bedsBooked && bedCursor <= totalBeds; i++) {
         result.push({ bedNumber: bedCursor++, guestName, status: booking.status, booking });
@@ -1058,8 +1075,8 @@ export default function CalendarView() {
               Room {dormitoryPopup.room?.roomNumber} - Booking Details
             </DialogTitle>
             <DialogDescription>
-              {dormitoryPopup.room?.roomCategory === "dormitory" 
-                ? `${dormitoryPopup.room?.totalBeds || 0} beds total | ${dormitoryPopup.bookings.length} booking(s)`
+              {dormitoryPopup.room?.roomCategory === "dormitory"
+                ? `${dormitoryPopup.room?.totalBeds || 0} beds total | ${dormBedAssignments.filter(b => b.booking !== null).length} occupied${dormitoryPopup.date ? ` on ${format(new Date(dormitoryPopup.date), "MMM d")}` : ""}`
                 : `${dormitoryPopup.room?.roomType || "Room"} | ${dormitoryPopup.bookings.length} booking(s)`
               }
             </DialogDescription>
