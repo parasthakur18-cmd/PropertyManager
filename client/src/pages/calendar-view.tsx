@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -173,6 +173,26 @@ export default function CalendarView() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to change room", variant: "destructive" });
+    },
+  });
+
+  // ── Inline bedsBooked edit for dorm popup ────────────────────────────────
+  const updateBedsMutation = useMutation({
+    mutationFn: async ({ bookingId, bedsBooked }: { bookingId: number; bedsBooked: number }) =>
+      apiRequest(`/api/bookings/${bookingId}`, "PATCH", { bedsBooked }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      // Update the popup bookings in-place so the bed layout re-renders immediately
+      setDormitoryPopup(prev => ({
+        ...prev,
+        bookings: prev.bookings.map(b =>
+          b.id === vars.bookingId ? { ...b, bedsBooked: vars.bedsBooked } : b
+        ),
+      }));
+      toast({ title: "Beds updated", description: `Beds booked set to ${vars.bedsBooked}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to update beds", variant: "destructive" });
     },
   });
 
@@ -1230,9 +1250,21 @@ export default function CalendarView() {
                         <span className="ml-2 font-medium">#{booking.id}</span>
                       </div>
                       {dormitoryPopup.room?.roomCategory === "dormitory" ? (
-                        <div>
+                        <div className="flex items-center gap-1">
                           <span className="text-muted-foreground">Beds Booked:</span>
-                          <span className="ml-2 font-medium">{bedsBooked}</span>
+                          <button
+                            className="ml-1 h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
+                            disabled={bedsBooked <= 1 || updateBedsMutation.isPending}
+                            onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked - 1 })}
+                            data-testid={`btn-beds-minus-${booking.id}`}
+                          >−</button>
+                          <span className="font-bold text-sm min-w-[1.25rem] text-center">{bedsBooked}</span>
+                          <button
+                            className="h-5 w-5 rounded border flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-40"
+                            disabled={bedsBooked >= (dormitoryPopup.room?.totalBeds || 99) || updateBedsMutation.isPending}
+                            onClick={() => updateBedsMutation.mutate({ bookingId: booking.id, bedsBooked: bedsBooked + 1 })}
+                            data-testid={`btn-beds-plus-${booking.id}`}
+                          >+</button>
                         </div>
                       ) : (
                         <div>
