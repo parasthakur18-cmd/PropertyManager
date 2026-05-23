@@ -9723,13 +9723,53 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       }
 
       // Fetch orders for this booking (defensive: include orphan orders matching guest/room within stay)
-      const orders = (await getBillableOrdersForBooking(booking))
-        .filter((o: any) => !o.isTest);
+      // For merged bills, also fetch orders for all merged bookings so the itemised
+      // food-order rows appear in the PDF (the food-charges total comes from bill.foodCharges
+      // but the per-order breakdown would be empty without this).
+      let allOrders = (await getBillableOrdersForBooking(booking)).filter((o: any) => !o.isTest);
+
+      const mergedIds: number[] = Array.isArray((bill as any).mergedBookingIds)
+        ? (bill as any).mergedBookingIds.filter((id: number) => id !== booking.id)
+        : [];
+
+      if (mergedIds.length > 0) {
+        for (const mergedBookingId of mergedIds) {
+          try {
+            const mergedBooking = await storage.getBooking(mergedBookingId);
+            if (mergedBooking) {
+              const mergedOrders = (await getBillableOrdersForBooking(mergedBooking))
+                .filter((o: any) => !o.isTest);
+              // Deduplicate by order id in case of overlapping assignments
+              const existingIds = new Set(allOrders.map((o: any) => o.id));
+              for (const mo of mergedOrders) {
+                if (!existingIds.has(mo.id)) {
+                  allOrders.push(mo);
+                  existingIds.add(mo.id);
+                }
+              }
+            }
+          } catch (mergedErr: any) {
+            console.warn(`[BillDetails] Could not fetch orders for merged booking ${mergedBookingId}: ${mergedErr.message}`);
+          }
+        }
+        console.log(`[BillDetails] Merged bill #${billId}: fetched orders for ${mergedIds.length + 1} booking(s), total ${allOrders.length} order(s)`);
+      }
+
+      const orders = allOrders;
 
       // Fetch extra services for this booking (resilient: works even if property_id column is missing on older DBs)
       let extraServices: any[] = [];
       try {
         extraServices = await storage.getExtraServicesByBooking(booking.id);
+        // Also fetch extra services for merged bookings
+        for (const mergedBookingId of mergedIds) {
+          try {
+            const mergedExtras = await storage.getExtraServicesByBooking(mergedBookingId);
+            extraServices.push(...mergedExtras);
+          } catch {
+            // non-critical
+          }
+        }
       } catch (extrasErr: any) {
         console.warn(`[BillDetails] Could not fetch extra services for booking ${booking.id}: ${extrasErr.message}`);
       }
