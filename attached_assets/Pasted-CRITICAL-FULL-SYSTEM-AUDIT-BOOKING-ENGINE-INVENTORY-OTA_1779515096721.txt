@@ -1,0 +1,377 @@
+CRITICAL FULL SYSTEM AUDIT — BOOKING ENGINE, INVENTORY, OTA, DATE LOGIC & EDGE CASES
+
+I want a COMPLETE DEEP AUDIT of the entire booking and inventory system.
+
+Do NOT make assumptions.
+Do NOT only review UI.
+Do NOT only check happy-path scenarios.
+
+I want a REAL production-grade audit like a senior PMS architect.
+
+====================================================
+PRIMARY GOAL
+====================================================
+
+Find:
+- hidden booking bugs
+- inventory mismatches
+- OTA sync risks
+- overlap issues
+- date logic bugs
+- cancellation problems
+- room reassignment issues
+- dorm bed allocation issues
+- checkout/checkin bugs
+- timezone/date edge cases
+- double booking risks
+- stale inventory problems
+- race conditions
+- booking modification issues
+- sync timing issues
+- orphan records
+- payment state inconsistencies
+- broken calendar calculations
+- reporting mismatches
+
+====================================================
+IMPORTANT RULE
+====================================================
+
+DO NOT directly start changing code.
+
+FIRST:
+1. Audit
+2. Explain findings
+3. Identify dangerous areas
+4. Explain root causes
+5. Explain impact
+6. Suggest safest fix strategy
+
+Only after full audit.
+
+====================================================
+AUDIT EVERYTHING RELATED TO:
+====================================================
+
+- Booking creation
+- Booking edit
+- Booking cancellation
+- Booking modification
+- Date change
+- Room change
+- Bed change
+- Check-in
+- Check-out
+- No-show
+- Partial payment
+- OTA sync
+- Inventory sync
+- Calendar availability
+- Dormitory logic
+- Rate plans
+- Manual bookings
+- Walk-ins
+- Booking.com bookings
+- MMT bookings
+- Aiosell sync
+- Payment reconciliation
+- Tax calculations
+- Advance payments
+- Refund handling
+- Occupancy calculations
+- Availability calculations
+- Overbooking prevention
+- Race conditions
+- Simultaneous bookings
+- Midnight date rollover
+- Timezone handling
+- Booking status transitions
+- Guest movement between rooms
+- Split stays
+- Early checkout
+- Late checkout
+- Multi-room bookings
+- Multi-bed bookings
+- Bed inventory
+- Stop sell/restrictions
+- Housekeeping status impact
+- Calendar rendering logic
+- Dashboard counts
+- Revenue reports
+- Source-wise reporting
+
+====================================================
+PHASE 1 — DATABASE & DATA MODEL AUDIT
+====================================================
+
+Audit all tables/models related to:
+- bookings
+- rooms
+- room types
+- dorm beds
+- inventory
+- rate plans
+- OTA mappings
+- transactions
+- guests
+- booking status
+- room assignments
+
+Check for:
+- duplicate logic
+- inconsistent fields
+- nullable risk
+- bad relations
+- orphaned records
+- stale inventory data
+- denormalization risks
+- missing indexes
+- race condition risks
+
+Explain:
+- which fields are source of truth
+- where derived values are stored incorrectly
+- where state duplication exists
+
+====================================================
+PHASE 2 — INVENTORY ENGINE AUDIT
+====================================================
+
+Audit:
+- how room availability is calculated
+- how bed availability is calculated
+- how OTA inventory is generated
+- how room blocking works
+- how cancellations restore inventory
+- how modifications affect inventory
+
+Find:
+- off-by-one date bugs
+- checkout date logic bugs
+- same-day turnover bugs
+- partial overlap bugs
+- stale inventory calculations
+- concurrency risks
+
+Verify:
+check-in day = occupied
+checkout day = NOT occupied after checkout
+
+Check:
+- dormitory inventory
+- multi-bed inventory
+- shared inventory pools
+
+====================================================
+PHASE 3 — OTA SYNC AUDIT
+====================================================
+
+Audit full sync flow:
+
+Hostezee
+→ Aiosell
+→ Booking.com
+→ MMT
+
+Check:
+- push inventory
+- pull bookings
+- booking modification sync
+- cancellation sync
+- room mapping
+- rate plan mapping
+- stop sell sync
+- delayed sync risks
+
+Identify:
+- where inventory can desync
+- where OTA can remain open incorrectly
+- where OTA can close incorrectly
+- race conditions between OTA and PMS
+
+Check if:
+same inventory source is truly shared.
+
+====================================================
+PHASE 4 — DATE LOGIC AUDIT
+====================================================
+
+Audit ALL date calculations.
+
+Critically inspect:
+- check-in date
+- checkout date
+- nights calculation
+- same-day bookings
+- timezone handling
+- midnight rollover
+- late-night checkin
+- early checkout
+- dorm stay calculations
+
+Verify:
+today >= checkIn
+today < checkOut
+
+is used consistently.
+
+Find all places where:
+<= or >= may be wrong.
+
+====================================================
+PHASE 5 — BOOKING MODIFICATION AUDIT
+====================================================
+
+Test:
+- changing dates
+- changing room
+- changing bed
+- reducing nights
+- extending stay
+- partial cancellation
+- changing occupancy
+
+Verify:
+inventory properly restored and reallocated.
+
+Check:
+- old inventory released
+- new inventory reserved
+- OTA updated correctly
+
+====================================================
+PHASE 6 — DORMITORY AUDIT
+====================================================
+
+Audit:
+- bed assignment
+- bed release
+- bed occupancy
+- visual bed map
+- checkout-today occupancy
+- future reservations
+- overlapping bed allocation
+
+Check:
+- whether two guests can get same bed
+- whether beds remain stuck occupied
+- whether checkout frees bed properly
+
+====================================================
+PHASE 7 — CALENDAR AUDIT
+====================================================
+
+Audit:
+- room calendar
+- inventory calendar
+- occupancy calendar
+- OTA calendar
+
+Check:
+- visual mismatches
+- incorrect availability
+- stale cache
+- delayed refresh
+- partial-day logic
+- multi-room rendering
+
+====================================================
+PHASE 8 — CANCELLATION AUDIT
+====================================================
+
+Audit:
+- cancellation flow
+- refund flow
+- OTA cancellation sync
+- inventory restoration
+
+Verify:
+cancelled bookings fully release inventory.
+
+Check:
+- partial refunds
+- partial cancellations
+- cancellation after checkin
+- no-show handling
+
+====================================================
+PHASE 9 — CONCURRENCY & DOUBLE BOOKING AUDIT
+====================================================
+
+CRITICAL.
+
+Audit:
+- simultaneous booking creation
+- OTA + manual booking same time
+- multiple staff actions
+- rapid modifications
+
+Find:
+- missing DB transactions
+- unsafe async code
+- stale reads
+- optimistic update bugs
+
+Identify ALL possible double-booking scenarios.
+
+====================================================
+PHASE 10 — REPORTING AUDIT
+====================================================
+
+Verify:
+- revenue reports
+- occupancy reports
+- source reports
+- booking counts
+- tax reports
+
+Check:
+- cancelled bookings excluded correctly
+- no-show handling
+- partial payment handling
+- room-night calculations
+
+====================================================
+FINAL OUTPUT FORMAT REQUIRED
+====================================================
+
+I want final audit report in this format:
+
+1. SYSTEM OVERVIEW
+2. HIGH RISK BUGS
+3. MEDIUM RISK BUGS
+4. LOW RISK BUGS
+5. DOUBLE BOOKING RISKS
+6. OTA DESYNC RISKS
+7. DATE LOGIC RISKS
+8. DORM INVENTORY RISKS
+9. CANCELLATION RISKS
+10. REPORTING RISKS
+11. PERFORMANCE RISKS
+12. DATABASE RISKS
+13. SAFE FIX RECOMMENDATIONS
+14. PRIORITY ORDER FOR FIXES
+15. THINGS THAT MUST NOT BE TOUCHED
+16. SUGGESTED ARCHITECTURE IMPROVEMENTS
+
+====================================================
+VERY IMPORTANT
+====================================================
+
+This is a LIVE PMS system.
+
+Avoid:
+- dangerous migrations
+- breaking OTA sync
+- destructive changes
+- schema rewrites without necessity
+
+Prefer:
+- helper functions
+- centralized inventory engine
+- centralized date logic
+- transactional updates
+- derived status calculation
+- atomic inventory operations
+
+Audit the system like production enterprise software.

@@ -33,7 +33,17 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   BedDouble,
+  Clock,
+  Wifi,
+  WifiOff,
+  Sparkles,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -143,6 +153,7 @@ export default function CalendarView() {
     bookings: Booking[];
     date: Date | null;
   }>({ isOpen: false, room: null, bookings: [], date: null });
+  const [dormBedFilter, setDormBedFilter] = useState<"all" | "vacant" | "arrivals" | "checkout">("all");
 
   // ── Change Room state ───────────────────────────────────────────────────────
   const [changeRoomBooking, setChangeRoomBooking] = useState<Booking | null>(null);
@@ -238,48 +249,64 @@ export default function CalendarView() {
 
   // ── Dorm bed layout: derive bed-to-guest mapping for the popup ────────────
   // ── Stay-Status Engine ────────────────────────────────────────────────────
-  // Single source of truth: derives a display-only stay state from dates + DB status.
-  const getDormStayStatus = useCallback((booking: any): "checkoutToday" | "inHouse" | "arrivingToday" | "upcoming" | "completed" => {
-    if (booking.status === "checked-out" || booking.status === "cancelled") return "completed";
-    const refDate = dormitoryPopup.date ? startOfDay(new Date(dormitoryPopup.date)) : startOfDay(new Date());
+  const STANDARD_CHECKOUT_HOUR = 11; // 11:00 AM standard checkout time
+
+  const getDormStayStatus = useCallback((booking: any): "lateCheckout" | "cleaning" | "checkoutToday" | "inHouse" | "arrivingToday" | "upcoming" | "completed" => {
+    if (booking.status === "cancelled") return "completed";
+    const refDate  = dormitoryPopup.date ? startOfDay(new Date(dormitoryPopup.date)) : startOfDay(new Date());
     const checkIn  = startOfDay(new Date(booking.checkInDate));
     const checkOut = startOfDay(new Date(booking.checkOutDate));
-    if (checkOut.getTime() === refDate.getTime()) return "checkoutToday";  // leaving today, bed still occupied
-    if (checkIn.getTime()  === refDate.getTime() && booking.status !== "checked-in") return "arrivingToday";
+
+    // Cleaning: checked-out today and the room itself is in "Cleaning" status
+    if (booking.status === "checked-out" && checkOut.getTime() === refDate.getTime()
+        && dormitoryPopup.room?.status === "Cleaning") return "cleaning";
+    if (booking.status === "checked-out") return "completed";
+
+    // Late Checkout: checkout is today, past 11 AM, not yet checked out
+    if (checkOut.getTime() === refDate.getTime()) {
+      const nowHour = new Date().getHours();
+      if (nowHour >= STANDARD_CHECKOUT_HOUR) return "lateCheckout";
+      return "checkoutToday";
+    }
+    if (checkIn.getTime() === refDate.getTime() && booking.status !== "checked-in") return "arrivingToday";
     if (checkIn <= refDate && refDate < checkOut) return "inHouse";
     if (checkIn > refDate) return "upcoming";
     return "completed";
-  }, [dormitoryPopup.date]);
+  }, [dormitoryPopup.date, dormitoryPopup.room?.status]);
 
   const STAY_STATUS_CONFIG = {
-    checkoutToday:  { label: "Checkout Today", color: "red",    priority: 0 },
-    inHouse:        { label: "In House",        color: "green",  priority: 1 },
-    arrivingToday:  { label: "Arriving Today",  color: "yellow", priority: 2 },
-    upcoming:       { label: "Upcoming",        color: "blue",   priority: 3 },
-    completed:      { label: "Completed",       color: "gray",   priority: 4 },
+    lateCheckout:   { label: "Late Checkout",  color: "orange",  priority: 0 },
+    checkoutToday:  { label: "Checkout Today", color: "red",     priority: 1 },
+    inHouse:        { label: "In House",       color: "green",   priority: 2 },
+    arrivingToday:  { label: "Arriving Today", color: "yellow",  priority: 3 },
+    upcoming:       { label: "Upcoming",       color: "blue",    priority: 4 },
+    cleaning:       { label: "Cleaning",       color: "purple",  priority: 5 },
+    completed:      { label: "Completed",      color: "gray",    priority: 6 },
   } as const;
 
   const dormBedAssignments = useMemo(() => {
     if (!dormitoryPopup.room || dormitoryPopup.room.roomCategory !== "dormitory") return [];
     const totalBeds = dormitoryPopup.room.totalBeds || 0;
     if (totalBeds === 0) return [];
-    const result: Array<{ bedNumber: number; guestName: string; stayStatus: keyof typeof STAY_STATUS_CONFIG; booking: any | null }> = [];
+    type DormBed = { bedNumber: number; guestName: string; stayStatus: keyof typeof STAY_STATUS_CONFIG; booking: any | null };
+    const result: DormBed[] = [];
     let bedCursor = 1;
 
     const refDate = dormitoryPopup.date ? startOfDay(new Date(dormitoryPopup.date)) : startOfDay(new Date());
 
-    // Include all non-cancelled/non-completed bookings that overlap the reference date,
-    // INCLUDING checkout-today (bed is still occupied until they physically leave).
+    // Include active bookings AND checked-out-today (for cleaning state display)
     const activeBookings = dormitoryPopup.bookings
       .filter(b => {
-        if (b.status === "cancelled" || b.status === "checked-out") return false;
+        if (b.status === "cancelled") return false;
         const checkIn  = startOfDay(new Date(b.checkInDate));
         const checkOut = startOfDay(new Date(b.checkOutDate));
-        // Active on refDate: checkIn <= refDate <= checkOut
+        if (b.status === "checked-out") {
+          // Only keep if checkout was today and room is in Cleaning state
+          return checkOut.getTime() === refDate.getTime() && dormitoryPopup.room?.status === "Cleaning";
+        }
         return checkIn <= refDate && refDate <= checkOut;
       })
       .sort((a, b) => {
-        // Priority order: checkoutToday → inHouse → arrivingToday → upcoming
         const pa = STAY_STATUS_CONFIG[getDormStayStatus(a)].priority;
         const pb = STAY_STATUS_CONFIG[getDormStayStatus(b)].priority;
         return pa - pb;
@@ -1133,92 +1160,184 @@ export default function CalendarView() {
             <div className="space-y-4">
 
               {/* ── Dorm Bed Layout ────────────────────────────────────────── */}
-              {dormitoryPopup.room?.roomCategory === "dormitory" && dormBedAssignments.length > 0 && (
-                <div className="border rounded-lg p-3 bg-muted/30">
-                  <div className="flex items-center gap-2 mb-3">
-                    <BedDouble className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Bed Layout — {dormitoryPopup.room.totalBeds} Beds
-                    </span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {dormBedAssignments.filter(b => b.booking !== null).length} occupied ·{" "}
-                      {dormBedAssignments.filter(b => b.booking === null).length} vacant
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {dormBedAssignments.map(({ bedNumber, guestName, stayStatus, booking: bedBooking }) => {
-                      const isVacant = bedBooking === null;
-                      const tileStyle = isVacant ? {
-                        tile: "bg-background border-dashed border-muted-foreground/30",
-                        badge: "bg-muted text-muted-foreground",
-                        name: "text-muted-foreground",
-                        label: "text-muted-foreground",
-                      } : stayStatus === "checkoutToday" ? {
-                        tile: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800",
-                        badge: "bg-red-600 text-white",
-                        name: "text-red-800 dark:text-red-200",
-                        label: "text-red-500 dark:text-red-400",
-                      } : stayStatus === "inHouse" ? {
-                        tile: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
-                        badge: "bg-green-600 text-white",
-                        name: "text-green-800 dark:text-green-200",
-                        label: "text-green-600 dark:text-green-400",
-                      } : stayStatus === "arrivingToday" ? {
-                        tile: "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700",
-                        badge: "bg-yellow-500 text-white",
-                        name: "text-yellow-800 dark:text-yellow-200",
-                        label: "text-yellow-600 dark:text-yellow-400",
-                      } : {
-                        tile: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800",
-                        badge: "bg-blue-600 text-white",
-                        name: "text-blue-800 dark:text-blue-200",
-                        label: "text-blue-500 dark:text-blue-400",
-                      };
-                      return (
-                        <div
-                          key={bedNumber}
-                          className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${tileStyle.tile}`}
-                          data-testid={`bed-card-${bedNumber}`}
-                        >
-                          <div className={`flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${tileStyle.badge}`}>
-                            {bedNumber}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            {!isVacant ? (
-                              <>
-                                <p className={`text-xs font-semibold truncate leading-tight ${tileStyle.name}`}>{guestName}</p>
-                                <p className={`text-[10px] mt-0.5 ${tileStyle.label}`}>
-                                  {STAY_STATUS_CONFIG[stayStatus].label}
-                                </p>
-                              </>
-                            ) : (
-                              <p className="text-xs text-muted-foreground italic">Vacant</p>
-                            )}
-                          </div>
+              {dormitoryPopup.room?.roomCategory === "dormitory" && dormBedAssignments.length > 0 && (() => {
+                const totalBeds   = dormitoryPopup.room!.totalBeds || 0;
+                const occupied    = dormBedAssignments.filter(b => b.booking !== null && b.stayStatus !== "cleaning").length;
+                const vacant      = dormBedAssignments.filter(b => b.booking === null).length;
+                const cleaning    = dormBedAssignments.filter(b => b.stayStatus === "cleaning").length;
+                const lateOut     = dormBedAssignments.filter(b => b.stayStatus === "lateCheckout").length;
+                const checkoutCnt = dormBedAssignments.filter(b => b.stayStatus === "checkoutToday").length;
+                const arrivalCnt  = dormBedAssignments.filter(b => b.stayStatus === "arrivingToday").length;
+                const hasConflict = occupied > totalBeds;
+                const hasAiosell  = !!(dormitoryPopup.room as any)?.aiosellRoomCode;
+
+                const getTileStyle = (stayStatus: keyof typeof STAY_STATUS_CONFIG, isVacant: boolean) => {
+                  if (isVacant)                         return { tile: "bg-background border-dashed border-muted-foreground/30", badge: "bg-muted text-muted-foreground", name: "text-muted-foreground", label: "text-muted-foreground" };
+                  if (stayStatus === "lateCheckout")    return { tile: "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-700", badge: "bg-orange-500 text-white", name: "text-orange-800 dark:text-orange-200", label: "text-orange-600 dark:text-orange-400" };
+                  if (stayStatus === "checkoutToday")   return { tile: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800", badge: "bg-red-600 text-white", name: "text-red-800 dark:text-red-200", label: "text-red-500 dark:text-red-400" };
+                  if (stayStatus === "inHouse")         return { tile: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800", badge: "bg-green-600 text-white", name: "text-green-800 dark:text-green-200", label: "text-green-600 dark:text-green-400" };
+                  if (stayStatus === "arrivingToday")   return { tile: "bg-yellow-50 dark:bg-yellow-950/30 border-yellow-300 dark:border-yellow-700", badge: "bg-yellow-500 text-white", name: "text-yellow-800 dark:text-yellow-200", label: "text-yellow-600 dark:text-yellow-400" };
+                  if (stayStatus === "cleaning")        return { tile: "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-700", badge: "bg-purple-600 text-white", name: "text-purple-800 dark:text-purple-200", label: "text-purple-500 dark:text-purple-400" };
+                  return { tile: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800", badge: "bg-blue-600 text-white", name: "text-blue-800 dark:text-blue-200", label: "text-blue-500 dark:text-blue-400" };
+                };
+
+                const filteredBeds = dormBedAssignments.filter(bed => {
+                  if (dormBedFilter === "vacant")   return bed.booking === null;
+                  if (dormBedFilter === "arrivals") return bed.stayStatus === "arrivingToday";
+                  if (dormBedFilter === "checkout") return bed.stayStatus === "checkoutToday" || bed.stayStatus === "lateCheckout";
+                  return true;
+                });
+
+                return (
+                  <div className="border rounded-lg p-3 bg-muted/30 space-y-3">
+                    {/* ── Occupancy summary bar ── */}
+                    <div className="grid grid-cols-4 gap-1.5 text-center">
+                      {[
+                        { val: totalBeds, label: "Total",    cls: "text-foreground" },
+                        { val: occupied,  label: "Occupied", cls: "text-green-700 dark:text-green-400" },
+                        { val: lateOut + checkoutCnt, label: "Checkout", cls: "text-red-700 dark:text-red-400" },
+                        { val: arrivalCnt, label: "Arrivals", cls: "text-yellow-700 dark:text-yellow-400" },
+                      ].map(({ val, label, cls }) => (
+                        <div key={label} className="rounded-md bg-background border px-1 py-1.5">
+                          <div className={`text-base font-bold leading-none ${cls}`}>{val}</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">{label}</div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+
+                    {/* ── Conflict detector + OTA sync badge ── */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {hasConflict && (
+                        <div className="flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 rounded-md px-2 py-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span className="font-semibold">Conflict: {occupied} beds assigned &gt; {totalBeds} total</span>
+                        </div>
+                      )}
+                      {lateOut > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 rounded-md px-2 py-1">
+                          <Clock className="h-3 w-3" />
+                          <span className="font-semibold">{lateOut} late checkout{lateOut > 1 ? "s" : ""} — past {STANDARD_CHECKOUT_HOUR}:00 AM</span>
+                        </div>
+                      )}
+                      <div className={`ml-auto flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border ${hasAiosell ? "bg-green-50 dark:bg-green-950/30 border-green-200 text-green-700 dark:text-green-400" : "bg-muted/60 border-muted text-muted-foreground"}`}>
+                        {hasAiosell ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                        <span>{hasAiosell ? "OTA Synced" : "No OTA"}</span>
+                      </div>
+                    </div>
+
+                    {/* ── Quick filter buttons ── */}
+                    <div className="flex gap-1.5 flex-wrap">
+                      {([
+                        { key: "all",      label: "All Beds" },
+                        { key: "vacant",   label: `Vacant (${vacant})` },
+                        { key: "arrivals", label: `Arrivals (${arrivalCnt})` },
+                        { key: "checkout", label: `Checkout (${lateOut + checkoutCnt})` },
+                      ] as const).map(({ key, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => setDormBedFilter(key)}
+                          className={`text-[10px] px-2 py-1 rounded-full border font-medium transition-colors ${dormBedFilter === key ? "bg-primary text-primary-foreground border-primary" : "bg-background border-muted-foreground/20 text-muted-foreground hover:bg-muted"}`}
+                          data-testid={`dorm-filter-${key}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* ── Bed layout header ── */}
+                    <div className="flex items-center gap-2">
+                      <BedDouble className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Bed Layout — {dormitoryPopup.room!.totalBeds} Beds
+                      </span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        {cleaning > 0 && <><span className="text-purple-600">{cleaning} cleaning</span> · </>}
+                        {vacant} vacant
+                      </span>
+                    </div>
+
+                    {/* ── Bed tiles ── */}
+                    <TooltipProvider delayDuration={200}>
+                      <div className="grid grid-cols-2 gap-2">
+                        {filteredBeds.length === 0 && (
+                          <p className="col-span-2 text-center text-xs text-muted-foreground py-3 italic">No beds match this filter</p>
+                        )}
+                        {filteredBeds.map(({ bedNumber, guestName, stayStatus, booking: bedBooking }) => {
+                          const isVacant = bedBooking === null;
+                          const tileStyle = getTileStyle(stayStatus, isVacant);
+                          const isCheckingOut = stayStatus === "checkoutToday" || stayStatus === "lateCheckout";
+                          const checkoutTimeLabel = `${STANDARD_CHECKOUT_HOUR}:00 AM`;
+                          const source = bedBooking?.source;
+                          const sourceLabels: Record<string, string> = { direct: "Direct", "walk-in": "Walk-in", airbnb: "Airbnb", booking: "Booking.com", goibibo: "Goibibo", makemytrip: "MakeMyTrip", oyo: "OYO", agoda: "Agoda", other: "Other" };
+                          const guestObj = isVacant ? null : (guests as any[]).find((g: any) => g.id === bedBooking.guestId);
+                          const totalAmt = Number(bedBooking?.totalAmount || 0);
+                          const advAmt   = Number(bedBooking?.advanceAmount || 0);
+                          const isPaid   = advAmt >= totalAmt && totalAmt > 0;
+
+                          const tile = (
+                            <div
+                              className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors ${tileStyle.tile} ${!isVacant ? "cursor-help" : ""}`}
+                              data-testid={`bed-card-${bedNumber}`}
+                            >
+                              <div className={`flex-shrink-0 h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${tileStyle.badge}`}>
+                                {bedNumber}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                {!isVacant ? (
+                                  <>
+                                    <p className={`text-xs font-semibold truncate leading-tight ${tileStyle.name}`}>{guestName}</p>
+                                    <p className={`text-[10px] mt-0.5 flex items-center gap-1 ${tileStyle.label}`}>
+                                      {stayStatus === "cleaning" && <Sparkles className="h-2.5 w-2.5" />}
+                                      {STAY_STATUS_CONFIG[stayStatus].label}
+                                      {isCheckingOut && <span className="opacity-75">— {checkoutTimeLabel}</span>}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground italic">Vacant</p>
+                                )}
+                              </div>
+                            </div>
+                          );
+
+                          if (isVacant) return <div key={bedNumber}>{tile}</div>;
+                          return (
+                            <Tooltip key={bedNumber}>
+                              <TooltipTrigger asChild>{tile}</TooltipTrigger>
+                              <TooltipContent side="top" className="max-w-[200px] text-xs space-y-1 p-3">
+                                <p className="font-semibold text-sm">{guestName}</p>
+                                {guestObj?.phone && <p className="text-muted-foreground">📞 {guestObj.phone}</p>}
+                                {source && <p className="text-muted-foreground">🌐 {sourceLabels[source] || source}</p>}
+                                <p className="text-muted-foreground">📅 {format(new Date(bedBooking.checkInDate), "MMM d")} → {format(new Date(bedBooking.checkOutDate), "MMM d")}</p>
+                                <p className={isPaid ? "text-green-600" : "text-red-500"}>
+                                  {isPaid ? "✅ Paid" : `⚠ Balance ₹${(totalAmt - advAmt).toLocaleString()}`}
+                                </p>
+                                {bedBooking.mealPlan && <p className="text-muted-foreground">🍽 {bedBooking.mealPlan.toUpperCase()}</p>}
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                    </TooltipProvider>
+
+                    {/* ── Legend ── */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-2 border-t border-muted-foreground/10">
+                      {[
+                        { dot: "bg-green-600",  label: "In House" },
+                        { dot: "bg-yellow-500", label: "Arriving" },
+                        { dot: "bg-orange-500", label: "Late Checkout" },
+                        { dot: "bg-red-600",    label: "Checkout Today" },
+                        { dot: "bg-blue-600",   label: "Upcoming" },
+                        { dot: "bg-purple-600", label: "Cleaning" },
+                        { dot: "bg-muted border", label: "Vacant" },
+                      ].map(({ dot, label }) => (
+                        <span key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <span className={`h-2 w-2 rounded-full inline-block ${dot}`} />{label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  {/* Legend */}
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3 pt-2 border-t border-muted-foreground/10">
-                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-green-600 inline-block" />In House
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-yellow-500 inline-block" />Arriving Today
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-red-600 inline-block" />Checkout Today
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-blue-600 inline-block" />Upcoming
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span className="h-2 w-2 rounded-full bg-muted inline-block border" />Vacant
-                    </span>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {(() => {
                 const sourceLabels: Record<string, string> = {
