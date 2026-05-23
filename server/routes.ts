@@ -1038,9 +1038,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (reqBookingId && !isNaN(reqBookingId)) {
           // Per-stay session token supplied — validate it strictly.
-          const specificBooking = allBookings.find(
-            b => b.id === reqBookingId && b.roomId === room.id
-          );
+          // For GROUP bookings the authoritative room list is roomIds[], not roomId (which
+          // may be stale if the booking was edited after creation). Accept the booking if
+          // the requested room appears in either field.
+          const specificBooking = allBookings.find(b => {
+            if (b.id !== reqBookingId) return false;
+            const inSingle = b.roomId === room.id;
+            const inGroup  = Array.isArray(b.roomIds) && b.roomIds.includes(room.id);
+            return inSingle || inGroup;
+          });
           if (!specificBooking) {
             return res.status(400).json({
               message: "Invalid room session. Your menu link may be outdated — please contact the front desk.",
@@ -1056,9 +1062,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // This prevents the "Akash confirmed link used while Nitin is checked-in" scenario
           // where a pre-arrival or future-booking's menu link displaces the actual guest.
           if (specificBooking.status !== "checked-in") {
-            const otherCheckedIn = allBookings.find(
-              b => b.id !== specificBooking.id && b.roomId === room.id && b.status === "checked-in"
-            );
+            const otherCheckedIn = allBookings.find(b => {
+              if (b.id === specificBooking.id || b.status !== "checked-in") return false;
+              return b.roomId === room.id || (Array.isArray(b.roomIds) && b.roomIds.includes(room.id));
+            });
             if (otherCheckedIn) {
               console.warn(`[QR-Order] Booking #${specificBooking.id} (${specificBooking.status}) for room ${room.roomNumber} — another guest (#${otherCheckedIn.id}) is already checked-in. Rejecting stale link.`);
               return res.status(400).json({
