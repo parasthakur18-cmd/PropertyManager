@@ -19506,16 +19506,29 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
       
       console.log(`[TASK-REMINDER] Running daily task reminder job at ${format(now, "HH:mm")}`);
-      
-      // Get all pending/in_progress tasks with reminders enabled whose due date is within the last 7 days or in the future
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // Auto-disable reminders for any tasks whose due date has already passed.
+      // This is a safety sweep so overdue tasks can never keep spamming regardless
+      // of how they were created. Runs silently before the send loop.
+      const todayStr = format(now, 'yyyy-MM-dd');
+      const disabledCount = await db.update(tasks)
+        .set({ reminderEnabled: false })
+        .where(
+          and(
+            eq(tasks.reminderEnabled, true),
+            sql`${tasks.dueDate} IS NOT NULL AND ${tasks.dueDate} < ${todayStr}`
+          )
+        );
+      if ((disabledCount as any).rowCount > 0) {
+        console.log(`[TASK-REMINDER] Auto-disabled reminders on ${(disabledCount as any).rowCount} overdue task(s)`);
+      }
       const pendingTasks = await db.select()
         .from(tasks)
         .where(
           and(
             eq(tasks.reminderEnabled, true),
             inArray(tasks.status, ['pending', 'in_progress']),
-            sql`(${tasks.dueDate} IS NULL OR ${tasks.dueDate} >= ${sevenDaysAgo.toISOString()})`
+            sql`(${tasks.dueDate} IS NULL OR ${tasks.dueDate} >= ${todayStr})`
           )
         );
       
