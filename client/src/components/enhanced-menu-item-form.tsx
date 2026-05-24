@@ -3,6 +3,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X, Plus } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +38,12 @@ const menuItemFormSchema = z.object({
   hasVariants: z.boolean().default(false),
   hasAddOns: z.boolean().default(false),
   displayOrder: z.number().int().min(0),
+  availableBreakfast: z.boolean().default(true),
+  availableLunch: z.boolean().default(true),
+  availableSnacks: z.boolean().default(true),
+  availableDinner: z.boolean().default(true),
+  availableLateNight: z.boolean().default(true),
+  availableHighLoad: z.boolean().default(false),
   variants: z.array(z.object({
     variantName: z.string().min(1),
     actualPrice: z.string().min(1),
@@ -88,6 +95,12 @@ export function EnhancedMenuItemForm({
       hasVariants: false,
       hasAddOns: false,
       displayOrder: 0,
+      availableBreakfast: true,
+      availableLunch: true,
+      availableSnacks: true,
+      availableDinner: true,
+      availableLateNight: true,
+      availableHighLoad: false,
       variants: [],
       addOns: [],
     },
@@ -139,6 +152,12 @@ export function EnhancedMenuItemForm({
             hasVariants: menuItem.hasVariants,
             hasAddOns: menuItem.hasAddOns,
             displayOrder: menuItem.displayOrder || 0,
+            availableBreakfast: menuItem.availableBreakfast ?? true,
+            availableLunch: menuItem.availableLunch ?? true,
+            availableSnacks: menuItem.availableSnacks ?? true,
+            availableDinner: menuItem.availableDinner ?? true,
+            availableLateNight: menuItem.availableLateNight ?? true,
+            availableHighLoad: menuItem.availableHighLoad ?? false,
             variants: variantsResponse.map((v: any) => ({
               variantName: v.variantName,
               actualPrice: v.actualPrice,
@@ -169,6 +188,12 @@ export function EnhancedMenuItemForm({
             hasVariants: menuItem.hasVariants,
             hasAddOns: menuItem.hasAddOns,
             displayOrder: menuItem.displayOrder || 0,
+            availableBreakfast: menuItem.availableBreakfast ?? true,
+            availableLunch: menuItem.availableLunch ?? true,
+            availableSnacks: menuItem.availableSnacks ?? true,
+            availableDinner: menuItem.availableDinner ?? true,
+            availableLateNight: menuItem.availableLateNight ?? true,
+            availableHighLoad: menuItem.availableHighLoad ?? false,
             variants: [],
             addOns: [],
           });
@@ -193,6 +218,12 @@ export function EnhancedMenuItemForm({
         hasVariants: false,
         hasAddOns: false,
         displayOrder: 0,
+        availableBreakfast: true,
+        availableLunch: true,
+        availableSnacks: true,
+        availableDinner: true,
+        availableLateNight: true,
+        availableHighLoad: false,
         variants: [],
         addOns: [],
       });
@@ -420,6 +451,33 @@ export function EnhancedMenuItemForm({
               </div>
             </div>
           )}
+
+          {/* Meal Slot Availability */}
+          <div className="space-y-3 rounded-lg border p-4">
+            <div>
+              <p className="text-sm font-semibold">Meal Slot Availability</p>
+              <p className="text-xs text-muted-foreground">Which slots can this item be ordered in?</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { key: "availableBreakfast", label: "🌅 Breakfast" },
+                { key: "availableLunch", label: "🍱 Lunch" },
+                { key: "availableSnacks", label: "🍿 Snacks" },
+                { key: "availableDinner", label: "🍽️ Dinner" },
+                { key: "availableLateNight", label: "🌙 Late Night" },
+                { key: "availableHighLoad", label: "⚡ High Load" },
+              ] as const).map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/50">
+                  <Checkbox
+                    checked={!!form.watch(key as any)}
+                    onCheckedChange={(v) => form.setValue(key as any, !!v)}
+                    data-testid={`checkbox-${key}`}
+                  />
+                  <span className="text-sm">{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           {/* Add Variant Button */}
           <Button
