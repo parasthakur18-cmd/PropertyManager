@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Check, Building2, Calendar, User, Phone, CreditCard, UtensilsCrossed, Home, Receipt, AlertCircle } from "lucide-react";
+import { Loader2, Check, Building2, Calendar, User, Phone, CreditCard, UtensilsCrossed, Home, Receipt, AlertCircle, Download } from "lucide-react";
 import { format } from "date-fns";
 
 interface FoodItem {
@@ -308,9 +308,27 @@ export default function GuestPreBill() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground">
+        <Button
+          variant="outline"
+          className="w-full print:hidden"
+          onClick={() => window.print()}
+          data-testid="button-save-bill-pdf"
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Save / Print Bill
+        </Button>
+
+        <p className="text-center text-xs text-muted-foreground print:hidden">
           Questions about your bill? Contact the property front desk.
         </p>
+
+        <style>{`
+          @media print {
+            body > * { display: none !important; }
+            body > div:has([data-testid="button-confirm-prebill"]) { display: block !important; }
+            .print\\:hidden { display: none !important; }
+          }
+        `}</style>
       </div>
     </div>
   );

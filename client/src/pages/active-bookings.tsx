@@ -2662,78 +2662,40 @@ export default function ActiveBookings() {
                     Send Bill on WhatsApp
                   </Button>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  {remainingBalance > 0 && (
                     <Button
                       variant="outline"
+                      className="w-full"
                       onClick={async () => {
                         try {
-                          const res = await fetch('/api/whatsapp/send-prebill', {
+                          const res = await fetch('/api/whatsapp/send-payment-link', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                              bookingId: booking.id,
-                              phoneNumber: booking.guest.phone,
+                              amount: remainingBalance,
                               guestName: booking.guest.fullName,
-                              billTotal: grandTotal,
-                              roomCharges, foodCharges, extraCharges,
-                              gstAmount: totalGst,
-                              serviceCharge,
-                              discount,
-                              advancePayment: advancePaid + cashPaid,
-                              balanceDue: Math.max(0, remainingBalance)
+                              guestPhone: booking.guest.phone,
+                              guestEmail: booking.guest.email,
+                              bookingId: booking.id,
+                              roomCharges: roomCharges,
+                              foodCharges: foodCharges,
+                              cashReceived: advancePaid + cashPaid
                             })
                           });
                           if (!res.ok) {
                             const error = await res.json();
-                            throw new Error(error.message || 'Failed to send pre-bill');
+                            throw new Error(error.message || 'Failed to send payment link');
                           }
-                          const data = await res.json();
-                          setPreBillLink(data.preBillLink || null);
-                          setPreBillLinkCopied(false);
-                          toast({ title: "Pre-bill sent", description: "Guest will receive the bill link on WhatsApp" });
+                          toast({ title: "Payment link sent ✓", description: "Guest will receive the Razorpay link on WhatsApp" });
                         } catch (error: any) {
-                          toast({ title: "Error", description: error.message || "Failed to send pre-bill", variant: "destructive" });
+                          toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
                         }
                       }}
-                      data-testid="button-send-prebill"
+                      data-testid="button-send-payment-link"
                     >
-                      Send Pre-Bill
+                      Send Payment Link
                     </Button>
-                    
-                    {remainingBalance > 0 && (
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          try {
-                            const res = await fetch('/api/whatsapp/send-payment-link', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                amount: remainingBalance,
-                                guestName: booking.guest.fullName,
-                                guestPhone: booking.guest.phone,
-                                guestEmail: booking.guest.email,
-                                bookingId: booking.id,
-                                roomCharges: roomCharges,
-                                foodCharges: foodCharges,
-                                cashReceived: advancePaid + cashPaid
-                              })
-                            });
-                            if (!res.ok) {
-                              const error = await res.json();
-                              throw new Error(error.message || 'Failed to send payment link');
-                            }
-                            toast({ title: "Success", description: "Payment link sent via WhatsApp" });
-                          } catch (error: any) {
-                            toast({ title: "Error", description: error.message || "Failed to send payment link", variant: "destructive" });
-                          }
-                        }}
-                        data-testid="button-send-payment-link"
-                      >
-                        Send Payment Link
-                      </Button>
-                    )}
-                  </div>
+                  )}
 
                   {preBillLink && (
                     <div className="rounded-md border border-teal-200 bg-teal-50 dark:bg-teal-950/20 dark:border-teal-800 p-3 space-y-1.5">
@@ -2801,6 +2763,28 @@ export default function ActiveBookings() {
                           queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/wallets"] });
                           queryClient.invalidateQueries({ queryKey: ["/api/wallets/summary"] });
+
+                          // Auto-send bill link on WhatsApp (best-effort, non-blocking)
+                          const autoSendPhone = (booking.guest?.whatsappPhone || booking.guest?.phone || "").replace(/\D/g, "");
+                          if (autoSendPhone) {
+                            fetch('/api/whatsapp/send-prebill', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                bookingId: booking.id,
+                                phoneNumber: autoSendPhone,
+                                guestName: booking.guest.fullName,
+                                billTotal: grandTotal,
+                                roomCharges, foodCharges, extraCharges,
+                                gstAmount: totalGst,
+                                serviceCharge,
+                                discount,
+                                advancePayment: advancePaid + cashPaid,
+                                balanceDue: Math.max(0, remainingBalance)
+                              })
+                            }).catch(() => {});
+                          }
+
                           setCheckoutDialog({ open: false, booking: null });
                           setCashAmount("");
                           setGstOnRooms(true);
