@@ -1354,19 +1354,50 @@ function ItemCard({
     },
   });
 
+  const MEAL_SLOT_KEYS = ["availableBreakfast", "availableLunch", "availableSnacks", "availableDinner", "availableLateNight", "availableHighLoad"] as const;
+  type SlotKey = typeof MEAL_SLOT_KEYS[number];
+
+  const [slotValues, setSlotValues] = useState<Record<SlotKey, boolean>>(() => ({
+    availableBreakfast: item.availableBreakfast ?? true,
+    availableLunch: item.availableLunch ?? true,
+    availableSnacks: item.availableSnacks ?? true,
+    availableDinner: item.availableDinner ?? true,
+    availableLateNight: item.availableLateNight ?? true,
+    availableHighLoad: item.availableHighLoad ?? false,
+  }));
+
+  // Sync local state when server data comes back
+  useEffect(() => {
+    setSlotValues({
+      availableBreakfast: item.availableBreakfast ?? true,
+      availableLunch: item.availableLunch ?? true,
+      availableSnacks: item.availableSnacks ?? true,
+      availableDinner: item.availableDinner ?? true,
+      availableLateNight: item.availableLateNight ?? true,
+      availableHighLoad: item.availableHighLoad ?? false,
+    });
+  }, [item.availableBreakfast, item.availableLunch, item.availableSnacks, item.availableDinner, item.availableLateNight, item.availableHighLoad]);
+
   const patchSlot = useMutation({
-    mutationFn: async ({ field, value }: { field: string; value: boolean }) => {
+    mutationFn: async ({ field, value }: { field: SlotKey; value: boolean }) => {
       return await apiRequest(`/api/menu-items/${item.id}`, "PATCH", { [field]: value });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
     },
-    onError: (error: any) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    onError: (error: any, variables) => {
+      // Revert optimistic update on error
+      setSlotValues(prev => ({ ...prev, [variables.field]: !variables.value }));
+      toast({ title: "Error saving slot", description: error.message, variant: "destructive" });
     },
   });
 
-  const MEAL_SLOTS: { key: keyof MenuItem; label: string }[] = [
+  const handleSlotChange = (field: SlotKey, value: boolean) => {
+    setSlotValues(prev => ({ ...prev, [field]: value })); // immediate visual update
+    patchSlot.mutate({ field, value });
+  };
+
+  const MEAL_SLOTS: { key: SlotKey; label: string }[] = [
     { key: "availableBreakfast", label: "🌅 Breakfast" },
     { key: "availableLunch", label: "🍱 Lunch" },
     { key: "availableSnacks", label: "🍿 Snacks" },
@@ -1457,23 +1488,22 @@ function ItemCard({
             </div>
           </div>
 
-          {/* Meal Slot Availability — always visible */}
+          {/* Meal Slot Availability — always visible with optimistic updates */}
           <div className="mt-2 pt-2 border-t">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Slot Availability</p>
             <div className="grid grid-cols-3 gap-1">
               {MEAL_SLOTS.map(slot => {
-                const currentVal = (item[slot.key] ?? (slot.key !== "availableHighLoad")) as boolean;
+                const currentVal = slotValues[slot.key];
                 return (
                   <label
-                    key={String(slot.key)}
+                    key={slot.key}
                     className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer border transition-colors text-xs ${currentVal ? "bg-teal-50 border-teal-300 text-teal-800" : "bg-white border-gray-200 text-gray-400"}`}
                   >
                     <Checkbox
                       checked={currentVal}
-                      onCheckedChange={(v) => patchSlot.mutate({ field: String(slot.key), value: !!v })}
-                      disabled={patchSlot.isPending}
+                      onCheckedChange={(v) => handleSlotChange(slot.key, !!v)}
                       className="h-3.5 w-3.5 shrink-0"
-                      data-testid={`checkbox-slot-${String(slot.key)}-${item.id}`}
+                      data-testid={`checkbox-slot-${slot.key}-${item.id}`}
                     />
                     <span className="leading-tight truncate">{slot.label}</span>
                   </label>
