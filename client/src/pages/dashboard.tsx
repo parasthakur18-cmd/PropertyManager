@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 import { AIPendingNotifications } from "@/components/ai-pending-notifications";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
@@ -240,6 +241,7 @@ function PendingOverdueAlert({ testMode = false, onClose }: { testMode?: boolean
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { hasAccess, isFullAccess } = usePermissions();
   const { selectedPropertyId, setSelectedPropertyId, availableProperties, showPropertySwitcher, isSuperAdmin, properties } = usePropertyFilter();
   const [mobileTab, setMobileTab] = useState<MobileTab>("inhouse");
   const [, setLocation] = useLocation();
@@ -281,6 +283,11 @@ export default function Dashboard() {
     }
   }, [user]);
   
+  const canSeeBookings = isFullAccess || hasAccess("bookings");
+  const canSeeReports = isFullAccess || hasAccess("bookings") || hasAccess("reports");
+  const canSeePayments = isFullAccess || hasAccess("payments");
+  const canSeeFoodOrders = isFullAccess || hasAccess("foodOrders");
+
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/dashboard/stats", selectedPropertyId],
     queryFn: async () => {
@@ -291,36 +298,43 @@ export default function Dashboard() {
       if (!response.ok) throw new Error("Failed to fetch stats");
       return response.json();
     },
+    enabled: canSeeReports,
   });
 
   const { data: bookings, isLoading: bookingsLoading } = useQuery<Booking[]>({
     queryKey: ["/api/bookings"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeeBookings,
   });
 
   const { data: guests, isLoading: guestsLoading } = useQuery<Guest[]>({
     queryKey: ["/api/guests"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeeBookings || (isFullAccess || hasAccess("guests")),
   });
 
   const { data: rooms, isLoading: roomsLoading } = useQuery<Room[]>({
     queryKey: ["/api/rooms"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeeBookings || canSeeFoodOrders || (isFullAccess || hasAccess("rooms") || hasAccess("calendar")),
   });
 
   const { data: orders, isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeeFoodOrders,
   });
 
   const { data: enquiries, isLoading: enquiriesLoading } = useQuery<Enquiry[]>({
     queryKey: ["/api/enquiries"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeeBookings,
   });
 
   const { data: bills } = useQuery<any[]>({
     queryKey: ["/api/bills"],
     staleTime: 2 * 60 * 1000,
+    enabled: canSeePayments || canSeeBookings,
   });
 
   useQuery({
@@ -331,14 +345,17 @@ export default function Dashboard() {
   useQuery({
     queryKey: ["/api/travel-agents"],
     staleTime: 5 * 60 * 1000,
+    enabled: canSeeBookings,
   });
 
   const { data: extraServices } = useQuery<any[]>({
     queryKey: ["/api/extra-services"],
+    enabled: canSeeBookings || canSeePayments,
   });
 
   const { data: expenseCategories } = useQuery<any[]>({
     queryKey: ["/api/expense-categories"],
+    enabled: canSeePayments,
   });
 
   const { data: vendors } = useQuery<any[]>({
@@ -347,7 +364,7 @@ export default function Dashboard() {
       selectedPropertyId 
         ? fetch(`/api/vendors?propertyId=${selectedPropertyId}`, { credentials: "include" }).then(r => r.json())
         : Promise.resolve([]),
-    enabled: !!selectedPropertyId,
+    enabled: !!selectedPropertyId && canSeePayments,
   });
 
   // Wallet summary query for dashboard
@@ -707,11 +724,11 @@ export default function Dashboard() {
   }
 
   const mobileTabConfig = [
-    { key: "inhouse" as MobileTab, label: "In-House", icon: Home, count: checkedInGuests.length, color: "text-green-600" },
-    { key: "checkins" as MobileTab, label: "Check-ins", icon: LogIn, count: todayCheckIns.length, color: "text-blue-600" },
-    { key: "checkouts" as MobileTab, label: "Check-outs", icon: LogOut, count: todayCheckOuts.length, color: "text-amber-600" },
-    { key: "orders" as MobileTab, label: "Orders", icon: Utensils, count: activeOrders.length, color: "text-purple-600" },
-    { key: "upcoming" as MobileTab, label: "Upcoming", icon: Calendar, count: upcomingBookings.length, color: "text-orange-600" },
+    ...(canSeeBookings ? [{ key: "inhouse" as MobileTab, label: "In-House", icon: Home, count: checkedInGuests.length, color: "text-green-600" }] : []),
+    ...(canSeeBookings ? [{ key: "checkins" as MobileTab, label: "Check-ins", icon: LogIn, count: todayCheckIns.length, color: "text-blue-600" }] : []),
+    ...(canSeeBookings ? [{ key: "checkouts" as MobileTab, label: "Check-outs", icon: LogOut, count: todayCheckOuts.length, color: "text-amber-600" }] : []),
+    ...(canSeeFoodOrders ? [{ key: "orders" as MobileTab, label: "Orders", icon: Utensils, count: activeOrders.length, color: "text-purple-600" }] : []),
+    ...(canSeeBookings ? [{ key: "upcoming" as MobileTab, label: "Upcoming", icon: Calendar, count: upcomingBookings.length, color: "text-orange-600" }] : []),
   ];
 
   // Enhanced analytics display
@@ -1403,70 +1420,78 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setQuickExpenseOpen(true)}
-              className="h-8"
-              data-testid="btn-quick-expense"
-            >
-              <Receipt className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">Expense</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setLocation("/enquiries?new=true")}
-              className="h-8"
-              data-testid="btn-quick-enquiry"
-            >
-              <MessageSquarePlus className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">Enquiry</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setQuickBookingOpen(true)}
-              className="h-8"
-              data-testid="btn-quick-booking"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">Booking</span>
-            </Button>
+            {canSeePayments && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setQuickExpenseOpen(true)}
+                className="h-8"
+                data-testid="btn-quick-expense"
+              >
+                <Receipt className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Expense</span>
+              </Button>
+            )}
+            {canSeeBookings && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setLocation("/enquiries?new=true")}
+                className="h-8"
+                data-testid="btn-quick-enquiry"
+              >
+                <MessageSquarePlus className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Enquiry</span>
+              </Button>
+            )}
+            {canSeeBookings && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setQuickBookingOpen(true)}
+                className="h-8"
+                data-testid="btn-quick-booking"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline ml-1">Booking</span>
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* KPI Strip - Horizontal Scroll on Mobile */}
-        <div className="flex gap-4 overflow-x-auto pb-1 -mx-3 px-3">
-          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
-            <Activity className="h-4 w-4 text-blue-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Occupancy</p>
-              <p className="text-lg font-bold font-mono" data-testid="kpi-occupancy">{stats?.occupancyRate || 0}%</p>
+        {/* KPI Strip - only visible when user has access to bookings/reports */}
+        {canSeeReports && (
+          <div className="flex gap-4 overflow-x-auto pb-1 -mx-3 px-3">
+            <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+              <Activity className="h-4 w-4 text-blue-500" />
+              <div>
+                <p className="text-xs text-muted-foreground">Occupancy</p>
+                <p className="text-lg font-bold font-mono" data-testid="kpi-occupancy">{stats?.occupancyRate || 0}%</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+              <IndianRupee className="h-4 w-4 text-green-500" />
+              <div>
+                <p className="text-xs text-muted-foreground">ADR</p>
+                <p className="text-lg font-bold font-mono text-green-600" data-testid="kpi-adr">₹{(stats?.adr || 0).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+              <TrendingUp className="h-4 w-4 text-chart-5" />
+              <div>
+                <p className="text-xs text-muted-foreground">RevPAR</p>
+                <p className="text-lg font-bold font-mono text-chart-5" data-testid="kpi-revpar">₹{(stats?.revpar || 0).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
+              <Receipt className="h-4 w-4 text-amber-500" />
+              <div>
+                <p className="text-xs text-muted-foreground">Revenue</p>
+                <p className="text-lg font-bold font-mono" data-testid="kpi-revenue">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
-            <IndianRupee className="h-4 w-4 text-green-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">ADR</p>
-              <p className="text-lg font-bold font-mono text-green-600" data-testid="kpi-adr">₹{(stats?.adr || 0).toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
-            <TrendingUp className="h-4 w-4 text-chart-5" />
-            <div>
-              <p className="text-xs text-muted-foreground">RevPAR</p>
-              <p className="text-lg font-bold font-mono text-chart-5" data-testid="kpi-revpar">₹{(stats?.revpar || 0).toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 min-w-max bg-background/50 rounded-lg px-3 py-2">
-            <Receipt className="h-4 w-4 text-amber-500" />
-            <div>
-              <p className="text-xs text-muted-foreground">Revenue</p>
-              <p className="text-lg font-bold font-mono" data-testid="kpi-revenue">₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Payment Notifications Banner */}
@@ -1489,21 +1514,21 @@ export default function Dashboard() {
 
       {/* Main Content Area - Scrollable */}
       <div className="flex-1 overflow-y-auto p-3 md:p-4 pb-20 lg:pb-4">
-        {/* Property Overview Section */}
-        {renderPropertyOverview()}
+        {/* Property Overview Section - only for users with booking/report access */}
+        {canSeeReports && renderPropertyOverview()}
         
-        {/* Analytics Cards */}
-        {renderAnalyticsCards()}
-        {renderMobileAnalyticsCards()}
+        {/* Analytics Cards - only for users with booking/report access */}
+        {canSeeReports && renderAnalyticsCards()}
+        {canSeeReports && renderMobileAnalyticsCards()}
         
         {/* Wallet Balance Cards - Admin/Super-Admin only */}
         {(user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super_admin') && renderWalletBalances()}
         {(user?.role === 'admin' || user?.role === 'super-admin' || user?.role === 'super_admin') && renderMobileWalletBalances()}
         
         {/* Desktop: 4-Column Full Section Layout */}
-        <div className="hidden lg:grid lg:grid-cols-4 gap-4">
+        <div className={`hidden lg:grid gap-4 ${canSeeBookings && canSeeFoodOrders ? "lg:grid-cols-4" : canSeeBookings ? "lg:grid-cols-3" : canSeeFoodOrders ? "lg:grid-cols-1" : "lg:grid-cols-1"}`}>
           {/* Check-In Column */}
-          <div className="space-y-3">
+          {canSeeBookings && <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <LogIn className="h-5 w-5 text-blue-600" />
@@ -1577,10 +1602,10 @@ export default function Dashboard() {
                 })
               )}
             </div>
-          </div>
+          </div>}
 
           {/* In-House Column */}
-          <div className="space-y-3">
+          {canSeeBookings && <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Home className="h-5 w-5 text-green-600" />
@@ -1616,10 +1641,10 @@ export default function Dashboard() {
                 })
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Check-Out Column */}
-          <div className="space-y-3">
+          {canSeeBookings && <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <LogOut className="h-5 w-5 text-amber-600" />
@@ -1696,10 +1721,10 @@ export default function Dashboard() {
                 })
               )}
             </div>
-          </div>
+          </div>}
 
           {/* Orders Column */}
-          <div className="space-y-3">
+          {canSeeFoodOrders && <div className="space-y-3">
             <div className="flex items-center justify-between px-1">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Utensils className="h-5 w-5 text-purple-600" />
@@ -1744,7 +1769,7 @@ export default function Dashboard() {
                 })
               )}
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Mobile/Tablet: Tab Content */}
