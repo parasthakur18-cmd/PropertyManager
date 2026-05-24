@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Wand2, UtensilsCrossed as SlotsIcon } from "lucide-react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Wand2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -241,7 +241,6 @@ export default function MenuManagement() {
   const [deletingItem, setDeletingItem] = useState<MenuItem | null>(null);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
-  const [expandedSlotsItemId, setExpandedSlotsItemId] = useState<number | null>(null);
   const [parsedItems, setParsedItems] = useState<any[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [importResult, setImportResult] = useState<{ created: number; failed: number; errors: string[] } | null>(null);
@@ -1157,51 +1156,29 @@ export default function MenuManagement() {
                       />
                     </div>
 
-                    {/* Meal Slot quick-toggle panel */}
-                    <div className="mb-3">
-                      <button
-                        type="button"
-                        onClick={() => setExpandedSlotsItemId(expandedSlotsItemId === item.id ? null : item.id)}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-dashed text-xs font-medium text-muted-foreground hover:border-teal-400 hover:text-teal-600 hover:bg-teal-50/50 transition-colors"
-                        data-testid={`button-slots-${item.id}`}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <SlotsIcon className="h-3.5 w-3.5" />
-                          Slot Availability
-                        </span>
-                        <span className="flex gap-1 flex-wrap justify-end">
-                          {MEAL_SLOTS.map(s => (
-                            <span
-                              key={String(s.key)}
-                              className={`text-[10px] px-1.5 py-0.5 rounded-full ${(item[s.key] ?? (s.key !== "availableHighLoad")) ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-400 line-through"}`}
+                    {/* Meal Slot Availability — always visible checkboxes */}
+                    <div className="mb-3 p-2.5 bg-muted/40 rounded-lg border">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Slot Availability</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        {MEAL_SLOTS.map(slot => {
+                          const currentVal = (item[slot.key] ?? (slot.key !== "availableHighLoad")) as boolean;
+                          return (
+                            <label
+                              key={String(slot.key)}
+                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer border transition-colors text-xs ${currentVal ? "bg-teal-50 border-teal-300 text-teal-800" : "bg-white border-gray-200 text-gray-400"}`}
                             >
-                              {s.label.split(" ")[0]}
-                            </span>
-                          ))}
-                        </span>
-                      </button>
-
-                      {expandedSlotsItemId === item.id && (
-                        <div className="mt-2 grid grid-cols-2 gap-1.5 p-3 bg-muted/40 rounded-lg border">
-                          {MEAL_SLOTS.map(slot => {
-                            const currentVal = (item[slot.key] ?? (slot.key !== "availableHighLoad")) as boolean;
-                            return (
-                              <label
-                                key={String(slot.key)}
-                                className="flex items-center gap-2 p-2 rounded-md bg-white border cursor-pointer hover:bg-teal-50/50 hover:border-teal-300 transition-colors"
-                              >
-                                <Checkbox
-                                  checked={currentVal}
-                                  onCheckedChange={(v) => patchSlotMutation.mutate({ id: item.id, field: String(slot.key), value: !!v })}
-                                  disabled={patchSlotMutation.isPending}
-                                  data-testid={`checkbox-slot-${String(slot.key)}-${item.id}`}
-                                />
-                                <span className="text-sm">{slot.label}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
+                              <Checkbox
+                                checked={currentVal}
+                                onCheckedChange={(v) => patchSlotMutation.mutate({ id: item.id, field: String(slot.key), value: !!v })}
+                                disabled={patchSlotMutation.isPending}
+                                className="h-3.5 w-3.5"
+                                data-testid={`checkbox-slot-${String(slot.key)}-${item.id}`}
+                              />
+                              <span className="leading-tight">{slot.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div className="flex gap-2">
