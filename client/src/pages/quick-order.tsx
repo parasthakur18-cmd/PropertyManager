@@ -118,6 +118,42 @@ function getFoodEmoji(item: { foodType?: string | null; name?: string }): string
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+function getItemTimingReason(item: MenuItem, timing: any): string {
+  if (!timing) return "";
+  if (timing.highLoadMode && !item.availableHighLoad) return "Unavailable Right Now";
+  const parseTime = (t: string): number => {
+    if (!t) return 0;
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const slots = [
+    { flag: item.availableBreakfast, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { flag: item.availableLunch, start: timing.lunchStart, end: timing.lunchEnd },
+    { flag: item.availableSnacks, start: timing.snacksStart, end: timing.snacksEnd },
+    { flag: item.availableDinner, start: timing.dinnerStart, end: timing.dinnerEnd },
+    { flag: item.availableLateNight, start: timing.lateNightStart, end: timing.lateNightEnd },
+  ];
+  const enabledSlots = slots.filter(s => s.flag !== false);
+  if (enabledSlots.length === 0) return "";
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  for (const slot of enabledSlots) {
+    const s = parseTime(slot.start);
+    const e = parseTime(slot.end);
+    if (!s && !e) return "";
+    const active = e === 0 ? cur >= s : s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e);
+    if (active) return "";
+  }
+  const fmt = (t: string) => {
+    if (!t) return "";
+    const [h, m] = t.split(":").map(Number);
+    return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+  };
+  const next = enabledSlots.filter(s => s.start).map(s => ({ ...s, sm: parseTime(s.start) }))
+    .sort((a, b) => { const d = (m: number) => m > cur ? m - cur : 1440 - cur + m; return d(a.sm) - d(b.sm); })[0];
+  return next ? `Available at ${fmt(next.start)}` : "Not available now";
+}
+
 export default function QuickOrder() {
   const urlParams = new URLSearchParams(window.location.search);
   const preselectedTable = urlParams.get("table") || "";
@@ -194,6 +230,17 @@ export default function QuickOrder() {
   const { data: sheetAddOnOptions } = useQuery<{ id: number; menuItemId: number; addOnName: string; addOnPrice: string }[]>({
     queryKey: [`/api/menu-items/${sheetItem?.id}/add-ons`],
     enabled: !!sheetItem,
+  });
+
+  const { data: menuTiming } = useQuery<any>({
+    queryKey: ["/api/public/menu-timing", selectedPropertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/menu-timing/${selectedPropertyId}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!selectedPropertyId,
+    refetchInterval: 60000,
   });
 
   // ── Order mutation ─────────────────────────────────────────────────────────
@@ -854,6 +901,7 @@ export default function QuickOrder() {
                   ) : (
                     searchResults.map(item => (
                       <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
+                        timingReason={getItemTimingReason(item, menuTiming)}
                         onAdd={() => addToCart(item)}
                         onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
                         onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
@@ -869,7 +917,7 @@ export default function QuickOrder() {
                   <h2 className="text-sm font-bold text-gray-700 mb-3">⭐ Popular Items</h2>
                   <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
                     {popularItems.map(item => (
-                      <QOPopularCard key={item.id} item={item} qty={getItemQtyInCart(item.id)} onAdd={() => addToCart(item)} />
+                      <QOPopularCard key={item.id} item={item} qty={getItemQtyInCart(item.id)} timingReason={getItemTimingReason(item, menuTiming)} onAdd={() => addToCart(item)} />
                     ))}
                   </div>
                 </div>
@@ -956,6 +1004,7 @@ export default function QuickOrder() {
                 itemsInActiveCategory.map(item => (
                   <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
                     isPopular={popularItemIds.has(item.id)}
+                    timingReason={getItemTimingReason(item, menuTiming)}
                     onAdd={() => addToCart(item)}
                     onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
                     onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
@@ -1208,14 +1257,15 @@ export default function QuickOrder() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function QOMenuItemRow({ item, qty, isPopular, onAdd, onIncrease, onDecrease }: {
-  item: MenuItem; qty: number; isPopular?: boolean;
+function QOMenuItemRow({ item, qty, isPopular, timingReason, onAdd, onIncrease, onDecrease }: {
+  item: MenuItem; qty: number; isPopular?: boolean; timingReason?: string;
   onAdd: () => void; onIncrease: () => void; onDecrease: () => void;
 }) {
   const price = item.discountedPrice || item.actualPrice || item.price;
+  const isDisabled = !!timingReason;
   const emoji = getFoodEmoji(item);
   return (
-    <div className="bg-white rounded-2xl overflow-hidden shadow-sm" data-testid={`card-menu-item-${item.id}`}>
+    <div className={`bg-white rounded-2xl overflow-hidden shadow-sm transition-opacity ${isDisabled ? "opacity-55" : ""}`} data-testid={`card-menu-item-${item.id}`}>
       <div className="flex gap-3 p-4">
         <div className="flex-shrink-0 relative">
           {item.imageUrl ? (
@@ -1255,7 +1305,9 @@ function QOMenuItemRow({ item, qty, isPopular, onAdd, onIncrease, onDecrease }: 
                 </span>
               )}
             </div>
-            {qty > 0 && !item.hasVariants && !item.hasAddOns ? (
+            {timingReason ? (
+              <span className="text-xs text-orange-500 italic font-medium">{timingReason}</span>
+            ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
               <div className="flex items-center gap-2">
                 <button onClick={onDecrease} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-dec-${item.id}`}>
                   <Minus className="h-3.5 w-3.5" />
@@ -1281,11 +1333,12 @@ function QOMenuItemRow({ item, qty, isPopular, onAdd, onIncrease, onDecrease }: 
   );
 }
 
-function QOPopularCard({ item, qty, onAdd }: { item: MenuItem; qty: number; onAdd: () => void; }) {
+function QOPopularCard({ item, qty, timingReason, onAdd }: { item: MenuItem; qty: number; timingReason?: string; onAdd: () => void; }) {
   const price = item.discountedPrice || item.actualPrice || item.price;
+  const isDisabled = !!timingReason;
   const emoji = getFoodEmoji(item);
   return (
-    <div className="bg-white rounded-2xl flex-shrink-0 w-40 shadow-sm overflow-hidden" data-testid={`card-popular-${item.id}`}>
+    <div className={`bg-white rounded-2xl flex-shrink-0 w-40 shadow-sm overflow-hidden transition-opacity ${isDisabled ? "opacity-55" : ""}`} data-testid={`card-popular-${item.id}`}>
       <div className="relative">
         {item.imageUrl ? (
           <img src={item.imageUrl} alt={item.name} loading="lazy" className="w-full h-28 object-cover"
@@ -1308,12 +1361,16 @@ function QOPopularCard({ item, qty, onAdd }: { item: MenuItem; qty: number; onAd
         <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1.5">{item.name}</p>
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold text-gray-900">₹{price}</span>
-          <button onClick={onAdd}
-            className={`rounded-xl px-2.5 py-1 text-xs font-bold transition-transform active:scale-95 flex items-center gap-1 ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`}
-            data-testid={`button-popular-add-${item.id}`}
-          >
-            {qty > 0 ? <><span>{qty}</span><Check className="h-3 w-3" /></> : <><Plus className="h-3 w-3" /><span>Add</span></>}
-          </button>
+          {timingReason ? (
+            <span className="text-[10px] text-orange-500 italic font-medium leading-tight">{timingReason}</span>
+          ) : (
+            <button onClick={onAdd}
+              className={`rounded-xl px-2.5 py-1 text-xs font-bold transition-transform active:scale-95 flex items-center gap-1 ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`}
+              data-testid={`button-popular-add-${item.id}`}
+            >
+              {qty > 0 ? <><span>{qty}</span><Check className="h-3 w-3" /></> : <><Plus className="h-3 w-3" /><span>Add</span></>}
+            </button>
+          )}
         </div>
       </div>
     </div>

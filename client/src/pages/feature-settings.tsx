@@ -11,7 +11,7 @@ import { useState, useRef, useEffect } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Bell, Mail, Zap, Users, TrendingUp, AlertCircle, Clock, DollarSign, Settings2, CreditCard, MessageSquare, Phone, Plus, X, Store,
-  BellRing, Loader2, CheckCircle2, User,
+  BellRing, Loader2, CheckCircle2, User, UtensilsCrossed, Zap as HighLoad, ShieldAlert,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -42,6 +42,17 @@ interface FeatureSettings {
   maxPaymentReminders: number;
   vendorReminderEnabled: boolean;
   vendorReminderDaysBefore: number;
+  highLoadMode: boolean;
+  breakfastStart: string;
+  breakfastEnd: string;
+  lunchStart: string;
+  lunchEnd: string;
+  snacksStart: string;
+  snacksEnd: string;
+  dinnerStart: string;
+  dinnerEnd: string;
+  lateNightStart: string;
+  lateNightEnd: string;
 }
 
 interface TemplateSetting {
@@ -419,6 +430,43 @@ export default function FeatureSettings() {
     await updateMutation.mutateAsync({ [key]: value } as any);
   };
 
+  const MENU_SLOTS = [
+    { key: "breakfast", label: "Breakfast", emoji: "🌅", startKey: "breakfastStart", endKey: "breakfastEnd" },
+    { key: "lunch", label: "Lunch", emoji: "🍱", startKey: "lunchStart", endKey: "lunchEnd" },
+    { key: "snacks", label: "Snacks", emoji: "🍿", startKey: "snacksStart", endKey: "snacksEnd" },
+    { key: "dinner", label: "Dinner", emoji: "🍽️", startKey: "dinnerStart", endKey: "dinnerEnd" },
+    { key: "lateNight", label: "Late Night", emoji: "🌙", startKey: "lateNightStart", endKey: "lateNightEnd" },
+  ] as const;
+
+  const [timingDraft, setTimingDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (settings) {
+      setTimingDraft({
+        breakfastStart: settings.breakfastStart || "07:00",
+        breakfastEnd: settings.breakfastEnd || "11:00",
+        lunchStart: settings.lunchStart || "12:00",
+        lunchEnd: settings.lunchEnd || "16:00",
+        snacksStart: settings.snacksStart || "16:00",
+        snacksEnd: settings.snacksEnd || "19:00",
+        dinnerStart: settings.dinnerStart || "19:00",
+        dinnerEnd: settings.dinnerEnd || "22:30",
+        lateNightStart: settings.lateNightStart || "22:30",
+        lateNightEnd: settings.lateNightEnd || "00:00",
+      });
+    }
+  }, [settings?.id]);
+
+  const saveTimingMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest("/api/feature-settings", "PATCH", { ...timingDraft, propertyId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feature-settings", propertyId] });
+      toast({ title: "Menu Timings Saved", description: "Slot times updated for this property" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
   const getTemplateSetting = (templateType: string): TemplateSetting | undefined => {
     return templateSettings?.find(s => s.templateType === templateType);
   };
@@ -721,6 +769,85 @@ export default function FeatureSettings() {
           );
         })}
       </div>
+
+      {/* Menu Timings & High Load Mode */}
+      <Card className="overflow-hidden border-teal-200 dark:border-teal-800">
+        <CardHeader className="bg-teal-50 dark:bg-teal-950 border-b pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UtensilsCrossed className="h-5 w-5 text-teal-600" />
+              <div>
+                <CardTitle className="text-lg">Menu Timings</CardTitle>
+                <CardDescription>Set when each meal slot is served at this property</CardDescription>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-5 space-y-5">
+          {/* High Load Mode toggle */}
+          <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${settings?.highLoadMode ? "border-red-400 bg-red-50 dark:bg-red-950/30" : "border-border"}`}>
+            <div className="flex items-center gap-3">
+              <ShieldAlert className={`h-5 w-5 ${settings?.highLoadMode ? "text-red-600" : "text-muted-foreground"}`} />
+              <div>
+                <p className={`font-semibold ${settings?.highLoadMode ? "text-red-700 dark:text-red-400" : ""}`}>
+                  High Load Mode {settings?.highLoadMode ? "— ON" : "— OFF"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  When ON, only items marked "Available In High Load Mode" can be ordered
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={settings?.highLoadMode ?? false}
+              onCheckedChange={(v) => handleToggle("highLoadMode", v)}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-highLoadMode"
+            />
+          </div>
+
+          <Separator />
+
+          {/* Time slot rows */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-muted-foreground">Meal Slot Hours</p>
+            {MENU_SLOTS.map((slot) => (
+              <div key={slot.key} className="flex items-center gap-3">
+                <span className="text-lg w-7 flex-shrink-0">{slot.emoji}</span>
+                <span className="w-24 text-sm font-medium flex-shrink-0">{slot.label}</span>
+                <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    type="time"
+                    className="w-32"
+                    value={timingDraft[slot.startKey] || ""}
+                    onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.startKey]: e.target.value }))}
+                    data-testid={`input-${slot.startKey}`}
+                  />
+                  <span className="text-muted-foreground text-sm">to</span>
+                  <Input
+                    type="time"
+                    className="w-32"
+                    value={timingDraft[slot.endKey] || ""}
+                    onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.endKey]: e.target.value }))}
+                    data-testid={`input-${slot.endKey}`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            onClick={() => saveTimingMutation.mutate()}
+            disabled={saveTimingMutation.isPending}
+            data-testid="button-save-timings"
+          >
+            {saveTimingMutation.isPending ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving…</>
+            ) : (
+              <><CheckCircle2 className="h-4 w-4 mr-2" />Save Timings</>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Food Order WhatsApp Notification Numbers */}
       <Card className="overflow-hidden border-orange-200 dark:border-orange-800">

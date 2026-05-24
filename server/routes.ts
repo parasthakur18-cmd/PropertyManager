@@ -966,6 +966,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public menu timing config (no auth required — needed by customer menu)
+  app.get("/api/public/menu-timing/:propertyId", async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      if (isNaN(propertyId)) return res.json(null);
+      const settings = await storage.getFeatureSettingsByProperty(propertyId);
+      if (!settings) return res.json(null);
+      res.json({
+        highLoadMode: (settings as any).highLoadMode ?? false,
+        breakfastStart: (settings as any).breakfastStart ?? "07:00",
+        breakfastEnd: (settings as any).breakfastEnd ?? "11:00",
+        lunchStart: (settings as any).lunchStart ?? "12:00",
+        lunchEnd: (settings as any).lunchEnd ?? "16:00",
+        snacksStart: (settings as any).snacksStart ?? "16:00",
+        snacksEnd: (settings as any).snacksEnd ?? "19:00",
+        dinnerStart: (settings as any).dinnerStart ?? "19:00",
+        dinnerEnd: (settings as any).dinnerEnd ?? "22:30",
+        lateNightStart: (settings as any).lateNightStart ?? "22:30",
+        lateNightEnd: (settings as any).lateNightEnd ?? "00:00",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Public Order - for guests to place orders
   app.post("/api/public/orders", async (req, res) => {
     try {

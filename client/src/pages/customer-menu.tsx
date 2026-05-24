@@ -68,6 +68,42 @@ function getFoodEmoji(item: MenuItem) {
   return item.foodType === "non-veg" ? "🍗" : "🍛";
 }
 
+function getItemTimingReason(item: MenuItem, timing: any): string {
+  if (!timing) return "";
+  if (timing.highLoadMode && !item.availableHighLoad) return "Unavailable Right Now";
+  const parseTime = (t: string): number => {
+    if (!t) return 0;
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const slots = [
+    { flag: item.availableBreakfast, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { flag: item.availableLunch, start: timing.lunchStart, end: timing.lunchEnd },
+    { flag: item.availableSnacks, start: timing.snacksStart, end: timing.snacksEnd },
+    { flag: item.availableDinner, start: timing.dinnerStart, end: timing.dinnerEnd },
+    { flag: item.availableLateNight, start: timing.lateNightStart, end: timing.lateNightEnd },
+  ];
+  const enabledSlots = slots.filter(s => s.flag !== false);
+  if (enabledSlots.length === 0) return "";
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  for (const slot of enabledSlots) {
+    const s = parseTime(slot.start);
+    const e = parseTime(slot.end);
+    if (!s && !e) return "";
+    const active = e === 0 ? cur >= s : s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e);
+    if (active) return "";
+  }
+  const fmt = (t: string) => {
+    if (!t) return "";
+    const [h, m] = t.split(":").map(Number);
+    return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+  };
+  const next = enabledSlots.filter(s => s.start).map(s => ({ ...s, sm: parseTime(s.start) }))
+    .sort((a, b) => { const d = (m: number) => m > cur ? m - cur : 1440 - cur + m; return d(a.sm) - d(b.sm); })[0];
+  return next ? `Available at ${fmt(next.start)}` : "Not available now";
+}
+
 export default function CustomerMenu() {
   const urlProperty = new URLSearchParams(window.location.search).get("property") || "";
   const urlTable = new URLSearchParams(window.location.search).get("table") || "";
@@ -131,6 +167,13 @@ export default function CustomerMenu() {
   const { data: properties } = useQuery<any[]>({
     queryKey: ["/api/public/properties"],
     queryFn: () => publicFetch("/api/public/properties"),
+  });
+
+  const { data: menuTiming } = useQuery<any>({
+    queryKey: ["/api/public/menu-timing", selectedPropertyId],
+    queryFn: () => publicFetch(`/api/public/menu-timing/${selectedPropertyId}`),
+    enabled: !!selectedPropertyId,
+    refetchInterval: 60000,
   });
 
   const orderMutation = useMutation({
@@ -396,7 +439,7 @@ export default function CustomerMenu() {
               </div>
             ) : (
               searchResults.map(item => (
-                <MenuItemRow key={item.id} item={item} qty={cart.filter(c => c.menuItem.id === item.id).length} isKitchenOpen={isKitchenOpen} isPopular={popularItemIds.has(item.id)} onAdd={() => handleSelectItem(item)} onIncrease={() => handleSelectItem(item)} onDecrease={() => {}} />
+                <MenuItemRow key={item.id} item={item} qty={cart.filter(c => c.menuItem.id === item.id).length} isKitchenOpen={isKitchenOpen} isPopular={popularItemIds.has(item.id)} timingReason={getItemTimingReason(item, menuTiming)} onAdd={() => handleSelectItem(item)} onIncrease={() => handleSelectItem(item)} onDecrease={() => {}} />
               ))
             )}
           </div>
@@ -407,7 +450,7 @@ export default function CustomerMenu() {
                 <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">⭐ Popular Items</h2>
                 <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
                   {popularItems.map(item => (
-                    <PopularCard key={item.id} item={item} qty={cart.filter(c => c.menuItem.id === item.id).length} isKitchenOpen={isKitchenOpen} onAdd={() => handleSelectItem(item)} />
+                    <PopularCard key={item.id} item={item} qty={cart.filter(c => c.menuItem.id === item.id).length} isKitchenOpen={isKitchenOpen} timingReason={getItemTimingReason(item, menuTiming)} onAdd={() => handleSelectItem(item)} />
                   ))}
                 </div>
               </div>
@@ -617,9 +660,9 @@ export default function CustomerMenu() {
   );
 }
 
-function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, onDecrease }: { item: MenuItem; qty: number; isKitchenOpen: boolean; isPopular?: boolean; onAdd: () => void; onIncrease: () => void; onDecrease: () => void; }) {
+function MenuItemRow({ item, qty, isKitchenOpen, isPopular, timingReason, onAdd, onIncrease, onDecrease }: { item: MenuItem; qty: number; isKitchenOpen: boolean; isPopular?: boolean; timingReason?: string; onAdd: () => void; onIncrease: () => void; onDecrease: () => void; }) {
   const price = item.discountedPrice || item.actualPrice || item.price;
-  const isDisabled = !isKitchenOpen;
+  const isDisabled = !isKitchenOpen || !!timingReason;
   const emoji = getFoodEmoji(item);
 
   return (
@@ -646,8 +689,10 @@ function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, o
               </div>
               {item.preparationTime && <span className="text-xs text-gray-400 flex items-center gap-0.5 mt-0.5"><Clock className="h-3 w-3" />{item.preparationTime} min</span>}
             </div>
-            {isDisabled ? (
+            {!isKitchenOpen ? (
               <span className="text-xs text-gray-400 italic">Closed</span>
+            ) : timingReason ? (
+              <span className="text-xs text-orange-500 italic font-medium">{timingReason}</span>
             ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
               <div className="flex items-center gap-2">
                 <button onClick={onDecrease} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-dec-${item.id}`}><Minus className="h-3.5 w-3.5" /></button>
@@ -667,9 +712,9 @@ function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, o
   );
 }
 
-function PopularCard({ item, qty, isKitchenOpen, onAdd }: { item: MenuItem; qty: number; isKitchenOpen: boolean; onAdd: () => void; }) {
+function PopularCard({ item, qty, isKitchenOpen, timingReason, onAdd }: { item: MenuItem; qty: number; isKitchenOpen: boolean; timingReason?: string; onAdd: () => void; }) {
   const price = item.discountedPrice || item.actualPrice || item.price;
-  const isDisabled = !isKitchenOpen;
+  const isDisabled = !isKitchenOpen || !!timingReason;
   const emoji = getFoodEmoji(item);
 
   return (
@@ -685,7 +730,9 @@ function PopularCard({ item, qty, isKitchenOpen, onAdd }: { item: MenuItem; qty:
         <p className="font-semibold text-xs leading-tight text-gray-900 line-clamp-2 mb-1.5">{item.name}</p>
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold text-gray-900">₹{price}</span>
-          {!isDisabled && (
+          {isDisabled ? (
+            timingReason ? <span className="text-[10px] text-orange-500 italic font-medium leading-tight text-right">{timingReason}</span> : null
+          ) : (
             <button onClick={onAdd} className={`rounded-xl px-2.5 py-1 text-xs font-bold transition-transform active:scale-95 flex items-center gap-1 ${qty > 0 ? "bg-[#2BB6A8] text-white" : "bg-[#1E3A5F] text-white"}`} data-testid={`button-popular-add-${item.id}`}>
               {qty > 0 ? <><span>{qty}</span><span>✓</span></> : <><Plus className="h-3 w-3" /><span>Add</span></>}
             </button>

@@ -440,6 +440,12 @@ export const menuItems = pgTable("menu_items", {
   hasVariants: boolean("has_variants").default(false),
   hasAddOns: boolean("has_add_ons").default(false),
   displayOrder: integer("display_order").default(0),
+  availableBreakfast: boolean("available_breakfast").default(true),
+  availableLunch: boolean("available_lunch").default(true),
+  availableSnacks: boolean("available_snacks").default(true),
+  availableDinner: boolean("available_dinner").default(true),
+  availableLateNight: boolean("available_late_night").default(true),
+  availableHighLoad: boolean("available_high_load").default(false),
 });
 
 export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
@@ -1059,6 +1065,17 @@ export const featureSettings = pgTable("feature_settings", {
   // Vendor Bill Due Date Reminder Settings
   vendorReminderEnabled: boolean("vendor_reminder_enabled").default(true),
   vendorReminderDaysBefore: integer("vendor_reminder_days_before").default(2),
+  highLoadMode: boolean("high_load_mode").notNull().default(false),
+  breakfastStart: varchar("breakfast_start", { length: 5 }).default("07:00"),
+  breakfastEnd: varchar("breakfast_end", { length: 5 }).default("11:00"),
+  lunchStart: varchar("lunch_start", { length: 5 }).default("12:00"),
+  lunchEnd: varchar("lunch_end", { length: 5 }).default("16:00"),
+  snacksStart: varchar("snacks_start", { length: 5 }).default("16:00"),
+  snacksEnd: varchar("snacks_end", { length: 5 }).default("19:00"),
+  dinnerStart: varchar("dinner_start", { length: 5 }).default("19:00"),
+  dinnerEnd: varchar("dinner_end", { length: 5 }).default("22:30"),
+  lateNightStart: varchar("late_night_start", { length: 5 }).default("22:30"),
+  lateNightEnd: varchar("late_night_end", { length: 5 }).default("00:00"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

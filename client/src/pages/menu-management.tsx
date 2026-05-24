@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -265,6 +266,12 @@ export default function MenuManagement() {
       isAvailable: true,
       preparationTime: 0,
       imageUrl: "",
+      availableBreakfast: true,
+      availableLunch: true,
+      availableSnacks: true,
+      availableDinner: true,
+      availableLateNight: true,
+      availableHighLoad: false,
     },
   });
 
@@ -513,6 +520,12 @@ export default function MenuManagement() {
       isAvailable: item.isAvailable,
       preparationTime: item.preparationTime || 0,
       imageUrl: item.imageUrl || "",
+      availableBreakfast: item.availableBreakfast ?? true,
+      availableLunch: item.availableLunch ?? true,
+      availableSnacks: item.availableSnacks ?? true,
+      availableDinner: item.availableDinner ?? true,
+      availableLateNight: item.availableLateNight ?? true,
+      availableHighLoad: item.availableHighLoad ?? false,
     });
   };
 
@@ -785,6 +798,42 @@ export default function MenuManagement() {
                     </FormItem>
                   )}
                 />
+
+                {/* Meal Slot Availability */}
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div>
+                    <p className="text-base font-medium">Meal Slot Availability</p>
+                    <p className="text-sm text-muted-foreground">Which slots can this item be ordered in?</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { fname: "availableBreakfast", label: "🌅 Breakfast" },
+                      { fname: "availableLunch", label: "🍱 Lunch" },
+                      { fname: "availableSnacks", label: "🍿 Snacks" },
+                      { fname: "availableDinner", label: "🍽️ Dinner" },
+                      { fname: "availableLateNight", label: "🌙 Late Night" },
+                      { fname: "availableHighLoad", label: "⚡ High Load" },
+                    ] as const).map(({ fname, label }) => (
+                      <FormField
+                        key={fname}
+                        control={form.control}
+                        name={fname as any}
+                        render={({ field }) => (
+                          <FormItem className="flex items-center gap-2 p-2 rounded-md border cursor-pointer">
+                            <FormControl>
+                              <Checkbox
+                                checked={!!field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid={`checkbox-${fname}`}
+                              />
+                            </FormControl>
+                            <FormLabel className="text-sm font-normal cursor-pointer m-0">{label}</FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
 
                 <DialogFooter>
                   <Button

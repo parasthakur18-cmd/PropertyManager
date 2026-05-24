@@ -1050,6 +1050,39 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_menu_item_timing_flags",
+    async run() {
+      await runRaw(`
+        ALTER TABLE menu_items
+          ADD COLUMN IF NOT EXISTS available_breakfast BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS available_lunch BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS available_snacks BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS available_dinner BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS available_late_night BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS available_high_load BOOLEAN NOT NULL DEFAULT false;
+      `);
+    },
+  },
+  {
+    name: "add_feature_settings_menu_timing",
+    async run() {
+      await runRaw(`
+        ALTER TABLE feature_settings
+          ADD COLUMN IF NOT EXISTS high_load_mode BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS breakfast_start VARCHAR(5) DEFAULT '07:00',
+          ADD COLUMN IF NOT EXISTS breakfast_end VARCHAR(5) DEFAULT '11:00',
+          ADD COLUMN IF NOT EXISTS lunch_start VARCHAR(5) DEFAULT '12:00',
+          ADD COLUMN IF NOT EXISTS lunch_end VARCHAR(5) DEFAULT '16:00',
+          ADD COLUMN IF NOT EXISTS snacks_start VARCHAR(5) DEFAULT '16:00',
+          ADD COLUMN IF NOT EXISTS snacks_end VARCHAR(5) DEFAULT '19:00',
+          ADD COLUMN IF NOT EXISTS dinner_start VARCHAR(5) DEFAULT '19:00',
+          ADD COLUMN IF NOT EXISTS dinner_end VARCHAR(5) DEFAULT '22:30',
+          ADD COLUMN IF NOT EXISTS late_night_start VARCHAR(5) DEFAULT '22:30',
+          ADD COLUMN IF NOT EXISTS late_night_end VARCHAR(5) DEFAULT '00:00';
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
