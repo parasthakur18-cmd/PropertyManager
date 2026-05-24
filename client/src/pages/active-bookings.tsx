@@ -2618,117 +2618,48 @@ export default function ActiveBookings() {
                     Download Bill PDF
                   </Button>
 
-                  {/* Send Bill PDF on WhatsApp */}
+                  {/* Send Bill on WhatsApp — calls server-side Authkey API so guest reliably receives it */}
                   <Button
                     className="w-full bg-[#25D366] hover:bg-[#1ebe5d] text-white"
                     data-testid="button-send-bill-pdf-whatsapp"
                     onClick={async () => {
-                      const b = booking;
-                      const phone = (b.guest?.whatsappPhone || b.guest?.phone || "").replace(/\D/g, "");
+                      const phone = (booking.guest?.whatsappPhone || booking.guest?.phone || "").replace(/\D/g, "");
                       if (!phone) {
                         toast({ title: "No phone number", description: "Guest has no phone number on file.", variant: "destructive" });
                         return;
                       }
                       try {
-                        const roomLabel = b.isGroupBooking && b.rooms?.length
-                          ? `Rooms ${b.rooms.map((r: any) => r.roomNumber).join(", ")}`
-                          : b.room?.roomNumber ?? "TBA";
-                        const propertyName = b.property?.name ?? "Hostezee";
-                        const checkIn = b.actualCheckInTime
-                          ? format(new Date(b.actualCheckInTime), "dd MMM yyyy, h:mm a")
-                          : format(new Date(b.checkInDate), "dd MMM yyyy");
-                        const checkOut = format(new Date(b.checkOutDate), "dd MMM yyyy");
-
-                        const ordersHtml = (b.orders ?? []).filter((o: any) => o.status !== "rejected").map((order: any) => {
-                          const items = (order.items ?? []).map((item: any) =>
-                            `<tr><td style="padding:3px 8px;color:#555">${item.name}${item.variant ? ` (${item.variant})` : ""} x${item.quantity || 1}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${item.totalPrice || (item.price * (item.quantity || 1))}</td></tr>`
-                          ).join("");
-                          return `<tr style="background:#f9f9f9"><td style="padding:6px 8px;font-weight:600" colspan="2">Order #${order.id}</td></tr>${items}<tr><td style="padding:4px 8px;border-top:1px solid #eee;font-weight:600">Order Total</td><td style="padding:4px 8px;border-top:1px solid #eee;text-align:right;font-weight:600">&#8377;${parseFloat(order.totalAmount).toFixed(2)}</td></tr>`;
-                        }).join("");
-                        const extrasHtml = (b.extraServices ?? []).map((s: any) =>
-                          `<tr><td style="padding:3px 8px;color:#555">${s.serviceName}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(s.amount).toFixed(2)}</td></tr>`
-                        ).join("");
-                        const manualHtml2 = manualCharges.filter(c => c.name && parseFloat(c.amount) > 0).map(c =>
-                          `<tr><td style="padding:3px 8px;color:#555">${c.name}</td><td style="padding:3px 8px;text-align:right;color:#555">&#8377;${parseFloat(c.amount).toFixed(2)}</td></tr>`
-                        ).join("");
-                        const guestNameClean2 = b.guest.fullName.replace(/\s+/g, "_");
-                        const dateSuffix2 = format(new Date(), "dd-MMM-yyyy");
-                        const fileName = `Bill_${guestNameClean2}_${dateSuffix2}.pdf`;
-
-                        const pdfHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:13px;color:#222;background:#fff}.page{width:100%;margin:0;padding:20px 22px}.header{background:#1E3A5F;color:#fff;border-radius:8px 8px 0 0;padding:22px 24px 18px}.header h1{font-size:22px;font-weight:700}.header .tagline{font-size:12px;color:#2BB6A8;margin-top:2px}.header .property{font-size:14px;margin-top:8px;opacity:.9}.bill-meta{background:#f5f8ff;border:1px solid #dde5f5;border-top:none;border-radius:0 0 8px 8px;padding:14px 18px;display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px}.bill-meta div{min-width:110px}.bill-meta .label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}.bill-meta .value{font-size:13px;font-weight:600;color:#1E3A5F}.section{margin-bottom:20px}.section-title{font-size:13px;font-weight:700;color:#1E3A5F;text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;background:#eef3fb;border-left:3px solid #2BB6A8}table{width:100%;border-collapse:collapse}table td{font-size:13px}.summary-table{border:1px solid #e0e7ef;border-radius:6px;overflow:hidden}.summary-table td{padding:8px 12px;border-bottom:1px solid #eef2f8;word-break:break-word}.total-row td{font-size:16px;font-weight:700;background:#1E3A5F;color:#fff;padding:10px 14px}.gst-row td{color:#15803d;font-weight:600;background:#f0fdf4}.discount-row td{color:#dc2626;font-weight:600;background:#fff5f5}.advance-row td{color:#16a34a;font-weight:600;background:#f0fdf4}.balance-row td{color:#dc2626;font-weight:700;background:#fff5f5;font-size:15px}.footer{margin-top:32px;border-top:1px solid #e0e7ef;padding-top:14px;text-align:center;color:#aaa;font-size:11px}</style></head><body><div class="page"><div class="header"><h1>Hostezee</h1><div class="tagline">Simplify Stays</div><div class="property">${propertyName}</div></div><div class="bill-meta"><div><div class="label">Guest</div><div class="value">${b.guest.fullName}</div></div><div><div class="label">Phone</div><div class="value">${b.guest.phone ?? "-"}</div></div><div><div class="label">Room</div><div class="value">${roomLabel}</div></div><div><div class="label">Check-in</div><div class="value">${checkIn}</div></div><div><div class="label">Check-out</div><div class="value">${checkOut}</div></div><div><div class="label">Nights</div><div class="value">${actualNights}</div></div></div><div class="section"><div class="section-title">Room Charges</div><table class="summary-table"><tbody><tr><td style="font-weight:600">${actualNights} night(s)</td><td style="text-align:right;font-weight:600">&#8377;${roomCharges.toFixed(2)}</td></tr></tbody></table></div>${(b.orders ?? []).filter((o: any) => o.status !== "rejected").length > 0 ? `<div class="section"><div class="section-title">Food Orders</div><table class="summary-table"><tbody>${ordersHtml}</tbody></table></div>` : ""}${(b.extraServices ?? []).length > 0 ? `<div class="section"><div class="section-title">Extra Services</div><table class="summary-table"><tbody>${extrasHtml}</tbody></table></div>` : ""}${manualHtml2 ? `<div class="section"><div class="section-title">Additional Charges</div><table class="summary-table"><tbody>${manualHtml2}</tbody></table></div>` : ""}<div class="section"><div class="section-title">Bill Summary</div><table class="summary-table"><tbody><tr><td>Room Charges</td><td style="text-align:right">&#8377;${roomCharges.toFixed(2)}</td></tr>${foodCharges > 0 ? `<tr><td>Food Charges</td><td style="text-align:right">&#8377;${foodCharges.toFixed(2)}</td></tr>` : ""}${extraCharges > 0 ? `<tr><td>Extra Services</td><td style="text-align:right">&#8377;${extraCharges.toFixed(2)}</td></tr>` : ""}${manualChargesTotal > 0 ? `<tr><td>Additional</td><td style="text-align:right">&#8377;${manualChargesTotal.toFixed(2)}</td></tr>` : ""}${roomGst > 0 ? `<tr class="gst-row"><td>GST on Rooms</td><td style="text-align:right">&#8377;${roomGst.toFixed(2)}</td></tr>` : ""}${foodGst > 0 ? `<tr class="gst-row"><td>GST on Food</td><td style="text-align:right">&#8377;${foodGst.toFixed(2)}</td></tr>` : ""}${serviceCharge > 0 ? `<tr class="gst-row"><td>Service Charge</td><td style="text-align:right">&#8377;${serviceCharge.toFixed(2)}</td></tr>` : ""}${discount > 0 ? `<tr class="discount-row"><td>Discount</td><td style="text-align:right">-&#8377;${discount.toFixed(2)}</td></tr>` : ""}<tr class="total-row"><td>Grand Total</td><td style="text-align:right">&#8377;${grandTotal.toFixed(2)}</td></tr>${advancePaid > 0 ? `<tr class="advance-row"><td>Advance Paid</td><td style="text-align:right">-&#8377;${advancePaid.toFixed(2)}</td></tr>` : ""}${advancePaid > 0 ? `<tr class="balance-row"><td>Balance Due</td><td style="text-align:right">&#8377;${Math.max(0, grandTotal - advancePaid).toFixed(2)}</td></tr>` : ""}</tbody></table></div><div class="footer">Generated by Hostezee &bull; ${format(new Date(), "dd MMM yyyy, hh:mm a")} &bull; Thank you for your stay!</div></div></body></html>`;
-
-                        // Same blank-PDF fix as the download button above — render fully
-                        // visible inside a zero-size overflow:hidden wrapper so html2canvas
-                        // captures real content. opacity:0 and left:-9999px both produce
-                        // blank PDFs.
-                        const html2pdfLib = (await import('html2pdf.js')).default;
-                        const wrapper = document.createElement('div');
-                        wrapper.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;overflow:hidden;pointer-events:none;z-index:-1;';
-                        const el = document.createElement('div');
-                        el.style.cssText = 'width:760px;background:#fff;';
-                        el.innerHTML = pdfHtml;
-                        wrapper.appendChild(el);
-                        document.body.appendChild(wrapper);
-                        let pdfBlob: Blob;
-                        try {
-                          pdfBlob = await html2pdfLib().from(el).set({
-                            margin: [8, 8, 8, 8],
-                            filename: fileName,
-                            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff' },
-                            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                          }).outputPdf('blob');
-                        } finally {
-                          document.body.removeChild(wrapper);
+                        const res = await fetch('/api/whatsapp/send-prebill', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            bookingId: booking.id,
+                            phoneNumber: phone,
+                            guestName: booking.guest.fullName,
+                            billTotal: grandTotal,
+                            roomCharges, foodCharges, extraCharges,
+                            gstAmount: totalGst,
+                            serviceCharge,
+                            discount,
+                            advancePayment: advancePaid + cashPaid,
+                            balanceDue: Math.max(0, remainingBalance)
+                          })
+                        });
+                        if (!res.ok) {
+                          const err = await res.json();
+                          throw new Error(err.message || 'Failed to send bill');
                         }
-
-                        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
-                        const waPhone = phone.startsWith("91") ? phone : `91${phone}`;
-
-                        // Helper: download the PDF and open WhatsApp so the operator can attach it.
-                        // Used as fallback for desktop AND when navigator.share fails (e.g. gesture
-                        // expired after our async PDF generation, which iOS Safari treats as an error).
-                        const fallbackDownloadAndOpenWA = () => {
-                          const blobUrl = URL.createObjectURL(pdfBlob);
-                          const link = document.createElement('a');
-                          link.href = blobUrl;
-                          link.download = fileName;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          URL.revokeObjectURL(blobUrl);
-                          setTimeout(() => window.open(`https://wa.me/${waPhone}`, "_blank"), 800);
-                          toast({
-                            title: "PDF Downloaded",
-                            description: `Bill PDF saved as "${fileName}". WhatsApp is opening — attach the PDF to send.`,
-                            duration: 6000,
-                          });
-                        };
-
-                        // Try Web Share API first (mobile). Many browsers reject the share
-                        // call because the user-gesture context is lost after our awaits
-                        // (Error: "Must be handling a user gesture to perform a share request").
-                        // Catch that and fall back to download + WhatsApp link.
-                        const canShareFiles = !!(navigator.share && (navigator as any).canShare && (navigator as any).canShare({ files: [file] }));
-                        if (canShareFiles) {
-                          try {
-                            await navigator.share({ files: [file], title: `Bill — ${b.guest.fullName}` });
-                          } catch (shareErr: any) {
-                            // User cancelled the share sheet — do nothing.
-                            if (shareErr?.name === 'AbortError') return;
-                            console.warn('[Bill] navigator.share failed, falling back to download:', shareErr);
-                            fallbackDownloadAndOpenWA();
-                          }
-                        } else {
-                          fallbackDownloadAndOpenWA();
-                        }
+                        const data = await res.json();
+                        setPreBillLink(data.preBillLink || null);
+                        setPreBillLinkCopied(false);
+                        toast({ title: "Bill sent on WhatsApp ✓", description: `Guest will receive the bill link at ${phone}` });
                       } catch (error: any) {
-                        console.error("Send PDF WA error:", error);
-                        toast({ title: "Failed", description: error.message || "Could not generate bill PDF", variant: "destructive" });
+                        toast({ title: "Failed to send", description: error.message || "Could not send bill via WhatsApp", variant: "destructive" });
                       }
                     }}
                   >
                     <MessageCircle className="h-4 w-4 mr-2" />
-                    Send Bill PDF on WhatsApp
+                    Send Bill on WhatsApp
                   </Button>
 
                   <div className="grid grid-cols-2 gap-2">
