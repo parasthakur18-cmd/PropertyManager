@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -1353,6 +1354,27 @@ function ItemCard({
     },
   });
 
+  const patchSlot = useMutation({
+    mutationFn: async ({ field, value }: { field: string; value: boolean }) => {
+      return await apiRequest(`/api/menu-items/${item.id}`, "PATCH", { [field]: value });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/menu-items"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const MEAL_SLOTS: { key: keyof MenuItem; label: string }[] = [
+    { key: "availableBreakfast", label: "🌅 Breakfast" },
+    { key: "availableLunch", label: "🍱 Lunch" },
+    { key: "availableSnacks", label: "🍿 Snacks" },
+    { key: "availableDinner", label: "🍽️ Dinner" },
+    { key: "availableLateNight", label: "🌙 Late Night" },
+    { key: "availableHighLoad", label: "⚡ High Load" },
+  ];
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
       <Card>
@@ -1432,6 +1454,31 @@ function ItemCard({
                   )}
                 </Button>
               </CollapsibleTrigger>
+            </div>
+          </div>
+
+          {/* Meal Slot Availability — always visible */}
+          <div className="mt-2 pt-2 border-t">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Slot Availability</p>
+            <div className="grid grid-cols-3 gap-1">
+              {MEAL_SLOTS.map(slot => {
+                const currentVal = (item[slot.key] ?? (slot.key !== "availableHighLoad")) as boolean;
+                return (
+                  <label
+                    key={String(slot.key)}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer border transition-colors text-xs ${currentVal ? "bg-teal-50 border-teal-300 text-teal-800" : "bg-white border-gray-200 text-gray-400"}`}
+                  >
+                    <Checkbox
+                      checked={currentVal}
+                      onCheckedChange={(v) => patchSlot.mutate({ field: String(slot.key), value: !!v })}
+                      disabled={patchSlot.isPending}
+                      className="h-3.5 w-3.5 shrink-0"
+                      data-testid={`checkbox-slot-${String(slot.key)}-${item.id}`}
+                    />
+                    <span className="leading-tight truncate">{slot.label}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
