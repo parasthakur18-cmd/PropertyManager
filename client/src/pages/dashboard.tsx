@@ -2446,7 +2446,7 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      <PendingOverdueAlert />
+      {canSeeBookings && <PendingOverdueAlert />}
 
       <OnboardingWizard
         isOpen={showOnboarding}
