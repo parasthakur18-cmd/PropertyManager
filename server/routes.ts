@@ -3879,7 +3879,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const result = await pool.query(`
         SELECT
           b.id                                                  AS "bookingId",
-          COALESCE(g.full_name, b.guest_name, 'Unknown Guest')  AS "guestName",
+          COALESCE(g.full_name, 'Unknown Guest')               AS "guestName",
           COALESCE(r.room_number, r.name, b.room_id::text, 'Unknown Room') AS "roomNumber",
           TO_CHAR(b.check_out_date::date, 'DD Mon YYYY')       AS "checkOutTime",
           GREATEST(0, EXTRACT(EPOCH FROM (NOW() - b.check_out_date::timestamp)) / 3600)::int AS "hoursOverdue",
@@ -20580,14 +20580,16 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         dates.push(d.toISOString().split("T")[0]);
       }
 
-      // Fetch mappings, all rooms, bookings in window, rate updates
+      // Fetch mappings and all rooms for this property
       const mappings = await getRoomMappingsForConfig(config.id);
       const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
 
+      // Active bookings overlapping the calendar window
       const horizon = new Date(to); horizon.setDate(horizon.getDate() + 1);
       const activeBookings = await db.select({
         id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
-        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, bedsBooked: bookings.bedsBooked,
       }).from(bookings).where(
         and(
           eq(bookings.propertyId, propertyId),
@@ -20596,55 +20598,151 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         )
       );
 
+      // Fetch booking_room_stays — same as autoSyncInventoryForProperty:
+      //   - TBS stays (roomId IS NULL): rooms sold but not yet assigned to a physical room
+      //   - Confirmed stays (roomId IS NOT NULL): extra rooms in multi-room/group bookings
+      const activeBookingIds = activeBookings.map(b => b.id);
+      const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+      const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
+      if (activeBookingIds.length > 0) {
+        const tbsStays = await db.select({
+          bookingId: bookingRoomStays.bookingId,
+          aiosellRoomCode: bookingRoomStays.aiosellRoomCode,
+        }).from(bookingRoomStays).where(
+          and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNull(bookingRoomStays.roomId))
+        );
+        for (const stay of tbsStays) {
+          if (!stay.aiosellRoomCode) continue;
+          if (!tbsStaysByBookingId.has(stay.bookingId)) tbsStaysByBookingId.set(stay.bookingId, []);
+          tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
+        }
+
+        const confirmedStays = await db.select({
+          bookingId: bookingRoomStays.bookingId,
+          roomId: bookingRoomStays.roomId,
+        }).from(bookingRoomStays).where(
+          and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNotNull(bookingRoomStays.roomId))
+        );
+        for (const stay of confirmedStays) {
+          if (stay.roomId == null) continue;
+          if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
+          confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
+        }
+      }
+
+      // StopSell restrictions — same as autoSyncInventoryForProperty: force available=0 when active
+      const activeRestrictions = await db.select().from(aiosellInventoryRestrictions)
+        .where(and(
+          eq(aiosellInventoryRestrictions.configId, config.id),
+          gte(aiosellInventoryRestrictions.endDate, fromStr),
+        ));
+      const stopSellRanges = new Map<string, { start: string; end: string }[]>();
+      for (const restriction of activeRestrictions) {
+        if (!restriction.stopSell) continue;
+        const m = mappings.find(mm => mm.id === restriction.roomMappingId);
+        if (!m) continue;
+        if (!stopSellRanges.has(m.aiosellRoomCode)) stopSellRanges.set(m.aiosellRoomCode, []);
+        stopSellRanges.get(m.aiosellRoomCode)!.push({ start: restriction.startDate as string, end: restriction.endDate as string });
+      }
+
       // Latest rate per room code from aiosellRateUpdates
       const rateUpdates = await db.select().from(aiosellRateUpdates)
         .where(eq(aiosellRateUpdates.propertyId, propertyId))
         .orderBy(desc(aiosellRateUpdates.createdAt));
       const latestRateByCode: Record<string, number> = {};
       for (const ru of rateUpdates) {
-        if (!latestRateByCode[ru.roomCode] && ru.rate) {
-          latestRateByCode[ru.roomCode] = Number(ru.rate);
-        }
+        if (!latestRateByCode[ru.roomCode] && ru.rate) latestRateByCode[ru.roomCode] = Number(ru.rate);
       }
 
-      // Build per-mapping availability
+      // Build per-mapping availability — mirrors autoSyncInventoryForProperty logic
       const roomTypeData = mappings.map(mapping => {
-        const matchingRooms = allRooms.filter(r =>
-          r.roomType === mapping.hostezeeRoomType
-        );
-        const totalRooms = matchingRooms.length;
-        const roomIds = matchingRooms.map(r => r.id);
+        const matchingRooms = allRooms.filter(r => r.roomType === mapping.hostezeeRoomType);
+        const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
+        const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
+        const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
 
         const days = dates.map(dateStr => {
-          const date = new Date(dateStr);
+          const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
 
-          // Count booked rooms on this date
-          const bookedRoomIds = new Set<number>();
-          for (const b of activeBookings) {
-            const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
-            const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
-            if (cin <= date && date < cout) {
-              if (b.roomId && roomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
-              if (b.roomIds) b.roomIds.forEach((rid: number) => { if (roomIds.includes(rid)) bookedRoomIds.add(rid); });
+          // StopSell override — same as autoSyncInventoryForProperty
+          const stopSell = (stopSellRanges.get(mapping.aiosellRoomCode) || []).some(r => dateStr >= r.start && dateStr <= r.end);
+
+          if (isDormitory) {
+            // ── DORMITORY: count available BEDS (not rooms) ──────────────────────
+            const totalBeds = matchingRooms.filter(r => activeRoomIds.includes(r.id)).reduce((s, r) => s + (r.totalBeds || 1), 0);
+
+            const bedsBookedByRoom: Record<number, number> = {};
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+              if (stayRoomIds.length > 0) {
+                for (const rid of stayRoomIds) {
+                  if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+                }
+              } else {
+                const beds = b.bedsBooked || 1;
+                if (b.roomId && activeRoomIds.includes(b.roomId)) bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds;
+                if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+              }
             }
+            // Cap each room at its physical bed capacity
+            for (const rid of activeRoomIds) {
+              const cap = matchingRooms.find(r => r.id === rid)?.totalBeds || 0;
+              if (cap > 0 && (bedsBookedByRoom[rid] || 0) > cap) bedsBookedByRoom[rid] = cap;
+            }
+
+            let tbsDormBeds = 0;
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout) || b.roomId) continue;
+              const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+              if (tbsForBooking.length > 0) {
+                for (const stay of tbsForBooking) if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++;
+              } else {
+                const confirmedIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+                if (confirmedIds.length === 0) tbsDormBeds += (b.bedsBooked || 1);
+              }
+            }
+
+            const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
+            const occupied = bedsBooked + tbsDormBeds;
+            const available = stopSell ? 0 : Math.max(0, Math.min(totalBeds, totalBeds - occupied));
+            return { date: dateStr, available, booked: occupied, blocked: blockedRoomIds.size, total: totalBeds, stopSell };
+          } else {
+            // ── REGULAR ROOMS: count unoccupied room units ───────────────────────
+            const bookedRoomIds = new Set<number>();
+            let tbsCount = 0;
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+              if (b.roomId && activeRoomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+              if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              // Extra rooms from booking_room_stays with assigned roomId (group/OTA multi-room)
+              for (const rid of (confirmedStayRoomIdsByBookingId.get(b.id) || [])) {
+                if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              }
+              // TBS rooms — sold but not yet physically assigned
+              for (const stay of (tbsStaysByBookingId.get(b.id) || [])) {
+                if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsCount++;
+              }
+            }
+            const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.has(id)).length;
+            const available = stopSell ? 0 : Math.max(0, physicallyAvailable - tbsCount);
+            return { date: dateStr, available, booked: bookedRoomIds.size, blocked: blockedRoomIds.size, total: activeRoomIds.length, stopSell };
           }
-
-          const blockedRooms = matchingRooms.filter(r =>
-            ["maintenance", "out-of-order", "blocked"].includes(r.status || "")
-          ).length;
-
-          const booked = bookedRoomIds.size;
-          const available = Math.max(0, totalRooms - booked - blockedRooms);
-
-          return { date: dateStr, available, booked, blocked: blockedRooms, total: totalRooms };
         });
 
         return {
           roomCode: mapping.aiosellRoomCode,
           hostezeeRoomType: mapping.hostezeeRoomType,
-          totalRooms,
+          totalRooms: matchingRooms.length,
           rate: latestRateByCode[mapping.aiosellRoomCode] || null,
           days,
+          isDormitory,
         };
       });
 

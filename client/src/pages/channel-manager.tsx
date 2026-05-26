@@ -1256,8 +1256,8 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
   );
 }
 
-interface InventoryCalendarDay { date: string; available: number; booked: number; blocked: number; total: number; }
-interface InventoryCalendarRoomType { roomCode: string; hostezeeRoomType: string; totalRooms: number; rate: number | null; days: InventoryCalendarDay[]; }
+interface InventoryCalendarDay { date: string; available: number; booked: number; blocked: number; total: number; stopSell?: boolean; }
+interface InventoryCalendarRoomType { roomCode: string; hostezeeRoomType: string; totalRooms: number; rate: number | null; days: InventoryCalendarDay[]; isDormitory?: boolean; }
 interface InventoryCalendarResponse { dates: string[]; roomTypes: InventoryCalendarRoomType[]; }
 
 const CELL_W = 60; // px per date column
@@ -1373,7 +1373,7 @@ function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
               {data.roomTypes.map(rt => (
                 <div key={rt.roomCode} className="border-b px-3 flex flex-col justify-center" style={{ height: ROW_H }}>
                   <span className="font-semibold text-sm truncate">{rt.hostezeeRoomType}</span>
-                  <span className="text-xs text-muted-foreground">{rt.roomCode} · {rt.totalRooms} room{rt.totalRooms !== 1 ? "s" : ""}</span>
+                  <span className="text-xs text-muted-foreground">{rt.roomCode} · {rt.totalRooms} {rt.isDormitory ? "bed" : "room"}{rt.totalRooms !== 1 ? "s" : ""}</span>
                   {rt.rate && (
                     <span className="text-xs text-teal-600 dark:text-teal-400 flex items-center gap-0.5 mt-0.5">
                       <IndianRupee className="h-2.5 w-2.5" />{rt.rate.toLocaleString("en-IN")}
@@ -1381,6 +1381,11 @@ function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
                   )}
                 </div>
               ))}
+              {/* Summary row label */}
+              <div className="border-t-2 px-3 flex flex-col justify-center bg-slate-50 dark:bg-muted/30" style={{ height: ROW_H }}>
+                <span className="font-semibold text-sm">Occupancy</span>
+                <span className="text-xs text-muted-foreground">OTA view</span>
+              </div>
             </div>
 
             {/* Scrollable date grid */}
@@ -1416,24 +1421,62 @@ function InventoryCalendarTab({ propertyId }: { propertyId: number }) {
                   <div key={rt.roomCode} className="flex border-b" style={{ height: ROW_H }}>
                     {rt.days.map(day => {
                       const isToday = day.date === today;
+                      const unitLabel = rt.isDormitory ? "beds" : "rooms";
                       return (
                         <div
                           key={day.date}
-                          className={`border-r flex-shrink-0 flex flex-col items-center justify-center cursor-default transition-colors ${isToday ? "ring-1 ring-inset ring-blue-300 dark:ring-blue-700" : ""} ${cellColor(day.available, day.total)}`}
+                          className={`border-r flex-shrink-0 flex flex-col items-center justify-center cursor-default transition-colors ${isToday ? "ring-1 ring-inset ring-blue-300 dark:ring-blue-700" : ""} ${day.stopSell ? "bg-slate-800 text-slate-100" : cellColor(day.available, day.total)}`}
                           style={{ width: CELL_W }}
-                          title={`${rt.hostezeeRoomType} · ${day.date}\nAvailable: ${day.available} / ${day.total}\nBooked: ${day.booked}${day.blocked ? ` · Blocked: ${day.blocked}` : ""}`}
+                          title={`${rt.hostezeeRoomType} · ${day.date}\nAvailable: ${day.available} / ${day.total} ${unitLabel}\nBooked: ${day.booked}${day.blocked ? ` · Blocked: ${day.blocked}` : ""}${day.stopSell ? "\n⛔ Stop-sell active" : ""}`}
                           data-testid={`inv-cell-${rt.roomCode}-${day.date}`}
                         >
-                          <span className="text-lg font-bold leading-none">{day.available}</span>
-                          <span className="text-xs opacity-70 leading-none mt-0.5">/ {day.total}</span>
-                          {day.booked > 0 && (
-                            <span className="text-xs opacity-60 leading-none mt-0.5">{day.booked} booked</span>
+                          {day.stopSell ? (
+                            <span className="text-xs font-bold text-red-400">⛔ STOP</span>
+                          ) : (
+                            <>
+                              <span className="text-lg font-bold leading-none">{day.available}</span>
+                              <span className="text-xs opacity-70 leading-none mt-0.5">/ {day.total}</span>
+                              {day.booked > 0 && (
+                                <span className="text-xs opacity-60 leading-none mt-0.5">{day.booked} bkd</span>
+                              )}
+                            </>
                           )}
                         </div>
                       );
                     })}
                   </div>
                 ))}
+
+                {/* Summary row — total available across all mapped room types + occupancy % */}
+                {(() => {
+                  return (
+                    <div className="flex bg-slate-50 dark:bg-muted/30 border-t-2">
+                      {dates.map(dateStr => {
+                        const isToday = dateStr === today;
+                        const totAvail = data.roomTypes.reduce((s, rt) => {
+                          const d = rt.days.find(d => d.date === dateStr);
+                          return s + (d?.available ?? 0);
+                        }, 0);
+                        const totCap = data.roomTypes.reduce((s, rt) => {
+                          const d = rt.days.find(d => d.date === dateStr);
+                          return s + (d?.total ?? 0);
+                        }, 0);
+                        const occ = totCap > 0 ? Math.round(((totCap - totAvail) / totCap) * 100) : 0;
+                        return (
+                          <div
+                            key={dateStr}
+                            className={`border-r flex-shrink-0 flex flex-col items-center justify-center text-center ${isToday ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}
+                            style={{ width: CELL_W, height: ROW_H }}
+                            title={`${dateStr}: ${totAvail} available, ${occ}% occupied`}
+                          >
+                            <span className={`text-xs font-bold ${occ >= 80 ? "text-red-600 dark:text-red-400" : occ >= 50 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}>{occ}%</span>
+                            <span className="text-xs text-muted-foreground leading-none mt-0.5">{totAvail} avail</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
