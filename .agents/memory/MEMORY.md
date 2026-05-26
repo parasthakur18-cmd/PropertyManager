@@ -1,0 +1,1 @@
+- [Customer menu premium UX](customer-menu-ux.md) — Phase 1 hotel dining homepage: MEAL_SLOTS + activeMealSlot navigation, all frontend-only in customer-menu.tsx

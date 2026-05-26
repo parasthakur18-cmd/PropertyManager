@@ -1,0 +1,261 @@
+I want to improve the Hostezee Room Service / Restaurant Ordering experience using the EXISTING architecture without risky backend rewrites.
+
+IMPORTANT:
+Do NOT rebuild the system.
+Do NOT change core ordering APIs.
+Do NOT touch kitchen SSE/order architecture unless absolutely necessary.
+
+Use the existing system and improve the hospitality UX layer safely.
+
+==================================================
+GOAL
+==================================================
+
+Transform the customer ordering experience from:
+“food delivery app style”
+
+into:
+“premium hotel in-room dining experience”
+
+while keeping the existing backend stable.
+
+==================================================
+EXISTING SYSTEM (IMPORTANT CONTEXT)
+==================================================
+
+The system already supports:
+
+- slot-based item timing:
+  - available_breakfast
+  - available_lunch
+  - available_snacks
+  - available_dinner
+  - available_late_night
+
+- High Load Mode:
+  - available_high_load
+
+- realtime SSE kitchen updates
+- property-wise menus
+- category system
+- WhatsApp alerts
+- room-linked ordering
+- kitchen dashboard
+- menu item availability
+- category auto-hide when empty
+
+DO NOT redesign DB structure unless absolutely required.
+
+==================================================
+MAIN UX CHANGE REQUIRED
+==================================================
+
+The homepage should no longer feel like:
+- Swiggy
+- Zomato
+- random food catalog
+
+Instead it should feel like:
+- premium resort
+- boutique hotel
+- curated room dining experience
+
+==================================================
+NEW HOMEPAGE STRUCTURE
+==================================================
+
+--------------------------------------------------
+SECTION 1 — CURRENTLY SERVING
+--------------------------------------------------
+
+Create a dynamic hero section at top based on current meal timing.
+
+Examples:
+Morning → Breakfast
+Afternoon → Lunch
+Evening → High Tea / Snacks
+Night → Dinner
+
+Display:
+- meal title
+- timing
+- featured items
+- chef recommended items
+- quick add buttons
+- estimated prep time
+
+Example:
+
+🍳 CURRENTLY SERVING — BREAKFAST
+Available till 10:30 AM
+
+This should become the main focus of homepage.
+
+==================================================
+SECTION 2 — QUICK ACTIONS
+==================================================
+
+Add compact buttons:
+- Tea/Coffee
+- Repeat Last Order
+- Track Current Order
+- Call Reception
+
+Mobile optimized.
+
+==================================================
+SECTION 3 — MEAL EXPERIENCE CARDS
+==================================================
+
+Instead of showing random categories first, show elegant meal cards:
+
+🍳 Breakfast
+🍛 Lunch
+☕ High Tea
+🍽 Dinner
+🥤 Beverages
+🍰 Desserts
+
+Each card should show:
+- timing
+- item count
+- open/closed status
+- premium background image
+
+Cards should feel like hospitality dining sections.
+
+==================================================
+SECTION 4 — INSIDE MEAL SECTION
+==================================================
+
+Inside Breakfast:
+- Indian Breakfast
+- Continental
+- Healthy Breakfast
+- Tea/Coffee
+
+Inside Dinner:
+- Indian Main Course
+- Chinese
+- Rice & Breads
+- Soups
+- Desserts
+
+==================================================
+VERY IMPORTANT — HIGH LOAD MODE
+==================================================
+
+The system already supports:
+available_high_load
+
+Implement proper High Load Experience.
+
+--------------------------------------------------
+NORMAL MODE
+--------------------------------------------------
+
+Show full menu normally.
+
+--------------------------------------------------
+HIGH LOAD MODE ON
+--------------------------------------------------
+
+When admin enables High Load Mode:
+
+ONLY show items where:
+available_high_load = true
+
+Hide all other items from customer view.
+
+This should act as:
+- limited kitchen menu
+- rush hour menu
+- peak kitchen control mode
+
+==================================================
+HIGH LOAD UI EXPERIENCE
+==================================================
+
+When High Load Mode is ON:
+
+Show premium banner:
+
+⚡ Express Menu Currently Active
+To maintain fast service during peak hours, a limited menu is available.
+
+DO NOT show scary/error-like warning messages.
+
+==================================================
+ADMIN REQUIREMENTS
+==================================================
+
+Create simple admin controls:
+
+- NORMAL MODE
+- HIGH LOAD MODE
+
+High Load Mode should be:
+- manual toggle
+- property-wise
+- instant effect
+
+DO NOT make automatic kitchen overload logic right now.
+
+==================================================
+IMPORTANT IMPLEMENTATION RULES
+==================================================
+
+Use EXISTING architecture.
+
+Reuse:
+- available_breakfast
+- available_lunch
+- available_snacks
+- available_dinner
+- available_late_night
+- available_high_load
+
+Avoid:
+- DB redesign
+- multi-category rewrite
+- API rewrite
+- kitchen architecture changes
+
+==================================================
+SAFE IMPLEMENTATION PRIORITY
+==================================================
+
+Focus on:
+1. Homepage rendering logic
+2. Meal grouping
+3. Frontend filtering
+4. Premium hospitality UI
+5. High Load filtering logic
+
+Avoid risky backend modifications.
+
+==================================================
+ALSO ANALYZE BEFORE CODING
+==================================================
+
+Before implementing:
+- inspect current homepage rendering
+- inspect current menu filtering logic
+- inspect high load filtering flow
+- inspect meal timing logic
+- identify reusable components
+- identify safest insertion points
+
+Then implement with minimal-risk changes.
+
+==================================================
+EXPECTED RESULT
+==================================================
+
+Final system should feel like:
+- luxury hotel room dining
+- curated hospitality menu
+- operationally controlled kitchen system
+
+NOT:
+- generic food delivery app.
