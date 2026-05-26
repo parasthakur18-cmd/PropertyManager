@@ -926,7 +926,7 @@ export default function QuickOrder() {
                   ) : (
                     searchResults.map(item => (
                       <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
-                        timingReason={getItemTimingReason(item, menuTiming)}
+                        timingReason={getItemTimingReason(item, null)}
                         onAdd={() => addToCart(item)}
                         onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
                         onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
@@ -942,7 +942,7 @@ export default function QuickOrder() {
                   <h2 className="text-sm font-bold text-gray-700 mb-3">⭐ Popular Items</h2>
                   <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
                     {popularItems.map(item => (
-                      <QOPopularCard key={item.id} item={item} qty={getItemQtyInCart(item.id)} timingReason={getItemTimingReason(item, menuTiming)} onAdd={() => addToCart(item)} />
+                      <QOPopularCard key={item.id} item={item} qty={getItemQtyInCart(item.id)} timingReason={getItemTimingReason(item, null)} onAdd={() => addToCart(item)} />
                     ))}
                   </div>
                 </div>
@@ -1029,7 +1029,7 @@ export default function QuickOrder() {
                 itemsInActiveCategory.map(item => (
                   <QOMenuItemRow key={item.id} item={item} qty={getItemQtyInCart(item.id)}
                     isPopular={popularItemIds.has(item.id)}
-                    timingReason={getItemTimingReason(item, menuTiming)}
+                    timingReason={getItemTimingReason(item, null)}
                     onAdd={() => addToCart(item)}
                     onIncrease={() => { const ci = cart.find(c => c.id === item.id); if (ci) updateQuantity(ci.cartKey, 1); else addToCart(item); }}
                     onDecrease={() => { const cis = cart.filter(c => c.id === item.id); if (cis.length) updateQuantity(cis[cis.length - 1].cartKey, -1); }}
