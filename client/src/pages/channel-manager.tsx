@@ -851,6 +851,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
 
   const doApiPush = async (rates: { roomCode: string; rate: number; rateplanCode: string }[]) => {
     if (rates.length === 0) throw new Error("Set at least one rate");
+    if (endDate < startDate) throw new Error(`End date (${endDate}) is before start date (${startDate}). Please fix the date range.`);
     const res = await apiRequest("/api/aiosell/push-rates", "POST", {
       propertyId,
       updates: [{ startDate, endDate, rates }],
