@@ -1602,7 +1602,7 @@ function MenuItemRow({ item, qty, isKitchenOpen, isPopular, timingReason, onAdd,
                   <Clock className="h-3 w-3" />{item.preparationTime} min
                 </span>
               )}
-              {timingReason && (
+              {isKitchenOpen && timingReason && (
                 <span className="text-xs text-amber-600 font-medium flex items-center gap-0.5 mt-0.5">
                   <Clock className="h-3 w-3" />{timingReason}
                 </span>
