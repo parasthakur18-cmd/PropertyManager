@@ -2983,38 +2983,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
 
-      // --- OVERDUE CHECKOUT FIX ---
-      // A guest may still be physically checked-in past their scheduled checkout date.
-      // The date-range overlap query won't catch them (their checkOut < requestCheckIn),
-      // but the check-in server guard WILL reject the new booking with a 409.
-      // Solution: fetch checked-in bookings whose checkout date has ALREADY PASSED today
-      // (genuinely overdue). Do NOT block rooms for guests checking out today or in the
-      // future — that causes false "no availability" for future-date searches.
-      const todayStr = toDateStr(new Date());
-      const checkedInBookings = await db
-        .select()
-        .from(bookings)
-        .where(
-          propertyId
-            ? and(eq(bookings.propertyId, Number(propertyId)), eq(bookings.status, "checked-in"))
-            : eq(bookings.status, "checked-in")
-        );
-
-      // Merge: add only genuinely overdue checked-in bookings (checkout date is before today)
-      const overlappingIds = new Set(overlappingBookings.map(b => b.id));
-      for (const b of checkedInBookings) {
-        if (!overlappingIds.has(b.id)) {
-          if (!excludeBookingId || b.id !== Number(excludeBookingId)) {
-            const bOutStr = toDateStr(b.checkOutDate as any);
-            // Only block if guest was supposed to checkout before today but hasn't
-            // (i.e., they are genuinely overdue/overstaying their scheduled checkout)
-            if (bOutStr < todayStr) {
-              overlappingBookings.push(b);
-              overlappingIds.add(b.id);
-            }
-          }
-        }
-      }
+      // NOTE: We intentionally do NOT add a separate "overdue checked-in" pass here.
+      // Old bookings that were never checked out (status=checked-in but checkOut months ago)
+      // should NOT block future availability — those guests have certainly left, and blocking
+      // them causes false "No Rooms Available" for all future dates.
+      // The check-in server guard (409 conflict) handles genuine same-day overdue cases.
+      // Admins should close stale checked-in bookings to keep inventory accurate.
 
       // Fetch guest names for conflict bookings so the frontend can display "Occupied by: Guest Name"
       const conflictGuestIds = [...new Set(overlappingBookings.map(b => b.guestId).filter((id): id is number => !!id))];
