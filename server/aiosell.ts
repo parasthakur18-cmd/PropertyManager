@@ -27,7 +27,7 @@ interface InventoryUpdate {
 interface RateUpdate {
   startDate: string;
   endDate: string;
-  rates: { roomCode: string; rate: number; rateplanCode: string }[];
+  rates: { roomCode: string; roomId?: string | null; rate: number; rateplanCode: string }[];
 }
 
 interface InventoryRestrictionUpdate {

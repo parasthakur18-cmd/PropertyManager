@@ -875,6 +875,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
           const mapping = mappings.find(m => m.id === rp.roomMappingId);
           return {
             roomCode: mapping?.aiosellRoomCode || "",
+            roomId: mapping?.aiosellRoomId || null,
             rate: parseFloat(rateValues[rp.ratePlanCode] || rp.baseRate || "0"),
             rateplanCode: rp.ratePlanCode,
           };
@@ -897,7 +898,7 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
     if (!rateToUse || isNaN(rateToUse)) { toast({ title: "No rate set", description: "Enter a rate in the input field first.", variant: "destructive" }); return; }
     setPushingSinglePlan(rp.ratePlanCode);
     try {
-      const data = await doApiPush([{ roomCode: mapping.aiosellRoomCode, rate: rateToUse, rateplanCode: rp.ratePlanCode }]);
+      const data = await doApiPush([{ roomCode: mapping.aiosellRoomCode, roomId: mapping.aiosellRoomId || null, rate: rateToUse, rateplanCode: rp.ratePlanCode }]);
       onPushSuccess(data);
     } catch (e: any) {
       toast({ title: "Push Error", description: e.message, variant: "destructive" });
