@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -141,6 +141,7 @@ export default function CalendarView() {
   const [showRoomSidebar, setShowRoomSidebar] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
+  const [expandedDorms, setExpandedDorms] = useState<Record<number, boolean>>({});
   const [showCreateBooking, setShowCreateBooking] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [checkInDate, setCheckInDate] = useState(format(today, "yyyy-MM-dd"));
@@ -551,6 +552,43 @@ export default function CalendarView() {
     setExpandedTypes(prev => ({ ...prev, [type]: !prev[type] }));
   };
 
+  const toggleDorm = (roomId: number) => {
+    setExpandedDorms(prev => ({ ...prev, [roomId]: !prev[roomId] }));
+  };
+
+  // Greedy interval scheduling: assign each booking to the earliest available consecutive bed slots.
+  // Returns an array of length totalBeds where each entry is the list of bookings occupying that slot.
+  const assignDormBeds = (room: Room, roomBookings: Booking[]): { booking: Booking; cin: Date; cout: Date }[][] => {
+    const totalBeds = room.totalBeds || 0;
+    if (totalBeds === 0) return [];
+    const bedSlots: { booking: Booking; cin: Date; cout: Date }[][] = Array.from({ length: totalBeds }, () => []);
+    const sorted = [...roomBookings]
+      .filter(b => b.status !== "cancelled" && b.status !== "no_show")
+      .sort((a, b) => {
+        const diff = new Date(a.checkInDate).getTime() - new Date(b.checkInDate).getTime();
+        return diff !== 0 ? diff : a.id - b.id;
+      });
+    for (const booking of sorted) {
+      const bedsNeeded = booking.bedsBooked || 1;
+      const cin = startOfDay(new Date(booking.checkInDate));
+      const cout = startOfDay(new Date(booking.checkOutDate));
+      let assigned = false;
+      for (let startSlot = 0; startSlot <= totalBeds - bedsNeeded && !assigned; startSlot++) {
+        let allAvail = true;
+        for (let slot = startSlot; slot < startSlot + bedsNeeded; slot++) {
+          if (bedSlots[slot].some(e => e.cin < cout && e.cout > cin)) { allAvail = false; break; }
+        }
+        if (allAvail) {
+          for (let slot = startSlot; slot < startSlot + bedsNeeded; slot++) {
+            bedSlots[slot].push({ booking, cin, cout });
+          }
+          assigned = true;
+        }
+      }
+    }
+    return bedSlots;
+  };
+
   if (roomsLoading || bookingsLoading || propertiesLoading) {
     return <div className="p-4 space-y-4"><Skeleton className="h-96" /></div>;
   }
@@ -864,8 +902,14 @@ export default function CalendarView() {
 
                 const displayBookings = getDormitoryDisplayBookings();
 
+                const bedsOccupiedToday = isDorm
+                  ? Math.min(getAllDormitoryBookingsForDate(room.id, today).reduce((s, b) => s + (b.bedsBooked || 1), 0), room.totalBeds || 0)
+                  : 0;
+                const isDormExpanded = isDorm && !!expandedDorms[room.id];
+
                 return (
-                  <div key={room.id} className="flex border-b bg-white dark:bg-card" data-testid={`room-row-${room.id}`}>
+                  <Fragment key={room.id}>
+                  <div className="flex border-b bg-white dark:bg-card" data-testid={`room-row-${room.id}`}>
                     {/* Sticky room name cell */}
                     {showRoomSidebar && (
                       <div
@@ -898,6 +942,17 @@ export default function CalendarView() {
                           <span className="font-medium text-sm truncate">{room.roomNumber}</span>
                           <Link2 className="h-3 w-3 text-muted-foreground flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
+                        {isDorm && (
+                          <button
+                            className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-slate-100 dark:hover:bg-muted/30 transition-colors flex-shrink-0 ml-1 font-mono"
+                            onClick={(e) => { e.stopPropagation(); toggleDorm(room.id); }}
+                            title={isDormExpanded ? "Collapse bed view" : "Expand bed view"}
+                            data-testid={`button-expand-dorm-${room.id}`}
+                          >
+                            <span>{bedsOccupiedToday}/{room.totalBeds || 0}</span>
+                            {isDormExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -1009,6 +1064,117 @@ export default function CalendarView() {
                       </div>
                     </div>
                   </div>
+
+                  {/* ── Expandable Bed Rows ───────────────────────────────── */}
+                  {isDormExpanded && (() => {
+                    const bedSlots = assignDormBeds(room, roomBookings);
+                    return bedSlots.map((slotEntries, slotIdx) => {
+                      const bedNumber = slotIdx + 1;
+                      const isVacant = slotEntries.length === 0 ||
+                        !slotEntries.some(e => {
+                          const rangeEnd = addDays(startDate, 11);
+                          return e.cin < rangeEnd && e.cout > startDate;
+                        });
+                      return (
+                        <div
+                          key={`bed-${room.id}-${bedNumber}`}
+                          className="flex border-b bg-slate-50/70 dark:bg-muted/5"
+                          data-testid={`bed-row-${room.id}-${bedNumber}`}
+                        >
+                          {/* Bed sidebar */}
+                          {showRoomSidebar && (
+                            <div
+                              className="sticky left-0 z-10 bg-slate-50/90 dark:bg-muted/10 border-r flex items-center gap-1.5 px-2 flex-shrink-0"
+                              style={{ width: sidebarWidth, height: ROW_HEIGHT }}
+                            >
+                              <div className="w-0.5 self-stretch bg-slate-200 dark:bg-muted rounded-full my-1.5 flex-shrink-0" />
+                              <BedDouble className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                              <span className="text-xs text-muted-foreground font-medium">Bed {bedNumber}</span>
+                              {isVacant && (
+                                <span className="ml-auto text-[9px] text-green-600 dark:text-green-400 font-semibold uppercase tracking-wide">
+                                  Vacant
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Date cells + booking bars */}
+                          <div className="relative flex-shrink-0" style={{ width: dates.length * CELL_WIDTH, height: ROW_HEIGHT }}>
+                            <div className="flex h-full">
+                              {dates.map(date => {
+                                const dateStr = format(date, "yyyy-MM-dd");
+                                const isTodayCell = dateStr === format(today, "yyyy-MM-dd");
+                                const occupied = slotEntries.some(e => date >= e.cin && date < e.cout);
+                                return (
+                                  <div
+                                    key={`bed-cell-${room.id}-${bedNumber}-${dateStr}`}
+                                    className={cn(
+                                      "border-r flex-shrink-0",
+                                      isTodayCell && "bg-amber-50/40 dark:bg-amber-950/10",
+                                      !occupied && !isTodayCell && "bg-slate-50/50 dark:bg-muted/5"
+                                    )}
+                                    style={{ width: CELL_WIDTH }}
+                                  />
+                                );
+                              })}
+                            </div>
+
+                            {/* Booking bars */}
+                            <div className="absolute inset-0 pointer-events-none py-1.5">
+                              {slotEntries.map(({ booking, cin, cout }) => {
+                                const rangeStart = startOfDay(startDate);
+                                const checkInDaysDiff = Math.floor((cin.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                                const checkOutDaysDiff = Math.floor((cout.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                                if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
+                                const visibleStartIdx = Math.max(0, checkInDaysDiff);
+                                const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
+                                let leftPx = visibleStartIdx * CELL_WIDTH;
+                                let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
+                                if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) { leftPx += CELL_WIDTH / 2; widthPx -= CELL_WIDTH / 2; }
+                                if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
+                                if (widthPx <= 0) return null;
+                                const gName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
+                                const baseStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                                const arrivingToday =
+                                  format(cin, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") &&
+                                  booking.status !== "checked-in" &&
+                                  booking.status !== "checked-out" &&
+                                  booking.status !== "cancelled";
+                                const barStyle = arrivingToday
+                                  ? { bg: "bg-orange-500", text: "text-white", gradient: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)" }
+                                  : baseStyle;
+                                const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
+                                return (
+                                  <div
+                                    key={`bed-bar-${booking.id}-bed${bedNumber}`}
+                                    className="absolute pointer-events-auto cursor-pointer group"
+                                    style={{ left: `${leftPx}px`, width: `${widthPx}px`, top: '4px', bottom: '4px' }}
+                                    onClick={() => navigate(`/bookings/${booking.id}`)}
+                                    data-testid={`bed-bar-${booking.id}-${bedNumber}`}
+                                  >
+                                    <div
+                                      className={cn("w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]", barStyle.text)}
+                                      style={{ background: barStyle.gradient }}
+                                      title={`${gName} — Bed ${bedNumber}`}
+                                    >
+                                      <span className="truncate">{gName}</span>
+                                      {!isPaid && (
+                                        <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1 bg-red-500 ring-2 ring-white shadow-sm animate-pulse" />
+                                      )}
+                                      {isPaid && (
+                                        <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1 bg-white/90" />
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+                  </Fragment>
                 );
               })}
             </div>

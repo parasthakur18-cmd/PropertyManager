@@ -1,0 +1,75 @@
+Dorm Calendar UX Upgrade — Expandable Bed View Inside Same Room Calendar
+
+We should improve the dormitory room calendar experience without changing the existing calendar UI design.
+
+Current problem:
+Dorm rooms like 101, 102, etc. contain multiple beds, but the current room-level booking bars make it difficult to understand:
+- which guest is staying on which bed
+- who is checking out today
+- who is arriving next
+- which beds are vacant
+- future bed movement
+
+The current popup modal is not efficient for operational use.
+
+Required Solution:
+Keep the SAME existing room calendar UI and booking bar design.
+
+Add a small expand/collapse (+ / -) button beside dorm room numbers.
+
+Example:
+101 [+]
+102 [+]
+
+When the user clicks "+":
+Expand inline underneath the room row and display each bed as a child calendar row using the SAME calendar UI.
+
+Example:
+
+101 [-]
+
+Bed 1 | Himanshu booking bar
+Bed 2 | Vacant
+Bed 3 | Nitish booking bar
+Bed 4 | Priyam booking bar
+
+Requirements:
+- Child rows must align perfectly with existing calendar dates
+- Use same booking bars, colors, hover effects, and styles
+- Horizontal scrolling should remain synced with parent calendar
+- Maintain existing drag/drop functionality if available
+- Keep same occupancy colors:
+  - Green = In House
+  - Orange = Arriving
+  - Red = Checkout Today
+  - Blue = Upcoming
+  - Grey = Vacant
+
+Collapsed State:
+Show compact room summary:
+101   1/4 occupied   [+]
+
+Expanded State:
+Show all beds individually.
+
+Important UX:
+- This should NOT open a popup/modal
+- Expansion must happen inline inside the calendar
+- Beds act as sub-rows of the room
+- The parent room row remains visible
+
+Additional Enhancements:
+- Show bed occupancy count in collapsed view
+- Smooth expand/collapse animation
+- Preserve performance while rendering large calendars
+- Maintain same visual spacing and styling as current room rows
+
+Technical Approach:
+- Create expandable child rows under dorm rooms
+- Map bookings at bed level instead of only room level
+- Reuse existing calendar cell and booking bar components
+- Add local expand/collapse state per room
+- Keep architecture scalable for large hostels
+
+Goal:
+The dorm calendar should work exactly like the existing room calendar, but with expandable bed-level visibility for better hostel and dormitory management.
