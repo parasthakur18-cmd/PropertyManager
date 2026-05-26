@@ -975,6 +975,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!settings) return res.json(null);
       res.json({
         highLoadMode: (settings as any).highLoadMode ?? false,
+        kitchenPaused: (settings as any).kitchenPaused ?? false,
+        breakfastEnabled: (settings as any).breakfastEnabled ?? true,
+        lunchEnabled: (settings as any).lunchEnabled ?? true,
+        snacksEnabled: (settings as any).snacksEnabled ?? true,
+        dinnerEnabled: (settings as any).dinnerEnabled ?? true,
+        lateNightEnabled: (settings as any).lateNightEnabled ?? true,
         breakfastStart: (settings as any).breakfastStart ?? "07:00",
         breakfastEnd: (settings as any).breakfastEnd ?? "11:00",
         lunchStart: (settings as any).lunchStart ?? "12:00",

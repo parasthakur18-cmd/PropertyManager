@@ -43,6 +43,12 @@ interface FeatureSettings {
   vendorReminderEnabled: boolean;
   vendorReminderDaysBefore: number;
   highLoadMode: boolean;
+  kitchenPaused: boolean;
+  breakfastEnabled: boolean;
+  lunchEnabled: boolean;
+  snacksEnabled: boolean;
+  dinnerEnabled: boolean;
+  lateNightEnabled: boolean;
   breakfastStart: string;
   breakfastEnd: string;
   lunchStart: string;
@@ -431,11 +437,11 @@ export default function FeatureSettings() {
   };
 
   const MENU_SLOTS = [
-    { key: "breakfast", label: "Breakfast", emoji: "🌅", startKey: "breakfastStart", endKey: "breakfastEnd" },
-    { key: "lunch", label: "Lunch", emoji: "🍱", startKey: "lunchStart", endKey: "lunchEnd" },
-    { key: "snacks", label: "Snacks", emoji: "🍿", startKey: "snacksStart", endKey: "snacksEnd" },
-    { key: "dinner", label: "Dinner", emoji: "🍽️", startKey: "dinnerStart", endKey: "dinnerEnd" },
-    { key: "lateNight", label: "Late Night", emoji: "🌙", startKey: "lateNightStart", endKey: "lateNightEnd" },
+    { key: "breakfast", label: "Breakfast", emoji: "🌅", startKey: "breakfastStart", endKey: "breakfastEnd", enabledKey: "breakfastEnabled" },
+    { key: "lunch",     label: "Lunch",     emoji: "🍱", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled"     },
+    { key: "snacks",    label: "High Tea",  emoji: "☕", startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled"    },
+    { key: "dinner",    label: "Dinner",    emoji: "🍽️", startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled"    },
+    { key: "lateNight", label: "Late Night",emoji: "🌙", startKey: "lateNightStart", endKey: "lateNightEnd", enabledKey: "lateNightEnabled" },
   ] as const;
 
   const [timingDraft, setTimingDraft] = useState<Record<string, string>>({});
@@ -784,13 +790,34 @@ export default function FeatureSettings() {
           </div>
         </CardHeader>
         <CardContent className="pt-5 space-y-5">
+          {/* Kitchen Pause Mode toggle */}
+          <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${settings?.kitchenPaused ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30" : "border-border"}`}>
+            <div className="flex items-center gap-3">
+              <Clock className={`h-5 w-5 ${settings?.kitchenPaused ? "text-orange-600" : "text-muted-foreground"}`} />
+              <div>
+                <p className={`font-semibold ${settings?.kitchenPaused ? "text-orange-700 dark:text-orange-400" : ""}`}>
+                  Kitchen Pause {settings?.kitchenPaused ? "— ACTIVE" : "— OFF"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  When ON, guests cannot place new orders. Menu stays visible. Existing orders continue normally.
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={settings?.kitchenPaused ?? false}
+              onCheckedChange={(v) => handleToggle("kitchenPaused", v)}
+              disabled={updateMutation.isPending}
+              data-testid="toggle-kitchenPaused"
+            />
+          </div>
+
           {/* High Load Mode toggle */}
           <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-colors ${settings?.highLoadMode ? "border-red-400 bg-red-50 dark:bg-red-950/30" : "border-border"}`}>
             <div className="flex items-center gap-3">
               <ShieldAlert className={`h-5 w-5 ${settings?.highLoadMode ? "text-red-600" : "text-muted-foreground"}`} />
               <div>
                 <p className={`font-semibold ${settings?.highLoadMode ? "text-red-700 dark:text-red-400" : ""}`}>
-                  High Load Mode {settings?.highLoadMode ? "— ON" : "— OFF"}
+                  Express Menu (High Load) {settings?.highLoadMode ? "— ON" : "— OFF"}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   When ON, only items marked "Available In High Load Mode" can be ordered
@@ -807,32 +834,43 @@ export default function FeatureSettings() {
 
           <Separator />
 
-          {/* Time slot rows */}
+          {/* Time slot rows with per-meal enable toggles */}
           <div className="space-y-3">
-            <p className="text-sm font-medium text-muted-foreground">Meal Slot Hours</p>
-            {MENU_SLOTS.map((slot) => (
-              <div key={slot.key} className="flex items-center gap-3">
-                <span className="text-lg w-7 flex-shrink-0">{slot.emoji}</span>
-                <span className="w-24 text-sm font-medium flex-shrink-0">{slot.label}</span>
-                <div className="flex items-center gap-2 flex-1">
-                  <Input
-                    type="time"
-                    className="w-32"
-                    value={timingDraft[slot.startKey] || ""}
-                    onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.startKey]: e.target.value }))}
-                    data-testid={`input-${slot.startKey}`}
+            <p className="text-sm font-medium text-muted-foreground">Meal Slot Hours & Availability</p>
+            {MENU_SLOTS.map((slot) => {
+              const isEnabled = (settings as any)?.[slot.enabledKey] ?? true;
+              return (
+                <div key={slot.key} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${!isEnabled ? "opacity-50" : ""}`}>
+                  <Switch
+                    checked={isEnabled}
+                    onCheckedChange={(v) => handleToggle(slot.enabledKey, v)}
+                    disabled={updateMutation.isPending}
+                    data-testid={`toggle-${slot.enabledKey}`}
                   />
-                  <span className="text-muted-foreground text-sm">to</span>
-                  <Input
-                    type="time"
-                    className="w-32"
-                    value={timingDraft[slot.endKey] || ""}
-                    onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.endKey]: e.target.value }))}
-                    data-testid={`input-${slot.endKey}`}
-                  />
+                  <span className="text-lg w-7 flex-shrink-0">{slot.emoji}</span>
+                  <span className="w-20 text-sm font-medium flex-shrink-0">{slot.label}</span>
+                  <div className="flex items-center gap-2 flex-1">
+                    <Input
+                      type="time"
+                      className="w-28"
+                      value={timingDraft[slot.startKey] || ""}
+                      onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.startKey]: e.target.value }))}
+                      disabled={!isEnabled}
+                      data-testid={`input-${slot.startKey}`}
+                    />
+                    <span className="text-muted-foreground text-sm">to</span>
+                    <Input
+                      type="time"
+                      className="w-28"
+                      value={timingDraft[slot.endKey] || ""}
+                      onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.endKey]: e.target.value }))}
+                      disabled={!isEnabled}
+                      data-testid={`input-${slot.endKey}`}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <Button

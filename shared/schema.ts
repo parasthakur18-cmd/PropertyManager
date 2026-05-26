@@ -1076,6 +1076,13 @@ export const featureSettings = pgTable("feature_settings", {
   dinnerEnd: varchar("dinner_end", { length: 5 }).default("22:30"),
   lateNightStart: varchar("late_night_start", { length: 5 }).default("22:30"),
   lateNightEnd: varchar("late_night_end", { length: 5 }).default("00:00"),
+  // Kitchen operational controls — no DB redesign, simple boolean toggles
+  kitchenPaused: boolean("kitchen_paused").notNull().default(false),
+  breakfastEnabled: boolean("breakfast_enabled").notNull().default(true),
+  lunchEnabled: boolean("lunch_enabled").notNull().default(true),
+  snacksEnabled: boolean("snacks_enabled").notNull().default(true),
+  dinnerEnabled: boolean("dinner_enabled").notNull().default(true),
+  lateNightEnabled: boolean("late_night_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -45,11 +45,11 @@ const CATEGORY_GRADIENTS = [
 ];
 
 const MEAL_SLOTS = [
-  { key: "breakfast", label: "Breakfast", icon: "🍳", gradient: "from-amber-400 to-orange-500", startKey: "breakfastStart", endKey: "breakfastEnd" },
-  { key: "lunch",     label: "Lunch",     icon: "🍛", gradient: "from-green-400 to-emerald-500", startKey: "lunchStart",     endKey: "lunchEnd"     },
-  { key: "snacks",    label: "High Tea",  icon: "☕", gradient: "from-teal-400 to-cyan-500",    startKey: "snacksStart",    endKey: "snacksEnd"    },
-  { key: "dinner",    label: "Dinner",    icon: "🍽️", gradient: "from-indigo-500 to-purple-600",startKey: "dinnerStart",    endKey: "dinnerEnd"    },
-  { key: "lateNight", label: "Late Night",icon: "🌙", gradient: "from-slate-600 to-gray-800",  startKey: "lateNightStart", endKey: "lateNightEnd" },
+  { key: "breakfast", label: "Breakfast", icon: "🍳", gradient: "from-amber-400 to-orange-500", startKey: "breakfastStart", endKey: "breakfastEnd", enabledKey: "breakfastEnabled" },
+  { key: "lunch",     label: "Lunch",     icon: "🍛", gradient: "from-green-400 to-emerald-500", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled"     },
+  { key: "snacks",    label: "High Tea",  icon: "☕", gradient: "from-teal-400 to-cyan-500",    startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled"    },
+  { key: "dinner",    label: "Dinner",    icon: "🍽️", gradient: "from-indigo-500 to-purple-600",startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled"    },
+  { key: "lateNight", label: "Late Night",icon: "🌙", gradient: "from-slate-600 to-gray-800",  startKey: "lateNightStart", endKey: "lateNightEnd", enabledKey: "lateNightEnabled" },
 ] as const;
 
 function fmtSlotTime(t: string) {
@@ -168,6 +168,10 @@ export default function CustomerMenu() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
   const [activeMealSlot, setActiveMealSlot] = useState<string | null>(null);
+  const LS_KEY = `hostezee_last_order_${urlProperty || "0"}`;
+  const [lastOrder, setLastOrder] = useState<{ items: Array<{ id: number; name: string; price: number; quantity: number }> } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(`hostezee_last_order_${urlProperty || "0"}`) || "null"); } catch { return null; }
+  });
   const { toast } = useToast();
 
 
@@ -259,7 +263,10 @@ export default function CustomerMenu() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables: any) => {
+      const savedOrder = { items: (variables.items || []) };
+      try { localStorage.setItem(LS_KEY, JSON.stringify(savedOrder)); } catch {}
+      setLastOrder(savedOrder);
       toast({ title: "Order Placed!", description: "Your order has been sent to the kitchen." });
       setCart([]);
       setCustomerName("");
@@ -272,8 +279,12 @@ export default function CustomerMenu() {
     },
   });
 
-  // In High Load mode, hide items that don't have the High Load checkbox ticked
   const isHighLoad = !!(menuTiming?.highLoadMode);
+  const isKitchenPaused = !!(menuTiming?.kitchenPaused);
+  const enabledSlotKeys = useMemo(() => {
+    if (!menuTiming) return new Set(MEAL_SLOTS.map(s => s.key));
+    return new Set(MEAL_SLOTS.filter(s => menuTiming[s.enabledKey] !== false).map(s => s.key));
+  }, [menuTiming]);
   const visibleItems = useMemo(() =>
     (menuItems || []).filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
     [menuItems, isHighLoad]
@@ -404,6 +415,10 @@ export default function CustomerMenu() {
   }, [isTableMode, urlTable]);
 
   const handlePlaceOrder = () => {
+    if (isKitchenPaused) {
+      toast({ title: "⏸ Kitchen Temporarily Busy", description: "We are preparing existing orders. Please try again shortly." });
+      return;
+    }
     if (!isKitchenOpen) {
       setShowKitchenClosedDialog(true);
       return;
@@ -668,7 +683,22 @@ export default function CustomerMenu() {
         ) : (
           /* ── NEW PREMIUM HOMEPAGE ── */
           <>
-            {/* 1. HIGH LOAD BANNER */}
+            {/* 1a. KITCHEN PAUSE BANNER */}
+            {isKitchenPaused && (
+              <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-orange-500 to-rose-500 p-4 text-white shadow-md">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl flex-shrink-0">⏸</span>
+                  <div>
+                    <p className="font-bold text-sm leading-tight">Kitchen Temporarily Busy</p>
+                    <p className="text-white/85 text-xs mt-1 leading-relaxed">
+                      We are finishing up current orders. New orders are paused — please check back in a few minutes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 1b. HIGH LOAD BANNER */}
             {isHighLoad && (
               <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white shadow-md">
                 <div className="flex items-start gap-3">
@@ -683,8 +713,8 @@ export default function CustomerMenu() {
               </div>
             )}
 
-            {/* 2. CURRENTLY SERVING HERO */}
-            {currentSlotKey && isKitchenOpen && (() => {
+            {/* 2. CURRENTLY SERVING HERO — only when slot is enabled */}
+            {currentSlotKey && isKitchenOpen && enabledSlotKeys.has(currentSlotKey) && (() => {
               const slot = MEAL_SLOTS.find(s => s.key === currentSlotKey)!;
               const heroItems = itemsPerSlot[currentSlotKey] ?? [];
               const slotEnd = menuTiming ? (menuTiming as any)[slot.endKey] : "";
@@ -716,13 +746,17 @@ export default function CustomerMenu() {
                         {heroItems.slice(0, 5).map(item => {
                           const price = item.discountedPrice || item.actualPrice || item.price;
                           const qty = cart.filter(c => c.menuItem.id === item.id).length;
+                          const isBestseller = popularItemIds.has(item.id);
                           return (
                             <button
                               key={item.id}
                               onClick={() => handleSelectItem(item)}
-                              className="flex-shrink-0 bg-white/10 hover:bg-white/20 active:bg-white/25 rounded-xl p-2.5 text-left w-32 transition-colors"
+                              className="relative flex-shrink-0 bg-white/10 hover:bg-white/20 active:bg-white/25 rounded-xl p-2.5 text-left w-32 transition-colors"
                               data-testid={`button-hero-item-${item.id}`}
                             >
+                              {isBestseller && (
+                                <span className="absolute top-1.5 left-1.5 bg-[#F2B705] text-[#1E3A5F] text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none z-10">★ TOP</span>
+                              )}
                               {item.imageUrl ? (
                                 <img
                                   src={item.imageUrl}
@@ -740,9 +774,11 @@ export default function CustomerMenu() {
                               <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1">{item.name}</p>
                               <div className="flex items-center justify-between gap-1">
                                 <span className="text-xs font-bold text-[#2BB6A8]">₹{price}</span>
-                                {qty > 0 && (
+                                {qty > 0 ? (
                                   <span className="text-[10px] bg-[#2BB6A8] text-white px-1.5 py-0.5 rounded-full font-bold leading-tight">{qty}✓</span>
-                                )}
+                                ) : item.prepTime ? (
+                                  <span className="text-[9px] text-white/50">{item.prepTime}m</span>
+                                ) : null}
                               </div>
                             </button>
                           );
@@ -762,6 +798,39 @@ export default function CustomerMenu() {
               });
               return (
                 <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                  {lastOrder && lastOrder.items && lastOrder.items.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const mappedItems = lastOrder.items
+                          .map(item => {
+                            const mi = availableItems.find(m => m.id === item.id);
+                            return mi ? { menuItem: mi, qty: item.quantity } : null;
+                          })
+                          .filter(Boolean) as Array<{ menuItem: MenuItem; qty: number }>;
+                        if (mappedItems.length > 0) {
+                          setCart(current => [
+                            ...current,
+                            ...mappedItems.flatMap(({ menuItem, qty }) =>
+                              Array.from({ length: qty }, () => ({
+                                menuItem,
+                                quantity: 1,
+                                selectedVariant: undefined,
+                                selectedAddOns: [],
+                                totalPrice: parseFloat(menuItem.discountedPrice || menuItem.actualPrice || menuItem.price),
+                              }))
+                            ),
+                          ]);
+                          toast({ title: "Added to cart", description: `${mappedItems.length} item${mappedItems.length !== 1 ? "s" : ""} from your last order added.` });
+                        } else {
+                          toast({ title: "Items unavailable", description: "None of your last order items are currently on the menu.", variant: "destructive" });
+                        }
+                      }}
+                      className="flex-shrink-0 flex items-center gap-1.5 bg-[#1E3A5F] text-white text-xs font-semibold px-3 py-2 rounded-full whitespace-nowrap shadow-sm"
+                      data-testid="button-repeat-last-order"
+                    >
+                      🔁 Repeat Last Order
+                    </button>
+                  )}
                   {teaItems.slice(0, 2).map(item => (
                     <button
                       key={item.id}
@@ -790,19 +859,20 @@ export default function CustomerMenu() {
               );
             })()}
 
-            {/* 4. MEAL EXPERIENCE CARDS */}
+            {/* 4. MEAL EXPERIENCE CARDS — filter out disabled slots */}
             <div>
               <h2 className="text-sm font-bold text-gray-700 mb-3">Dining Experiences</h2>
-              {MEAL_SLOTS.every(s => (itemsPerSlot[s.key] ?? []).length === 0) ? (
+              {MEAL_SLOTS.every(s => (itemsPerSlot[s.key] ?? []).length === 0 || !enabledSlotKeys.has(s.key)) ? (
                 <div className="text-center py-12 text-gray-400">
                   <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">No menu items available</p>
+                  <p className="text-sm">No meal slots available right now</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   {MEAL_SLOTS.map(slot => {
                     const slotItems = itemsPerSlot[slot.key] ?? [];
                     if (slotItems.length === 0) return null;
+                    if (!enabledSlotKeys.has(slot.key)) return null;
                     const isActive = currentSlotKey === slot.key;
                     const slotStart = menuTiming ? (menuTiming as any)[slot.startKey] : "";
                     const slotEnd   = menuTiming ? (menuTiming as any)[slot.endKey]   : "";

@@ -1083,6 +1083,22 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    // Kitchen operational controls: pause mode + per-meal enable/disable toggles.
+    // All default to safe values (not paused, all meals enabled).
+    name: "add_feature_settings_kitchen_controls",
+    async run() {
+      await runRaw(`
+        ALTER TABLE feature_settings
+          ADD COLUMN IF NOT EXISTS kitchen_paused BOOLEAN NOT NULL DEFAULT false,
+          ADD COLUMN IF NOT EXISTS breakfast_enabled BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS lunch_enabled BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS snacks_enabled BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS dinner_enabled BOOLEAN NOT NULL DEFAULT true,
+          ADD COLUMN IF NOT EXISTS late_night_enabled BOOLEAN NOT NULL DEFAULT true;
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

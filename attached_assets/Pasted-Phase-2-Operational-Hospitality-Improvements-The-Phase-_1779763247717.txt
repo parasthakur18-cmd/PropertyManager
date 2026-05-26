@@ -1,0 +1,220 @@
+Phase 2 — Operational Hospitality Improvements
+
+The Phase 1 hospitality homepage upgrade is successful and stable.
+
+Now implement ONLY operational polish improvements without changing core ordering architecture, database structure, or SSE flow.
+
+IMPORTANT:
+
+* Keep backend stable
+* Avoid risky rewrites
+* Reuse existing systems
+* Focus on hospitality operations and UX polish
+
+==================================================
+PHASE 2 GOALS
+=============
+
+Improve:
+
+* kitchen operational control
+* premium hospitality feel
+* repeat ordering convenience
+* meal management
+* guest clarity
+
+WITHOUT:
+
+* DB redesign
+* API rewrite
+* order flow changes
+
+==================================================
+
+1. KITCHEN PAUSE MODE
+   ==================================================
+
+Add a new operational feature:
+
+"KITCHEN PAUSED"
+
+Admin can enable:
+
+* Pause Orders
+* Resume Orders
+
+When paused:
+
+* customer cannot place new orders
+* existing orders continue normally
+* menu remains viewable
+* add-to-cart disabled
+
+Show premium message:
+
+⏸ Kitchen Temporarily Busy
+We are currently preparing existing orders.
+Please try again shortly.
+
+DO NOT show scary error messages.
+
+==================================================
+2. PER-MEAL CONTROL TOGGLES
+===========================
+
+Add admin toggles for:
+
+* Breakfast ON/OFF
+* Lunch ON/OFF
+* High Tea/Snacks ON/OFF
+* Dinner ON/OFF
+* Late Night ON/OFF
+
+IMPORTANT:
+Reuse existing meal slot architecture.
+
+DO NOT create new DB structure.
+
+If OFF:
+
+* hide meal card completely
+  OR
+* show disabled state
+
+whichever is safer.
+
+==================================================
+3. CURRENTLY SERVING IMPROVEMENTS
+=================================
+
+Enhance hero section:
+
+Add:
+
+* Bestseller badge
+* Chef Recommended badge
+* Estimated prep time
+* "Most Ordered Today" support if easy
+
+Do NOT overcomplicate backend.
+
+Frontend-first improvements preferred.
+
+==================================================
+4. REPEAT LAST ORDER
+====================
+
+Add simple Repeat Last Order feature.
+
+Goal:
+Guests can quickly reorder:
+
+* tea
+* coffee
+* breakfast
+* repeated meals
+
+Implementation should be lightweight.
+
+Preferred approach:
+
+* use local recent order history
+  OR
+* fetch recent guest order
+
+Avoid complex account system.
+
+==================================================
+5. EXPRESS MENU IMPROVEMENTS
+============================
+
+Current High Load Mode is good.
+
+Improve further:
+
+When High Load Mode ON:
+
+* show only available_high_load items
+* hide all other items completely
+* simplify homepage automatically
+
+Optional:
+Show:
+⚡ Fast Serving Items Only
+
+Keep premium hospitality tone.
+
+==================================================
+6. CATEGORY EXPERIENCE POLISH
+=============================
+
+Improve inside-category pages:
+
+Add:
+
+* better spacing
+* category headers
+* smooth transitions
+* sticky meal title
+* premium typography
+
+DO NOT redesign routing system.
+
+==================================================
+7. MOBILE-FIRST HOSPITALITY UX
+==============================
+
+Optimize for:
+
+* hotel guests
+* one-hand usage
+* fast ordering from bed/room
+
+Improve:
+
+* button sizes
+* spacing
+* bottom cart visibility
+* scroll behavior
+
+==================================================
+IMPORTANT SAFETY RULES
+======================
+
+DO NOT:
+
+* redesign database
+* change order APIs
+* modify SSE architecture
+* rewrite kitchen flow
+* change payment flow
+* add complex automation
+* introduce risky dependencies
+
+==================================================
+BEFORE IMPLEMENTING
+===================
+
+First inspect:
+
+* current Phase 1 components
+* reusable UI sections
+* existing feature flags
+* safest insertion points
+
+Then implement incrementally.
+
+==================================================
+EXPECTED RESULT
+===============
+
+Hostezee should feel like:
+
+* premium resort dining
+* operationally controlled hospitality PMS
+* curated in-room service experience
+
+NOT:
+
+* generic restaurant app
+* food delivery marketplace.
