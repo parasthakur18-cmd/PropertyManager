@@ -1,0 +1,170 @@
+I want you to audit the current Room Service / Restaurant Ordering system before making any UI or logic changes.
+
+Do NOT change anything yet.
+
+First analyze and explain the existing system architecture and flow in detail.
+
+Please inspect and report the following:
+
+---
+
+1. CUSTOMER APP FLOW
+
+---
+
+Explain:
+
+* current homepage structure
+* what sections are shown first
+* how categories are displayed
+* how menu items are loaded
+* cart flow
+* checkout flow
+* order confirmation flow
+* payment flow
+* room verification flow
+* WhatsApp integrations
+* order tracking flow
+
+Also explain:
+
+* what is dynamic
+* what is hardcoded
+
+---
+
+2. MENU & CATEGORY SYSTEM
+
+---
+
+Analyze:
+
+* how categories are stored
+* how menu items are linked to categories
+* whether items support:
+
+  * multiple categories
+  * meal types
+  * tags
+  * variants
+  * add-ons
+  * images
+  * availability control
+
+Check:
+
+* Is there already breakfast/lunch/dinner logic?
+* Are timings item-based or category-based?
+* Can categories auto-hide?
+* Can items be disabled temporarily?
+
+Explain current DB structure and API flow.
+
+---
+
+3. KITCHEN OPERATIONS FLOW
+
+---
+
+Inspect:
+
+* how kitchen receives orders
+* KOT generation system
+* kitchen dashboard flow
+* order status flow
+* preparation workflow
+* delivery workflow
+
+Check whether system supports:
+
+* preparing
+* ready
+* delivered
+* cancelled
+* kitchen pause
+* item unavailable mode
+* prep time adjustments
+
+Explain which files and APIs control kitchen operations.
+
+---
+
+4. ADMIN PANEL SYSTEM
+
+---
+
+Inspect admin capabilities:
+
+* menu management
+* category management
+* pricing
+* taxes
+* timing controls
+* property-wise menu
+* item availability
+* order management
+
+Explain:
+
+* what is configurable
+* what is fixed/hardcoded
+* which settings already exist
+
+---
+
+5. TECHNICAL ARCHITECTURE
+
+---
+
+Analyze:
+
+* frontend framework
+* backend framework
+* database structure
+* API architecture
+* reusable components
+* state management
+* timing logic
+* caching
+* realtime updates/socket usage
+
+Identify:
+
+* risky files
+* shared components
+* dependencies that should not be modified carelessly
+
+---
+
+6. MOST IMPORTANT
+
+---
+
+Tell me:
+
+* what changes are LOW RISK
+* what changes are MEDIUM RISK
+* what changes are HIGH RISK
+
+Also explain:
+
+* what can be improved without major backend rewrite
+* what requires architecture changes
+* what is safest for production stability
+
+---
+
+## IMPORTANT INSTRUCTION
+
+Do NOT start coding.
+
+First provide a complete audit report of the current system with:
+
+* architecture overview
+* flow explanation
+* DB relationships
+* APIs involved
+* risky areas
+* recommended safe upgrade path
+
+The goal is to improve the hospitality dining experience without breaking existing ordering operations.
