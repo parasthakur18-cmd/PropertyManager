@@ -1,0 +1,162 @@
+Dorm Calendar Allocation Fixes — Parent Summary Row + Proper Multi-Bed Rendering
+
+The expandable dorm calendar structure is now working well, but there are still some important UX and allocation issues that must be fixed.
+
+-----------------------------------
+ISSUE 1 — Parent Room Row Still Showing Guest Names
+-----------------------------------
+
+Current behavior:
+The parent dorm room row still displays booking bars and guest names like:
+
+101 → Himanshu +2 | Nitish | Priyam
+
+This creates duplicate and confusing information because detailed allocations are already visible in expanded bed rows.
+
+Required Fix:
+The parent room row should become a CLEAN SUMMARY ROW ONLY.
+
+Remove from parent row:
+- Guest names
+- Booking bars
+- Individual booking allocations
+- Mixed booking indicators
+
+Keep only:
+- Room number
+- Occupancy count
+- Expand/collapse control
+
+Correct example:
+
+101   1/4 occupied   [+]
+102   2/4 occupied   [+]
+103   0/4 occupied   [+]
+
+Expanded rows will handle all booking visibility.
+
+-----------------------------------
+ISSUE 2 — Multi-Bed Bookings Showing Only One Bed
+-----------------------------------
+
+Critical issue:
+If a guest books multiple beds, the system currently renders only one bed assignment visually.
+
+Example:
+Priyam booked 4 beds.
+
+Current incorrect behavior:
+Only one bed row shows Priyam.
+
+Correct behavior:
+The booking must allocate ALL requested beds.
+
+Required rendering:
+
+Bed 1 → Priyam
+Bed 2 → Priyam
+Bed 3 → Priyam
+Bed 4 → Priyam
+
+This issue exists for many customers and must be fixed at the allocation layer.
+
+-----------------------------------
+REQUIRED BACKEND LOGIC
+-----------------------------------
+
+Current probable logic:
+- One booking object exists
+- Quantity = 4
+- But only first bed assignment renders
+
+Correct logic:
+A dorm booking with quantity > 1 must generate multiple bed assignments.
+
+Example:
+
+Booking:
+{
+  guest: "Priyam",
+  bedsRequested: 4
+}
+
+Must generate:
+
+[
+  { bedId: 1, guest: "Priyam" },
+  { bedId: 2, guest: "Priyam" },
+  { bedId: 3, guest: "Priyam" },
+  { bedId: 4, guest: "Priyam" }
+]
+
+The UI should render all assigned beds separately.
+
+-----------------------------------
+UI REQUIREMENTS
+-----------------------------------
+
+Collapsed Room Row:
+- Show only occupancy summary
+- No booking bars
+- No guest names
+- Keep expand/collapse icon
+
+Expanded View:
+- Each bed becomes a child calendar row
+- Show booking bars per bed
+- Use existing room calendar UI
+- Maintain same colors and styles
+
+Colors:
+- Green = In House
+- Orange = Arriving
+- Red = Checkout Today
+- Blue = Upcoming
+- Grey = Vacant
+
+-----------------------------------
+VACANT BED HANDLING
+-----------------------------------
+
+Vacant beds should remain visible even if no booking exists.
+
+Example:
+
+Bed 1 → Priyam
+Bed 2 → Priyam
+Bed 3 → Vacant
+Bed 4 → Vacant
+
+This helps reception understand real-time availability instantly.
+
+-----------------------------------
+ARCHITECTURE GOAL
+-----------------------------------
+
+Parent row = summary layer
+Bed rows = operational layer
+
+The room itself should not behave like a booking container anymore.
+Beds are now the actual inventory units for dormitories.
+
+This architecture is required for:
+- backpacker hostels
+- dormitory PMS
+- shared occupancy
+- bed-level inventory management
+
+-----------------------------------
+FINAL UX GOAL
+-----------------------------------
+
+Collapsed:
+101   2/4 occupied [+]
+
+Expanded:
+
+Bed 1 → Himanshu
+Bed 2 → Priyam
+Bed 3 → Vacant
+Bed 4 → Checkout Today
+
+The expanded bed rows should become the primary operational view for dorm management.

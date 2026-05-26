@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -908,7 +908,7 @@ export default function CalendarView() {
                 const isDormExpanded = isDorm && !!expandedDorms[room.id];
 
                 return (
-                  <Fragment key={room.id}>
+                  <div key={room.id}>
                   <div className="flex border-b bg-white dark:bg-card" data-testid={`room-row-${room.id}`}>
                     {/* Sticky room name cell */}
                     {showRoomSidebar && (
@@ -958,110 +958,143 @@ export default function CalendarView() {
 
                     {/* Date cells + booking bars (self-contained relative context) */}
                     <div className="relative flex-shrink-0" style={{ width: dates.length * CELL_WIDTH, height: ROW_HEIGHT }}>
-                      {/* Background grid cells — click empty cells to quick-create a booking */}
-                      <div className="flex h-full">
-                        {dates.map((date) => {
-                          const dateStr = format(date, "yyyy-MM-dd");
-                          const isOccupied = displayBookings.some(({ booking }) => {
-                            const cin = startOfDay(new Date(booking.checkInDate));
-                            const cout = startOfDay(new Date(booking.checkOutDate));
-                            return date >= cin && date < cout;
-                          });
-                          const isTodayCell = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
-                          return (
-                            <div
-                              key={`${room.id}-${dateStr}`}
-                              className={cn(
-                                "border-r flex-shrink-0 transition-colors",
-                                isTodayCell && "bg-amber-50/40 dark:bg-amber-950/10",
-                                !isOccupied && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 group/cell"
-                              )}
-                              style={{ width: CELL_WIDTH }}
-                              onClick={() => {
-                                if (isOccupied) return;
-                                setCheckInDate(dateStr);
-                                setCheckOutDate(format(addDays(date, 1), "yyyy-MM-dd"));
-                                setSelectedRoomId(String(room.id));
-                                setGuestName("");
-                                setShowCreateBooking(true);
-                              }}
-                              title={!isOccupied ? `Book Room ${room.roomNumber} on ${format(date, "d MMM")}` : undefined}
-                              data-testid={`calendar-cell-${room.id}-${dateStr}`}
-                            >
-                              {!isOccupied && (
-                                <div className="h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                                  <Plus className="h-3.5 w-3.5 text-blue-400" />
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Booking bars */}
-                      <div className="absolute inset-0 pointer-events-none py-1.5">
-                        {displayBookings.map(({ booking, allBookings, additionalBeds }) => {
-                          const checkInDate = startOfDay(new Date(booking.checkInDate));
-                          const checkOutDate = startOfDay(new Date(booking.checkOutDate));
-                          const rangeStart = startOfDay(startDate);
-                          const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-                          const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
-                          if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
-                          const visibleStartIdx = Math.max(0, checkInDaysDiff);
-                          const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
-                          let leftPx = visibleStartIdx * CELL_WIDTH;
-                          let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
-                          if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) { leftPx += CELL_WIDTH / 2; widthPx -= CELL_WIDTH / 2; }
-                          if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
-                          if (widthPx <= 0) return null;
-                          const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
-                          const baseStatusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
-                          // Override: bookings arriving TODAY (and not yet checked-in) → orange
-                          const arrivingToday =
-                            format(checkInDate, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") &&
-                            booking.status !== "checked-in" &&
-                            booking.status !== "checked-out" &&
-                            booking.status !== "cancelled";
-                          const statusStyle = arrivingToday
-                            ? { bg: "bg-orange-500", text: "text-white", gradient: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)" }
-                            : baseStatusStyle;
-                          const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
-                          const displayName = isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds}` : guestName;
-                          const handleClick = () => {
-                            // If the booking already started (check-in ≤ today), use today as the
-                            // popup reference date so co-guests who arrived today are also shown.
-                            // If it's a future booking, use the actual check-in date.
-                            const popupDate = checkInDate <= today ? today : checkInDate;
-                            setDormitoryPopup({ isOpen: true, room, bookings: isDorm ? allBookings : [booking], date: popupDate });
-                          };
-                          return (
-                            <div
-                              key={`booking-${booking.id}`}
-                              className="absolute pointer-events-auto cursor-pointer group"
-                              style={{ left: `${leftPx}px`, width: `${widthPx}px`, top: '4px', bottom: '4px' }}
-                              onClick={handleClick}
-                              data-testid={`booking-bar-${booking.id}`}
-                            >
+                      {isDorm ? (
+                        /* ── Dorm parent row: per-day bed availability summary, no booking bars ── */
+                        <div className="flex h-full">
+                          {dates.map((date) => {
+                            const dateStr = format(date, "yyyy-MM-dd");
+                            const isTodayCell = dateStr === format(today, "yyyy-MM-dd");
+                            const bedsUsed = getAllDormitoryBookingsForDate(room.id, date)
+                              .reduce((s, b) => s + (b.bedsBooked || 1), 0);
+                            const totalBeds = room.totalBeds || 0;
+                            const available = Math.max(0, totalBeds - bedsUsed);
+                            return (
                               <div
-                                className={cn("w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]", statusStyle.text)}
-                                style={{ background: statusStyle.gradient }}
-                                title={isDorm && additionalBeds > 0 ? `${guestName} +${additionalBeds} beds - Click for details` : `${guestName} - ${booking.status}`}
+                                key={`${room.id}-dorm-${dateStr}`}
+                                className={cn(
+                                  "border-r flex-shrink-0 flex flex-col items-center justify-center gap-0.5",
+                                  isTodayCell && "bg-amber-50/40 dark:bg-amber-950/10"
+                                )}
+                                style={{ width: CELL_WIDTH }}
                               >
-                                <span className="truncate">{displayName}</span>
-                                {!isPaid && (
-                                  <span
-                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 ml-1 bg-red-500 ring-2 ring-white shadow-sm animate-pulse"
-                                    title="Unpaid / overdue balance"
-                                  />
-                                )}
-                                {isPaid && (
-                                  <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1 bg-white/90" title="Paid" />
-                                )}
+                                <span className={cn(
+                                  "text-[10px] font-semibold leading-tight",
+                                  available === 0 ? "text-red-500 dark:text-red-400" :
+                                  available <= 1 ? "text-amber-500 dark:text-amber-400" :
+                                  "text-green-600 dark:text-green-400"
+                                )}>
+                                  {available} free
+                                </span>
+                                <span className="text-[9px] text-muted-foreground leading-tight">
+                                  {bedsUsed}/{totalBeds}
+                                </span>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <>
+                          {/* Background grid cells — click empty cells to quick-create a booking */}
+                          <div className="flex h-full">
+                            {dates.map((date) => {
+                              const dateStr = format(date, "yyyy-MM-dd");
+                              const isOccupied = displayBookings.some(({ booking }) => {
+                                const cin = startOfDay(new Date(booking.checkInDate));
+                                const cout = startOfDay(new Date(booking.checkOutDate));
+                                return date >= cin && date < cout;
+                              });
+                              const isTodayCell = format(date, "yyyy-MM-dd") === format(today, "yyyy-MM-dd");
+                              return (
+                                <div
+                                  key={`${room.id}-${dateStr}`}
+                                  className={cn(
+                                    "border-r flex-shrink-0 transition-colors",
+                                    isTodayCell && "bg-amber-50/40 dark:bg-amber-950/10",
+                                    !isOccupied && "cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-950/20 group/cell"
+                                  )}
+                                  style={{ width: CELL_WIDTH }}
+                                  onClick={() => {
+                                    if (isOccupied) return;
+                                    setCheckInDate(dateStr);
+                                    setCheckOutDate(format(addDays(date, 1), "yyyy-MM-dd"));
+                                    setSelectedRoomId(String(room.id));
+                                    setGuestName("");
+                                    setShowCreateBooking(true);
+                                  }}
+                                  title={!isOccupied ? `Book Room ${room.roomNumber} on ${format(date, "d MMM")}` : undefined}
+                                  data-testid={`calendar-cell-${room.id}-${dateStr}`}
+                                >
+                                  {!isOccupied && (
+                                    <div className="h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                                      <Plus className="h-3.5 w-3.5 text-blue-400" />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Booking bars */}
+                          <div className="absolute inset-0 pointer-events-none py-1.5">
+                            {displayBookings.map(({ booking, allBookings, additionalBeds }) => {
+                              const checkInDate = startOfDay(new Date(booking.checkInDate));
+                              const checkOutDate = startOfDay(new Date(booking.checkOutDate));
+                              const rangeStart = startOfDay(startDate);
+                              const checkInDaysDiff = Math.floor((checkInDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                              const checkOutDaysDiff = Math.floor((checkOutDate.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24));
+                              if (checkOutDaysDiff <= 0 || checkInDaysDiff >= dates.length) return null;
+                              const visibleStartIdx = Math.max(0, checkInDaysDiff);
+                              const visibleEndIdx = Math.min(dates.length, checkOutDaysDiff + 1);
+                              let leftPx = visibleStartIdx * CELL_WIDTH;
+                              let widthPx = (visibleEndIdx - visibleStartIdx) * CELL_WIDTH;
+                              if (checkInDaysDiff >= 0 && checkInDaysDiff < dates.length) { leftPx += CELL_WIDTH / 2; widthPx -= CELL_WIDTH / 2; }
+                              if (checkOutDaysDiff > 0 && checkOutDaysDiff <= dates.length) { widthPx -= CELL_WIDTH / 2; }
+                              if (widthPx <= 0) return null;
+                              const guestName = guests.find(g => g.id === booking.guestId)?.fullName || "Guest";
+                              const baseStatusStyle = STATUS_COLORS[booking.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
+                              const arrivingToday =
+                                format(checkInDate, "yyyy-MM-dd") === format(today, "yyyy-MM-dd") &&
+                                booking.status !== "checked-in" &&
+                                booking.status !== "checked-out" &&
+                                booking.status !== "cancelled";
+                              const statusStyle = arrivingToday
+                                ? { bg: "bg-orange-500", text: "text-white", gradient: "linear-gradient(135deg, #fb923c 0%, #f97316 100%)" }
+                                : baseStatusStyle;
+                              const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
+                              const handleClick = () => {
+                                const popupDate = checkInDate <= today ? today : checkInDate;
+                                setDormitoryPopup({ isOpen: true, room, bookings: allBookings, date: popupDate });
+                              };
+                              return (
+                                <div
+                                  key={`booking-${booking.id}`}
+                                  className="absolute pointer-events-auto cursor-pointer group"
+                                  style={{ left: `${leftPx}px`, width: `${widthPx}px`, top: '4px', bottom: '4px' }}
+                                  onClick={handleClick}
+                                  data-testid={`booking-bar-${booking.id}`}
+                                >
+                                  <div
+                                    className={cn("w-full h-full rounded-md flex items-center justify-between px-2 text-xs font-semibold shadow-sm transition-all group-hover:shadow-md group-hover:scale-[1.02]", statusStyle.text)}
+                                    style={{ background: statusStyle.gradient }}
+                                    title={`${guestName} - ${booking.status}`}
+                                  >
+                                    <span className="truncate">{guestName}</span>
+                                    {!isPaid && (
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full flex-shrink-0 ml-1 bg-red-500 ring-2 ring-white shadow-sm animate-pulse"
+                                        title="Unpaid / overdue balance"
+                                      />
+                                    )}
+                                    {isPaid && (
+                                      <span className="w-2 h-2 rounded-full flex-shrink-0 ml-1 bg-white/90" title="Paid" />
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1174,7 +1207,7 @@ export default function CalendarView() {
                       );
                     });
                   })()}
-                  </Fragment>
+                  </div>
                 );
               })}
             </div>
