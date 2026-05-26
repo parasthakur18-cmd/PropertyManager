@@ -2987,7 +2987,10 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // A guest may still be physically checked-in past their scheduled checkout date.
       // The date-range overlap query won't catch them (their checkOut < requestCheckIn),
       // but the check-in server guard WILL reject the new booking with a 409.
-      // Solution: fetch ALL currently checked-in bookings and treat their rooms as blocked.
+      // Solution: fetch checked-in bookings whose checkout date has ALREADY PASSED today
+      // (genuinely overdue). Do NOT block rooms for guests checking out today or in the
+      // future — that causes false "no availability" for future-date searches.
+      const todayStr = toDateStr(new Date());
       const checkedInBookings = await db
         .select()
         .from(bookings)
@@ -2997,14 +3000,18 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             : eq(bookings.status, "checked-in")
         );
 
-      // Merge: add any checked-in booking not already in overlappingBookings
+      // Merge: add only genuinely overdue checked-in bookings (checkout date is before today)
       const overlappingIds = new Set(overlappingBookings.map(b => b.id));
       for (const b of checkedInBookings) {
         if (!overlappingIds.has(b.id)) {
-          // Only block if it's not the excluded booking itself
           if (!excludeBookingId || b.id !== Number(excludeBookingId)) {
-            overlappingBookings.push(b);
-            overlappingIds.add(b.id);
+            const bOutStr = toDateStr(b.checkOutDate as any);
+            // Only block if guest was supposed to checkout before today but hasn't
+            // (i.e., they are genuinely overdue/overstaying their scheduled checkout)
+            if (bOutStr < todayStr) {
+              overlappingBookings.push(b);
+              overlappingIds.add(b.id);
+            }
           }
         }
       }
