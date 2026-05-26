@@ -1095,6 +1095,15 @@ export default function Menu() {
       {/* ── Items Screen ─────────────────────────────────────────────────── */}
       {screen === "items" && (
         <div className="px-4 pt-4 space-y-3">
+          {/* Back button */}
+          <button
+            onClick={() => { setScreen("categories"); setSearchTerm(""); setActiveMealSlot(null); }}
+            className="flex items-center gap-2 text-sm font-semibold text-[#1E3A5F] -mb-1"
+            data-testid="button-back-to-menu"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Menu
+          </button>
+
           {/* Category search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
