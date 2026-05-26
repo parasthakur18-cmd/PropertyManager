@@ -720,9 +720,12 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {plans.map((plan, index) => (
-                  <TableRow key={index} data-testid={`row-rate-plan-${index}`}>
+                {plans.map((plan, index) => {
+                  const isMissingRoom = !plan.roomMappingId || !mappings.find(m => m.id === plan.roomMappingId);
+                  return (
+                  <TableRow key={index} data-testid={`row-rate-plan-${index}`} className={isMissingRoom ? "bg-red-50 dark:bg-red-950/20" : ""}>
                     <TableCell>
+                      {isMissingRoom && <span className="block text-xs text-red-600 font-medium mb-1">⚠ Select a room</span>}
                       <Select
                         value={plan.roomMappingId ? String(plan.roomMappingId) : ""}
                         onValueChange={v => updatePlan(index, "roomMappingId", parseInt(v))}
@@ -756,7 +759,8 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
                       <Button variant="ghost" size="icon" onClick={() => removePlan(index)} data-testid={`button-remove-plan-${index}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -870,13 +874,21 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
 
   const pushRatesMutation = useMutation({
     mutationFn: async () => {
-      const rates = ratePlans
-        .filter(rp => rateValues[rp.ratePlanCode])
+      const withRate = ratePlans.filter(rp => rateValues[rp.ratePlanCode]);
+      const unlinked = withRate.filter(rp => !mappings.find(m => m.id === rp.roomMappingId));
+      if (unlinked.length > 0 && unlinked.length === withRate.length) {
+        throw new Error(`All rate plans are missing a room assignment. Go to the Rate Plans tab and select a room for each plan (the ones highlighted in red).`);
+      }
+      if (unlinked.length > 0) {
+        toast({ title: "Some plans skipped", description: `${unlinked.length} rate plan(s) have no room assigned and were skipped. Fix them in the Rate Plans tab.`, variant: "destructive" });
+      }
+      const rates = withRate
+        .filter(rp => mappings.find(m => m.id === rp.roomMappingId))
         .map(rp => {
-          const mapping = mappings.find(m => m.id === rp.roomMappingId);
+          const mapping = mappings.find(m => m.id === rp.roomMappingId)!;
           return {
-            roomCode: mapping?.aiosellRoomCode || "",
-            roomId: mapping?.aiosellRoomId || null,
+            roomCode: mapping.aiosellRoomCode,
+            roomId: mapping.aiosellRoomId || null,
             rate: parseFloat(rateValues[rp.ratePlanCode] || rp.baseRate || "0"),
             rateplanCode: rp.ratePlanCode,
           };
