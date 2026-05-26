@@ -297,9 +297,11 @@ export default function QuickOrder() {
     return menuItems.filter(i => i.propertyId === selectedPropertyId);
   }, [menuItems, selectedPropertyId]);
 
+  // In High Load mode, hide items that don't have the High Load checkbox ticked
+  const isHighLoad = !!(menuTiming?.highLoadMode);
   const availableItems = useMemo(() =>
-    propertyMenuItems.filter(i => i.isAvailable),
-    [propertyMenuItems]
+    propertyMenuItems.filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
+    [propertyMenuItems, isHighLoad]
   );
 
   const filteredRooms = useMemo(() => {

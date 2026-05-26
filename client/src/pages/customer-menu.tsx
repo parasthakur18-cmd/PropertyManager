@@ -246,13 +246,20 @@ export default function CustomerMenu() {
     },
   });
 
-  const filteredItems = menuItems?.filter((item) => item.isAvailable).filter((item) =>
+  // In High Load mode, hide items that don't have the High Load checkbox ticked
+  const isHighLoad = !!(menuTiming?.highLoadMode);
+  const visibleItems = useMemo(() =>
+    (menuItems || []).filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
+    [menuItems, isHighLoad]
+  );
+
+  const filteredItems = visibleItems.filter((item) =>
     searchQuery
       ? item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.description?.toLowerCase().includes(searchQuery.toLowerCase())
       : true
   );
 
-  const availableItems = useMemo(() => (menuItems || []).filter(i => i.isAvailable), [menuItems]);
+  const availableItems = visibleItems;
   const popularItems = useMemo(() => availableItems.slice(0, 6), [availableItems]);
   const popularItemIds = useMemo(() => new Set(popularItems.map(i => i.id)), [popularItems]);
   const categoriesWithCount = useMemo(() => (categories || []).map((cat, idx) => ({
