@@ -20283,16 +20283,16 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       await db.delete(aiosellRatePlans).where(eq(aiosellRatePlans.configId, config.id));
       const created = [];
       for (const rp of ratePlans) {
-        if (rp.roomMappingId && !validMappingIds.has(rp.roomMappingId)) {
-          return res.status(400).json({ message: `Invalid room mapping ID: ${rp.roomMappingId}` });
-        }
         if (!rp.ratePlanName || !rp.ratePlanCode) {
           return res.status(400).json({ message: "Rate plan name and code are required" });
         }
+        const resolvedMappingId = (rp.roomMappingId && validMappingIds.has(rp.roomMappingId))
+          ? rp.roomMappingId
+          : null;
         const [plan] = await db.insert(aiosellRatePlans).values({
           configId: config.id,
           propertyId,
-          roomMappingId: rp.roomMappingId,
+          roomMappingId: resolvedMappingId,
           ratePlanName: rp.ratePlanName,
           ratePlanCode: rp.ratePlanCode,
           baseRate: rp.baseRate || null,
