@@ -96,6 +96,13 @@ export default function EnhancedMenu() {
     queryKey: ["/api/properties"],
   });
 
+  // Auto-select the first property so we never load all properties' menus at once
+  useEffect(() => {
+    if (properties && properties.length > 0 && selectedProperty === 0) {
+      setSelectedProperty(properties[0].id);
+    }
+  }, [properties]);
+
   const { data: categories, isLoading: categoriesLoading } = useQuery<MenuCategory[]>({
     queryKey: ["/api/menu-categories"],
   });
@@ -141,6 +148,12 @@ export default function EnhancedMenu() {
       return true;
     }
   );
+
+  // Pre-compute item count per category so chips don't run filter() on every render
+  const itemCountByCategory = filteredItems?.reduce<Record<number, number>>((acc, item) => {
+    if (item.categoryId != null) acc[item.categoryId] = (acc[item.categoryId] || 0) + 1;
+    return acc;
+  }, {}) ?? {};
 
   const toggleItemExpanded = (itemId: number) => {
     const newExpanded = new Set(expandedItems);
@@ -649,7 +662,7 @@ export default function EnhancedMenu() {
                     onClick={() => setSelectedCategoryFilter(cat.id)}
                     data-testid={`badge-category-${cat.id}`}
                   >
-                    {cat.name} ({filteredItems?.filter((item) => item.categoryId === cat.id).length || 0})
+                    {cat.name} ({itemCountByCategory[cat.id] || 0})
                   </Badge>
                 ))}
             </div>
