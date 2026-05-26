@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { RestaurantPopup } from "@/components/restaurant-popup";
 import {
   ShoppingCart, Plus, Minus, X, Check, UtensilsCrossed,
-  Clock, Search, XCircle, ArrowLeft, ChevronRight, Eye,
+  Clock, Search, XCircle, ArrowLeft, ChevronRight, Eye, Zap,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,78 @@ function getCategoryEmoji(name: string): string {
   return "🍽️";
 }
 
+const MEAL_SLOTS = [
+  { key: "breakfast", label: "Breakfast", icon: "🍳", gradient: "from-amber-400 to-orange-500", startKey: "breakfastStart", endKey: "breakfastEnd", enabledKey: "breakfastEnabled" },
+  { key: "lunch",     label: "Lunch",     icon: "🍛", gradient: "from-green-400 to-emerald-500", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled"     },
+  { key: "snacks",    label: "High Tea",  icon: "☕", gradient: "from-teal-400 to-cyan-500",    startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled"    },
+  { key: "dinner",    label: "Dinner",    icon: "🍽️", gradient: "from-indigo-500 to-purple-600",startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled"    },
+  { key: "lateNight", label: "Late Night",icon: "🌙", gradient: "from-slate-600 to-gray-800",  startKey: "lateNightStart", endKey: "lateNightEnd", enabledKey: "lateNightEnabled" },
+] as const;
+
+function fmtSlotTime(t: string) {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+}
+
+function getSlotItems(items: MenuItem[], slotKey: string): MenuItem[] {
+  switch (slotKey) {
+    case "breakfast": return items.filter(i => i.availableBreakfast !== false);
+    case "lunch":     return items.filter(i => i.availableLunch !== false);
+    case "snacks":    return items.filter(i => i.availableSnacks !== false);
+    case "dinner":    return items.filter(i => i.availableDinner !== false);
+    case "lateNight": return items.filter(i => i.availableLateNight !== false);
+    default:          return items;
+  }
+}
+
+function getItemTimingReason(item: MenuItem, timing: any): string {
+  if (!timing) return "";
+  if (timing.highLoadMode) return (item.availableHighLoad ?? false) ? "" : "Unavailable Right Now";
+  const parseTime = (t: string): number => {
+    if (!t) return -1;
+    const [h, m] = t.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return -1;
+    return h * 60 + m;
+  };
+  const slots = [
+    { enabled: item.availableBreakfast ?? true, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { enabled: item.availableLunch ?? true, start: timing.lunchStart, end: timing.lunchEnd },
+    { enabled: item.availableSnacks ?? true, start: timing.snacksStart, end: timing.snacksEnd },
+    { enabled: item.availableDinner ?? true, start: timing.dinnerStart, end: timing.dinnerEnd },
+    { enabled: item.availableLateNight ?? true, start: timing.lateNightStart, end: timing.lateNightEnd },
+  ];
+  const hasTimesConfigured = slots.some(s => parseTime(s.start) >= 0 && parseTime(s.end) >= 0);
+  if (!hasTimesConfigured) return "";
+  const now = new Date();
+  const cur = now.getHours() * 60 + now.getMinutes();
+  const isActive = (s: number, e: number): boolean => {
+    if (s < 0 || e < 0) return false;
+    if (e === 0) return cur >= s;
+    return s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e);
+  };
+  for (const slot of slots) {
+    if (!slot.enabled) continue;
+    const s = parseTime(slot.start);
+    const e = parseTime(slot.end);
+    if (s < 0 || e < 0) continue;
+    if (isActive(s, e)) return "";
+  }
+  const fmt = (t: string) => {
+    if (!t) return "";
+    const [h, m] = t.split(":").map(Number);
+    return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+  };
+  const nextSlot = slots
+    .filter(s => s.enabled && parseTime(s.start) >= 0)
+    .map(s => ({ ...s, sm: parseTime(s.start) }))
+    .sort((a, b) => {
+      const dist = (m: number) => m > cur ? m - cur : 1440 - cur + m;
+      return dist(a.sm) - dist(b.sm);
+    })[0];
+  return nextSlot ? `Available at ${fmt(nextSlot.start)}` : "Not available now";
+}
+
 function getFoodEmoji(item: { foodType?: string | null; name?: string }): string {
   const name = (item.name || "").toLowerCase();
   for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
@@ -141,6 +213,7 @@ export default function Menu() {
   // ── State ──────────────────────────────────────────────────────────────────
   const [screen, setScreen] = useState<"categories" | "items">("categories");
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
+  const [activeMealSlot, setActiveMealSlot] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [vegOnly, setVegOnly] = useState(false);
 
@@ -152,6 +225,11 @@ export default function Menu() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [specialInstructions, setSpecialInstructions] = useState("");
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
+  const LS_KEY = `hostezee_last_order_${urlProperty || "0"}`;
+  const [lastOrder, setLastOrder] = useState<{ items: Array<{ id: number; name: string; price: number; quantity: number }> } | null>(() => {
+    try { return JSON.parse(localStorage.getItem(`hostezee_last_order_${urlProperty || "0"}`) || "null"); } catch { return null; }
+  });
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<{
@@ -174,6 +252,18 @@ export default function Menu() {
     },
     enabled: !!urlProperty,
     staleTime: 60_000,
+  });
+
+  // ── Meal-slot / kitchen-pause timing (new API) ────────────────────────────
+  const { data: menuTiming } = useQuery<any>({
+    queryKey: ["/api/public/menu-timing", urlProperty],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/menu-timing/${urlProperty}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!urlProperty,
+    refetchInterval: 60_000,
   });
 
   // ── Kitchen status ─────────────────────────────────────────────────────────
@@ -292,7 +382,12 @@ export default function Menu() {
       }
       return await apiRequest("/api/public/orders", "POST", orderData);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables: any) => {
+      if (!isPreview && variables?.items?.length) {
+        const savedOrder = { items: variables.items };
+        try { localStorage.setItem(LS_KEY, JSON.stringify(savedOrder)); } catch {}
+        setLastOrder(savedOrder);
+      }
       toast({
         title: isPreview ? "Preview: Order Simulated" : "Order Placed!",
         description: isPreview
@@ -452,10 +547,54 @@ export default function Menu() {
   };
 
   // ── Derived data ───────────────────────────────────────────────────────────
+  const isKitchenPaused = !!(menuTiming?.kitchenPaused);
+  const isHighLoad = !!(menuTiming?.highLoadMode);
+  const enabledSlotKeys = useMemo(() => {
+    if (!menuTiming) return new Set(MEAL_SLOTS.map(s => s.key));
+    return new Set(MEAL_SLOTS.filter(s => menuTiming[s.enabledKey] !== false).map(s => s.key));
+  }, [menuTiming]);
+
+  const currentSlotKey = useMemo(() => {
+    if (!menuTiming) return null;
+    const pt = (t: string) => { if (!t) return -1; const [h, m] = t.split(":").map(Number); return isNaN(h) || isNaN(m) ? -1 : h * 60 + m; };
+    const now = new Date();
+    const cur = now.getHours() * 60 + now.getMinutes();
+    const active = (s: number, e: number) => { if (s < 0 || e < 0) return false; return s <= e ? cur >= s && cur < e : cur >= s || cur < e; };
+    for (const slot of MEAL_SLOTS) {
+      const s = pt((menuTiming as any)[slot.startKey] || "");
+      const e = pt((menuTiming as any)[slot.endKey] || "");
+      if (active(s, e)) return slot.key;
+    }
+    return null;
+  }, [menuTiming]);
+
   const availableItems = useMemo(() =>
-    (menuItems || []).filter(i => i.isAvailable),
-    [menuItems]
+    (menuItems || []).filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
+    [menuItems, isHighLoad]
   );
+
+  const itemsPerSlot = useMemo(() => {
+    const result: Record<string, MenuItem[]> = {};
+    for (const slot of MEAL_SLOTS) result[slot.key] = getSlotItems(availableItems, slot.key);
+    return result;
+  }, [availableItems]);
+
+  const activeMealItems = useMemo(() =>
+    activeMealSlot ? itemsPerSlot[activeMealSlot] ?? [] : [],
+    [activeMealSlot, itemsPerSlot]
+  );
+
+  const activeMealByCategory = useMemo(() => {
+    if (!activeMealItems.length || !menuCategories) return [] as Array<{ catName: string; items: MenuItem[] }>;
+    const grouped: Array<{ catName: string; items: MenuItem[] }> = [];
+    for (const cat of menuCategories) {
+      const catItems = activeMealItems.filter(i => i.categoryId === cat.id);
+      if (catItems.length > 0) grouped.push({ catName: cat.name, items: catItems });
+    }
+    const uncategorized = activeMealItems.filter(i => !i.categoryId);
+    if (uncategorized.length > 0) grouped.push({ catName: "Others", items: uncategorized });
+    return grouped;
+  }, [activeMealItems, menuCategories]);
 
   const popularItems = useMemo(() => availableItems.slice(0, 6), [availableItems]);
 
@@ -626,7 +765,7 @@ export default function Menu() {
           </div>
 
           {/* ── Search results ───────────────────────────────────────────── */}
-          {searchTerm && (
+          {searchTerm ? (
             <div className="space-y-2">
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">
                 {searchResults.length} result{searchResults.length !== 1 ? "s" : ""}
@@ -644,6 +783,7 @@ export default function Menu() {
                     qty={getItemQtyInCart(item.id)}
                     isKitchenOpen={isKitchenOpen}
                     isPopular={popularItemIds.has(item.id)}
+                    timingReason={getItemTimingReason(item, menuTiming)}
                     onAdd={() => addToCart(item)}
                     onIncrease={() => {
                       const ci = cart.find(c => c.id === item.id);
@@ -658,87 +798,296 @@ export default function Menu() {
                 ))
               )}
             </div>
-          )}
-
-          {/* ── Popular Items (only when not searching) ──────────────────── */}
-          {!searchTerm && popularItems.length > 0 && (
-            <div>
-              <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">
-                ⭐ Popular Items
-              </h2>
-              <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
-                {popularItems.map(item => (
-                  <PopularCard
-                    key={item.id}
-                    item={item}
-                    qty={getItemQtyInCart(item.id)}
-                    isKitchenOpen={isKitchenOpen}
-                    onAdd={() => addToCart(item)}
-                    onIncrease={() => {
-                      const ci = cart.find(c => c.id === item.id);
-                      if (ci) updateQuantity(ci.cartId, 1);
-                      else addToCart(item);
-                    }}
-                    onDecrease={() => {
-                      const cis = cart.filter(c => c.id === item.id);
-                      if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── Category Grid ─────────────────────────────────────────────── */}
-          {!searchTerm && (
-            <div>
-              <h2 className="text-sm font-bold text-gray-700 mb-3">Browse Menu</h2>
-              {categoriesWithCount.length === 0 ? (
-                <div className="text-center py-16 text-gray-400">
-                  <UtensilsCrossed className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                  <p className="font-medium">Menu not available</p>
-                  <p className="text-sm mt-1">Please check back later</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {categoriesWithCount.map(({ cat, count, gradient, emoji, photo }) => (
+          ) : activeMealSlot ? (
+            /* ── MEAL SLOT VIEW ───────────────────────────────────────── */
+            <div className="space-y-4">
+              {(() => {
+                const slot = MEAL_SLOTS.find(s => s.key === activeMealSlot)!;
+                const isActiveNow = currentSlotKey === activeMealSlot;
+                const slotStart = menuTiming ? (menuTiming as any)[slot.startKey] : "";
+                const slotEnd   = menuTiming ? (menuTiming as any)[slot.endKey]   : "";
+                return (
+                  <>
                     <button
-                      key={cat.id}
-                      onClick={() => { setActiveCategoryId(cat.id); setScreen("items"); setVegOnly(false); }}
-                      className="relative rounded-2xl overflow-hidden h-40 text-left shadow-md active:scale-95 transition-transform"
-                      data-testid={`button-category-${cat.id}`}
+                      onClick={() => setActiveMealSlot(null)}
+                      className="flex items-center gap-1.5 text-sm font-semibold text-[#1E3A5F]"
+                      data-testid="button-back-home"
                     >
-                      {photo ? (
-                        <img
-                          src={photo}
-                          alt={cat.name}
-                          className="absolute inset-0 w-full h-full object-cover"
-                          loading="lazy"
-                          onError={e => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                            (e.target as HTMLImageElement).previousElementSibling?.classList.remove("hidden");
-                          }}
-                        />
-                      ) : null}
-                      {!photo && <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
-                      <div className="relative p-4 h-full flex flex-col justify-between">
-                        <div className="flex items-start justify-between">
-                          <span className="text-3xl drop-shadow-sm">{emoji}</span>
-                          <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                            {count}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="font-bold text-white text-sm leading-tight drop-shadow">{cat.name}</p>
-                          <p className="text-white/80 text-xs mt-0.5">{count} item{count !== 1 ? "s" : ""}</p>
-                        </div>
-                      </div>
+                      <ArrowLeft className="h-4 w-4" /> Back to Menu
                     </button>
-                  ))}
+                    <div className={`rounded-2xl p-4 bg-gradient-to-r ${slot.gradient} text-white`}>
+                      <div className="flex items-center gap-3">
+                        <span className="text-4xl">{slot.icon}</span>
+                        <div className="flex-1">
+                          <h2 className="text-lg font-bold leading-tight">{slot.label}</h2>
+                          {slotStart && slotEnd && (
+                            <p className="text-white/80 text-xs mt-0.5">{fmtSlotTime(slotStart)} – {fmtSlotTime(slotEnd)}</p>
+                          )}
+                        </div>
+                        {isActiveNow && (
+                          <span className="flex items-center gap-1.5 bg-white/20 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                            <span className="h-1.5 w-1.5 rounded-full bg-green-300 animate-pulse inline-block" />
+                            Serving Now
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {activeMealItems.length === 0 ? (
+                      <div className="text-center py-12 text-gray-400">
+                        <UtensilsCrossed className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                        <p className="text-sm">No items available for this period</p>
+                      </div>
+                    ) : (
+                      activeMealByCategory.map(({ catName, items: catItems }) => (
+                        <div key={catName} className="space-y-2">
+                          <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 px-1 pt-2">{catName}</p>
+                          {catItems.map(item => (
+                            <MenuItemRow
+                              key={item.id}
+                              item={item}
+                              qty={getItemQtyInCart(item.id)}
+                              isKitchenOpen={isKitchenOpen}
+                              isPopular={popularItemIds.has(item.id)}
+                              timingReason={getItemTimingReason(item, menuTiming)}
+                              onAdd={() => addToCart(item)}
+                              onIncrease={() => {
+                                const ci = cart.find(c => c.id === item.id);
+                                if (ci) updateQuantity(ci.cartId, 1);
+                                else addToCart(item);
+                              }}
+                              onDecrease={() => {
+                                const cis = cart.filter(c => c.id === item.id);
+                                if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            /* ── HOMEPAGE ─────────────────────────────────────────────── */
+            <>
+              {/* Kitchen Pause Banner */}
+              {isKitchenPaused && (
+                <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-orange-500 to-rose-500 p-4 text-white shadow-md">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl flex-shrink-0">⏸</span>
+                    <div>
+                      <p className="font-bold text-sm leading-tight">Kitchen Temporarily Busy</p>
+                      <p className="text-white/85 text-xs mt-1 leading-relaxed">We are finishing up current orders. New orders are paused — please check back in a few minutes.</p>
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
+
+              {/* High Load Banner */}
+              {isHighLoad && (
+                <div className="rounded-2xl overflow-hidden bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white shadow-md">
+                  <div className="flex items-start gap-3">
+                    <Zap className="h-5 w-5 flex-shrink-0 mt-0.5 text-white" />
+                    <div>
+                      <p className="font-bold text-sm leading-tight">Express Menu Currently Active</p>
+                      <p className="text-white/80 text-xs mt-1 leading-relaxed">To maintain fast service during peak hours, a curated selection is available.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Currently Serving Hero */}
+              {currentSlotKey && isKitchenOpen && enabledSlotKeys.has(currentSlotKey) && (() => {
+                const slot = MEAL_SLOTS.find(s => s.key === currentSlotKey)!;
+                const heroItems = itemsPerSlot[currentSlotKey] ?? [];
+                const slotEnd = menuTiming ? (menuTiming as any)[slot.endKey] : "";
+                return (
+                  <div className="rounded-2xl overflow-hidden bg-[#1E3A5F] text-white shadow-lg">
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">Currently Serving</span>
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+                      </div>
+                      <div className="flex items-center gap-3 mb-3">
+                        <span className="text-4xl leading-none">{slot.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <h2 className="text-xl font-bold leading-tight">{slot.label}</h2>
+                          {slotEnd && <p className="text-white/60 text-xs mt-0.5">Available till {fmtSlotTime(slotEnd)}</p>}
+                        </div>
+                        <button
+                          onClick={() => setActiveMealSlot(currentSlotKey)}
+                          className="flex-shrink-0 flex items-center gap-1 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-colors"
+                          data-testid="button-currently-serving-view"
+                        >
+                          View All <ChevronRight className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {heroItems.length > 0 && (
+                        <div className="flex gap-2.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                          {heroItems.slice(0, 5).map(item => {
+                            const price = item.discountedPrice || item.actualPrice || item.price;
+                            const qty = getItemQtyInCart(item.id);
+                            const isBestseller = popularItemIds.has(item.id);
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => addToCart(item)}
+                                className="relative flex-shrink-0 bg-white/10 hover:bg-white/20 active:bg-white/25 rounded-xl p-2.5 text-left w-32 transition-colors"
+                                data-testid={`button-hero-item-${item.id}`}
+                              >
+                                {isBestseller && (
+                                  <span className="absolute top-1.5 left-1.5 bg-[#F2B705] text-[#1E3A5F] text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none z-10">★ TOP</span>
+                                )}
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt={item.name} loading="lazy"
+                                    className="w-full h-18 object-cover rounded-lg mb-2" style={{ height: "4.5rem" }}
+                                    onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                ) : (
+                                  <div className="w-full rounded-lg bg-white/10 flex items-center justify-center text-3xl mb-2" style={{ height: "4.5rem" }}>
+                                    {getFoodEmoji(item)}
+                                  </div>
+                                )}
+                                <p className="text-xs font-semibold leading-tight line-clamp-2 mb-1">{item.name}</p>
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-xs font-bold text-[#2BB6A8]">₹{price}</span>
+                                  {qty > 0 && <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">{qty}</span>}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Repeat Last Order */}
+              {lastOrder && lastOrder.items.length > 0 && (
+                <div className="rounded-2xl border border-[#2BB6A8]/30 bg-[#2BB6A8]/5 p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-bold text-gray-800">🔁 Repeat Last Order</p>
+                    <button
+                      onClick={() => {
+                        const added: string[] = [];
+                        for (const o of lastOrder.items) {
+                          const menuItem = availableItems.find(i => i.id === o.id || i.name.toLowerCase() === o.name.toLowerCase());
+                          if (menuItem) {
+                            for (let q = 0; q < o.quantity; q++) addToCart(menuItem);
+                            added.push(menuItem.name);
+                          }
+                        }
+                        if (added.length) toast({ title: "Added to cart", description: `${added.length} item${added.length !== 1 ? "s" : ""} added` });
+                      }}
+                      className="text-xs font-bold text-[#1E3A5F] bg-white border border-[#1E3A5F]/20 px-3 py-1.5 rounded-full active:scale-95 transition-transform"
+                      data-testid="button-repeat-last-order"
+                    >
+                      Add All
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 line-clamp-1">
+                    {lastOrder.items.map(i => `${i.quantity}x ${i.name}`).join(", ")}
+                  </p>
+                </div>
+              )}
+
+              {/* Meal Slot Chips */}
+              {menuTiming && (
+                <div>
+                  <h2 className="text-sm font-bold text-gray-700 mb-2">Order by Meal</h2>
+                  <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                    {MEAL_SLOTS.filter(s => enabledSlotKeys.has(s.key)).map(slot => {
+                      const isActive = currentSlotKey === slot.key;
+                      return (
+                        <button
+                          key={slot.key}
+                          onClick={() => setActiveMealSlot(slot.key)}
+                          className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
+                            isActive
+                              ? "bg-[#1E3A5F] text-white border-[#1E3A5F] shadow-sm"
+                              : "bg-white text-gray-700 border-gray-200"
+                          }`}
+                          data-testid={`button-meal-slot-${slot.key}`}
+                        >
+                          <span>{slot.icon}</span>
+                          {slot.label}
+                          {isActive && <span className="h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Popular Items */}
+              {popularItems.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-1">⭐ Popular Items</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+                    {popularItems.map(item => (
+                      <PopularCard
+                        key={item.id}
+                        item={item}
+                        qty={getItemQtyInCart(item.id)}
+                        isKitchenOpen={isKitchenOpen}
+                        onAdd={() => addToCart(item)}
+                        onIncrease={() => {
+                          const ci = cart.find(c => c.id === item.id);
+                          if (ci) updateQuantity(ci.cartId, 1);
+                          else addToCart(item);
+                        }}
+                        onDecrease={() => {
+                          const cis = cart.filter(c => c.id === item.id);
+                          if (cis.length) updateQuantity(cis[cis.length - 1].cartId, -1);
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Grid */}
+              <div>
+                <h2 className="text-sm font-bold text-gray-700 mb-3">Browse Menu</h2>
+                {categoriesWithCount.length === 0 ? (
+                  <div className="text-center py-16 text-gray-400">
+                    <UtensilsCrossed className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                    <p className="font-medium">Menu not available</p>
+                    <p className="text-sm mt-1">Please check back later</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {categoriesWithCount.map(({ cat, count, gradient, emoji, photo }) => (
+                      <button
+                        key={cat.id}
+                        onClick={() => { setActiveCategoryId(cat.id); setScreen("items"); setVegOnly(false); }}
+                        className="relative rounded-2xl overflow-hidden h-40 text-left shadow-md active:scale-95 transition-transform"
+                        data-testid={`button-category-${cat.id}`}
+                      >
+                        {photo ? (
+                          <img src={photo} alt={cat.name} className="absolute inset-0 w-full h-full object-cover" loading="lazy"
+                            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        ) : null}
+                        {!photo && <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-black/10" />
+                        <div className="relative p-4 h-full flex flex-col justify-between">
+                          <div className="flex items-start justify-between">
+                            <span className="text-3xl drop-shadow-sm">{emoji}</span>
+                            <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-2 py-0.5 rounded-full">{count}</span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-white text-sm leading-tight drop-shadow">{cat.name}</p>
+                            <p className="text-white/80 text-xs mt-0.5">{count} item{count !== 1 ? "s" : ""}</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
@@ -789,6 +1138,7 @@ export default function Menu() {
                 qty={getItemQtyInCart(item.id)}
                 isKitchenOpen={isKitchenOpen}
                 isPopular={popularItemIds.has(item.id)}
+                timingReason={getItemTimingReason(item, menuTiming)}
                 onAdd={() => addToCart(item)}
                 onIncrease={() => {
                   const ci = cart.find(c => c.id === item.id);
@@ -1174,14 +1524,16 @@ interface MenuItemRowProps {
   qty: number;
   isKitchenOpen: boolean;
   isPopular?: boolean;
+  timingReason?: string;
   onAdd: () => void;
   onIncrease: () => void;
   onDecrease: () => void;
 }
 
-function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, onDecrease }: MenuItemRowProps) {
+function MenuItemRow({ item, qty, isKitchenOpen, isPopular, timingReason, onAdd, onIncrease, onDecrease }: MenuItemRowProps) {
   const price = item.discountedPrice || item.actualPrice || item.price;
-  const isDisabled = !isKitchenOpen;
+  const isTimingBlocked = !!(timingReason && timingReason !== "");
+  const isDisabled = !isKitchenOpen || isTimingBlocked;
   const emoji = getFoodEmoji(item);
 
   return (
@@ -1241,9 +1593,16 @@ function MenuItemRow({ item, qty, isKitchenOpen, isPopular, onAdd, onIncrease, o
                   <Clock className="h-3 w-3" />{item.preparationTime} min
                 </span>
               )}
+              {timingReason && (
+                <span className="text-xs text-amber-600 font-medium flex items-center gap-0.5 mt-0.5">
+                  <Clock className="h-3 w-3" />{timingReason}
+                </span>
+              )}
             </div>
             {isDisabled ? (
-              <span className="text-xs text-gray-400 italic">Closed</span>
+              <span className="text-xs text-gray-400 italic">
+                {!isKitchenOpen ? "Closed" : timingReason || "Unavailable"}
+              </span>
             ) : qty > 0 && !item.hasVariants && !item.hasAddOns ? (
               <div className="flex items-center gap-2">
                 <button onClick={onDecrease} className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center" data-testid={`button-dec-${item.id}`}>
