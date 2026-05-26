@@ -897,8 +897,8 @@ export default function Menu() {
                 </div>
               )}
 
-              {/* Currently Serving Hero */}
-              {currentSlotKey && isKitchenOpen && enabledSlotKeys.has(currentSlotKey) && (() => {
+              {/* Currently Serving Hero — only when kitchen is actually open */}
+              {currentSlotKey && isKitchenOpen && !isKitchenPaused && enabledSlotKeys.has(currentSlotKey) && (() => {
                 const slot = MEAL_SLOTS.find(s => s.key === currentSlotKey)!;
                 const heroItems = itemsPerSlot[currentSlotKey] ?? [];
                 const slotEnd = menuTiming ? (menuTiming as any)[slot.endKey] : "";
