@@ -297,11 +297,12 @@ export default function QuickOrder() {
     return menuItems.filter(i => i.propertyId === selectedPropertyId);
   }, [menuItems, selectedPropertyId]);
 
-  // In High Load mode, hide items that don't have the High Load checkbox ticked
+  // Staff Quick Order is never restricted by High Load mode or meal slots —
+  // those filters only apply to guest-facing menus. Show all available items.
   const isHighLoad = !!(menuTiming?.highLoadMode);
   const availableItems = useMemo(() =>
-    propertyMenuItems.filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
-    [propertyMenuItems, isHighLoad]
+    propertyMenuItems.filter(i => i.isAvailable),
+    [propertyMenuItems]
   );
 
   const filteredRooms = useMemo(() => {
