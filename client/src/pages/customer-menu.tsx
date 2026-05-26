@@ -144,13 +144,6 @@ export default function CustomerMenu() {
   const [showKitchenClosedDialog, setShowKitchenClosedDialog] = useState(false);
   const { toast } = useToast();
 
-  const KITCHEN_OPEN_HOUR = 8;
-  const KITCHEN_CLOSE_HOUR = 22;
-  const isKitchenOpen = useMemo(() => {
-    const now = new Date();
-    const h = now.getHours();
-    return h >= KITCHEN_OPEN_HOUR && h < KITCHEN_CLOSE_HOUR;
-  }, []);
 
   const [selectedVariant, setSelectedVariant] = useState<MenuItemVariant | null>(null);
   const [selectedAddOns, setSelectedAddOns] = useState<Map<number, number>>(new Map());
@@ -198,6 +191,34 @@ export default function CustomerMenu() {
     enabled: !!selectedPropertyId,
     refetchInterval: 60000,
   });
+
+  // Kitchen open = any configured slot is currently active; fallback to 8 AM–10 PM
+  const { isKitchenOpen, kitchenStatusText } = useMemo(() => {
+    const pt = (t: string) => { if (!t) return -1; const [h, m] = t.split(":").map(Number); return isNaN(h) || isNaN(m) ? -1 : h * 60 + m; };
+    const fmt = (t: string) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`; };
+    const now = new Date(); const cur = now.getHours() * 60 + now.getMinutes();
+    const active = (s: number, e: number) => s >= 0 && e >= 0 && (e === 0 ? cur >= s : s <= e ? cur >= s && cur < e : cur >= s || cur < e);
+    if (!menuTiming) {
+      const open = now.getHours() >= 8 && now.getHours() < 22;
+      return { isKitchenOpen: open, kitchenStatusText: open ? "Kitchen Open · 8:00 AM – 10:00 PM" : "Kitchen Closed · Opens at 8:00 AM" };
+    }
+    const slots = [
+      { start: menuTiming.breakfastStart, end: menuTiming.breakfastEnd },
+      { start: menuTiming.lunchStart, end: menuTiming.lunchEnd },
+      { start: menuTiming.snacksStart, end: menuTiming.snacksEnd },
+      { start: menuTiming.dinnerStart, end: menuTiming.dinnerEnd },
+      { start: menuTiming.lateNightStart, end: menuTiming.lateNightEnd },
+    ];
+    const open = slots.some(s => active(pt(s.start), pt(s.end)));
+    if (open) {
+      const first = slots.filter(s => pt(s.start) >= 0).sort((a, b) => pt(a.start) - pt(b.start))[0];
+      const last = slots.filter(s => pt(s.end) > 0).sort((a, b) => pt(b.end) - pt(a.end))[0];
+      return { isKitchenOpen: true, kitchenStatusText: `Kitchen Open · ${fmt(first?.start)} – ${fmt(last?.end)}` };
+    }
+    const next = slots.filter(s => pt(s.start) >= 0).map(s => ({ ...s, sm: pt(s.start) }))
+      .sort((a, b) => { const d = (m: number) => m > cur ? m - cur : 1440 - cur + m; return d(a.sm) - d(b.sm); })[0];
+    return { isKitchenOpen: false, kitchenStatusText: next ? `Kitchen Closed · Opens at ${fmt(next.start)}` : "Kitchen Closed" };
+  }, [menuTiming]);
 
   const orderMutation = useMutation({
     mutationFn: async (orderData: any) => {
@@ -383,7 +404,7 @@ export default function CustomerMenu() {
           <div className="mt-3 flex items-center justify-center">
             <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ${isKitchenOpen ? "bg-green-500/20 text-green-700 border border-green-400/40" : "bg-red-500/20 text-red-600 border border-red-400/40"}`} data-testid="badge-kitchen-status">
               <Clock className="h-3.5 w-3.5" />
-              {isKitchenOpen ? "Kitchen Open · 8:00 AM – 10:00 PM" : "Kitchen Closed · Opens at 8:00 AM"}
+              {kitchenStatusText}
               <span className={`h-2 w-2 rounded-full ${isKitchenOpen ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
             </div>
           </div>
@@ -654,7 +675,7 @@ export default function CustomerMenu() {
                   <Input id="phone" type="tel" placeholder="Enter your phone" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-testid="input-customer-phone" />
                 </div>
                 <div className="flex justify-between text-xl font-bold pt-2"><span>Total:</span><span>₹{cartTotal.toFixed(2)}</span></div>
-                {!isKitchenOpen && <p className="text-center text-sm text-red-500 font-medium flex items-center justify-center gap-1"><Clock className="h-4 w-4" />Kitchen closed · Opens at 8:00 AM</p>}
+                {!isKitchenOpen && <p className="text-center text-sm text-red-500 font-medium flex items-center justify-center gap-1"><Clock className="h-4 w-4" />{kitchenStatusText}</p>}
                 <Button className={`w-full ${!isKitchenOpen ? "bg-muted text-muted-foreground cursor-not-allowed hover:bg-muted" : ""}`} size="lg" onClick={handlePlaceOrder} disabled={orderMutation.isPending} data-testid="button-place-order">{orderMutation.isPending ? "Placing Order..." : isKitchenOpen ? "Place Order" : "Kitchen Closed"}</Button>
               </div>
             </SheetFooter>
