@@ -2861,13 +2861,24 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const now = new Date();
       const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const allBookings = await storage.getAllBookings();
+
+      // Helper: does this booking cover the given room id?
+      const coversRoom = (b: any) =>
+        b.roomId === roomId ||
+        (Array.isArray(b.roomIds) && b.roomIds.includes(roomId));
+
       const active = allBookings.find(b => {
-        if (b.roomId !== roomId) return false;
+        if (!coversRoom(b)) return false;
         if (["checked-out", "cancelled", "no_show"].includes(b.status)) return false;
+        // A guest who is CURRENTLY checked-in is physically in the room regardless of
+        // their scheduled checkout date (overdue checkout). Always surface them.
+        if (b.status === "checked-in") return true;
+        // For confirmed/pending bookings honour the date window.
         const cin  = new Date(b.checkInDate  as any);
         const cout = new Date(b.checkOutDate as any);
         return cin <= now && startOfToday <= cout;
       });
+
       if (!active) return res.json({ bookingId: null });
       const guest = active.guestId ? await storage.getGuest(active.guestId) : null;
       res.json({
