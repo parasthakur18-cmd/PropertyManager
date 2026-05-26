@@ -70,38 +70,61 @@ function getFoodEmoji(item: MenuItem) {
 
 function getItemTimingReason(item: MenuItem, timing: any): string {
   if (!timing) return "";
-  if (timing.highLoadMode && !item.availableHighLoad) return "Unavailable Right Now";
+  if (timing.highLoadMode) return (item.availableHighLoad ?? false) ? "" : "Unavailable Right Now";
+
   const parseTime = (t: string): number => {
-    if (!t) return 0;
+    if (!t) return -1;
     const [h, m] = t.split(":").map(Number);
+    if (isNaN(h) || isNaN(m)) return -1;
     return h * 60 + m;
   };
+
   const slots = [
-    { flag: item.availableBreakfast, start: timing.breakfastStart, end: timing.breakfastEnd },
-    { flag: item.availableLunch, start: timing.lunchStart, end: timing.lunchEnd },
-    { flag: item.availableSnacks, start: timing.snacksStart, end: timing.snacksEnd },
-    { flag: item.availableDinner, start: timing.dinnerStart, end: timing.dinnerEnd },
-    { flag: item.availableLateNight, start: timing.lateNightStart, end: timing.lateNightEnd },
+    { enabled: item.availableBreakfast ?? true, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { enabled: item.availableLunch ?? true, start: timing.lunchStart, end: timing.lunchEnd },
+    { enabled: item.availableSnacks ?? true, start: timing.snacksStart, end: timing.snacksEnd },
+    { enabled: item.availableDinner ?? true, start: timing.dinnerStart, end: timing.dinnerEnd },
+    { enabled: item.availableLateNight ?? true, start: timing.lateNightStart, end: timing.lateNightEnd },
   ];
-  const enabledSlots = slots.filter(s => s.flag !== false);
-  if (enabledSlots.length === 0) return "";
+
+  // If no slot times configured at all, no restriction
+  const hasTimesConfigured = slots.some(s => parseTime(s.start) >= 0 && parseTime(s.end) >= 0);
+  if (!hasTimesConfigured) return "";
+
   const now = new Date();
   const cur = now.getHours() * 60 + now.getMinutes();
-  for (const slot of enabledSlots) {
+
+  const isActive = (s: number, e: number): boolean => {
+    if (s < 0 || e < 0) return false;
+    if (e === 0) return cur >= s; // midnight end
+    return s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e); // handles overnight
+  };
+
+  // Item is available if it's enabled for ANY currently-active slot
+  for (const slot of slots) {
+    if (!slot.enabled) continue;
     const s = parseTime(slot.start);
     const e = parseTime(slot.end);
-    if (!s && !e) return "";
-    const active = e === 0 ? cur >= s : s <= e ? (cur >= s && cur < e) : (cur >= s || cur < e);
-    if (active) return "";
+    if (s < 0 || e < 0) continue; // slot not configured, skip
+    if (isActive(s, e)) return ""; // available right now
   }
+
+  // Not available — find the next slot the item IS enabled for
   const fmt = (t: string) => {
     if (!t) return "";
     const [h, m] = t.split(":").map(Number);
     return `${h % 12 || 12}:${m.toString().padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
   };
-  const next = enabledSlots.filter(s => s.start).map(s => ({ ...s, sm: parseTime(s.start) }))
-    .sort((a, b) => { const d = (m: number) => m > cur ? m - cur : 1440 - cur + m; return d(a.sm) - d(b.sm); })[0];
-  return next ? `Available at ${fmt(next.start)}` : "Not available now";
+
+  const nextSlot = slots
+    .filter(s => s.enabled && parseTime(s.start) >= 0)
+    .map(s => ({ ...s, sm: parseTime(s.start) }))
+    .sort((a, b) => {
+      const dist = (m: number) => m > cur ? m - cur : 1440 - cur + m;
+      return dist(a.sm) - dist(b.sm);
+    })[0];
+
+  return nextSlot ? `Available at ${fmt(nextSlot.start)}` : "Not available now";
 }
 
 export default function CustomerMenu() {
