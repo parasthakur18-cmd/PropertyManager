@@ -285,10 +285,15 @@ export default function CustomerMenu() {
     if (!menuTiming) return new Set(MEAL_SLOTS.map(s => s.key));
     return new Set(MEAL_SLOTS.filter(s => menuTiming[s.enabledKey] !== false).map(s => s.key));
   }, [menuTiming]);
-  const visibleItems = useMemo(() =>
-    (menuItems || []).filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
-    [menuItems, isHighLoad]
-  );
+  const visibleItems = useMemo(() => {
+    let items = (menuItems || []).filter(i => i.isAvailable);
+    if (isHighLoad) {
+      items = items.filter(i => !!i.availableHighLoad);
+    } else if (menuTiming && currentSlotKey) {
+      items = getSlotItems(items, currentSlotKey);
+    }
+    return items;
+  }, [menuItems, isHighLoad, currentSlotKey, menuTiming]);
 
   const filteredItems = visibleItems.filter((item) =>
     searchQuery

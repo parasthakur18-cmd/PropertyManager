@@ -568,10 +568,15 @@ export default function Menu() {
     return null;
   }, [menuTiming]);
 
-  const availableItems = useMemo(() =>
-    (menuItems || []).filter(i => i.isAvailable && !(isHighLoad && !i.availableHighLoad)),
-    [menuItems, isHighLoad]
-  );
+  const availableItems = useMemo(() => {
+    let items = (menuItems || []).filter(i => i.isAvailable);
+    if (isHighLoad) {
+      items = items.filter(i => !!i.availableHighLoad);
+    } else if (menuTiming && currentSlotKey) {
+      items = getSlotItems(items, currentSlotKey);
+    }
+    return items;
+  }, [menuItems, isHighLoad, currentSlotKey, menuTiming]);
 
   const itemsPerSlot = useMemo(() => {
     const result: Record<string, MenuItem[]> = {};
