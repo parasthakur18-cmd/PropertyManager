@@ -137,14 +137,18 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
       ? all.filter(r => r.roomCategory === "dormitory")
       : all.filter(r => r.roomCategory !== "dormitory");
     const byProperty = selectedPropertyId ? typed.filter(r => r.propertyId === selectedPropertyId) : typed;
-    if (!roomAvailability) return byProperty;
+    // Always exclude rooms with blocking statuses regardless of date availability
+    const notBlocked = byProperty.filter(r => !["occupied", "maintenance", "out-of-order", "blocked"].includes(r.status ?? ""));
+    if (!roomAvailability) return notBlocked;
     const availSet = new Set(
       (roomAvailability as { roomId: number; available: number }[])
         .filter(a => a.available === 1)
         .map(a => a.roomId)
     );
-    if (availSet.size === 0) return byProperty;
-    return byProperty.filter(r => availSet.has(r.id));
+    // If availability data loaded but is empty, show only the not-blocked rooms
+    // (don't fall back to all rooms — that was the original bug)
+    if (availSet.size === 0) return notBlocked.filter(() => false);
+    return notBlocked.filter(r => availSet.has(r.id));
   };
 
   const createMutation = useMutation({

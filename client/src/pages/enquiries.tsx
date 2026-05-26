@@ -231,15 +231,25 @@ function EditEnquiryForm({ enquiry, rooms, onSuccess, onCancel }: EditEnquiryFor
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {rooms.map((room) => (
-                      <SelectItem key={room.id} value={room.id.toString()}>
-                        {room.roomNumber} - {room.roomType || room.roomCategory}
-                        {room.roomCategory === "dormitory" && room.totalBeds 
-                          ? ` (${room.totalBeds} beds - ₹${room.pricePerNight}/bed/night)`
-                          : ` (₹${room.pricePerNight}/night)`
-                        }
-                      </SelectItem>
-                    ))}
+                    {rooms
+                      .filter(room =>
+                        // show available rooms OR the currently-assigned room (so existing value doesn't disappear)
+                        !["occupied", "maintenance", "out-of-order", "blocked"].includes(room.status ?? "") ||
+                        room.id === enquiry.roomId
+                      )
+                      .map((room) => {
+                        const isUnavailable = ["occupied", "maintenance", "out-of-order", "blocked"].includes(room.status ?? "");
+                        return (
+                          <SelectItem key={room.id} value={room.id.toString()} disabled={isUnavailable && room.id !== enquiry.roomId}>
+                            {room.roomNumber} - {room.roomType || room.roomCategory}
+                            {room.roomCategory === "dormitory" && room.totalBeds
+                              ? ` (${room.totalBeds} beds - ₹${room.pricePerNight}/bed/night)`
+                              : ` (₹${room.pricePerNight}/night)`
+                            }
+                            {isUnavailable ? ` — ${room.status}` : ""}
+                          </SelectItem>
+                        );
+                      })}
                   </SelectContent>
                 </Select>
                 {enquiry.isGroupEnquiry && (
