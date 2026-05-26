@@ -2972,6 +2972,32 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
 
+      // --- OVERDUE CHECKOUT FIX ---
+      // A guest may still be physically checked-in past their scheduled checkout date.
+      // The date-range overlap query won't catch them (their checkOut < requestCheckIn),
+      // but the check-in server guard WILL reject the new booking with a 409.
+      // Solution: fetch ALL currently checked-in bookings and treat their rooms as blocked.
+      const checkedInBookings = await db
+        .select()
+        .from(bookings)
+        .where(
+          propertyId
+            ? and(eq(bookings.propertyId, Number(propertyId)), eq(bookings.status, "checked-in"))
+            : eq(bookings.status, "checked-in")
+        );
+
+      // Merge: add any checked-in booking not already in overlappingBookings
+      const overlappingIds = new Set(overlappingBookings.map(b => b.id));
+      for (const b of checkedInBookings) {
+        if (!overlappingIds.has(b.id)) {
+          // Only block if it's not the excluded booking itself
+          if (!excludeBookingId || b.id !== Number(excludeBookingId)) {
+            overlappingBookings.push(b);
+            overlappingIds.add(b.id);
+          }
+        }
+      }
+
       // Fetch guest names for conflict bookings so the frontend can display "Occupied by: Guest Name"
       const conflictGuestIds = [...new Set(overlappingBookings.map(b => b.guestId).filter((id): id is number => !!id))];
       const guestNameMap: Record<number, string> = {};
