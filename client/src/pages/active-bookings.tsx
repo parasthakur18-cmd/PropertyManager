@@ -835,6 +835,17 @@ export default function ActiveBookings() {
     },
   });
 
+  const deleteServiceMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest(`/api/extra-services/${id}`, "DELETE"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/active"] });
+      toast({ title: "Service removed", description: "Extra service has been deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete service", variant: "destructive" });
+    },
+  });
+
   const handleMergeSingleOrder = (orderId: number) => {
     if (!checkoutDialog.booking) return;
     mergeCafeOrdersMutation.mutate({
@@ -1551,6 +1562,20 @@ export default function ActiveBookings() {
                               }}
                             >
                               <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                              data-testid={`button-delete-service-${service.id}`}
+                              disabled={deleteServiceMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Delete "${service.serviceName}" (₹${service.amount})?`)) {
+                                  deleteServiceMutation.mutate(service.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
                         ))}
