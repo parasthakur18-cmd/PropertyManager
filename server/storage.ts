@@ -1549,8 +1549,13 @@ export class DatabaseStorage implements IStorage {
                   : null;
             const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
             
-            const isGroupBooking = !!(booking?.isGroupBooking);
-            const groupRoomIds: number[] = isGroupBooking && Array.isArray(booking?.roomIds) ? (booking.roomIds as number[]) : [];
+            // Treat as group if flag is set OR if room_ids has more than 1 entry
+            // (some bookings have room_ids populated but is_group_booking = false)
+            const isGroupBooking = !!(booking?.isGroupBooking) ||
+              (Array.isArray(booking?.roomIds) && (booking.roomIds as number[]).length > 1);
+            const groupRoomIds: number[] = isGroupBooking && Array.isArray(booking?.roomIds)
+              ? (booking.roomIds as number[])
+              : [];
             const groupRoomNumbers: string[] = groupRoomIds
               .map((rid: number) => roomMap.get(rid)?.roomNumber)
               .filter(Boolean) as string[];
