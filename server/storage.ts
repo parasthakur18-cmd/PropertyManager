@@ -1451,11 +1451,13 @@ export class DatabaseStorage implements IStorage {
           if (!pool || typeof pool.query !== 'function') {
             console.warn("[Storage] getAllOrders - pool.query not available for bookings");
           } else {
-            const bookingsResult = await pool.query('SELECT id, guest_id, room_id, status FROM bookings LIMIT 10000');
+            const bookingsResult = await pool.query('SELECT id, guest_id, room_id, room_ids, is_group_booking, status FROM bookings LIMIT 10000');
             allBookings = (bookingsResult.rows || []).map((row: any) => ({
             id: row.id,
             guestId: row.guest_id,
             roomId: row.room_id,
+            roomIds: row.room_ids,
+            isGroupBooking: row.is_group_booking,
             status: row.status,
           }));
           }
@@ -1547,6 +1549,12 @@ export class DatabaseStorage implements IStorage {
                   : null;
             const guest = guestIdNum ? guestMap.get(guestIdNum) : null;
             
+            const isGroupBooking = !!(booking?.isGroupBooking);
+            const groupRoomIds: number[] = isGroupBooking && Array.isArray(booking?.roomIds) ? (booking.roomIds as number[]) : [];
+            const groupRoomNumbers: string[] = groupRoomIds
+              .map((rid: number) => roomMap.get(rid)?.roomNumber)
+              .filter(Boolean) as string[];
+
             return {
               ...order,
               roomStatus: room?.status || null,
@@ -1555,6 +1563,8 @@ export class DatabaseStorage implements IStorage {
               customerName: guest?.fullName || order.customerName || null,
               customerPhone: guest?.phone || order.customerPhone || null,
               hasCheckedInBooking: roomIdNum ? activeBookingRooms.has(roomIdNum) : false,
+              isGroupBooking,
+              groupRoomNumbers,
             };
           } catch (mapError: any) {
             // If mapping fails for a single order, return it with null values

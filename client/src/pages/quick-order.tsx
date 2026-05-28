@@ -749,18 +749,41 @@ export default function QuickOrder() {
                     : roomsError ? <div className="text-sm text-destructive p-3 border border-destructive rounded-md">Error loading rooms. Please try again.</div>
                     : filteredRooms.length === 0 ? <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">No rooms with checked-in guests for this property.</div>
                     : (
-                      <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                        <SelectTrigger id="room-select" data-testid="select-quick-order-room">
-                          <SelectValue placeholder="Select room with checked-in guest" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {filteredRooms.map(room => (
-                            <SelectItem key={room.roomId} value={room.roomId.toString()}>
-                              Room {room.roomNumber} — {room.guestName}{room.isGroupBooking ? " 🏨 Group" : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <>
+                        <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                          <SelectTrigger id="room-select" data-testid="select-quick-order-room">
+                            <SelectValue placeholder="Select room with checked-in guest" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {filteredRooms.map(room => (
+                              <SelectItem key={room.roomId} value={room.roomId.toString()}>
+                                Room {room.roomNumber} — {room.guestName}
+                                {room.isGroupBooking
+                                  ? ` 🏨 Group${room.groupRoomNumbers?.length > 1 ? ` (${room.groupRoomNumbers.join(", ")})` : ""}`
+                                  : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedRoom && (() => {
+                          const sel = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
+                          if (!sel?.isGroupBooking) return null;
+                          return (
+                            <div className="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-sm text-indigo-700 dark:text-indigo-300">
+                              <span className="text-base leading-none mt-0.5">🏨</span>
+                              <div>
+                                <span className="font-semibold">Group Booking</span>
+                                {sel.groupRoomNumbers?.length > 0 && (
+                                  <span className="ml-1 font-normal">· Rooms: {sel.groupRoomNumbers.join(", ")}</span>
+                                )}
+                                <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">
+                                  All orders from any room in this group bill to the same invoice.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
                     )}
                 </div>
               ) : (
@@ -808,18 +831,41 @@ export default function QuickOrder() {
                         : roomsError ? <div className="text-sm text-destructive p-3 border border-destructive rounded-md">Error loading rooms.</div>
                         : filteredRooms.length === 0 ? <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">No checked-in guests for this property.</div>
                         : (
-                          <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                            <SelectTrigger id="inhouse-room-select" data-testid="select-inhouse-guest-room">
-                              <SelectValue placeholder="Select guest's room" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {filteredRooms.map(room => (
-                                <SelectItem key={room.roomId} value={room.roomId.toString()}>
-                                  Room {room.roomNumber} — {room.guestName}{room.isGroupBooking ? " 🏨 Group" : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <>
+                            <Select value={selectedRoom} onValueChange={setSelectedRoom}>
+                              <SelectTrigger id="inhouse-room-select" data-testid="select-inhouse-guest-room">
+                                <SelectValue placeholder="Select guest's room" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {filteredRooms.map(room => (
+                                  <SelectItem key={room.roomId} value={room.roomId.toString()}>
+                                    Room {room.roomNumber} — {room.guestName}
+                                    {room.isGroupBooking
+                                      ? ` 🏨 Group${room.groupRoomNumbers?.length > 1 ? ` (${room.groupRoomNumbers.join(", ")})` : ""}`
+                                      : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {selectedRoom && (() => {
+                              const sel = filteredRooms.find(r => r.roomId === parseInt(selectedRoom));
+                              if (!sel?.isGroupBooking) return null;
+                              return (
+                                <div className="flex items-start gap-2 p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-md text-sm text-indigo-700 dark:text-indigo-300 mt-2">
+                                  <span className="text-base leading-none mt-0.5">🏨</span>
+                                  <div>
+                                    <span className="font-semibold">Group Booking</span>
+                                    {sel.groupRoomNumbers?.length > 0 && (
+                                      <span className="ml-1 font-normal">· Rooms: {sel.groupRoomNumbers.join(", ")}</span>
+                                    )}
+                                    <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">
+                                      Order will be added to the group's combined invoice.
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </>
                         )}
                       <p className="text-xs text-muted-foreground mt-2">Order will be added to guest's room bill</p>
                     </div>

@@ -690,6 +690,14 @@ export default function Kitchen() {
                 ) : orderType === "restaurant" ? (
                   <Badge variant="secondary" className="text-xs">Restaurant</Badge>
                 ) : null}
+                {(order as any).isGroupBooking && (
+                  <Badge
+                    className="text-xs bg-indigo-600 text-white border-0 font-semibold"
+                    data-testid={`badge-group-order-${order.id}`}
+                  >
+                    🏨 GROUP ORDER
+                  </Badge>
+                )}
                 {(order as any).isTest && (
                   <Badge
                     className="text-[10px] px-2 py-0 bg-violet-600 text-white border-0"
@@ -707,6 +715,11 @@ export default function Kitchen() {
                   </Badge>
                 )}
               </div>
+              {(order as any).isGroupBooking && (order as any).groupRoomNumbers?.length > 0 && (
+                <p className={`text-indigo-600 dark:text-indigo-400 font-medium mt-0.5 ${kitchenMode ? "text-sm" : "text-xs"}`}>
+                  Rooms: {(order as any).groupRoomNumbers.join(", ")}
+                </p>
+              )}
               {customerPhone && (
                 <p className={`text-muted-foreground mt-1 ${kitchenMode ? "text-sm" : "text-xs"}`}>
                   📞 {customerPhone}

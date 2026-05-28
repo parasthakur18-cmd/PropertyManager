@@ -3079,6 +3079,22 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         ? auth.tenant.assignedPropertyIds
         : undefined;
       const roomsWithGuests = await storage.getRoomsWithCheckedInGuests(propertyIds);
+
+      // Enrich group bookings with all their room numbers
+      if (roomsWithGuests.some((r: any) => r.isGroupBooking)) {
+        const allRooms = await storage.getAllRooms();
+        const roomNumMap = new Map(allRooms.map(r => [r.id, r.roomNumber]));
+        const allBookings = await storage.getAllBookings();
+        const bookingMap = new Map(allBookings.map(b => [b.id, b]));
+        const enriched = roomsWithGuests.map((r: any) => {
+          if (!r.isGroupBooking) return r;
+          const bk: any = bookingMap.get(r.bookingId);
+          const rIds: number[] = Array.isArray(bk?.roomIds) ? bk.roomIds : [];
+          const groupRoomNumbers = rIds.map(id => roomNumMap.get(id)).filter(Boolean) as string[];
+          return { ...r, groupRoomNumbers };
+        });
+        return res.json(enriched);
+      }
       res.json(roomsWithGuests);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

@@ -1,0 +1,123 @@
+Group Booking Order Handling Logic
+
+We need to improve the restaurant ordering and billing flow for group bookings inside Hostezee.
+
+Current Scenario:
+A group booking may contain multiple rooms, for example:
+- Room 1001
+- Room 1002
+- Room 1003
+
+The group booking can also have:
+- 1 primary phone number
+- Multiple additional phone numbers linked to the same booking
+
+Problem:
+Currently, welcome messages are sent to all linked numbers, but order handling and billing logic for group bookings is not properly managed.
+
+Required Logic:
+
+1. Shared Group Booking Mapping
+- If an order is received from ANY linked phone number (primary or additional),
+  the system should automatically map the order to the SAME group booking.
+
+Example:
+Group Booking:
+- Rooms: 1001, 1002, 1003
+- Linked Numbers:
+  - Primary: 9001949260
+  - Additional: 98XXXXXX01
+  - Additional: 98XXXXXX02
+
+If any of these numbers place an order:
+- The order should belong to the same group booking.
+- The order should not create separate bills.
+
+2. Unified Billing
+- All orders from all linked numbers must be merged into ONE final bill.
+- The final invoice should include:
+  - All room numbers in the group
+  - All food orders from all linked numbers
+  - Combined grand total
+
+3. Kitchen Order Ticket (KOT) Improvements
+In kitchen view and printed KOT:
+- Clearly display:
+  - “GROUP ORDER”
+  - Group room numbers
+  - Ordering guest name
+  - Source room if available
+
+Example Header:
+GROUP ORDER
+Rooms: 1001, 1002, 1003
+Ordered By: Paras Thakur
+
+4. Quick Order Improvements
+Currently, in Quick Order mode, no room information is shown for group bookings.
+
+Required:
+- If the order belongs to a group booking,
+  display:
+  - “Group Booking”
+  - All associated room numbers
+
+Example:
+Group Booking
+Rooms: 1001, 1002, 1003
+
+5. Dashboard / Order Card Improvements
+In order cards:
+- Show:
+  - Main room number OR “Group Booking”
+  - All room numbers in smaller text
+  - Group badge/tag
+
+Example:
+GROUP BOOKING
+Rooms: 1001, 1002, 1003
+
+6. Database / Backend Logic
+Suggested Implementation:
+- Create a single group_booking_id
+- Link:
+  - Multiple rooms
+  - Multiple guest phone numbers
+  - Multiple orders
+  - Single master bill
+
+Order Mapping Logic:
+IF incoming phone number matches:
+- primary_guest_phone
+OR
+- any additional_guest_phone
+
+THEN:
+- fetch group_booking_id
+- attach order to master booking
+- merge into same invoice
+
+7. Billing Rules
+- All room service orders from linked numbers must be added to the same master folio/bill.
+- Settlement should happen only once during checkout.
+- No duplicate invoices should be generated.
+
+8. UI Improvements
+Add badges/tags:
+- GROUP BOOKING
+- GROUP ORDER
+
+Use consistent highlighting across:
+- Kitchen screen
+- Order dashboard
+- Admin panel
+- Billing section
+- Quick order popup
+
+Goal:
+The entire group booking should behave as ONE combined booking entity for:
+- ordering
+- billing
+- kitchen management
+- invoices
+- guest communication
