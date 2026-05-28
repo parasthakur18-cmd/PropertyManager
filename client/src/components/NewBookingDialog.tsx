@@ -131,30 +131,34 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
     },
   });
 
+  const BLOCKING = ["maintenance", "out-of-order", "blocked"];
+
   const getRoomsForType = (type: "single" | "group" | "dormitory") => {
     const all = rooms || [];
-    const typed = type === "dormitory"
-      ? all.filter(r => r.roomCategory === "dormitory")
-      : all.filter(r => r.roomCategory !== "dormitory");
-    const byProperty = selectedPropertyId ? typed.filter(r => r.propertyId === selectedPropertyId) : typed;
+    const byProperty = selectedPropertyId ? all.filter(r => r.propertyId === selectedPropertyId) : all;
 
-    if (!roomAvailability) {
-      // No dates selected yet — use current status as a rough pre-filter so obviously
-      // unavailable rooms (maintenance, blocked) are hidden, but DON'T hide "occupied"
-      // rooms here because they may become free on the dates the user will select.
-      return byProperty.filter(r => !["maintenance", "out-of-order", "blocked"].includes(r.status ?? ""));
+    // Dormitory rooms: always show all non-blocked dorms.
+    // The availability API can mis-count beds (bedsBooked=null defaults to 1) and hide
+    // a room that actually has free beds. The bed-inventory query after room selection is
+    // the authoritative check, so we never filter dorms out by availability here.
+    if (type === "dormitory") {
+      return byProperty.filter(r => r.roomCategory === "dormitory" && !BLOCKING.includes(r.status ?? ""));
     }
 
-    // Dates selected — trust the availability API exclusively. It already accounts for
-    // booking overlaps AND maintenance/blocked statuses on the server side.
-    // A room that is currently "occupied" but free on the requested dates will correctly
-    // appear as available: 1 in the response, so we must not filter by current status here.
+    const typed = byProperty.filter(r => r.roomCategory !== "dormitory");
+
+    if (!roomAvailability) {
+      // No dates selected yet — hide only obviously unavailable rooms
+      return typed.filter(r => !BLOCKING.includes(r.status ?? ""));
+    }
+
+    // Dates selected — trust the availability API exclusively for non-dorm rooms
     const availSet = new Set(
       (roomAvailability as { roomId: number; available: number }[])
         .filter(a => a.available === 1)
         .map(a => a.roomId)
     );
-    return byProperty.filter(r => availSet.has(r.id));
+    return typed.filter(r => availSet.has(r.id));
   };
 
   const createMutation = useMutation({
@@ -345,7 +349,12 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
                       <SelectContent>
                         {getRoomsForType("dormitory").map(room => {
                           const prop = properties?.find(p => p.id === room.propertyId);
-                          return <SelectItem key={room.id} value={room.id.toString()}>{prop?.name} - Room {room.roomNumber} - ₹{room.pricePerNight}/bed/night</SelectItem>;
+                          const avail = (roomAvailability as any)?.find?.((a: any) => a.roomId === room.id);
+                          const remaining = avail?.remainingBeds ?? room.totalBeds ?? 6;
+                          const total = avail?.totalBeds ?? room.totalBeds ?? 6;
+                          const isFull = avail ? avail.remainingBeds === 0 : false;
+                          const bedsLabel = checkInDate && checkOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : "";
+                          return <SelectItem key={room.id} value={room.id.toString()}>{prop?.name} - Room {room.roomNumber} - ₹{room.pricePerNight}/bed/night{bedsLabel}</SelectItem>;
                         })}
                       </SelectContent>
                     </Select>

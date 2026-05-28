@@ -468,11 +468,27 @@ export default function Bookings() {
 
   // Composed helper: get rooms filtered by availability, booking type, and selected property
   const getRoomsForBookingType = (type: "single" | "group" | "dormitory", options: { isEditMode?: boolean; propertyId?: number; includeRoomIds?: number[] } = {}) => {
+    const propertyFilter = options.propertyId ?? selectedPropertyId;
+    const BLOCKING_STATUSES = ["maintenance", "out-of-order", "blocked"];
+
+    // Dormitory rooms: ALWAYS show all non-blocked dorms for the property.
+    // The availability API can mis-count occupied beds (e.g. bedsBooked=null defaulting to 1
+    // for old bookings) and incorrectly mark a dorm as full. The bed-inventory query shown
+    // after room selection is the authoritative check — so we never hide dorms here.
+    if (type === "dormitory") {
+      if (!rooms) return [];
+      let dormRooms = rooms.filter(r =>
+        r.roomCategory === "dormitory" &&
+        !BLOCKING_STATUSES.includes(r.status ?? "")
+      );
+      if (propertyFilter) dormRooms = dormRooms.filter(r => r.propertyId === propertyFilter);
+      return dormRooms;
+    }
+
     const availableRooms = getAvailableRooms(options.isEditMode || false);
     const byType = filterRoomsByBookingType(availableRooms, type);
     
     // Filter by selected property if provided
-    const propertyFilter = options.propertyId ?? selectedPropertyId;
     let filtered = propertyFilter ? byType.filter(room => room.propertyId === propertyFilter) : byType;
     
     // In edit mode, also include currently selected rooms that might not be in the available list
@@ -1714,9 +1730,14 @@ export default function Bookings() {
                             </FormControl>
                             <SelectContent>
                               {getRoomsForBookingType("dormitory", { isEditMode: false }).map((room) => {
+                                const avail = roomAvailability?.find(a => a.roomId === room.id);
+                                const remaining = avail?.remainingBeds ?? room.totalBeds ?? 6;
+                                const total = avail?.totalBeds ?? room.totalBeds ?? 6;
+                                const isFull = avail ? avail.remainingBeds === 0 : false;
                                 return (
                                   <SelectItem key={room.id} value={room.id.toString()}>
                                     Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
+                                    {checkInDate && checkOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : ""}
                                   </SelectItem>
                                 );
                               })}
@@ -3426,10 +3447,14 @@ export default function Bookings() {
                               return dormRooms.map((room) => {
                                 const property = properties?.find(p => p.id === room.propertyId);
                                 const isCurrentRoom = editingBooking?.roomId === room.id;
+                                const avail = editRoomAvailability?.find(a => a.roomId === room.id);
+                                const remaining = avail?.remainingBeds ?? room.totalBeds ?? 6;
+                                const total = avail?.totalBeds ?? room.totalBeds ?? 6;
+                                const isFull = avail && !isCurrentRoom ? avail.remainingBeds === 0 : false;
                                 return (
                                   <SelectItem key={room.id} value={room.id.toString()}>
                                     {property?.name} - Room {room.roomNumber} (Dormitory) - ₹{room.pricePerNight}/bed/night
-                                    {isCurrentRoom && " (Current)"}
+                                    {isCurrentRoom ? " (Current)" : (editCheckInDate && editCheckOutDate ? (isFull ? " • Full" : ` • ${remaining}/${total} beds free`) : "")}
                                   </SelectItem>
                                 );
                               });
