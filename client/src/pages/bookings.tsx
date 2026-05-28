@@ -1763,10 +1763,15 @@ export default function Bookings() {
                         )}
                         
                         {bedInventory && bedInventory.remainingBeds <= 0 ? (
-                          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md space-y-1">
                             <p className="text-sm text-destructive font-medium">
-                              This dormitory room is fully booked for the selected dates. Please choose different dates or another room.
+                              This dormitory room is fully booked for the selected dates.
                             </p>
+                            {(bedInventory as any).conflictBookingIds?.length > 0 && (
+                              <p className="text-xs text-muted-foreground">
+                                Blocking bookings: {(bedInventory as any).conflictBookingIds.map((b: any) => `#${b.id} (${b.status}, ${b.bedsBooked ?? 1} bed${(b.bedsBooked ?? 1) > 1 ? "s" : ""}, ${b.checkIn}→${b.checkOut})`).join(", ")}
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <FormField

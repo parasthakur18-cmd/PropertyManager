@@ -3014,8 +3014,25 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const roomBookings = overlappingBookings.filter(b => 
             b.roomId === room.id || b.roomIds?.includes(room.id)
           );
-          const bedsBooked = roomBookings.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
+          // Cap each booking's bed count at totalBeds (prevents a single mis-counted OTA
+          // booking from blocking the entire dorm beyond its physical capacity).
+          // Also cap the running total at totalBeds.
+          const bedsBooked = Math.min(
+            totalBeds,
+            roomBookings.reduce((sum, b) => {
+              const beds = b.bedsBooked && b.bedsBooked > 0 ? b.bedsBooked : 1;
+              return sum + beds;
+            }, 0)
+          );
           const remainingBeds = Math.max(0, totalBeds - bedsBooked);
+
+          if (remainingBeds === 0) {
+            console.log(
+              `[AVAILABILITY_CHECK] dorm room=${room.roomNumber ?? room.id} FULL ` +
+              `totalBeds=${totalBeds} bedsBooked=${bedsBooked} ` +
+              `conflictBookings=[${roomBookings.map(b => `#${b.id}(status=${b.status},bedsBooked=${b.bedsBooked},checkIn=${String(b.checkInDate).slice(0,10)},checkOut=${String(b.checkOutDate).slice(0,10)})`).join(", ")}]`
+            );
+          }
           
           return {
             roomId: room.id,
@@ -3209,17 +3226,30 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         booking.roomId === roomId || booking.roomIds?.includes(roomId)
       );
       
-      // Calculate reserved beds
-      const reservedBeds = roomBookings.reduce((sum, booking) => {
-        return sum + (booking.bedsBooked || 1);
-      }, 0);
+      // Calculate reserved beds — cap each booking's bedsBooked at totalBeds so one
+      // mis-counted OTA booking can't block an entire dorm beyond its capacity.
+      const reservedBeds = Math.min(
+        totalBeds,
+        roomBookings.reduce((sum, booking) => {
+          const beds = booking.bedsBooked && booking.bedsBooked > 0 ? booking.bedsBooked : 1;
+          return sum + beds;
+        }, 0)
+      );
       
       const remainingBeds = Math.max(0, totalBeds - reservedBeds);
+
+      // Diagnostic log so live server can show exactly which bookings are counted
+      console.log(
+        `[BED-INVENTORY] room=${roomId} dates=${checkInStr}→${checkOutStr} ` +
+        `totalBeds=${totalBeds} reservedBeds=${reservedBeds} remainingBeds=${remainingBeds} ` +
+        `conflictBookings=[${roomBookings.map(b => `#${b.id}(status=${b.status},bedsBooked=${b.bedsBooked},checkIn=${toDateStrBed(b.checkInDate as any)},checkOut=${toDateStrBed(b.checkOutDate as any)})`).join(", ")}]`
+      );
       
       res.json({
         totalBeds,
         reservedBeds,
-        remainingBeds
+        remainingBeds,
+        conflictBookingIds: roomBookings.map(b => ({ id: b.id, status: b.status, bedsBooked: b.bedsBooked, checkIn: toDateStrBed(b.checkInDate as any), checkOut: toDateStrBed(b.checkOutDate as any) }))
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
