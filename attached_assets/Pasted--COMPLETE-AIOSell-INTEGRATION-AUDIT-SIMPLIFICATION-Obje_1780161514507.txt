@@ -1,0 +1,298 @@
+# COMPLETE AIOSell INTEGRATION AUDIT & SIMPLIFICATION
+
+## Objective
+
+We need to stop adding more features and instead perform a complete audit of the existing Channel Manager architecture.
+
+The final goal is very simple:
+
+Hostezee = Single Source of Truth
+
+Hostezee Rooms
+↓
+Hostezee Rates
+↓
+Hostezee Inventory
+↓
+Push to Aiosell
+↓
+Aiosell distributes to all OTAs
+
+Nothing should be manually managed outside Hostezee.
+
+---
+
+# PHASE 1 - FULL AUDIT
+
+Audit every component currently involved in Aiosell integration.
+
+Provide a report covering:
+
+## Room Mapping
+
+For every property:
+
+* Hostezee Room Type ID
+* Hostezee Room Type Name
+* Aiosell Room ID
+* Aiosell Room Name
+* Mapping Status
+
+Flag:
+
+* Missing mappings
+* Duplicate mappings
+* Invalid mappings
+* Dorm mappings
+
+---
+
+## Rate Mapping
+
+For every room:
+
+* Connected Rate Plans
+* Aiosell Rate Plan IDs
+* Mapping Status
+
+Flag:
+
+* Missing rate plans
+* Duplicate rate plans
+* Invalid rate plans
+
+---
+
+## Inventory Push Logic
+
+Audit:
+
+* Inventory calculation
+* Inventory payload generation
+* Inventory queue
+* Push execution
+* Push response handling
+
+For every room type show:
+
+* Current inventory
+* Inventory being pushed
+* Last pushed inventory
+* Last push timestamp
+* Last response received
+
+---
+
+## Dormitory Logic
+
+Audit separately.
+
+Show:
+
+* Total Beds
+* Occupied Beds
+* Blocked Beds
+* Available Beds
+* Inventory Sent
+
+Verify:
+
+Available Beds = Inventory Sent
+
+Identify any dorm calculation errors.
+
+---
+
+## Rate Push Logic
+
+Audit:
+
+* Rate calculation
+* Rate payload generation
+* Push execution
+* Response handling
+
+Show:
+
+* Current Rate
+* Last Pushed Rate
+* Last Response
+
+---
+
+## Connectivity Audit Review
+
+Review current Connectivity Audit.
+
+Determine:
+
+* Which metrics are useful
+* Which metrics are misleading
+* Which metrics are redundant
+
+Current issue:
+
+A room can show "Fully Connected" while Inventory Reconciliation shows "Never Pushed".
+
+This should never happen.
+
+Provide root cause.
+
+---
+
+## Inventory Reconciliation Review
+
+Audit current reconciliation logic.
+
+Verify:
+
+* What data is compared
+* Hostezee Current Inventory
+* Last Pushed Inventory
+* Live Aiosell Inventory
+
+Current system appears to compare only:
+
+Hostezee Current vs Last Pushed
+
+This is insufficient.
+
+---
+
+# PHASE 2 - REMOVE UNNECESSARY FEATURES
+
+After audit, identify features that should be removed.
+
+Potential removals:
+
+* Duplicate status indicators
+* Duplicate sync pages
+* Duplicate logs
+* Unused debugging widgets
+* Redundant counters
+
+Goal:
+
+Reduce Channel Manager complexity.
+
+---
+
+# PHASE 3 - SIMPLIFIED CHANNEL MANAGER
+
+Keep only these sections:
+
+## 1. Room Mapping
+
+Columns:
+
+* Room Name
+* Hostezee Room ID
+* Aiosell Room ID
+* Mapping Status
+
+Actions:
+
+* Connect
+* Disconnect
+* Verify
+
+---
+
+## 2. Rate Sync
+
+Show:
+
+* Current Rate
+* Last Pushed Rate
+* Last Sync Time
+
+Actions:
+
+* Sync Rate
+* Verify Rate
+
+---
+
+## 3. Inventory Sync
+
+Show:
+
+* Current Inventory
+* Last Pushed Inventory
+* Last Sync Time
+
+Actions:
+
+* Sync Inventory
+* Verify Inventory
+
+---
+
+## 4. Sync Logs
+
+Show:
+
+* Date
+* Room
+* Action
+* Payload
+* Response
+* Status
+
+Nothing else.
+
+---
+
+# PHASE 4 - SINGLE SOURCE OF TRUTH
+
+Hostezee must always be the master.
+
+Rules:
+
+* Rates edited only in Hostezee.
+* Inventory managed only in Hostezee.
+* Room mappings managed only in Hostezee.
+* Aiosell receives data only.
+* No inventory edits from Aiosell side.
+* No rate edits from Aiosell side.
+
+---
+
+# PHASE 5 - VERIFICATION TOOL
+
+Create one button:
+
+"Verify Property"
+
+When clicked:
+
+1. Verify room mappings.
+2. Verify rate mappings.
+3. Verify inventory mappings.
+4. Verify last inventory push.
+5. Verify last rate push.
+6. Read live Aiosell values.
+7. Compare Hostezee vs Aiosell.
+8. Generate a final report.
+
+Result:
+
+GREEN = Fully Synced
+
+RED = Problem Found
+
+with exact reason.
+
+---
+
+Deliverables Required
+
+1. Complete architecture audit.
+2. List of bugs.
+3. List of redundant features.
+4. List of features to remove.
+5. Proposed simplified architecture.
+6. Root cause of dorm inventory issues.
+7. Root cause of room mismatch issues.
+8. Root cause of rate mismatch issues.
+9. Final implementation plan before any code changes.
