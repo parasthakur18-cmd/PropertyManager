@@ -1216,7 +1216,7 @@ async function reconcileRoomStatuses(): Promise<void> {
       WHERE room_category = 'dormitory'
       AND status = 'occupied'
       AND (
-        SELECT COALESCE(SUM(COALESCE(b.beds_booked, 1)), 0)
+        SELECT COALESCE(SUM(COALESCE(b.beds_booked, b.number_of_guests, 1)), 0)
         FROM bookings b
         WHERE b.room_id = rooms.id
           AND b.status = 'checked-in'

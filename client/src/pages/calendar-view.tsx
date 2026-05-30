@@ -527,7 +527,7 @@ export default function CalendarView() {
         // Check if booking overlaps with the date range
         return bookingStart < endStr && bookingEnd > startStr && b.status !== "cancelled" && b.status !== "checked-out" && b.status !== "no_show";
       })
-      .reduce((total, b) => total + (b.bedsBooked || 1), 0);
+      .reduce((total, b) => total + (b.bedsBooked || b.numberOfGuests || 1), 0);
   };
 
   const getOccupancyPercent = (date: Date) => {
@@ -894,8 +894,8 @@ export default function CalendarView() {
                       const otherEnd = new Date(other.checkOutDate);
                       return bookingStart < otherEnd && bookingEnd > otherStart;
                     });
-                    const otherBeds = overlapping.filter(b => b.id !== booking.id).reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-                    const thisBookingExtraBeds = Math.max(0, (booking.bedsBooked || 1) - 1);
+                    const otherBeds = overlapping.filter(b => b.id !== booking.id).reduce((sum, b) => sum + (b.bedsBooked || b.numberOfGuests || 1), 0);
+                    const thisBookingExtraBeds = Math.max(0, (booking.bedsBooked || booking.numberOfGuests || 1) - 1);
                     return { booking, allBookings: overlapping, additionalBeds: otherBeds + thisBookingExtraBeds };
                   });
                 };
@@ -903,7 +903,7 @@ export default function CalendarView() {
                 const displayBookings = getDormitoryDisplayBookings();
 
                 const bedsOccupiedToday = isDorm
-                  ? Math.min(getAllDormitoryBookingsForDate(room.id, today).reduce((s, b) => s + (b.bedsBooked || 1), 0), room.totalBeds || 0)
+                  ? Math.min(getAllDormitoryBookingsForDate(room.id, today).reduce((s, b) => s + (b.bedsBooked || b.numberOfGuests || 1), 0), room.totalBeds || 0)
                   : 0;
                 const isDormExpanded = isDorm && !!expandedDorms[room.id];
 
@@ -965,7 +965,7 @@ export default function CalendarView() {
                             const dateStr = format(date, "yyyy-MM-dd");
                             const isTodayCell = dateStr === format(today, "yyyy-MM-dd");
                             const bedsUsed = getAllDormitoryBookingsForDate(room.id, date)
-                              .reduce((s, b) => s + (b.bedsBooked || 1), 0);
+                              .reduce((s, b) => s + (b.bedsBooked || b.numberOfGuests || 1), 0);
                             const totalBeds = room.totalBeds || 0;
                             const available = Math.max(0, totalBeds - bedsUsed);
                             return (
