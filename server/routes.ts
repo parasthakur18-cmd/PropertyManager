@@ -3020,7 +3020,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           const bedsBooked = Math.min(
             totalBeds,
             roomBookings.reduce((sum, b) => {
-              const beds = b.bedsBooked && b.bedsBooked > 0 ? b.bedsBooked : 1;
+              const beds = b.bedsBooked && b.bedsBooked > 0 ? b.bedsBooked : (b.numberOfGuests || 1);
               return sum + beds;
             }, 0)
           );
@@ -3247,7 +3247,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       const reservedBeds = Math.min(
         totalBeds,
         roomBookings.reduce((sum, booking) => {
-          const beds = booking.bedsBooked && booking.bedsBooked > 0 ? booking.bedsBooked : 1;
+          const beds = booking.bedsBooked && booking.bedsBooked > 0 ? booking.bedsBooked : (booking.numberOfGuests || 1);
           return sum + beds;
         }, 0)
       );
@@ -4459,8 +4459,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
           if (isDorm) {
             const totalBeds  = editRoom.totalBeds ?? 1;
-            const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-            const bedsRequested     = (validatedData as any).bedsBooked ?? existingBooking.bedsBooked ?? 1;
+            const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || b.numberOfGuests || 1), 0);
+            const bedsRequested     = (validatedData as any).bedsBooked ?? validatedData.numberOfGuests ?? existingBooking.bedsBooked ?? 1;
             if (bedsAlreadyBooked + bedsRequested > totalBeds) {
               const guest = overlapping[0] ? await storage.getGuest(overlapping[0].guestId) : null;
               return res.status(409).json({
@@ -4480,6 +4480,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
       // ── End overlap guard ────────────────────────────────────────────────────
+
+      // Auto-sync bedsBooked with numberOfGuests for dorm rooms on edit.
+      // Covers both guest-increase (2→4) and guest-decrease (4→2) scenarios.
+      // Only applies when numberOfGuests is explicitly being changed and the
+      // caller did not also send an explicit bedsBooked override.
+      if (validatedData.numberOfGuests !== undefined && (validatedData as any).bedsBooked === undefined) {
+        const dormRoomId = (validatedData as any).roomId ?? existingBooking.roomId;
+        if (dormRoomId) {
+          const dormCheck = await storage.getRoom(dormRoomId);
+          if (dormCheck?.roomCategory === 'dormitory') {
+            (validatedData as any).bedsBooked = validatedData.numberOfGuests;
+            console.log(`[DORM-EDIT] bedsBooked auto-synced to ${validatedData.numberOfGuests} for room ${dormCheck.roomNumber} (booking #${req.params.id})`);
+          }
+        }
+      }
 
       const booking = await storage.updateBooking(parseInt(req.params.id), validatedData);
 
@@ -21265,7 +21280,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           const preservedStatus = previousStatus === "cancelled" ? "pending" : previousStatus as string;
 
           const modifyPrimaryResolved = resolvedRooms.find(r => r.roomId !== null);
+          // For OTA modify: use explicit AioSell bedsBooked if present, otherwise
+          // fall back to the new guest count so 3→4 guest modifications correctly
+          // update bed allocation without requiring AioSell dorm-specific data.
           const modifyBedsBooked = modifyPrimaryResolved?.bedsBooked ?? null;
+          const modifyEffectiveBedsBooked = modifyBedsBooked !== null
+            ? modifyBedsBooked
+            : (totalAdults + totalChildren > 0 ? totalAdults + totalChildren : null);
 
           // For checked-in bookings, always preserve the existing room assignment —
           // the guest is physically in the room; OTA room-type changes should not
@@ -21287,7 +21308,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
               numberOfGuests: totalAdults + totalChildren,
               ...(guestId ? { guestId } : {}),
               ...(safeRoomId !== undefined ? { roomId: safeRoomId } : {}),
-              ...(modifyBedsBooked !== null ? { bedsBooked: modifyBedsBooked } : {}),
+              ...(modifyEffectiveBedsBooked !== null ? { bedsBooked: modifyEffectiveBedsBooked } : {}),
               status: preservedStatus as any,
               specialRequests: specialRequests || existingBookingRecord.specialRequests,
               updatedAt: new Date(),
