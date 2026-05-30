@@ -1,0 +1,189 @@
+MENU SLOT LOGIC AUDIT & FIX
+
+Current Problems:
+
+1. "Late Night" is not actually a meal slot for us.
+2. We need an "All Day" option instead.
+3. Breakfast items are currently visible all day even when Breakfast timing is restricted.
+4. Lunch items are also appearing outside Lunch timings.
+5. Meal slot timing rules are not being enforced correctly.
+
+Required Changes:
+
+---
+
+1. Replace "Late Night" with "All Day"
+
+Current Slots:
+
+* Breakfast
+* Lunch
+* High Tea
+* Dinner
+* Late Night
+
+Change To:
+
+* Breakfast
+* Lunch
+* High Tea
+* Dinner
+* All Day
+
+---
+
+2. All Day Logic
+
+If an item is marked:
+
+✅ All Day
+
+Then that item should always be visible regardless of current time.
+
+Examples:
+
+Aloo Paratha → All Day
+
+Visible:
+
+* Breakfast
+* Lunch
+* High Tea
+* Dinner
+
+Any time of day.
+
+---
+
+3. Slot-Based Visibility
+
+If an item is marked only:
+
+✅ Breakfast
+
+Then it should ONLY appear during Breakfast timing.
+
+Example:
+
+Breakfast Time:
+07:00 AM → 01:00 PM
+
+Visible:
+✅ 07:00 AM
+✅ 10:00 AM
+✅ 12:30 PM
+
+Hidden:
+❌ 01:01 PM
+❌ 02:00 PM
+❌ 07:00 PM
+
+---
+
+4. Lunch Visibility
+
+If item is marked:
+
+✅ Lunch
+
+Lunch Time:
+12:00 PM → 04:00 PM
+
+Visible:
+✅ 12:00 PM
+✅ 02:00 PM
+✅ 03:59 PM
+
+Hidden:
+❌ Morning
+❌ Evening
+❌ Night
+
+---
+
+5. Multiple Slot Logic
+
+Example:
+
+Aloo Paratha
+
+Selected:
+
+✅ Breakfast
+✅ Lunch
+
+Visible:
+
+Breakfast Time → Show
+
+Lunch Time → Show
+
+High Tea Time → Hide
+
+Dinner Time → Hide
+
+---
+
+6. All Day Overrides Everything
+
+If:
+
+✅ All Day
+
+Then ignore meal timing restrictions and always show item.
+
+---
+
+7. Menu Filtering Fix
+
+Audit current menu API.
+
+Verify:
+
+Items are filtered based on:
+
+Current Time
+AND
+Selected Meal Slots
+
+Current bug:
+
+Breakfast items visible all day.
+Lunch items visible all day.
+
+Fix this.
+
+---
+
+8. Admin Preview
+
+Add:
+
+"Preview Menu At Time"
+
+Examples:
+
+08:00 AM
+01:30 PM
+05:00 PM
+08:00 PM
+
+Admin can verify exactly what guests will see.
+
+---
+
+Expected Final Behavior
+
+Breakfast Item:
+Visible only during Breakfast.
+
+Lunch Item:
+Visible only during Lunch.
+
+Dinner Item:
+Visible only during Dinner.
+
+All Day Item:
+Visible all day.
+
+Meal timings must be strictly enforced for guest ordering.

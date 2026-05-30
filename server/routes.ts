@@ -980,7 +980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lunchEnabled: (settings as any).lunchEnabled ?? true,
         snacksEnabled: (settings as any).snacksEnabled ?? true,
         dinnerEnabled: (settings as any).dinnerEnabled ?? true,
-        lateNightEnabled: (settings as any).lateNightEnabled ?? true,
+        allDayEnabled: (settings as any).lateNightEnabled ?? true,
         breakfastStart: (settings as any).breakfastStart ?? "07:00",
         breakfastEnd: (settings as any).breakfastEnd ?? "11:00",
         lunchStart: (settings as any).lunchStart ?? "12:00",
@@ -989,8 +989,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         snacksEnd: (settings as any).snacksEnd ?? "19:00",
         dinnerStart: (settings as any).dinnerStart ?? "19:00",
         dinnerEnd: (settings as any).dinnerEnd ?? "22:30",
-        lateNightStart: (settings as any).lateNightStart ?? "22:30",
-        lateNightEnd: (settings as any).lateNightEnd ?? "00:00",
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

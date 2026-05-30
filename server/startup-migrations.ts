@@ -1154,6 +1154,12 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_menu_item_all_day_column",
+    async run() {
+      await addMenuItemAllDayColumn();
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {
@@ -1240,6 +1246,30 @@ async function migrateMessageTemplatesPropertyId(): Promise<void> {
   if (!(await columnExists("message_templates", "property_id"))) {
     await runRaw(`ALTER TABLE message_templates ADD COLUMN property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE`);
   }
+}
+
+async function addMenuItemAllDayColumn(): Promise<void> {
+  // Add the available_all_day column if it doesn't exist
+  if (!(await columnExists("menu_items", "available_all_day"))) {
+    await runRaw(`ALTER TABLE menu_items ADD COLUMN available_all_day boolean DEFAULT false`);
+  }
+  // Convert items where ALL slots were true (legacy default = no deliberate restriction)
+  // into All Day mode, and clear individual slot flags so the new strict filter works correctly.
+  await runRaw(`
+    UPDATE menu_items
+    SET available_all_day = true,
+        available_breakfast = false,
+        available_lunch = false,
+        available_snacks = false,
+        available_dinner = false,
+        available_late_night = false
+    WHERE available_breakfast = true
+      AND available_lunch = true
+      AND available_snacks = true
+      AND available_dinner = true
+      AND available_late_night = true
+      AND (available_all_day IS NULL OR available_all_day = false)
+  `);
 }
 
 export async function runStartupMigrations(): Promise<void> {

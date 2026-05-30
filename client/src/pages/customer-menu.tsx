@@ -49,7 +49,7 @@ const MEAL_SLOTS = [
   { key: "lunch",     label: "Lunch",     icon: "🍛", gradient: "from-green-400 to-emerald-500", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled"     },
   { key: "snacks",    label: "High Tea",  icon: "☕", gradient: "from-teal-400 to-cyan-500",    startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled"    },
   { key: "dinner",    label: "Dinner",    icon: "🍽️", gradient: "from-indigo-500 to-purple-600",startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled"    },
-  { key: "lateNight", label: "Late Night",icon: "🌙", gradient: "from-slate-600 to-gray-800",  startKey: "lateNightStart", endKey: "lateNightEnd", enabledKey: "lateNightEnabled" },
+  { key: "allDay",    label: "All Day",   icon: "🌞", gradient: "from-amber-300 to-yellow-500", startKey: "",               endKey: "",             enabledKey: "allDayEnabled"    },
 ] as const;
 
 function fmtSlotTime(t: string) {
@@ -59,12 +59,13 @@ function fmtSlotTime(t: string) {
 }
 
 function getSlotItems(items: MenuItem[], slotKey: string): MenuItem[] {
+  const isAllDay = (i: MenuItem) => (i as any).availableAllDay === true;
   switch (slotKey) {
-    case "breakfast": return items.filter(i => i.availableBreakfast !== false);
-    case "lunch":     return items.filter(i => i.availableLunch !== false);
-    case "snacks":    return items.filter(i => i.availableSnacks !== false);
-    case "dinner":    return items.filter(i => i.availableDinner !== false);
-    case "lateNight": return items.filter(i => i.availableLateNight !== false);
+    case "breakfast": return items.filter(i => isAllDay(i) || i.availableBreakfast === true);
+    case "lunch":     return items.filter(i => isAllDay(i) || i.availableLunch === true);
+    case "snacks":    return items.filter(i => isAllDay(i) || i.availableSnacks === true);
+    case "dinner":    return items.filter(i => isAllDay(i) || i.availableDinner === true);
+    case "allDay":    return items.filter(i => isAllDay(i));
     default:          return items;
   }
 }
@@ -104,12 +105,14 @@ function getItemTimingReason(item: MenuItem, timing: any): string {
     return h * 60 + m;
   };
 
+  // All Day items are always available — no time restriction ever applies
+  if ((item as any).availableAllDay === true) return "";
+
   const slots = [
-    { enabled: item.availableBreakfast ?? true, start: timing.breakfastStart, end: timing.breakfastEnd },
-    { enabled: item.availableLunch ?? true, start: timing.lunchStart, end: timing.lunchEnd },
-    { enabled: item.availableSnacks ?? true, start: timing.snacksStart, end: timing.snacksEnd },
-    { enabled: item.availableDinner ?? true, start: timing.dinnerStart, end: timing.dinnerEnd },
-    { enabled: item.availableLateNight ?? true, start: timing.lateNightStart, end: timing.lateNightEnd },
+    { enabled: item.availableBreakfast === true, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { enabled: item.availableLunch === true,     start: timing.lunchStart,     end: timing.lunchEnd     },
+    { enabled: item.availableSnacks === true,    start: timing.snacksStart,    end: timing.snacksEnd    },
+    { enabled: item.availableDinner === true,    start: timing.dinnerStart,    end: timing.dinnerEnd    },
   ];
 
   // If no slot times configured at all, no restriction
@@ -237,7 +240,6 @@ export default function CustomerMenu() {
       { start: menuTiming.lunchStart, end: menuTiming.lunchEnd },
       { start: menuTiming.snacksStart, end: menuTiming.snacksEnd },
       { start: menuTiming.dinnerStart, end: menuTiming.dinnerEnd },
-      { start: menuTiming.lateNightStart, end: menuTiming.lateNightEnd },
     ];
     const open = slots.some(s => active(pt(s.start), pt(s.end)));
     if (open) {
@@ -289,8 +291,14 @@ export default function CustomerMenu() {
     let items = (menuItems || []).filter(i => i.isAvailable);
     if (isHighLoad) {
       items = items.filter(i => !!i.availableHighLoad);
-    } else if (menuTiming && currentSlotKey) {
-      items = getSlotItems(items, currentSlotKey);
+    } else if (menuTiming) {
+      if (currentSlotKey) {
+        // During an active meal slot: show slot items + All Day items
+        items = getSlotItems(items, currentSlotKey);
+      } else {
+        // Between slots: show only All Day items
+        items = items.filter(i => (i as any).availableAllDay === true);
+      }
     }
     return items;
   }, [menuItems, isHighLoad, currentSlotKey, menuTiming]);

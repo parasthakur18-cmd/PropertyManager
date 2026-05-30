@@ -445,6 +445,7 @@ export const menuItems = pgTable("menu_items", {
   availableSnacks: boolean("available_snacks").default(true),
   availableDinner: boolean("available_dinner").default(true),
   availableLateNight: boolean("available_late_night").default(true),
+  availableAllDay: boolean("available_all_day").default(true),
   availableHighLoad: boolean("available_high_load").default(false),
 });
 

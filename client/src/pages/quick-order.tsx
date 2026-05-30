@@ -129,12 +129,14 @@ function getItemTimingReason(item: MenuItem, timing: any): string {
     return h * 60 + m;
   };
 
+  // All Day items are always visible — no slot check needed
+  if (item.availableAllDay) return "";
+
   const slots = [
-    { enabled: item.availableBreakfast ?? true, start: timing.breakfastStart, end: timing.breakfastEnd },
-    { enabled: item.availableLunch ?? true, start: timing.lunchStart, end: timing.lunchEnd },
-    { enabled: item.availableSnacks ?? true, start: timing.snacksStart, end: timing.snacksEnd },
-    { enabled: item.availableDinner ?? true, start: timing.dinnerStart, end: timing.dinnerEnd },
-    { enabled: item.availableLateNight ?? true, start: timing.lateNightStart, end: timing.lateNightEnd },
+    { enabled: item.availableBreakfast ?? false, start: timing.breakfastStart, end: timing.breakfastEnd },
+    { enabled: item.availableLunch ?? false, start: timing.lunchStart, end: timing.lunchEnd },
+    { enabled: item.availableSnacks ?? false, start: timing.snacksStart, end: timing.snacksEnd },
+    { enabled: item.availableDinner ?? false, start: timing.dinnerStart, end: timing.dinnerEnd },
   ];
 
   // If no slot times configured at all, no restriction

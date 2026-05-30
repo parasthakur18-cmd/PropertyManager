@@ -1367,29 +1367,29 @@ function ItemCard({
     },
   });
 
-  const MEAL_SLOT_KEYS = ["availableBreakfast", "availableLunch", "availableSnacks", "availableDinner", "availableLateNight", "availableHighLoad"] as const;
+  const MEAL_SLOT_KEYS = ["availableBreakfast", "availableLunch", "availableSnacks", "availableDinner", "availableAllDay", "availableHighLoad"] as const;
   type SlotKey = typeof MEAL_SLOT_KEYS[number];
 
   const [slotValues, setSlotValues] = useState<Record<SlotKey, boolean>>(() => ({
-    availableBreakfast: item.availableBreakfast ?? true,
-    availableLunch: item.availableLunch ?? true,
-    availableSnacks: item.availableSnacks ?? true,
-    availableDinner: item.availableDinner ?? true,
-    availableLateNight: item.availableLateNight ?? true,
+    availableBreakfast: item.availableBreakfast ?? false,
+    availableLunch: item.availableLunch ?? false,
+    availableSnacks: item.availableSnacks ?? false,
+    availableDinner: item.availableDinner ?? false,
+    availableAllDay: item.availableAllDay ?? false,
     availableHighLoad: item.availableHighLoad ?? false,
   }));
 
   // Sync local state when server data comes back
   useEffect(() => {
     setSlotValues({
-      availableBreakfast: item.availableBreakfast ?? true,
-      availableLunch: item.availableLunch ?? true,
-      availableSnacks: item.availableSnacks ?? true,
-      availableDinner: item.availableDinner ?? true,
-      availableLateNight: item.availableLateNight ?? true,
+      availableBreakfast: item.availableBreakfast ?? false,
+      availableLunch: item.availableLunch ?? false,
+      availableSnacks: item.availableSnacks ?? false,
+      availableDinner: item.availableDinner ?? false,
+      availableAllDay: item.availableAllDay ?? false,
       availableHighLoad: item.availableHighLoad ?? false,
     });
-  }, [item.availableBreakfast, item.availableLunch, item.availableSnacks, item.availableDinner, item.availableLateNight, item.availableHighLoad]);
+  }, [item.availableBreakfast, item.availableLunch, item.availableSnacks, item.availableDinner, item.availableAllDay, item.availableHighLoad]);
 
   const patchSlot = useMutation({
     mutationFn: async ({ field, value }: { field: SlotKey; value: boolean }) => {
@@ -1415,7 +1415,7 @@ function ItemCard({
     { key: "availableLunch", label: "🍱 Lunch" },
     { key: "availableSnacks", label: "🍿 Snacks" },
     { key: "availableDinner", label: "🍽️ Dinner" },
-    { key: "availableLateNight", label: "🌙 Late Night" },
+    { key: "availableAllDay", label: "🌞 All Day" },
     { key: "availableHighLoad", label: "⚡ High Load" },
   ];
 

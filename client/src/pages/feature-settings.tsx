@@ -437,11 +437,11 @@ export default function FeatureSettings() {
   };
 
   const MENU_SLOTS = [
-    { key: "breakfast", label: "Breakfast", emoji: "🌅", startKey: "breakfastStart", endKey: "breakfastEnd", enabledKey: "breakfastEnabled" },
-    { key: "lunch",     label: "Lunch",     emoji: "🍱", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled"     },
-    { key: "snacks",    label: "High Tea",  emoji: "☕", startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled"    },
-    { key: "dinner",    label: "Dinner",    emoji: "🍽️", startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled"    },
-    { key: "lateNight", label: "Late Night",emoji: "🌙", startKey: "lateNightStart", endKey: "lateNightEnd", enabledKey: "lateNightEnabled" },
+    { key: "breakfast", label: "Breakfast", emoji: "🌅", startKey: "breakfastStart", endKey: "breakfastEnd", enabledKey: "breakfastEnabled", hasTime: true  },
+    { key: "lunch",     label: "Lunch",     emoji: "🍱", startKey: "lunchStart",     endKey: "lunchEnd",     enabledKey: "lunchEnabled",     hasTime: true  },
+    { key: "snacks",    label: "High Tea",  emoji: "☕", startKey: "snacksStart",    endKey: "snacksEnd",    enabledKey: "snacksEnabled",    hasTime: true  },
+    { key: "dinner",    label: "Dinner",    emoji: "🍽️", startKey: "dinnerStart",    endKey: "dinnerEnd",    enabledKey: "dinnerEnabled",    hasTime: true  },
+    { key: "allDay",    label: "All Day",   emoji: "🌞", startKey: "",               endKey: "",             enabledKey: "lateNightEnabled", hasTime: false },
   ] as const;
 
   const [timingDraft, setTimingDraft] = useState<Record<string, string>>({});
@@ -456,8 +456,6 @@ export default function FeatureSettings() {
         snacksEnd: settings.snacksEnd || "19:00",
         dinnerStart: settings.dinnerStart || "19:00",
         dinnerEnd: settings.dinnerEnd || "22:30",
-        lateNightStart: settings.lateNightStart || "22:30",
-        lateNightEnd: settings.lateNightEnd || "00:00",
       });
     }
   }, [settings?.id]);
@@ -849,25 +847,31 @@ export default function FeatureSettings() {
                   />
                   <span className="text-lg w-7 flex-shrink-0">{slot.emoji}</span>
                   <span className="w-20 text-sm font-medium flex-shrink-0">{slot.label}</span>
-                  <div className="flex items-center gap-2 flex-1">
-                    <Input
-                      type="time"
-                      className="w-28"
-                      value={timingDraft[slot.startKey] || ""}
-                      onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.startKey]: e.target.value }))}
-                      disabled={!isEnabled}
-                      data-testid={`input-${slot.startKey}`}
-                    />
-                    <span className="text-muted-foreground text-sm">to</span>
-                    <Input
-                      type="time"
-                      className="w-28"
-                      value={timingDraft[slot.endKey] || ""}
-                      onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.endKey]: e.target.value }))}
-                      disabled={!isEnabled}
-                      data-testid={`input-${slot.endKey}`}
-                    />
-                  </div>
+                  {slot.hasTime ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input
+                        type="time"
+                        className="w-28"
+                        value={timingDraft[slot.startKey] || ""}
+                        onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.startKey]: e.target.value }))}
+                        disabled={!isEnabled}
+                        data-testid={`input-${slot.startKey}`}
+                      />
+                      <span className="text-muted-foreground text-sm">to</span>
+                      <Input
+                        type="time"
+                        className="w-28"
+                        value={timingDraft[slot.endKey] || ""}
+                        onChange={(e) => setTimingDraft(prev => ({ ...prev, [slot.endKey]: e.target.value }))}
+                        disabled={!isEnabled}
+                        data-testid={`input-${slot.endKey}`}
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic flex-1">
+                      Always available — items marked "All Day" show at any time
+                    </p>
+                  )}
                 </div>
               );
             })}

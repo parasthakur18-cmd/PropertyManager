@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Wand2 } from "lucide-react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Search, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Wand2, Clock, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -236,6 +236,7 @@ function generateCSVTemplate() {
 
 export default function MenuManagement() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewTime, setPreviewTime] = useState<string>("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [deletingItem, setDeletingItem] = useState<MenuItem | null>(null);
@@ -266,11 +267,11 @@ export default function MenuManagement() {
       isAvailable: true,
       preparationTime: 0,
       imageUrl: "",
-      availableBreakfast: true,
-      availableLunch: true,
-      availableSnacks: true,
-      availableDinner: true,
-      availableLateNight: true,
+      availableBreakfast: false,
+      availableLunch: false,
+      availableSnacks: false,
+      availableDinner: false,
+      availableAllDay: true,
       availableHighLoad: false,
     },
   });
@@ -520,11 +521,11 @@ export default function MenuManagement() {
       isAvailable: item.isAvailable,
       preparationTime: item.preparationTime || 0,
       imageUrl: item.imageUrl || "",
-      availableBreakfast: item.availableBreakfast ?? true,
-      availableLunch: item.availableLunch ?? true,
-      availableSnacks: item.availableSnacks ?? true,
-      availableDinner: item.availableDinner ?? true,
-      availableLateNight: item.availableLateNight ?? true,
+      availableBreakfast: item.availableBreakfast ?? false,
+      availableLunch: item.availableLunch ?? false,
+      availableSnacks: item.availableSnacks ?? false,
+      availableDinner: item.availableDinner ?? false,
+      availableAllDay: item.availableAllDay ?? false,
       availableHighLoad: item.availableHighLoad ?? false,
     });
   };
@@ -534,7 +535,7 @@ export default function MenuManagement() {
     { key: "availableLunch" as keyof MenuItem, label: "🍱 Lunch" },
     { key: "availableSnacks" as keyof MenuItem, label: "🍿 Snacks" },
     { key: "availableDinner" as keyof MenuItem, label: "🍽️ Dinner" },
-    { key: "availableLateNight" as keyof MenuItem, label: "🌙 Late Night" },
+    { key: "availableAllDay" as keyof MenuItem, label: "🌞 All Day" },
     { key: "availableHighLoad" as keyof MenuItem, label: "⚡ High Load" },
   ];
 
@@ -574,6 +575,42 @@ export default function MenuManagement() {
     Object.keys(groupedItems).forEach(category => {
       groupedItems[category].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
     });
+  }
+
+  // --- Preview At Time helpers ---
+  // Default slot times (fallback if no feature settings loaded)
+  const SLOT_RANGES: Array<{ key: keyof MenuItem; start: string; end: string }> = [
+    { key: "availableBreakfast", start: "07:00", end: "11:00" },
+    { key: "availableLunch",     start: "12:00", end: "16:00" },
+    { key: "availableSnacks",    start: "16:00", end: "19:00" },
+    { key: "availableDinner",    start: "19:00", end: "22:30" },
+  ];
+
+  function ptMins(t: string) {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  // Returns the slot key active at a given HH:MM, or "availableAllDay" if between slots
+  function activeSlotKey(time: string): keyof MenuItem | null {
+    if (!time) return null;
+    const mins = ptMins(time);
+    for (const s of SLOT_RANGES) {
+      const start = ptMins(s.start);
+      const end = ptMins(s.end);
+      if (mins >= start && mins < end) return s.key;
+    }
+    return null; // between all slots — only "All Day" items show
+  }
+
+  const activeKey = previewTime ? activeSlotKey(previewTime) : null;
+
+  // Would this item be visible at the preview time?
+  function itemVisibleAtPreview(item: MenuItem): boolean {
+    if (!previewTime) return true;
+    if (item.availableAllDay) return true;
+    if (activeKey && item[activeKey]) return true;
+    return false;
   }
 
   if (isLoading) {
@@ -830,7 +867,7 @@ export default function MenuManagement() {
                       { fname: "availableLunch", label: "🍱 Lunch" },
                       { fname: "availableSnacks", label: "🍿 Snacks" },
                       { fname: "availableDinner", label: "🍽️ Dinner" },
-                      { fname: "availableLateNight", label: "🌙 Late Night" },
+                      { fname: "availableAllDay", label: "🌞 All Day" },
                       { fname: "availableHighLoad", label: "⚡ High Load" },
                     ] as const).map(({ fname, label }) => (
                       <FormField
@@ -1075,9 +1112,9 @@ export default function MenuManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Search */}
-      <div className="mb-6">
-        <div className="relative max-w-md">
+      {/* Search + Preview At Time */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search menu items..."
@@ -1087,7 +1124,29 @@ export default function MenuManagement() {
             data-testid="input-search"
           />
         </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Clock className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground whitespace-nowrap">Preview at:</span>
+          <Input
+            type="time"
+            value={previewTime}
+            onChange={(e) => setPreviewTime(e.target.value)}
+            className="w-32"
+            data-testid="input-preview-time"
+          />
+          {previewTime && (
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPreviewTime("")} data-testid="button-clear-preview-time">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+      {previewTime && (
+        <p className="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+          <Clock className="h-3 w-3" />
+          Cards dimmed in grey = hidden from customers at {previewTime}. Green-highlighted slots = active slot for this time.
+        </p>
+      )}
 
       {/* Menu Items by Category with Up/Down Reordering */}
       <div className="space-y-8">
@@ -1100,8 +1159,10 @@ export default function MenuManagement() {
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categoryItems.map((item, index) => (
-                <Card key={item.id} className={!item.isAvailable ? "opacity-60" : ""} data-testid={`card-item-${item.id}`}>
+              {categoryItems.map((item, index) => {
+                const visibleAtPreview = itemVisibleAtPreview(item);
+                return (
+                <Card key={item.id} className={`transition-opacity ${(!item.isAvailable || (previewTime && !visibleAtPreview)) ? "opacity-40" : ""}`} data-testid={`card-item-${item.id}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -1161,11 +1222,19 @@ export default function MenuManagement() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Slot Availability</p>
                       <div className="grid grid-cols-3 gap-1">
                         {MEAL_SLOTS.map(slot => {
-                          const currentVal = (item[slot.key] ?? (slot.key !== "availableHighLoad")) as boolean;
+                          const currentVal = !!(item[slot.key]);
+                          const isActiveSlot = previewTime && (
+                            slot.key === "availableAllDay" ? false :
+                            slot.key === activeKey
+                          );
                           return (
                             <label
                               key={String(slot.key)}
-                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer border transition-colors text-xs ${currentVal ? "bg-teal-50 border-teal-300 text-teal-800" : "bg-white border-gray-200 text-gray-400"}`}
+                              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer border transition-colors text-xs
+                                ${isActiveSlot && currentVal ? "bg-blue-100 border-blue-400 text-blue-800 ring-1 ring-blue-400" :
+                                  isActiveSlot && !currentVal ? "bg-orange-50 border-orange-300 text-orange-600" :
+                                  currentVal ? "bg-teal-50 border-teal-300 text-teal-800" :
+                                  "bg-white border-gray-200 text-gray-400"}`}
                             >
                               <Checkbox
                                 checked={currentVal}
@@ -1203,7 +1272,8 @@ export default function MenuManagement() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))}
