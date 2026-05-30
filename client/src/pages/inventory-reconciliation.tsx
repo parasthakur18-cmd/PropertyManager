@@ -215,25 +215,51 @@ function RoomRow({ rt, dates, visibleDates }: { rt: RoomType; dates: string[]; v
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
+const RECON_PROP_KEY = "recon.selectedPropertyId";
+
 export default function InventoryReconciliation() {
   const { toast } = useToast();
 
-  const { data: properties = [] } = useQuery<PropertyBasic[]>({ queryKey: ["/api/properties"] });
-  const aiosellProperties = properties.filter(p => (p as any).aiosellEnabled !== false);
+  // Only Aiosell-configured properties — prevents non-Aiosell properties from
+  // appearing in the dropdown and confusing "Blue Mont" vs "Woodpecker Inn" data.
+  const { data: aiosellProperties = [] } = useQuery<PropertyBasic[]>({
+    queryKey: ["/api/aiosell/configured-properties"],
+  });
 
   const today = new Date().toISOString().split("T")[0];
   const plus30 = new Date(); plus30.setDate(plus30.getDate() + 29);
   const plus30Str = plus30.toISOString().split("T")[0];
 
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
+  // Persist selection across page loads so the user's last-chosen property is remembered
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>(
+    () => localStorage.getItem(RECON_PROP_KEY) || ""
+  );
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(plus30Str);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<{ success: boolean; message: string } | null>(null);
   const [dateWindowStart, setDateWindowStart] = useState(0);
-  const WINDOW = 14; // show 14 dates at a time
+  const WINDOW = 14;
 
-  const propId = selectedPropertyId ? parseInt(selectedPropertyId) : properties[0]?.id;
+  // Auto-select first Aiosell property once the list loads (if nothing persisted)
+  const resolvedPropId = selectedPropertyId
+    ? parseInt(selectedPropertyId)
+    : aiosellProperties[0]?.id;
+
+  // If persisted ID is no longer in the configured list, fall back to first
+  const validPropId = aiosellProperties.length > 0 && resolvedPropId &&
+    aiosellProperties.some(p => p.id === resolvedPropId)
+      ? resolvedPropId
+      : aiosellProperties[0]?.id;
+
+  function handlePropertyChange(val: string) {
+    setSelectedPropertyId(val);
+    localStorage.setItem(RECON_PROP_KEY, val);
+    setDateWindowStart(0);
+  }
+
+  const propId = validPropId;
+  const selectedPropName = aiosellProperties.find(p => p.id === propId)?.name;
 
   const { data, isLoading, isFetching, refetch } = useQuery<ReconciliationData>({
     queryKey: ["/api/aiosell/inventory-reconciliation", propId, fromDate, toDate],
@@ -242,13 +268,8 @@ export default function InventoryReconciliation() {
       const r = await apiRequest(`/api/aiosell/inventory-reconciliation?propertyId=${propId}&from=${fromDate}&to=${toDate}`, "GET");
       return r.json();
     },
-    enabled: !!propId,
+    enabled: !!propId && aiosellProperties.length > 0,
   });
-
-  // Set first property when data loads
-  if (!selectedPropertyId && properties.length > 0 && !propId) {
-    setSelectedPropertyId(String(properties[0].id));
-  }
 
   const visibleDates = (data?.dates ?? []).slice(dateWindowStart, dateWindowStart + WINDOW);
 
@@ -293,6 +314,13 @@ export default function InventoryReconciliation() {
           <p className="text-sm text-muted-foreground mt-1">
             Compare Hostezee availability vs Aiosell last push — detect and repair inventory mismatches that affect Booking.com, MMT, and all OTAs
           </p>
+          {selectedPropName && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <Building2 className="w-3.5 h-3.5 text-primary" />
+              <span className="text-sm font-semibold text-primary">{selectedPropName}</span>
+              {data?.hotelCode && <span className="text-xs text-muted-foreground">· Hotel: {data.hotelCode}</span>}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" onClick={() => refetch()} disabled={isFetching} className="gap-2">
@@ -308,9 +336,9 @@ export default function InventoryReconciliation() {
       <div className="flex flex-wrap gap-3 mb-5 items-end">
         <div className="w-60">
           <Label className="text-xs text-muted-foreground mb-1 block">Property</Label>
-          <Select value={selectedPropertyId || String(properties[0]?.id || "")} onValueChange={setSelectedPropertyId}>
+          <Select value={String(propId || "")} onValueChange={handlePropertyChange}>
             <SelectTrigger data-testid="select-property"><SelectValue placeholder="Select property…" /></SelectTrigger>
-            <SelectContent>{properties.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{aiosellProperties.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div>

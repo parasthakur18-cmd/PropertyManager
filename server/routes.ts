@@ -20831,6 +20831,34 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // ── Configured Properties (for reconciliation dropdown) ──────────────────────
+
+  /**
+   * GET /api/aiosell/configured-properties
+   * Returns only properties that have an active Aiosell configuration.
+   * Used to filter the reconciliation dropdown so non-Aiosell properties are excluded.
+   */
+  app.get("/api/aiosell/configured-properties", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const allProps = await storage.getAllProperties();
+      const propIds = (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0)
+        ? tenant.assignedPropertyIds
+        : allProps.map(p => p.id);
+      const configs = await db
+        .select({ propertyId: aiosellConfigurations.propertyId })
+        .from(aiosellConfigurations)
+        .where(and(inArray(aiosellConfigurations.propertyId, propIds), eq(aiosellConfigurations.isActive, true)));
+      const configuredIds = new Set(configs.map(c => c.propertyId));
+      const result = allProps.filter(p => configuredIds.has(p.id)).map(p => ({ id: p.id, name: p.name }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Inventory Reconciliation ─────────────────────────────────────────────────
 
   /**
