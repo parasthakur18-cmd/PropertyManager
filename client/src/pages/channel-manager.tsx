@@ -382,7 +382,7 @@ function VerifyPropertyButton({ propertyId, propertyName }: { propertyId: number
 
   const auditMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/aiosell/audit", { propertyId });
+      const res = await apiRequest("/api/aiosell/audit", "POST", { propertyId });
       return res.json() as Promise<AuditReportType>;
     },
     onSuccess: (data) => {
