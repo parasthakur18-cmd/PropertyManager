@@ -76,18 +76,18 @@ function CellBadge({ day, compact }: { day: DayData; compact?: boolean }) {
     return <span className={`inline-flex items-center justify-center rounded font-mono font-semibold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ${size}`} title="Stop-sell restriction active">🚫 0</span>;
   }
   if (day.neverPushed) {
-    return <span className={`inline-flex items-center justify-center rounded font-mono font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ${size}`} title={`Hostezee: ${day.hostezeeAvailable} — never pushed to Aiosell`}>
+    return <span className={`inline-flex items-center justify-center rounded font-mono font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 ${size}`} title={`Hostezee: ${day.hostezeeAvailable} — this date has never been pushed to Aiosell. Click Sync All to push it.`}>
       ⏳ {day.hostezeeAvailable}
     </span>;
   }
   if (day.mismatch) {
     return <span className={`inline-flex flex-col items-center justify-center rounded font-mono font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 ${size} min-w-[40px]`}
-      title={`Hostezee: ${day.hostezeeAvailable} | Aiosell last pushed: ${day.lastPushedAvailable} — MISMATCH`}>
-      H:{day.hostezeeAvailable}<span className="opacity-70 text-[9px]">A:{day.lastPushedAvailable}</span>
+      title={`Hostezee now calculates ${day.hostezeeAvailable} available, but last push sent ${day.lastPushedAvailable} to Aiosell. A booking may have occurred after the last sync. Click Sync All to push the correct count.`}>
+      H:{day.hostezeeAvailable}<span className="opacity-70 text-[9px]">LP:{day.lastPushedAvailable}</span>
     </span>;
   }
   return <span className={`inline-flex items-center justify-center rounded font-mono font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 ${size}`}
-    title={`Hostezee: ${day.hostezeeAvailable} — Aiosell in sync ✓`}>
+    title={`Hostezee: ${day.hostezeeAvailable} matches last push ✓. If Aiosell Live still shows a different number, OTA bookings may have come in through Aiosell after this push — click Sync All to correct.`}>
     ✓ {day.hostezeeAvailable}
   </span>;
 }
@@ -355,9 +355,13 @@ export default function InventoryReconciliation() {
       )}
 
       {/* OTA Info Banner */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2.5 mb-5 flex items-start gap-2 text-sm text-blue-800 dark:text-blue-300">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2.5 mb-3 flex items-start gap-2 text-sm text-blue-800 dark:text-blue-300">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
-        <span><strong>How OTA inventory works:</strong> Hostezee calculates availability → pushes to Aiosell → Aiosell distributes to Booking.com, MMT, Hostelworld, and all connected OTAs. The matrix below compares Hostezee's current calculation vs what was last pushed to Aiosell. If they differ, click <strong>Sync Now</strong> to push the correct inventory.</span>
+        <span><strong>How OTA inventory works:</strong> Hostezee calculates availability → pushes to Aiosell → Aiosell distributes to Booking.com, MMT, Hostelworld, and all connected OTAs. The matrix compares Hostezee's current calculation vs what was <strong>last pushed</strong> to Aiosell from this system.</span>
+      </div>
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-2.5 mb-5 flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+        <span><strong>Important:</strong> The ✓ (green) cells show the number <em>last pushed from Hostezee</em> — NOT the live Aiosell number. If Aiosell Live shows a different count for a ✓ date, it means OTA bookings arrived through Aiosell after the push, or the push was partially applied. In both cases, click <strong>Sync All Rooms</strong> to resend the correct counts. Each date range is now pushed as a <strong>separate API call</strong> so no range is silently skipped.</span>
       </div>
 
       {/* Loading State */}
@@ -382,7 +386,7 @@ export default function InventoryReconciliation() {
           <div className="flex items-center gap-4 mb-3 flex-wrap text-xs">
             <span className="font-medium text-muted-foreground">Legend:</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-emerald-200" />Synced</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-red-200" />Mismatch (H=Hostezee, A=Aiosell)</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-red-200" />Mismatch (H=Hostezee now, LP=Last Pushed)</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-amber-200" />Never Pushed</span>
             <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded bg-slate-200" />Stop-Sell</span>
           </div>

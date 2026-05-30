@@ -813,7 +813,7 @@ export async function autoSyncInventoryForProperty(
       // Summary snapshot for the first date range
       const firstUpdate = inventoryUpdates[0];
       const availSummary = firstUpdate.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ");
-      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date range(s) for property ${propertyId}. Today's availability: [${availSummary}]`);
+      console.log(`[AIOSELL] Auto-sync: pushing ${inventoryUpdates.length} date range(s) ONE-BY-ONE for property ${propertyId}. Today's availability: [${availSummary}]`);
 
       // Structured [SYNC_DATA] snapshot — gives full picture of what is going to OTAs
       const blockedTotal = allRooms.filter(r => r.status === "maintenance" || r.status === "out-of-order" || r.status === "blocked").length;
@@ -825,7 +825,12 @@ export async function autoSyncInventoryForProperty(
         : "";
       console.log(`[SYNC_DATA] property=${propertyId} total_rooms=${allRooms.length} blocked=${blockedTotal} booked=${Math.max(0, bookedTotal)} available=${availableTotal} mapped_types=${totalMapped} ranges=${inventoryUpdates.length} breakdown=[${availSummary}]${stopSellInfo}`);
 
-      // Per-room push log (production visibility)
+      // ── Push each date range as its own API call ────────────────────────────────
+      // CRITICAL: Sending all ranges in a single batch risks Aiosell silently
+      // dropping ranges beyond an internal limit. Pushing one range at a time
+      // guarantees every date range is individually applied and logged.
+      let successCount = 0;
+      let failCount = 0;
       for (const update of inventoryUpdates) {
         for (const room of update.rooms) {
           console.log("[AIOSELL PUSH] Sending:", {
@@ -836,42 +841,44 @@ export async function autoSyncInventoryForProperty(
             endDate: update.endDate,
           });
         }
+        const result = await pushInventory(config, [update]);
+        if (result.success) { successCount++; } else { failCount++; }
       }
-
-      await pushInventory(config, inventoryUpdates);
-      const sentSummary = inventoryUpdates[0]?.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ") ?? "none";
-      console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} todayAvailability=[${sentSummary}]`);
+      console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} success=${successCount} failed=${failCount} todayAvailability=[${availSummary}]`);
 
       // ── Step 2b: Auto stop-sell — push stopSell=true for 0-inventory dates ──────
       // Pushing available=0 alone is NOT enough to block rooms on OTAs. Aiosell
       // (and most channel managers) require an explicit stopSell restriction to
-      // actually prevent new bookings. We push stopSell=true for every room/date
-      // range where availability is 0, and stopSell=false to re-open ranges that
-      // have become available again. User-set restrictions (Step 3) override these.
-      const autoStopSellUpdates: InventoryRestrictionUpdate[] = inventoryUpdates.map(range => ({
-        startDate: range.startDate,
-        endDate: range.endDate,
-        rooms: range.rooms.map(r => ({
-          roomCode: r.roomCode,
-          restrictions: {
-            stopSell: r.available === 0,
-            minimumStay: null,
-            closeOnArrival: false,
-            closeOnDeparture: false,
-            exactStayArrival: null,
-            maximumStayArrival: null,
-            minimumAdvanceReservation: null,
-            maximumStay: null,
-            maximumAdvanceReservation: null,
-            minimumStayArrival: null,
-          },
-        })),
-      }));
-      await pushInventoryRestrictions(config, autoStopSellUpdates);
-      const stopSellSummary = autoStopSellUpdates[0]?.rooms
-        .map(r => `${r.roomCode}:${r.restrictions.stopSell ? "CLOSED" : "open"}`)
+      // actually prevent new bookings. Push ONE restriction range at a time (same
+      // reason as inventory: prevents silent range-limit drops).
+      let ssSuccess = 0; let ssFail = 0;
+      for (const range of inventoryUpdates) {
+        const stopSellUpdate: InventoryRestrictionUpdate = {
+          startDate: range.startDate,
+          endDate: range.endDate,
+          rooms: range.rooms.map(r => ({
+            roomCode: r.roomCode,
+            restrictions: {
+              stopSell: r.available === 0,
+              minimumStay: null,
+              closeOnArrival: false,
+              closeOnDeparture: false,
+              exactStayArrival: null,
+              maximumStayArrival: null,
+              minimumAdvanceReservation: null,
+              maximumStay: null,
+              maximumAdvanceReservation: null,
+              minimumStayArrival: null,
+            },
+          })),
+        };
+        const ssResult = await pushInventoryRestrictions(config, [stopSellUpdate]);
+        if (ssResult.success) { ssSuccess++; } else { ssFail++; }
+      }
+      const stopSellSummary = inventoryUpdates[0]?.rooms
+        .map(r => `${r.roomCode}:${r.available === 0 ? "CLOSED" : "open"}`)
         .join(", ") ?? "none";
-      console.log(`[AIOSELL] Auto stop-sell pushed for ${autoStopSellUpdates.length} range(s). Today: [${stopSellSummary}]`);
+      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${inventoryUpdates.length} range(s). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────

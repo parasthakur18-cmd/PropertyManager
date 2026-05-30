@@ -20915,7 +20915,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }).from(aiosellSyncLogs).where(and(
         eq(aiosellSyncLogs.configId, config.id),
         eq(aiosellSyncLogs.syncType, "inventory_push"),
-      )).orderBy(desc(aiosellSyncLogs.createdAt)).limit(30);
+      )).orderBy(desc(aiosellSyncLogs.createdAt)).limit(500);
 
       // Build: roomCode → date → { available, pushTime, status }
       const lastPushed: Record<string, Record<string, { available: number; pushTime: string; status: string }>> = {};
