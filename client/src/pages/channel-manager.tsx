@@ -2304,6 +2304,328 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+// ── OTA End-to-End Test ───────────────────────────────────────────────────────
+type OtaStatus = "pass" | "warn" | "fail" | "info";
+
+interface OtaFlowResult {
+  status: OtaStatus;
+  detail: string;
+  [key: string]: unknown;
+}
+
+interface OtaTestResult {
+  testedAt: string;
+  propertyId: number;
+  inventoryFlow: OtaFlowResult & {
+    lastSuccessAt: string | null;
+    pushCount: number;
+    failCount7d: number;
+    hoursSince: number | null;
+  };
+  rateFlow: OtaFlowResult & {
+    ratePlanCount: number;
+    lastRatePushAt: string | null;
+    ratePushCount: number;
+    hoursSince: number | null;
+  };
+  reservationImport: OtaFlowResult & {
+    lastOtaBookingAt: string | null;
+    lastOtaBookingSource: string | null;
+    totalOtaBookings: number;
+    lastReservLogAt: string | null;
+  };
+  webhook: OtaFlowResult & {
+    webhookSecretConfigured: boolean;
+    lastInboundAt: string | null;
+    inboundCount: number;
+    lastEventType: string | null;
+    webhookPath: string;
+  };
+}
+
+function otaStatusColor(s: OtaStatus) {
+  if (s === "pass") return "text-emerald-600 dark:text-emerald-400";
+  if (s === "warn") return "text-amber-600 dark:text-amber-400";
+  if (s === "fail") return "text-red-600 dark:text-red-400";
+  return "text-blue-600 dark:text-blue-400";
+}
+function otaStatusBg(s: OtaStatus) {
+  if (s === "pass") return "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800";
+  if (s === "warn") return "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800";
+  if (s === "fail") return "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800";
+  return "bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800";
+}
+function OtaStatusIcon({ s }: { s: OtaStatus }) {
+  if (s === "pass") return <CheckCircle className="h-5 w-5 text-emerald-500" />;
+  if (s === "warn") return <AlertCircle className="h-5 w-5 text-amber-500" />;
+  if (s === "fail") return <AlertCircle className="h-5 w-5 text-red-500" />;
+  return <Activity className="h-5 w-5 text-blue-500" />;
+}
+function OtaBadge({ s }: { s: OtaStatus }) {
+  const map: Record<OtaStatus, string> = {
+    pass: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
+    warn: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
+    fail: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
+    info: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+  };
+  const label: Record<OtaStatus, string> = { pass: "PASS", warn: "WARN", fail: "FAIL", info: "INFO" };
+  return (
+    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${map[s]}`}>{label[s]}</span>
+  );
+}
+
+function FlowNode({ label, emoji, status }: { label: string; emoji: string; status?: OtaStatus }) {
+  const border = status ? otaStatusBg(status) : "bg-muted border-border";
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 min-w-[90px] text-center ${border}`}>
+      <span className="text-lg">{emoji}</span>
+      <span className="text-xs font-semibold mt-0.5 leading-tight">{label}</span>
+      {status && <OtaBadge s={status} />}
+    </div>
+  );
+}
+
+function FlowArrow({ status, label }: { status?: OtaStatus; label?: string }) {
+  const color = status === "pass" ? "border-emerald-400" : status === "warn" ? "border-amber-400" : status === "fail" ? "border-red-400" : "border-muted-foreground/30";
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 min-w-[32px]">
+      <div className={`w-full border-t-2 border-dashed ${color}`} />
+      {label && <span className="text-[10px] text-muted-foreground mt-0.5 whitespace-nowrap">{label}</span>}
+    </div>
+  );
+}
+
+function OtaTestTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const [result, setResult] = useState<OtaTestResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const runTest = async () => {
+    setIsRunning(true);
+    try {
+      const res = await fetch(`/api/aiosell/ota-test?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      setResult(await res.json());
+    } catch (err: any) {
+      toast({ title: "E2E Test failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const fmtTs = (ts: string | null) =>
+    ts ? format(parseISO(ts), "dd MMM yyyy HH:mm") : "Never";
+
+  const overall: OtaStatus | null = result
+    ? (["fail", "warn", "info", "pass"] as OtaStatus[]).find(s =>
+        [result.inventoryFlow.status, result.rateFlow.status, result.reservationImport.status, result.webhook.status].includes(s),
+      ) ?? "pass"
+    : null;
+
+  return (
+    <div className="space-y-4 py-2">
+      {/* Header card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TestTube2 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            End-to-End OTA Test
+          </CardTitle>
+          <CardDescription>
+            Verifies all 4 communication legs of the OTA distribution chain using historical data. No live API calls — read-only.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Flow diagram */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Outbound Flow (Inventory &amp; Rates)</p>
+            <div className="flex items-center gap-1 overflow-x-auto pb-1">
+              <FlowNode label="Hostezee" emoji="🏨" status={result ? (result.inventoryFlow.status === "pass" && result.rateFlow.status === "pass" ? "pass" : result.inventoryFlow.status === "fail" || result.rateFlow.status === "fail" ? "fail" : "warn") : undefined} />
+              <FlowArrow status={result?.inventoryFlow.status} label="inventory" />
+              <FlowNode label="AioSell" emoji="📡" status={result ? result.inventoryFlow.status : undefined} />
+              <FlowArrow status={result?.rateFlow.status} label="rates" />
+              <FlowNode label="OTAs" emoji="🌐" />
+            </div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mt-2">Inbound Flow (Reservations)</p>
+            <div className="flex items-center gap-1 overflow-x-auto pb-1">
+              <FlowNode label="OTAs" emoji="🌐" />
+              <FlowArrow status={result?.reservationImport.status} label="booking" />
+              <FlowNode label="AioSell" emoji="📡" status={result?.webhook.status} />
+              <FlowArrow status={result?.webhook.status} label="webhook" />
+              <FlowNode label="Hostezee" emoji="🏨" status={result?.webhook.status} />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={runTest}
+              disabled={isRunning}
+              data-testid="button-run-ota-test"
+              className="inline-flex items-center gap-2 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 transition-colors"
+            >
+              {isRunning
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Running test…</>
+                : <><TestTube2 className="h-4 w-4" />Run E2E Test</>}
+            </button>
+            {result && (
+              <span className="text-xs text-muted-foreground">
+                Tested {format(parseISO(result.testedAt), "dd MMM HH:mm")}
+                {overall && <> · Overall: <span className={`font-semibold ${otaStatusColor(overall)}`}>{overall.toUpperCase()}</span></>}
+              </span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Test result cards */}
+      {result && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 1. Inventory Flow */}
+          <Card className={`border ${otaStatusBg(result.inventoryFlow.status)}`}>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <OtaStatusIcon s={result.inventoryFlow.status} />
+                  Inventory Flow
+                </CardTitle>
+                <OtaBadge s={result.inventoryFlow.status} />
+              </div>
+              <CardDescription className="text-xs">Hostezee → AioSell (outbound)</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-1.5 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Last Push</span>
+                <span className="font-medium text-xs">{fmtTs(result.inventoryFlow.lastSuccessAt)}</span>
+              </div>
+              {result.inventoryFlow.hoursSince !== null && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground text-xs">Freshness</span>
+                  <span className="font-medium text-xs">{result.inventoryFlow.hoursSince}h ago</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Push Count</span>
+                <span className="font-medium text-xs">{result.inventoryFlow.pushCount}</span>
+              </div>
+              {result.inventoryFlow.failCount7d > 0 && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground text-xs">Failures (7d)</span>
+                  <span className="font-medium text-xs text-red-600">{result.inventoryFlow.failCount7d}</span>
+                </div>
+              )}
+              <p className={`text-xs mt-1 ${otaStatusColor(result.inventoryFlow.status)}`}>{result.inventoryFlow.detail}</p>
+            </CardContent>
+          </Card>
+
+          {/* 2. Rate Flow */}
+          <Card className={`border ${otaStatusBg(result.rateFlow.status)}`}>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <OtaStatusIcon s={result.rateFlow.status} />
+                  Rate Flow
+                </CardTitle>
+                <OtaBadge s={result.rateFlow.status} />
+              </div>
+              <CardDescription className="text-xs">Hostezee → AioSell → OTAs</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-1.5 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Rate Plans</span>
+                <span className="font-medium text-xs">{result.rateFlow.ratePlanCount}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Last Rate Push</span>
+                <span className="font-medium text-xs">{fmtTs(result.rateFlow.lastRatePushAt)}</span>
+              </div>
+              {result.rateFlow.hoursSince !== null && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground text-xs">Freshness</span>
+                  <span className="font-medium text-xs">{result.rateFlow.hoursSince}h ago</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Push Count</span>
+                <span className="font-medium text-xs">{result.rateFlow.ratePushCount}</span>
+              </div>
+              <p className={`text-xs mt-1 ${otaStatusColor(result.rateFlow.status)}`}>{result.rateFlow.detail}</p>
+            </CardContent>
+          </Card>
+
+          {/* 3. Reservation Import */}
+          <Card className={`border ${otaStatusBg(result.reservationImport.status)}`}>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <OtaStatusIcon s={result.reservationImport.status} />
+                  Reservation Import
+                </CardTitle>
+                <OtaBadge s={result.reservationImport.status} />
+              </div>
+              <CardDescription className="text-xs">OTA → AioSell → Hostezee (inbound)</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-1.5 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Total OTA Bookings</span>
+                <span className="font-medium text-xs">{result.reservationImport.totalOtaBookings}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Last OTA Booking</span>
+                <span className="font-medium text-xs">{fmtTs(result.reservationImport.lastOtaBookingAt)}</span>
+              </div>
+              {result.reservationImport.lastOtaBookingSource && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground text-xs">Booking Source</span>
+                  <span className="font-medium text-xs">{result.reservationImport.lastOtaBookingSource}</span>
+                </div>
+              )}
+              <p className={`text-xs mt-1 ${otaStatusColor(result.reservationImport.status)}`}>{result.reservationImport.detail}</p>
+            </CardContent>
+          </Card>
+
+          {/* 4. Webhook Connection */}
+          <Card className={`border ${otaStatusBg(result.webhook.status)}`}>
+            <CardHeader className="pb-1 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <OtaStatusIcon s={result.webhook.status} />
+                  Webhook Connection
+                </CardTitle>
+                <OtaBadge s={result.webhook.status} />
+              </div>
+              <CardDescription className="text-xs">AioSell → Hostezee (inbound events)</CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-1.5 text-sm">
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Events Received</span>
+                <span className="font-medium text-xs">{result.webhook.inboundCount}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Last Event</span>
+                <span className="font-medium text-xs">{fmtTs(result.webhook.lastInboundAt)}</span>
+              </div>
+              {result.webhook.lastEventType && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-muted-foreground text-xs">Event Type</span>
+                  <span className="font-medium text-xs">{result.webhook.lastEventType}</span>
+                </div>
+              )}
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground text-xs">Webhook Path</span>
+                <span className="font-medium text-xs font-mono">{result.webhook.webhookPath}</span>
+              </div>
+              <p className={`text-xs mt-1 ${otaStatusColor(result.webhook.status)}`}>{result.webhook.detail}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AI Auditor ────────────────────────────────────────────────────────────────
 interface AiAuditResult {
   propertyName: string;
@@ -2895,6 +3217,7 @@ export default function ChannelManager() {
             <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
             <TabsTrigger value="whatsapp-test" data-testid="tab-whatsapp-test" className="flex-shrink-0 text-green-700 dark:text-green-400">WhatsApp Test</TabsTrigger>
             <TabsTrigger value="ai-auditor" data-testid="tab-ai-auditor" className="flex-shrink-0 text-purple-700 dark:text-purple-400 gap-1"><BrainCircuit className="h-3.5 w-3.5" />AI Auditor</TabsTrigger>
+            <TabsTrigger value="ota-test" data-testid="tab-ota-test" className="flex-shrink-0 text-indigo-700 dark:text-indigo-400 gap-1"><TestTube2 className="h-3.5 w-3.5" />OTA Test</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -2905,6 +3228,7 @@ export default function ChannelManager() {
           <TabsContent value="logs"><SyncLogsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
           <TabsContent value="ai-auditor"><AIAuditorTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="ota-test"><OtaTestTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>
       )}

@@ -21145,6 +21145,201 @@ Respond ONLY with valid JSON (no markdown, no extra text):
   });
 
   /**
+   * GET /api/aiosell/ota-test?propertyId=X
+   * End-to-End OTA flow verification.
+   * Queries historical data to evaluate all 4 communication legs:
+   *   1. Inventory Flow  — Hostezee → AioSell  (outbound inventory push)
+   *   2. Rate Flow       — Hostezee → AioSell  (outbound rate push)
+   *   3. Reservation Import — OTA → AioSell → Hostezee (inbound booking)
+   *   4. Webhook         — AioSell → Hostezee  (inbound webhook events)
+   * Read-only — no side effects.
+   */
+  app.get("/api/aiosell/ota-test", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      // ── All queries in parallel ───────────────────────────────────────────
+      const [invLogs, rateLogs, inboundLogs, otaBookingsRaw, configRows, ratePlanRows] =
+        await Promise.all([
+          // Inventory push logs
+          db.select().from(aiosellSyncLogs)
+            .where(and(
+              eq(aiosellSyncLogs.propertyId, propertyId),
+              eq(aiosellSyncLogs.syncType, "inventory_push"),
+            ))
+            .orderBy(desc(aiosellSyncLogs.createdAt))
+            .limit(20),
+
+          // Rate push logs
+          db.select().from(aiosellSyncLogs)
+            .where(and(
+              eq(aiosellSyncLogs.propertyId, propertyId),
+              eq(aiosellSyncLogs.syncType, "rate_push"),
+            ))
+            .orderBy(desc(aiosellSyncLogs.createdAt))
+            .limit(20),
+
+          // Inbound (reservation / webhook) logs
+          db.select().from(aiosellSyncLogs)
+            .where(and(
+              eq(aiosellSyncLogs.propertyId, propertyId),
+              eq(aiosellSyncLogs.direction, "inbound"),
+            ))
+            .orderBy(desc(aiosellSyncLogs.createdAt))
+            .limit(20),
+
+          // OTA bookings (externalSource NOT NULL)
+          db.select({
+            id:               bookings.id,
+            externalSource:   bookings.externalSource,
+            externalBookingId: bookings.externalBookingId,
+            createdAt:        bookings.createdAt,
+          })
+            .from(bookings)
+            .where(and(
+              eq(bookings.propertyId, propertyId),
+              isNotNull(bookings.externalSource),
+            ))
+            .orderBy(desc(bookings.createdAt))
+            .limit(20),
+
+          // AioSell config
+          db.select().from(aiosellConfigurations)
+            .where(eq(aiosellConfigurations.propertyId, propertyId))
+            .limit(1),
+
+          // Rate plan rows
+          db.select({ id: aiosellRatePlans.id })
+            .from(aiosellRatePlans)
+            .where(eq(aiosellRatePlans.propertyId, propertyId)),
+        ]);
+
+      const config       = configRows[0] ?? null;
+      const ratePlanCount = ratePlanRows.length;
+      const now          = Date.now();
+
+      // ── 1. Inventory Flow (Hostezee → AioSell) ──────────────────────────
+      const lastSuccessInv = invLogs.find(l => l.status === "success");
+      const failInv7d      = invLogs.filter(l =>
+        (l.status === "failed" || l.status === "error") &&
+        l.createdAt && l.createdAt.getTime() >= sevenDaysAgo.getTime(),
+      );
+      const invHours = lastSuccessInv?.createdAt
+        ? (now - lastSuccessInv.createdAt.getTime()) / 3_600_000
+        : null;
+      const invStatus: "pass" | "warn" | "fail" =
+        !lastSuccessInv      ? "fail" :
+        invHours! <= 25      ? "pass" :
+        invHours! <= 72      ? "warn" : "fail";
+
+      const inventoryFlow = {
+        status: invStatus,
+        lastSuccessAt: lastSuccessInv?.createdAt?.toISOString() ?? null,
+        pushCount:     invLogs.length,
+        failCount7d:   failInv7d.length,
+        hoursSince:    invHours !== null ? Math.round(invHours * 10) / 10 : null,
+        detail: !lastSuccessInv
+          ? "No successful inventory push found. Run Push Inventory to send availability to AioSell."
+          : invStatus === "pass"
+            ? `Last push ${invHours!.toFixed(1)}h ago. Inventory is fresh on AioSell.`
+            : invStatus === "warn"
+              ? `Last push ${invHours!.toFixed(1)}h ago — getting stale. Consider re-pushing.`
+              : `Push is stale (${invHours!.toFixed(1)}h ago). OTAs may show incorrect availability.`,
+      };
+
+      // ── 2. Rate Flow (Hostezee → AioSell → OTAs) ────────────────────────
+      const lastSuccessRate = rateLogs.find(l => l.status === "success");
+      const rateHours = lastSuccessRate?.createdAt
+        ? (now - lastSuccessRate.createdAt.getTime()) / 3_600_000
+        : null;
+      const rateStatus: "pass" | "warn" | "fail" =
+        ratePlanCount === 0   ? "fail" :
+        !lastSuccessRate      ? "warn" : "pass";
+
+      const rateFlow = {
+        status: rateStatus,
+        ratePlanCount,
+        lastRatePushAt: lastSuccessRate?.createdAt?.toISOString() ?? null,
+        ratePushCount:  rateLogs.length,
+        hoursSince:     rateHours !== null ? Math.round(rateHours * 10) / 10 : null,
+        detail: ratePlanCount === 0
+          ? "No rate plans configured. Add rate plans in the Rate Plans tab, then push rates."
+          : !lastSuccessRate
+            ? `${ratePlanCount} rate plan(s) configured but rates have never been pushed. Use Push Rates tab.`
+            : `${ratePlanCount} rate plan(s) configured. Last rate push ${rateHours!.toFixed(1)}h ago.`,
+      };
+
+      // ── 3. Reservation Import (OTA → AioSell → Hostezee) ────────────────
+      const lastOtaBooking  = otaBookingsRaw[0] ?? null;
+      const lastReservLog   = inboundLogs.find(l => l.syncType.startsWith("reservation_"));
+      const otaSource       = lastOtaBooking?.externalSource
+        ?? ((lastReservLog?.requestPayload as any)?.channel ?? null);
+      const reservStatus: "pass" | "warn" | "info" =
+        otaBookingsRaw.length > 0 ? "pass" :
+        !!lastReservLog           ? "warn" : "info";
+
+      const reservationImport = {
+        status: reservStatus,
+        lastOtaBookingAt:     lastOtaBooking?.createdAt?.toISOString() ?? null,
+        lastOtaBookingSource: otaSource,
+        totalOtaBookings:     otaBookingsRaw.length,
+        lastReservLogAt:      lastReservLog?.createdAt?.toISOString() ?? null,
+        detail: otaBookingsRaw.length > 0
+          ? `${otaBookingsRaw.length} OTA booking(s) received. Last source: ${otaSource || "OTA"}. Import is working.`
+          : lastReservLog
+            ? "Webhook payload received but no booking was created. Check reservation logs for errors."
+            : "No OTA bookings received yet. Ensure the AioSell webhook URL points to this server.",
+      };
+
+      // ── 4. Webhook Connection (AioSell → Hostezee) ──────────────────────
+      const webhookSecretConfigured = !!config?.webhookSecret;
+      const lastInbound = inboundLogs[0] ?? null;
+      const webhookStatus: "pass" | "warn" | "fail" =
+        !!lastInbound              ? "pass" :
+        webhookSecretConfigured    ? "warn" : "fail";
+
+      const webhook = {
+        status: webhookStatus,
+        webhookSecretConfigured,
+        lastInboundAt: lastInbound?.createdAt?.toISOString() ?? null,
+        inboundCount:  inboundLogs.length,
+        lastEventType: lastInbound?.syncType ?? null,
+        webhookPath:   "/api/aiosell/reservation",
+        detail: lastInbound
+          ? `Webhook active. ${inboundLogs.length} event(s) received. Last: ${lastInbound.syncType}.`
+          : webhookSecretConfigured
+            ? "Webhook secret is set but no events received yet. Verify the webhook URL is saved in AioSell."
+            : "No inbound events. Configure the webhook URL in AioSell: [host]/api/aiosell/reservation",
+      };
+
+      console.log(`[OTA-TEST] prop=${propertyId} inv=${invStatus} rate=${rateStatus} reserv=${reservStatus} webhook=${webhookStatus}`);
+
+      res.json({
+        testedAt: new Date().toISOString(),
+        propertyId,
+        inventoryFlow,
+        rateFlow,
+        reservationImport,
+        webhook,
+      });
+    } catch (err: any) {
+      console.error("[OTA-TEST]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
    * GET /api/aiosell/diagnostic-package?propertyId=X
    * Returns a comprehensive JSON package for support/debugging:
    * full audit report + last 50 sync logs + room mappings + rate plans + config.
