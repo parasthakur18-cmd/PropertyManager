@@ -1062,7 +1062,15 @@ export default function CalendarView() {
                                 : baseStatusStyle;
                               const isPaid = booking.status === "checked-out" || booking.status === "confirmed";
                               const handleClick = () => {
-                                const popupDate = checkInDate <= today ? today : checkInDate;
+                                // Dorm rooms: use the booking's check-in date so bed layout shows
+                                // the correct occupancy for that future date.
+                                // Non-dorm rooms: always use today so status labels (Arriving Today,
+                                // In House, Upcoming) are relative to the actual current date, not
+                                // the booking's check-in date (which caused future bookings to show
+                                // as "Arriving Today" incorrectly).
+                                const popupDate = room.roomCategory === "dormitory"
+                                  ? (checkInDate <= today ? today : checkInDate)
+                                  : today;
                                 setDormitoryPopup({ isOpen: true, room, bookings: allBookings, date: popupDate });
                               };
                               return (
