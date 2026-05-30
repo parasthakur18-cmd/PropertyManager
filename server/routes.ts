@@ -4932,9 +4932,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
           if (isDormitory && room) {
             const totalBeds = room.totalBeds || 1;
             const bedsAlreadyOccupied = otherCheckedInBookings.reduce(
-              (sum, b) => sum + (b.bedsBooked || 1), 0
+              (sum, b) => sum + (b.bedsBooked || b.numberOfGuests || 1), 0
             );
-            const bedsNeeded = currentBooking.bedsBooked || 1;
+            const bedsNeeded = currentBooking.bedsBooked || currentBooking.numberOfGuests || 1;
             const bedsAvailable = totalBeds - bedsAlreadyOccupied;
 
             if (bedsAvailable < bedsNeeded) {
@@ -5844,7 +5844,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             ? parseFloat(booking.customPrice)
             : (room ? parseFloat(room.pricePerNight) : 0);
           const bedsMultiplier = (!booking.customPrice && room?.roomCategory === "dormitory")
-            ? (booking.bedsBooked || 1)
+            ? (booking.bedsBooked || booking.numberOfGuests || 1)
             : 1;
           roomCharges = pricePerNight * nights * bedsMultiplier;
         }
@@ -10909,7 +10909,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             
             if (dateBlocks[dateKey]) {
               if (room.roomCategory === "dormitory") {
-                const bedsBooked = booking.bedsBooked || 1;
+                const bedsBooked = booking.bedsBooked || booking.numberOfGuests || 1;
                 const currentAvailable = dateBlocks[dateKey].bedsAvailable || 0;
                 const newAvailable = Math.max(0, currentAvailable - bedsBooked);
                 dateBlocks[dateKey] = {
@@ -20743,7 +20743,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
                   if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
                 }
               } else {
-                const beds = b.bedsBooked || 1;
+                const beds = b.bedsBooked || b.numberOfGuests || 1;
                 if (b.roomId && activeRoomIds.includes(b.roomId)) bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds;
                 if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
               }
@@ -20764,7 +20764,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
                 for (const stay of tbsForBooking) if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++;
               } else {
                 const confirmedIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
-                if (confirmedIds.length === 0) tbsDormBeds += (b.bedsBooked || 1);
+                if (confirmedIds.length === 0) tbsDormBeds += (b.bedsBooked || b.numberOfGuests || 1);
               }
             }
 
@@ -21210,7 +21210,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
                   gt(bookings.checkOutDate, checkInDate),
                 )
               );
-              const bedsUsed = existingDormBookings.reduce((s, b) => s + (b.bedsBooked || 1), 0);
+              const bedsUsed = existingDormBookings.reduce((s, b) => s + (b.bedsBooked || b.numberOfGuests || 1), 0);
               if (bedsUsed < totalBeds) {
                 assignedRoomId = dormRoom.id;
                 stayStatus = "confirmed";

@@ -1,0 +1,161 @@
+FINAL PRE-PRODUCTION VERIFICATION
+
+The dorm bed allocation bug appears fixed. Before deployment, verify the following live business scenarios end-to-end.
+
+1. Inventory Sync Validation
+
+Create:
+
+* Dorm capacity = 4 beds
+* Booking A = 3 guests
+* Booking B = 1 guest
+
+Expected:
+
+* Calendar shows 4 occupied beds
+* Availability shows 0 free
+* Channel inventory pushed = 0
+
+Then cancel Booking B.
+
+Expected:
+
+* Calendar shows 3 occupied beds
+* Availability shows 1 free
+* OTA inventory pushed = 1
+
+2. Multi-Day Dorm Booking
+
+Create:
+
+Booking = 3 guests
+Dates = 1 Jun – 5 Jun
+
+Expected:
+
+Every night should consume 3 beds:
+
+1 Jun
+2 Jun
+3 Jun
+4 Jun
+
+No date should revert to 1 occupied bed.
+
+3. Split Inventory Test
+
+Dorm capacity = 6 beds
+
+Booking A = 2 guests
+Booking B = 3 guests
+
+Expected:
+
+5 occupied
+1 available
+
+Verify:
+
+* Calendar
+* Availability API
+* OTA inventory push
+
+All must show the same value.
+
+4. Group Booking Test
+
+Create:
+
+Guest Count = 8
+Dorm Capacity = 4
+
+Expected:
+
+System must either:
+
+A. Allocate across multiple dorm rooms
+
+OR
+
+B. Block booking and show validation error
+
+Verify no partial allocation occurs.
+
+5. Check-In / Check-Out Flow
+
+Create:
+
+4 guest dorm booking
+
+Check In
+
+Expected:
+4 beds remain occupied
+
+Check Out
+
+Expected:
+All 4 beds released
+
+Inventory immediately restored.
+
+6. Historical Booking Validation
+
+Verify startup migration fixed all existing records where:
+
+beds_booked IS NULL
+AND number_of_guests > 1
+
+Run validation query:
+
+Count bookings where:
+
+beds_booked < number_of_guests
+
+Expected result:
+
+0 records
+
+7. OTA Inventory Consistency
+
+For every OTA reservation:
+
+Booking.com
+Hostelworld
+Goibibo
+MakeMyTrip
+Airbnb
+Aiosell imports
+
+Verify:
+
+Occupied Beds = Guest Count
+
+No OTA booking should ever reduce inventory by only 1 bed when guest count is greater than 1.
+
+FINAL SUCCESS CONDITION
+
+The following must always be true:
+
+Allocated Beds = Beds Booked = Guest Count
+
+for:
+
+* Direct bookings
+* Walk-ins
+* OTA bookings
+* Imported reservations
+* Group bookings
+* Booking modifications
+* Room moves
+* Check-in
+* Check-out
+* Calendar rendering
+* Availability calculations
+* Inventory sync
+
+Return any remaining scenarios where:
+
+Allocated Beds ≠ Guest Count
+
+If none exist, system is approved for production deployment.

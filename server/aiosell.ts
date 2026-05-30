@@ -592,7 +592,7 @@ export async function autoSyncInventoryForProperty(
                 }
               } else {
                 // Manual / legacy single-bed booking: use bedsBooked from booking row
-                const beds = booking.bedsBooked || 1;
+                const beds = booking.bedsBooked || booking.numberOfGuests || 1;
                 const bRoomId = booking.roomId;
                 if (bRoomId && activeRoomIds.includes(bRoomId)) {
                   bedsBookedByRoom[bRoomId] = (bedsBookedByRoom[bRoomId] || 0) + beds;
@@ -642,7 +642,7 @@ export async function autoSyncInventoryForProperty(
                   // booking's roomType matches the current mapping
                   // (We can't be sure which dorm it was intended for, so we credit
                   //  it to all matching dorm mappings — conservative but safe.)
-                  tbsDormBeds += (booking.bedsBooked || 1);
+                  tbsDormBeds += (booking.bedsBooked || booking.numberOfGuests || 1);
                 }
               }
             }

@@ -884,6 +884,33 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Covers the remaining gap: dorm bookings with beds_booked IS NULL and
+    // number_of_guests = 1 (single-guest dorm entries that were never set).
+    // The earlier migration only fixed number_of_guests > 1. This one uses
+    // GREATEST(1, number_of_guests) so it is safe for all guest counts.
+    name: "backfill_dorm_bookings_null_beds_any_guest_count",
+    async run() {
+      if (!(await tableExists("bookings")) || !(await tableExists("rooms"))) return;
+      const client = await pool.connect();
+      try {
+        const result = await client.query(`
+          UPDATE bookings b
+          SET beds_booked = GREATEST(1, COALESCE(b.number_of_guests, 1)), updated_at = NOW()
+          FROM rooms r
+          WHERE r.id = b.room_id
+            AND r.room_category = 'dormitory'
+            AND b.beds_booked IS NULL
+            AND b.status NOT IN ('cancelled', 'checked-out', 'no_show')
+        `);
+        if (result.rowCount && result.rowCount > 0) {
+          console.log(`[MIGRATIONS] backfill_dorm_bookings_null_beds_any_guest_count: fixed ${result.rowCount} dorm booking(s)`);
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
+  {
     // Test Order Mode — adds is_test flag to orders so test orders can be
     // excluded from all financial reports/wallets. Idempotent.
     name: "add_orders_is_test_flag",
