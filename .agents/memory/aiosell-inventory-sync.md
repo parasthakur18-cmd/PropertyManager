@@ -1,6 +1,6 @@
 ---
 name: Aiosell inventory sync behavior
-description: How Aiosell's inventory system works and why Live page shows different numbers than what Hostezee pushes
+description: Key quirks, rate limits, debounce, and fixes for the Aiosell channel manager integration
 ---
 
 ## Key Finding: Aiosell "Update Rooms" Page Shows NET Count
@@ -19,6 +19,10 @@ number, but Aiosell displays differently.
 - Does NOT fetch live Aiosell data (no documented GET inventory endpoint)
 - Two probe URLs tried: `/api/v2/cm/get-inventory/:pms` and `/api/v2/cm/read/:pms`
   (both returned nothing usable as of May 2026)
+
+## No GET/Pull Reservations API
+- Aiosell has no pull/GET reservations endpoint (all variations return 404).
+- Reservations only arrive via webhook POST to `/api/aiosell/reservation`.
 
 ## Batch Push Risk (Fixed)
 - Before fix: all 90-day date ranges sent in ONE API call → silent truncation
@@ -45,9 +49,29 @@ makeAiosellRequest() in server/aiosell.ts now:
 2. If INVALID_ROOM_CODE present → logs status="warning", not "success"
 3. Reconciliation page shows WARNING in amber color
 
-## Rate Limiting
-30+ back-to-back calls to Aiosell returns HTML (not JSON). Fixed: 300ms delay between range pushes in the for-loop.
+## Rate Limiting — Safe Parameters (Updated May 2026)
+- Aiosell enforces ~1 req/s rate limit; returns nginx 429 (HTML, not JSON) if exceeded.
+- **Safe inter-call delay: 1200ms** between individual range pushes (was 300ms → too fast).
+- **Retry backoff on 429: 3s → 6s → 10s** (3 attempts). Rate-limit window is ~10s so
+  short backoffs (1s/2s) don't clear it in time.
 
-## Live Server Fix SQL
-UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
-WHERE aiosell_room_code = 'deluxe-room-with-balcony';
+## Debounce for Booking Webhooks (Added May 2026)
+- Problem: burst of OTA webhooks (6 rapid bookings) each triggered a full 90-day sync
+  → parallel calls → 429 flood.
+- Fix: `scheduleSyncForProperty(propertyId, opts)` in `server/aiosell.ts`.
+  10-second debounce window. Multiple calls for same property within 10s collapse to ONE sync.
+- **Always use `scheduleSyncForProperty` for booking-event-triggered syncs.**
+  Use `autoSyncInventoryForProperty` directly ONLY for manual/admin-initiated syncs.
+- All 4 webhook callers in routes.ts use `scheduleSyncForProperty`.
+
+## Stop-Sell Optimization (Added May 2026)
+- Only push `stopSell` restrictions for date ranges where at least one room has `available === 0`.
+  All-open ranges are skipped → cuts API calls roughly in half for typical occupancy.
+- Auto stop-sell IS still needed: `available=0` alone doesn't block OTA rooms (Aiosell requires
+  explicit stopSell restriction to prevent new bookings).
+
+## Live Server Room Code Fix (Still Needed on Production)
+SQL to run on hostezee.in DB:
+  UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
+  WHERE aiosell_room_code = 'deluxe-room-with-balcony';
+Then run Sync All Rooms from Inventory Reconciliation page.

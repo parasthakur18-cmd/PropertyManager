@@ -13,6 +13,16 @@ import {
 import { eq, and, desc, inArray, lte, gte, isNull, isNotNull } from "drizzle-orm";
 import { rooms, bookings, bookingRoomStays } from "@shared/schema";
 
+// ── Per-property sync debounce ─────────────────────────────────────────────────
+// When multiple booking events arrive close together (e.g. burst of OTA webhooks),
+// we collapse them into ONE sync per property instead of hammering Aiosell with
+// N concurrent 90-day pushes that all trigger 429 rate limits.
+// How it works: the first event schedules a sync 10s in the future and stores the
+// timer handle. Subsequent events within that window just update the metadata
+// (latestBookingId) but don't schedule another sync. After 10s the single sync runs.
+const _syncDebounceTimers = new Map<number, ReturnType<typeof setTimeout>>();
+const _syncDebounceMeta  = new Map<number, { triggerBookingId?: number; webhookTs?: string }>();
+
 interface AiosellApiResponse {
   success: boolean;
   message?: string;
@@ -97,20 +107,33 @@ async function makeAiosellRequest(
       ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
       : undefined;
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(authHeader ? { Authorization: authHeader } : {}),
-      },
-      body: JSON.stringify(payload),
-    });
+    // Retry up to 3 times on 429 with exponential backoff (1s, 2s, 4s)
+    let rawText = "";
+    let attempts = 0;
+    const MAX_ATTEMPTS = 3;
+    let response!: Response;
+    while (attempts < MAX_ATTEMPTS) {
+      attempts++;
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(authHeader ? { Authorization: authHeader } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      rawText = await response.text();
+      httpStatus = response.status;
+      if (response.status !== 429) break;
+      // Aiosell rate-limit window appears to be ~10s. Use aggressive backoff.
+      const waitMs = [3000, 6000, 10000][attempts - 1] ?? 10000; // 3s, 6s, 10s
+      console.warn(`[AIOSELL] ${syncType} — HTTP 429 rate limited (attempt ${attempts}/${MAX_ATTEMPTS}), waiting ${waitMs}ms before retry…`);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
 
-    httpStatus = response.status;
     let responseData: any;
 
     // Safely parse response — AioSell may return HTML on 500 errors
-    const rawText = await response.text();
     try {
       responseData = JSON.parse(rawText);
     } catch {
@@ -854,7 +877,7 @@ export async function autoSyncInventoryForProperty(
             endDate: update.endDate,
           });
         }
-        if (ri > 0) await sleep(300); // rate-limit guard
+        if (ri > 0) await sleep(1200); // rate-limit guard (1200ms — Aiosell rate-limits aggressively)
         const result = await pushInventory(config, [update]);
         if (result.success) { successCount++; } else { failCount++; }
       }
@@ -865,10 +888,12 @@ export async function autoSyncInventoryForProperty(
       // (and most channel managers) require an explicit stopSell restriction to
       // actually prevent new bookings. Push ONE restriction range at a time (same
       // reason as inventory: prevents silent range-limit drops).
+      // Skip ranges where ALL rooms are open (available > 0) — no point sending stopSell=false for every range.
+      const stopSellRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
       let ssSuccess = 0; let ssFail = 0;
-      for (let ri = 0; ri < inventoryUpdates.length; ri++) {
-        const range = inventoryUpdates[ri];
-        if (ri > 0) await sleep(300); // rate-limit guard
+      for (let ri = 0; ri < stopSellRanges.length; ri++) {
+        const range = stopSellRanges[ri];
+        if (ri > 0) await sleep(1200); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {
           startDate: range.startDate,
           endDate: range.endDate,
@@ -894,7 +919,7 @@ export async function autoSyncInventoryForProperty(
       const stopSellSummary = inventoryUpdates[0]?.rooms
         .map(r => `${r.roomCode}:${r.available === 0 ? "CLOSED" : "open"}`)
         .join(", ") ?? "none";
-      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${inventoryUpdates.length} range(s). Today: [${stopSellSummary}]`);
+      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${stopSellRanges.length} range(s) (${inventoryUpdates.length - stopSellRanges.length} all-open skipped). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────
@@ -935,4 +960,35 @@ export async function autoSyncInventoryForProperty(
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);
   }
+}
+
+// ── Debounced entry-point for booking-event-triggered syncs ───────────────────
+// Call this instead of autoSyncInventoryForProperty directly from booking events.
+// Multiple calls for the same property within 10s are collapsed into ONE sync,
+// preventing burst-of-webhooks from firing parallel 90-day pushes that hit 429.
+export function scheduleSyncForProperty(
+  propertyId: number,
+  opts?: { triggerBookingId?: number; webhookTs?: string },
+): void {
+  // Update metadata so the eventual sync carries the latest booking context
+  _syncDebounceMeta.set(propertyId, {
+    triggerBookingId: opts?.triggerBookingId,
+    webhookTs: opts?.webhookTs,
+  });
+
+  // If a timer is already pending for this property, do nothing — let it fire
+  if (_syncDebounceTimers.has(propertyId)) {
+    console.log(`[AIOSELL] scheduleSyncForProperty: debounce active for property ${propertyId}, skipping duplicate (bookingId=${opts?.triggerBookingId})`);
+    return;
+  }
+
+  console.log(`[AIOSELL] scheduleSyncForProperty: scheduling sync for property ${propertyId} in 10s (bookingId=${opts?.triggerBookingId})`);
+  const timer = setTimeout(async () => {
+    _syncDebounceTimers.delete(propertyId);
+    const meta = _syncDebounceMeta.get(propertyId);
+    _syncDebounceMeta.delete(propertyId);
+    await autoSyncInventoryForProperty(propertyId, meta);
+  }, 10_000); // 10 second debounce window
+
+  _syncDebounceTimers.set(propertyId, timer);
 }

@@ -74,7 +74,7 @@ import {
 import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
-import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
+import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
 import { 
@@ -21977,7 +21977,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         } else {
           console.warn(`[AIOSELL-WEBHOOK] Cancel: no booking found for bookingId=${bookingId} cmBookingId=${cmBookingId}`);
         }
-        await autoSyncInventoryForProperty(config.propertyId);
+        scheduleSyncForProperty(config.propertyId);
         return res.json({ success: true, message: "Reservation Cancelled Successfully" });
       }
 
@@ -22429,7 +22429,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             (isCheckedIn ? " [room preserved — checked-in]" : "")
           );
 
-          await autoSyncInventoryForProperty(config.propertyId);
+          scheduleSyncForProperty(config.propertyId);
 
           // In-app notification for modification
           try {
@@ -22572,8 +22572,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
 
         // Sync inventory AFTER transaction is fully committed.
         // Pass webhook metadata for dorm audit logging.
-        console.log(`[AIOSELL-WEBHOOK] Starting inventory sync for property ${config.propertyId} after booking ${newBooking.id} (webhookTs=${webhookTs})`);
-        await autoSyncInventoryForProperty(config.propertyId, { triggerBookingId: newBooking.id, webhookTs });
+        console.log(`[AIOSELL-WEBHOOK] Scheduling debounced inventory sync for property ${config.propertyId} after booking ${newBooking.id} (webhookTs=${webhookTs})`);
+        scheduleSyncForProperty(config.propertyId, { triggerBookingId: newBooking.id, webhookTs });
 
         const notifGuestName = `${guestData?.firstName || ""} ${guestData?.lastName || ""}`.trim() || "OTA Guest";
         const property = await storage.getProperty(config.propertyId);
@@ -22893,7 +22893,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
 
       storage.invalidateBookingsCache();
-      await autoSyncInventoryForProperty(config.propertyId);
+      scheduleSyncForProperty(config.propertyId);
 
       console.log(`[AIOSELL] pull-reservations: ${imported} imported, ${skipped} skipped, ${errors.length} errors`);
       res.json({
