@@ -124,27 +124,36 @@ async function makeAiosellRequest(
       return { success: false, message: `AioSell returned HTTP ${httpStatus} with a non-JSON response. Check AioSell credentials or contact AioSell support.` };
     }
 
-    const isSuccess = responseData.success === true && response.ok;
-    logEntry.status = isSuccess ? "success" : "failed";
+    const warnings: string[] = Array.isArray(responseData.warnings) ? responseData.warnings : [];
+    const hasInvalidRoomCode = warnings.some((w: string) => w.includes("INVALID_ROOM_CODE"));
+    // Treat as failure if Aiosell returned warnings about invalid room codes — the room was silently skipped
+    const isSuccess = responseData.success === true && response.ok && !hasInvalidRoomCode;
+    logEntry.status = isSuccess ? "success" : (warnings.length > 0 ? "warning" : "failed");
     logEntry.responsePayload = { httpStatus, ...responseData };
     if (!isSuccess) {
-      logEntry.errorMessage = `HTTP ${httpStatus} — ${responseData.message || "Unknown error"}`;
+      logEntry.errorMessage = warnings.length > 0
+        ? `Aiosell warnings: ${warnings.join("; ")}`
+        : `HTTP ${httpStatus} — ${responseData.message || "Unknown error"}`;
     }
 
     await db.insert(aiosellSyncLogs).values(logEntry);
 
-    if (isSuccess) {
+    if (responseData.success === true && response.ok) {
       await db
         .update(aiosellConfigurations)
         .set({ lastSyncAt: new Date(), updatedAt: new Date() })
         .where(eq(aiosellConfigurations.id, config.id));
     }
 
-    console.log(`[AIOSELL] ${syncType} HTTP ${httpStatus} result: ${isSuccess ? "SUCCESS" : "FAILED"} - ${responseData.message || ""}`);
-    if (!isSuccess) {
+    if (warnings.length > 0) {
+      console.warn(`[AIOSELL] ${syncType} HTTP ${httpStatus} — SUCCESS WITH WARNINGS: ${warnings.join("; ")}`);
+    } else {
+      console.log(`[AIOSELL] ${syncType} HTTP ${httpStatus} result: ${isSuccess ? "SUCCESS" : "FAILED"} - ${responseData.message || ""}`);
+    }
+    if (!isSuccess && warnings.length === 0) {
       console.error(`[AIOSELL PUSH] Rejected by AioSell — HTTP ${httpStatus} — full response:`, JSON.stringify(responseData));
     }
-    return { success: isSuccess, message: responseData.message };
+    return { success: isSuccess, message: warnings.length > 0 ? `Warnings: ${warnings.join("; ")}` : responseData.message };
   } catch (error: any) {
     logEntry.status = "error";
     logEntry.errorMessage = `Network error: ${error.message}`;
@@ -829,9 +838,13 @@ export async function autoSyncInventoryForProperty(
       // CRITICAL: Sending all ranges in a single batch risks Aiosell silently
       // dropping ranges beyond an internal limit. Pushing one range at a time
       // guarantees every date range is individually applied and logged.
+      // Add a 300ms delay between calls to avoid Aiosell rate-limiting (which
+      // returns HTML instead of JSON and causes the push to fail silently).
+      const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
       let successCount = 0;
       let failCount = 0;
-      for (const update of inventoryUpdates) {
+      for (let ri = 0; ri < inventoryUpdates.length; ri++) {
+        const update = inventoryUpdates[ri];
         for (const room of update.rooms) {
           console.log("[AIOSELL PUSH] Sending:", {
             roomId: room.roomId ?? null,
@@ -841,6 +854,7 @@ export async function autoSyncInventoryForProperty(
             endDate: update.endDate,
           });
         }
+        if (ri > 0) await sleep(300); // rate-limit guard
         const result = await pushInventory(config, [update]);
         if (result.success) { successCount++; } else { failCount++; }
       }
@@ -852,7 +866,9 @@ export async function autoSyncInventoryForProperty(
       // actually prevent new bookings. Push ONE restriction range at a time (same
       // reason as inventory: prevents silent range-limit drops).
       let ssSuccess = 0; let ssFail = 0;
-      for (const range of inventoryUpdates) {
+      for (let ri = 0; ri < inventoryUpdates.length; ri++) {
+        const range = inventoryUpdates[ri];
+        if (ri > 0) await sleep(300); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {
           startDate: range.startDate,
           endDate: range.endDate,

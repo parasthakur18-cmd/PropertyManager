@@ -320,11 +320,29 @@ export default function InventoryReconciliation() {
 
       {/* Last sync status bar */}
       {ls && (
-        <div className={`flex items-center gap-3 rounded-lg px-4 py-2.5 mb-5 text-sm flex-wrap ${ls.hasFailedRecently ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800" : ls.status === "success" ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800" : "bg-muted border"}`}>
-          {ls.status === "success" && !ls.hasFailedRecently ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : ls.hasFailedRecently ? <XCircle className="w-4 h-4 text-red-600 shrink-0" /> : <Activity className="w-4 h-4 text-muted-foreground shrink-0" />}
+        <div className={`flex items-center gap-3 rounded-lg px-4 py-2.5 mb-5 text-sm flex-wrap ${
+          ls.hasFailedRecently || ls.status === "failed" || ls.status === "error"
+            ? "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800"
+            : ls.status === "warning"
+              ? "bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+              : ls.status === "success"
+                ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800"
+                : "bg-muted border"
+        }`}>
+          {ls.status === "success" && !ls.hasFailedRecently
+            ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            : ls.hasFailedRecently || ls.status === "failed" || ls.status === "error"
+              ? <XCircle className="w-4 h-4 text-red-600 shrink-0" />
+              : ls.status === "warning"
+                ? <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                : <Activity className="w-4 h-4 text-muted-foreground shrink-0" />}
           <span className="flex-1">
-            {ls.time ? <>Last sync: <strong>{fmt(ls.time)}</strong> — <span className={ls.hasFailedRecently ? "text-red-600 font-semibold" : "text-emerald-600 font-semibold"}>{ls.status?.toUpperCase()}</span></> : "No inventory push found for this property yet."}
-            {ls.errorMessage && <span className="text-red-600"> · {ls.errorMessage}</span>}
+            {ls.time ? <>Last sync: <strong>{fmt(ls.time)}</strong> — <span className={
+              ls.hasFailedRecently || ls.status === "failed" ? "text-red-600 font-semibold"
+              : ls.status === "warning" ? "text-amber-600 font-semibold"
+              : "text-emerald-600 font-semibold"
+            }>{ls.status?.toUpperCase()}</span></> : "No inventory push found for this property yet."}
+            {ls.errorMessage && <span className={ls.status === "warning" ? "text-amber-700" : "text-red-600"}> · {ls.errorMessage}</span>}
           </span>
           {lastSyncResult && (
             <span className={`font-medium ${lastSyncResult.success ? "text-emerald-700" : "text-red-700"}`}>{lastSyncResult.message}</span>

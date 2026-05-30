@@ -32,3 +32,22 @@ UI at /inventory-debug.
 **How to apply:** When investigating inventory mismatches, always check the debug
 endpoint first to see which bookings are contributing to the Hostezee count before
 assuming a sync bug.
+
+## Wrong Room Code (Found May 2026)
+- `deluxe-room-with-balcony` is INVALID on Blue Mont Aiosell account
+- Correct code: `deluxe-double-room-with-balcony`
+- Aiosell returns `success:true` + `warnings:["INVALID_ROOM_CODE : ..."]` for bad codes
+- Our code was not checking `warnings[]` so bad pushes logged as SUCCESS silently
+
+## Warning Detection Fix
+makeAiosellRequest() in server/aiosell.ts now:
+1. Reads `responseData.warnings[]`
+2. If INVALID_ROOM_CODE present → logs status="warning", not "success"
+3. Reconciliation page shows WARNING in amber color
+
+## Rate Limiting
+30+ back-to-back calls to Aiosell returns HTML (not JSON). Fixed: 300ms delay between range pushes in the for-loop.
+
+## Live Server Fix SQL
+UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
+WHERE aiosell_room_code = 'deluxe-room-with-balcony';
