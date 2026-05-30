@@ -1975,6 +1975,19 @@ export const aiosellInventoryRestrictions = pgTable("aiosell_inventory_restricti
 
 export type AiosellInventoryRestriction = typeof aiosellInventoryRestrictions.$inferSelect;
 
+// AioSell Audit Reports — stored results of Verify Property runs
+export const aiosellAuditReports = pgTable("aiosell_audit_reports", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  configId: integer("config_id"),
+  hotelCode: varchar("hotel_code", { length: 100 }),
+  healthScore: integer("health_score").notNull(),
+  overallStatus: varchar("overall_status", { length: 20 }).notNull(),
+  reportData: jsonb("report_data").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type AiosellAuditReport = typeof aiosellAuditReports.$inferSelect;
+
 // Daily Report Settings — global config for 11 PM WhatsApp summary
 export const dailyReportSettings = pgTable("daily_report_settings", {
   id: serial("id").primaryKey(),

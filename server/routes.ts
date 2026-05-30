@@ -71,11 +71,11 @@ import {
   sendBookingConfirmedNotification,
   checkTemplateSetting
 } from "./whatsapp";
-import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
+import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, aiosellAuditReports, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
-import { verifyProperties, verifyProperty } from "./aiosell-verifier";
+import { verifyProperties, verifyProperty, auditProperty, storeAuditReport } from "./aiosell-verifier";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
 import { 
@@ -20900,6 +20900,68 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       }
       const result = await verifyProperty(propertyId);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Property Audit ───────────────────────────────────────────────────────────
+
+  /**
+   * POST /api/aiosell/audit
+   * Runs a full 6-section health audit for the given property, stores the
+   * result, and returns it. Takes ~10–15s due to live AioSell test-connection.
+   */
+  app.post("/api/aiosell/audit", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.body.propertyId);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const report = await auditProperty(propertyId, { runLiveTest: true });
+      // Get configId for storage
+      const configRows = await db.select({ id: aiosellConfigurations.id })
+        .from(aiosellConfigurations)
+        .where(eq(aiosellConfigurations.propertyId, propertyId))
+        .limit(1);
+      const configId = configRows[0]?.id ?? null;
+      const id = await storeAuditReport(report, configId);
+      res.json({ ...report, id });
+    } catch (err: any) {
+      console.error("[AUDIT]", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * GET /api/aiosell/audit/history?propertyId=X&limit=N
+   * Returns last N stored audit reports for a property (default 5, max 20).
+   */
+  app.get("/api/aiosell/audit/history", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const limit = Math.min(parseInt(req.query.limit as string) || 5, 20);
+      const rows = await db.select()
+        .from(aiosellAuditReports)
+        .where(eq(aiosellAuditReports.propertyId, propertyId))
+        .orderBy(desc(aiosellAuditReports.createdAt))
+        .limit(limit);
+      res.json(rows);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

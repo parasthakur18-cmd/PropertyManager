@@ -1160,6 +1160,27 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       await addMenuItemAllDayColumn();
     },
   },
+  {
+    name: "create_aiosell_audit_reports",
+    async run() {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS aiosell_audit_reports (
+          id SERIAL PRIMARY KEY,
+          property_id INTEGER NOT NULL,
+          config_id INTEGER,
+          hotel_code VARCHAR(100),
+          health_score INTEGER NOT NULL,
+          overall_status VARCHAR(20) NOT NULL,
+          report_data JSONB NOT NULL,
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      await pool.query(`
+        CREATE INDEX IF NOT EXISTS idx_aiosell_audit_reports_property
+        ON aiosell_audit_reports(property_id, created_at DESC)
+      `);
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

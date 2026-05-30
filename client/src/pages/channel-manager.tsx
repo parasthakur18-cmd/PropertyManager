@@ -9,12 +9,14 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
 import { format, parseISO } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AiosellConfig {
   id: number;
@@ -50,6 +52,373 @@ interface RatePlan {
   baseRate: string | null;
   occupancy: string;
   createdAt: string;
+}
+
+// ── Audit types ──────────────────────────────────────────────────────────────
+interface AuditCheckType {
+  label: string;
+  value: string | number | boolean | null;
+  status: "pass" | "warn" | "fail" | "info";
+  detail: string;
+}
+
+interface AuditSectionType {
+  name: string;
+  key: string;
+  status: "healthy" | "attention" | "critical";
+  score: number;
+  maxScore: number;
+  checks: AuditCheckType[];
+}
+
+interface AuditReportType {
+  id?: number;
+  propertyId: number;
+  propertyName: string;
+  hotelCode: string | null;
+  generatedAt: string;
+  durationMs: number;
+  healthScore: number;
+  overallStatus: "healthy" | "attention" | "critical";
+  sections: AuditSectionType[];
+  criticalIssues: string[];
+  warnings: string[];
+  recommendations: string[];
+}
+
+interface StoredAuditRow {
+  id: number;
+  propertyId: number;
+  healthScore: number;
+  overallStatus: string;
+  createdAt: string;
+  reportData: AuditReportType;
+}
+
+// ── Audit helpers ─────────────────────────────────────────────────────────────
+function statusColor(status: AuditSectionType["status"] | string) {
+  if (status === "healthy") return "text-emerald-600 dark:text-emerald-400";
+  if (status === "attention") return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+function statusBg(status: AuditSectionType["status"] | string) {
+  if (status === "healthy") return "bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800";
+  if (status === "attention") return "bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800";
+  return "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800";
+}
+
+function checkStatusIcon(status: AuditCheckType["status"]) {
+  if (status === "pass") return <span className="text-emerald-500">✅</span>;
+  if (status === "warn") return <span className="text-amber-500">⚠️</span>;
+  if (status === "fail") return <span className="text-red-500">❌</span>;
+  return <span className="text-muted-foreground">ℹ️</span>;
+}
+
+const SECTION_EMOJI: Record<string, string> = {
+  configuration: "⚙️",
+  roomMapping: "🔗",
+  inventorySync: "📦",
+  ratePlans: "💰",
+  syncLogs: "📋",
+  otaStatus: "🌐",
+};
+
+// ── Health Score Ring (SVG) ───────────────────────────────────────────────────
+function HealthRing({ score, status }: { score: number; status: string }) {
+  const r = 40;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - score / 100);
+  const stroke = status === "healthy" ? "#10b981" : status === "attention" ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 110, height: 110 }}>
+      <svg width={110} height={110} className="-rotate-90">
+        <circle cx={55} cy={55} r={r} fill="none" stroke="currentColor" strokeWidth={10}
+          className="text-muted-foreground/20" />
+        <circle cx={55} cy={55} r={r} fill="none" stroke={stroke} strokeWidth={10}
+          strokeDasharray={`${circ} ${circ}`}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.6s ease" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-2xl font-bold ${statusColor(status)}`}>{score}%</span>
+        <span className="text-[10px] text-muted-foreground capitalize font-medium">{status}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Audit Section Card ────────────────────────────────────────────────────────
+function AuditSectionCard({ section }: { section: AuditSectionType }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`border rounded-lg overflow-hidden ${statusBg(section.status)}`}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-black/5 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-lg">{SECTION_EMOJI[section.key] || "🔧"}</span>
+          <span className="font-medium text-sm truncate">{section.name}</span>
+          <Badge variant="outline" className={`text-xs shrink-0 ${statusColor(section.status)} border-current`}>
+            {section.status}
+          </Badge>
+        </div>
+        <div className="flex items-center gap-3 shrink-0 ml-2">
+          <span className="text-xs text-muted-foreground">{section.score}/{section.maxScore}</span>
+          {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
+      {open && (
+        <div className="border-t border-current/10 divide-y divide-current/10">
+          {section.checks.map((c, i) => (
+            <div key={i} className="px-4 py-2.5 flex items-start gap-3 text-sm bg-background/60">
+              <span className="mt-0.5 shrink-0">{checkStatusIcon(c.status)}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium">{c.label}</span>
+                  {c.value !== null && c.value !== undefined && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {String(c.value)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-muted-foreground text-xs mt-0.5 leading-relaxed">{c.detail}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Audit Report Modal ────────────────────────────────────────────────────────
+function AuditReportModal({
+  report,
+  open,
+  onClose,
+  propertyId,
+}: {
+  report: AuditReportType | null;
+  open: boolean;
+  onClose: () => void;
+  propertyId: number;
+}) {
+  const { data: history = [] } = useQuery<StoredAuditRow[]>({
+    queryKey: ["/api/aiosell/audit/history", propertyId],
+    queryFn: async () => {
+      const r = await fetch(`/api/aiosell/audit/history?propertyId=${propertyId}`, { credentials: "include" });
+      return r.json();
+    },
+    enabled: open && !!propertyId,
+    staleTime: 30000,
+  });
+
+  function exportJson() {
+    if (!report) return;
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `aiosell-audit-${report.propertyName.replace(/\s+/g, "-").toLowerCase()}-${new Date(report.generatedAt).toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (!report) return null;
+
+  const hasCritical = report.criticalIssues.length > 0;
+  const hasWarnings = report.warnings.length > 0;
+  const hasRecs = report.recommendations.length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl w-full p-0" data-testid="dialog-audit-report">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-lg font-semibold flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+                Property Health Report
+              </DialogTitle>
+              <DialogDescription className="mt-1">
+                {report.propertyName}
+                {report.hotelCode ? ` · Hotel code: ${report.hotelCode}` : ""}
+              </DialogDescription>
+            </div>
+            <div className="shrink-0">
+              <HealthRing score={report.healthScore} status={report.overallStatus} />
+            </div>
+          </div>
+          <div className="flex items-center gap-3 pt-1">
+            <span className="text-xs text-muted-foreground">
+              Generated {new Date(report.generatedAt).toLocaleString()} · {report.durationMs}ms
+            </span>
+            <div className="flex-1" />
+            <Button size="sm" variant="outline" onClick={exportJson} data-testid="button-export-audit">
+              <FileDown className="h-3.5 w-3.5 mr-1.5" />Export JSON
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[65vh]">
+          <div className="px-6 py-4 space-y-4">
+
+            {/* Score overview strip */}
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+              {report.sections.map(sec => (
+                <div key={sec.key}
+                  className={`rounded-lg border px-2 py-2 text-center ${statusBg(sec.status)}`}>
+                  <div className="text-base">{SECTION_EMOJI[sec.key] || "🔧"}</div>
+                  <div className={`text-xs font-semibold ${statusColor(sec.status)}`}>
+                    {sec.score}/{sec.maxScore}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
+                    {sec.name.split(" ")[0]}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Critical issues */}
+            {hasCritical && (
+              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-4">
+                <p className="text-sm font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5 mb-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {report.criticalIssues.length} Critical Issue{report.criticalIssues.length !== 1 ? "s" : ""}
+                </p>
+                <ul className="space-y-1">
+                  {report.criticalIssues.map((issue, i) => (
+                    <li key={i} className="text-sm text-red-800 dark:text-red-300 flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0">•</span>{issue}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Warnings */}
+            {hasWarnings && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-4">
+                <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {report.warnings.length} Warning{report.warnings.length !== 1 ? "s" : ""}
+                </p>
+                <ul className="space-y-1">
+                  {report.warnings.map((w, i) => (
+                    <li key={i} className="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0">•</span>{w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Recommendations */}
+            {hasRecs && (
+              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-4">
+                <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1.5 mb-2">
+                  💡 {report.recommendations.length} Recommendation{report.recommendations.length !== 1 ? "s" : ""}
+                </p>
+                <ul className="space-y-1">
+                  {report.recommendations.map((r, i) => (
+                    <li key={i} className="text-sm text-blue-800 dark:text-blue-300 flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0">•</span>{r}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {!hasCritical && !hasWarnings && (
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950 p-4 text-center">
+                <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">
+                  ✅ No critical issues or warnings — property is healthy!
+                </p>
+              </div>
+            )}
+
+            {/* Section details */}
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Section Details</p>
+              <div className="space-y-2">
+                {report.sections.map(sec => (
+                  <AuditSectionCard key={sec.key} section={sec} />
+                ))}
+              </div>
+            </div>
+
+            {/* History */}
+            {history.length > 1 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Past Audits</p>
+                <div className="flex flex-wrap gap-2">
+                  {history.slice(0, 6).map(row => (
+                    <div key={row.id}
+                      className={`rounded border px-2.5 py-1.5 text-xs flex flex-col items-center ${statusBg(row.overallStatus)}`}>
+                      <span className={`font-bold text-sm ${statusColor(row.overallStatus)}`}>{row.healthScore}%</span>
+                      <span className="text-muted-foreground text-[10px]">
+                        {new Date(row.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Verify Property Button ────────────────────────────────────────────────────
+function VerifyPropertyButton({ propertyId, propertyName }: { propertyId: number; propertyName?: string }) {
+  const { toast } = useToast();
+  const [report, setReport] = useState<AuditReportType | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const auditMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/aiosell/audit", { propertyId });
+      return res.json() as Promise<AuditReportType>;
+    },
+    onSuccess: (data) => {
+      setReport(data);
+      setModalOpen(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/audit/history", propertyId] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Audit failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => auditMutation.mutate()}
+        disabled={auditMutation.isPending}
+        data-testid="button-verify-property"
+        className="gap-1.5"
+      >
+        {auditMutation.isPending ? (
+          <><Loader2 className="h-4 w-4 animate-spin" />Auditing…</>
+        ) : (
+          <><ShieldCheck className="h-4 w-4" />Verify Property</>
+        )}
+      </Button>
+      <AuditReportModal
+        report={report}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        propertyId={propertyId}
+      />
+    </>
+  );
 }
 
 interface SyncLog {
@@ -2099,11 +2468,17 @@ export default function ChannelManager() {
 
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Channel Manager</h1>
           <p className="text-muted-foreground">Manage OTA distribution via AioSell</p>
         </div>
+        {!!propertyId && (
+          <VerifyPropertyButton
+            propertyId={propertyId}
+            propertyName={properties?.find((p: Property) => p.id === propertyId)?.name}
+          />
+        )}
       </div>
 
       {(isSuperAdmin || (properties && properties.length > 1)) && (
