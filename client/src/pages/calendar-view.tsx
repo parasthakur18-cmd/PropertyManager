@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { NewBookingDialog } from "@/components/NewBookingDialog";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -143,10 +144,7 @@ export default function CalendarView() {
   const [expandedTypes, setExpandedTypes] = useState<Record<string, boolean>>({});
   const [expandedDorms, setExpandedDorms] = useState<Record<number, boolean>>({});
   const [showCreateBooking, setShowCreateBooking] = useState(false);
-  const [guestName, setGuestName] = useState("");
-  const [checkInDate, setCheckInDate] = useState(format(today, "yyyy-MM-dd"));
-  const [checkOutDate, setCheckOutDate] = useState(format(addDays(today, 1), "yyyy-MM-dd"));
-  const [selectedRoomId, setSelectedRoomId] = useState<string>("");
+  const [newBookingDefaults, setNewBookingDefaults] = useState<{ checkIn?: string; checkOut?: string; roomId?: number }>({});
   const [activeRoomMenu, setActiveRoomMenu] = useState<number | null>(null);
   const [dormitoryPopup, setDormitoryPopup] = useState<{
     isOpen: boolean;
@@ -328,32 +326,6 @@ export default function CalendarView() {
     return result;
   }, [dormitoryPopup, guests, getDormStayStatus]);
 
-  const createBookingMutation = useMutation({
-    mutationFn: async () => {
-      if (!guestName.trim() || !selectedRoomId) throw new Error("Fill all fields");
-      const roomId = parseInt(selectedRoomId);
-      const room = rooms.find(r => r.id === roomId);
-      if (!room) throw new Error("Room not found");
-      
-      return apiRequest("/api/bookings", "POST", {
-        guestName: guestName.trim(),
-        checkInDate: checkInDate,
-        checkOutDate: checkOutDate,
-        roomId,
-        propertyId: room.propertyId,
-        status: "confirmed",
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }); // Refresh notifications
-      setShowCreateBooking(false);
-      setGuestName("");
-      setCheckInDate(format(today, "yyyy-MM-dd"));
-      setCheckOutDate(format(addDays(today, 1), "yyyy-MM-dd"));
-      setSelectedRoomId("");
-    },
-  });
 
 
   // Lock the page scroll so our single calendar scroll container handles all scrolling.
@@ -709,7 +681,7 @@ export default function CalendarView() {
                   size="icon"
                   variant="ghost"
                   className="h-7 w-7 flex-shrink-0"
-                  onClick={() => setShowCreateBooking(true)}
+                  onClick={() => { setNewBookingDefaults({}); setShowCreateBooking(true); }}
                   data-testid="button-create-booking"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -1015,10 +987,11 @@ export default function CalendarView() {
                                   style={{ width: CELL_WIDTH }}
                                   onClick={() => {
                                     if (isOccupied) return;
-                                    setCheckInDate(dateStr);
-                                    setCheckOutDate(format(addDays(date, 1), "yyyy-MM-dd"));
-                                    setSelectedRoomId(String(room.id));
-                                    setGuestName("");
+                                    setNewBookingDefaults({
+                                      checkIn: dateStr,
+                                      checkOut: format(addDays(date, 1), "yyyy-MM-dd"),
+                                      roomId: room.id,
+                                    });
                                     setShowCreateBooking(true);
                                   }}
                                   title={!isOccupied ? `Book Room ${room.roomNumber} on ${format(date, "d MMM")}` : undefined}
@@ -1270,79 +1243,13 @@ export default function CalendarView() {
       </div>
 
       {/* Create Booking Dialog */}
-      <Dialog open={showCreateBooking} onOpenChange={setShowCreateBooking}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" data-testid="dialog-create-booking">
-          <DialogHeader>
-            <DialogTitle>Create New Booking</DialogTitle>
-            <DialogDescription>
-              Fill in the booking details to create a new reservation
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="guest-name">Guest Name</Label>
-              <Input
-                id="guest-name"
-                placeholder="Enter guest name"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                data-testid="input-guest-name"
-              />
-            </div>
-            <div>
-              <Label htmlFor="check-in">Check-in Date</Label>
-              <Input
-                id="check-in"
-                type="date"
-                value={checkInDate}
-                onChange={(e) => setCheckInDate(e.target.value)}
-                data-testid="input-check-in-date"
-              />
-            </div>
-            <div>
-              <Label htmlFor="check-out">Check-out Date</Label>
-              <Input
-                id="check-out"
-                type="date"
-                value={checkOutDate}
-                onChange={(e) => setCheckOutDate(e.target.value)}
-                data-testid="input-check-out-date"
-              />
-            </div>
-            <div>
-              <Label htmlFor="room">Select Room</Label>
-              <Select value={selectedRoomId} onValueChange={setSelectedRoomId}>
-                <SelectTrigger id="room" data-testid="select-room">
-                  <SelectValue placeholder="Choose a room" />
-                </SelectTrigger>
-                <SelectContent>
-                  {filteredRooms.map(room => (
-                    <SelectItem key={room.id} value={String(room.id)}>
-                      {room.roomNumber} - {room.roomType} (₹{room.pricePerNight})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowCreateBooking(false)}
-              data-testid="button-cancel-booking"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => createBookingMutation.mutate()}
-              disabled={createBookingMutation.isPending}
-              data-testid="button-save-booking"
-            >
-              {createBookingMutation.isPending ? "Creating..." : "Create Booking"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewBookingDialog
+        open={showCreateBooking}
+        onOpenChange={setShowCreateBooking}
+        defaultCheckIn={newBookingDefaults.checkIn}
+        defaultCheckOut={newBookingDefaults.checkOut}
+        defaultRoomId={newBookingDefaults.roomId}
+      />
 
       {/* Booking Details Popup */}
       <Dialog 

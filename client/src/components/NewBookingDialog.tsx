@@ -64,9 +64,13 @@ const GuestFields = memo(function GuestFields({
 interface NewBookingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Optional pre-fill from calendar click — date strings in "yyyy-MM-dd" format */
+  defaultCheckIn?: string;
+  defaultCheckOut?: string;
+  defaultRoomId?: number;
 }
 
-export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) {
+export function NewBookingDialog({ open, onOpenChange, defaultCheckIn, defaultCheckOut, defaultRoomId }: NewBookingDialogProps) {
   const { toast } = useToast();
   const guestDataRef = useRef({ fullName: "", phone: "", email: "", idProofImage: "" });
   const guestResetKey = useRef(0);
@@ -102,6 +106,24 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
 
   const { data: properties } = useQuery<Property[]>({ queryKey: ["/api/properties"], staleTime: 5 * 60 * 1000 });
   const { data: rooms } = useQuery<Room[]>({ queryKey: ["/api/rooms"], staleTime: 2 * 60 * 1000 });
+
+  // When opened from the calendar, pre-fill dates and room
+  useEffect(() => {
+    if (!open) return;
+    const cin = defaultCheckIn ? new Date(defaultCheckIn + "T11:00:00") : getDefaultCheckIn();
+    const cout = defaultCheckOut ? new Date(defaultCheckOut + "T10:00:00") : getDefaultCheckOut();
+    form.setValue("checkInDate", cin);
+    form.setValue("checkOutDate", cout);
+    if (defaultRoomId) {
+      form.setValue("roomId", defaultRoomId);
+      const room = rooms?.find(r => r.id === defaultRoomId);
+      if (room) {
+        form.setValue("propertyId", room.propertyId);
+        setBookingType(room.roomCategory === "dormitory" ? "dormitory" : "single");
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const { data: travelAgents } = useQuery<TravelAgent[]>({
     queryKey: ["/api/travel-agents"],
     staleTime: 5 * 60 * 1000,
