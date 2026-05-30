@@ -21144,6 +21144,88 @@ Respond ONLY with valid JSON (no markdown, no extra text):
     }
   });
 
+  /**
+   * GET /api/aiosell/diagnostic-package?propertyId=X
+   * Returns a comprehensive JSON package for support/debugging:
+   * full audit report + last 50 sync logs + room mappings + rate plans + config.
+   * Read-only — no side effects.
+   */
+  app.get("/api/aiosell/diagnostic-package", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Run all queries in parallel for speed
+      const [configRows, mappingRows, planRows, logRows, auditRows, propRows] = await Promise.all([
+        db.select().from(aiosellConfigurations)
+          .where(eq(aiosellConfigurations.propertyId, propertyId))
+          .limit(1),
+        db.select().from(aiosellRoomMappings)
+          .where(eq(aiosellRoomMappings.propertyId, propertyId))
+          .orderBy(aiosellRoomMappings.id),
+        db.select().from(aiosellRatePlans)
+          .where(eq(aiosellRatePlans.propertyId, propertyId))
+          .orderBy(aiosellRatePlans.id),
+        db.select().from(aiosellSyncLogs)
+          .where(eq(aiosellSyncLogs.propertyId, propertyId))
+          .orderBy(desc(aiosellSyncLogs.createdAt))
+          .limit(50),
+        db.select().from(aiosellAuditReports)
+          .where(eq(aiosellAuditReports.propertyId, propertyId))
+          .orderBy(desc(aiosellAuditReports.createdAt))
+          .limit(1),
+        db.select({ id: properties.id, name: properties.name })
+          .from(properties)
+          .where(eq(properties.id, propertyId))
+          .limit(1),
+      ]);
+
+      // Use the most recent stored audit; run fresh (no live test) if none exists
+      const auditReport = auditRows.length > 0
+        ? auditRows[0].reportData
+        : await auditProperty(propertyId, { runLiveTest: false });
+
+      // Sanitise config — strip password
+      const config = configRows[0] ?? null;
+      const safeConfig = config
+        ? { ...config, pmsPassword: config.pmsPassword ? "●●●●●●●●" : null }
+        : null;
+
+      // Mapping summary: include ratePlanCount per mapping
+      const mappingSummary = mappingRows.map(m => ({
+        ...m,
+        ratePlanCount: planRows.filter(p => p.roomMappingId === m.id).length,
+      }));
+
+      res.json({
+        exportedAt: new Date().toISOString(),
+        property: propRows[0] ?? { id: propertyId, name: "Unknown" },
+        auditReport,
+        configuration: safeConfig,
+        roomMappings: mappingSummary,
+        ratePlans: planRows,
+        syncLogs: logRows,
+        meta: {
+          roomMappingCount: mappingRows.length,
+          ratePlanCount:    planRows.length,
+          syncLogCount:     logRows.length,
+          auditSource:      auditRows.length > 0 ? "cached" : "fresh",
+        },
+      });
+    } catch (err: any) {
+      console.error("[DIAGNOSTIC-PACKAGE]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Inventory Reconciliation ─────────────────────────────────────────────────
 
   /**
