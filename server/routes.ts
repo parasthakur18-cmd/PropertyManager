@@ -21078,16 +21078,14 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const config = await getConfigForProperty(propertyId);
       if (!config) return res.status(404).json({ message: "Aiosell not configured" });
 
-      await autoSyncInventoryForProperty(propertyId);
+      // Fire sync in background — do NOT await. Aiosell rate-limit retries can take
+      // 1-3 minutes; awaiting would cause the HTTP request to time out or hang.
+      // The UI should poll /inventory-reconciliation after ~60s to see the result.
+      autoSyncInventoryForProperty(propertyId).catch((err: any) => {
+        console.error(`[AIOSELL] Background sync-now failed for property ${propertyId}:`, err.message);
+      });
 
-      // Return the last push log for confirmation
-      const [lastLog] = await db.select({ status: aiosellSyncLogs.status, createdAt: aiosellSyncLogs.createdAt, errorMessage: aiosellSyncLogs.errorMessage, responsePayload: aiosellSyncLogs.responsePayload })
-        .from(aiosellSyncLogs)
-        .where(and(eq(aiosellSyncLogs.configId, config.id), eq(aiosellSyncLogs.syncType, "inventory_push")))
-        .orderBy(desc(aiosellSyncLogs.createdAt))
-        .limit(1);
-
-      res.json({ success: lastLog?.status === "success", status: lastLog?.status, syncedAt: lastLog?.createdAt?.toString(), errorMessage: lastLog?.errorMessage, response: lastLog?.responsePayload });
+      res.json({ success: true, started: true, message: "Sync started in background. It may take 1–2 minutes to complete. Refresh the reconciliation page after a minute to see the result." });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

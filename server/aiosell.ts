@@ -133,8 +133,8 @@ async function makeAiosellRequest(
       rawText = await response.text();
       httpStatus = response.status;
       if (response.status !== 429) break;
-      // Aiosell rate-limit window appears to be ~10s. Use aggressive backoff.
-      const waitMs = [3000, 6000, 10000][attempts - 1] ?? 10000; // 3s, 6s, 10s
+      // Aiosell rate-limit window is at least 30s. Use long backoff to fully clear it.
+      const waitMs = [15000, 30000, 60000][attempts - 1] ?? 60000; // 15s, 30s, 60s
       console.warn(`[AIOSELL] ${syncType} — HTTP 429 rate limited (attempt ${attempts}/${MAX_ATTEMPTS}), waiting ${waitMs}ms before retry…`);
       await new Promise(r => setTimeout(r, waitMs));
     }

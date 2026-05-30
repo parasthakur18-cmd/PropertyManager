@@ -259,6 +259,17 @@ export default function InventoryReconciliation() {
     try {
       const res = await apiRequest("/api/aiosell/inventory-reconciliation/sync-now", "POST", { propertyId: propId });
       const d = await res.json();
+
+      // Background sync: server returns immediately with started:true
+      // Aiosell rate-limit retries can take 1-3 min so we don't await the full sync
+      if (d.started) {
+        setLastSyncResult({ success: true, message: "⏳ Sync running in background (1–2 min). Page will auto-refresh." });
+        toast({ title: "⏳ Sync started", description: "Pushing all rooms to Aiosell in the background. This page will refresh automatically in 90 seconds." });
+        // Auto-refresh after 90s to show updated sync status
+        setTimeout(() => { refetch(); setSyncing(false); setLastSyncResult(null); }, 90000);
+        return;
+      }
+
       setLastSyncResult({ success: d.success, message: d.success ? `✅ Sync succeeded at ${fmt(d.syncedAt)}` : `❌ Sync failed: ${d.errorMessage || "Unknown error"}` });
       toast({ title: d.success ? "✅ Inventory synced to Aiosell" : "❌ Sync failed", description: d.success ? "All room types pushed for the next 90 days." : d.errorMessage, variant: d.success ? "default" : "destructive" });
       if (d.success) refetch();
