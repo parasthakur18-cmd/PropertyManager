@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -2304,6 +2304,249 @@ function SyncLogsTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+// ── AI Auditor ────────────────────────────────────────────────────────────────
+interface AiAuditResult {
+  propertyName: string;
+  healthScore: number;
+  overallStatus: string;
+  criticalIssues: string[];
+  warnings: string[];
+  recommendations: string[];
+  sections: AuditSectionType[];
+  aiAnalysis: {
+    rootCause: string;
+    impact: string;
+    priority: string;
+    recommendedFix: string;
+    summary: string;
+  };
+  question: string;
+  generatedAt: string;
+  usedCachedAudit: boolean;
+}
+
+const AI_PRESET_QUESTIONS = [
+  "What should I fix first?",
+  "Why is inventory stale?",
+  "Why are rates not syncing?",
+  "Which room types are missing rate plans?",
+  "Show all critical issues",
+  "Why is connectivity failing?",
+];
+
+function AIAuditorTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const [question, setQuestion] = useState("What should I fix first?");
+  const [result, setResult] = useState<AiAuditResult | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/aiosell/ai-audit", { propertyId, question });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ message: "Unknown error" }));
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      return res.json() as Promise<AiAuditResult>;
+    },
+    onSuccess: (data) => setResult(data),
+    onError: (err: any) => toast({ title: "AI Audit failed", description: err.message, variant: "destructive" }),
+  });
+
+  const priorityClasses = (p: string) => {
+    switch ((p || "").toLowerCase()) {
+      case "critical": return "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border-red-200 dark:border-red-800";
+      case "high":     return "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-200 dark:border-orange-800";
+      case "medium":   return "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800";
+      default:         return "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800";
+    }
+  };
+  const scoreClasses = (s: number) =>
+    s >= 80 ? "text-green-600 dark:text-green-400" :
+    s >= 50 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400";
+
+  return (
+    <div className="space-y-4 py-2">
+      {/* Query Panel */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BrainCircuit className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            AI Channel Manager Auditor
+          </CardTitle>
+          <CardDescription>
+            Ask a question about this property's AioSell health. The AI analyzes the latest audit data and explains issues in plain English. Advisory only — it cannot modify anything.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {AI_PRESET_QUESTIONS.map(q => (
+              <button
+                key={q}
+                onClick={() => setQuestion(q)}
+                data-testid={`preset-question-${q.slice(0, 20).replace(/\s+/g, "-").toLowerCase()}`}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  question === q
+                    ? "bg-purple-100 border-purple-400 text-purple-800 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-600"
+                    : "border-border hover:bg-muted"
+                }`}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          <textarea
+            className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
+            placeholder="Or type your own question…"
+            value={question}
+            onChange={e => setQuestion(e.target.value)}
+            data-testid="input-ai-question"
+          />
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={mutation.isPending || !question.trim()}
+            className="gap-2 bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600"
+            data-testid="button-ai-analyze"
+          >
+            {mutation.isPending
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Analyzing…</>
+              : <><Sparkles className="h-4 w-4" />Analyze with AI</>}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Results */}
+      {result && (
+        <>
+          {/* KPI row */}
+          <div className="grid grid-cols-3 gap-3">
+            <Card>
+              <CardContent className="pt-4 pb-3 text-center">
+                <div className={`text-4xl font-bold ${scoreClasses(result.healthScore)}`}>{result.healthScore}%</div>
+                <div className="text-xs text-muted-foreground mt-1">Health Score</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 text-center">
+                <div className="text-4xl font-bold text-red-600 dark:text-red-400">{result.criticalIssues.length}</div>
+                <div className="text-xs text-muted-foreground mt-1">Critical Issues</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4 pb-3 text-center">
+                <div className="text-4xl font-bold text-yellow-600 dark:text-yellow-400">{result.warnings.length}</div>
+                <div className="text-xs text-muted-foreground mt-1">Warnings</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* AI Analysis card */}
+          <Card className="border-purple-200 dark:border-purple-800">
+            <CardHeader className="pb-2">
+              <div className="flex items-start justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  AI Analysis
+                </CardTitle>
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${priorityClasses(result.aiAnalysis.priority)}`}>
+                  {result.aiAnalysis.priority} Priority
+                </span>
+              </div>
+              <CardDescription className="text-xs">
+                Q: &ldquo;{result.question}&rdquo;
+                {result.usedCachedAudit && <span className="ml-2 text-muted-foreground">(used cached audit)</span>}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Summary</p>
+                <p className="leading-relaxed">{result.aiAnalysis.summary}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Root Cause</p>
+                <p className="leading-relaxed">{result.aiAnalysis.rootCause}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Business Impact</p>
+                <p className="leading-relaxed">{result.aiAnalysis.impact}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Recommended Fix</p>
+                <p className="leading-relaxed whitespace-pre-line">{result.aiAnalysis.recommendedFix}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Critical Issues */}
+          {result.criticalIssues.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-red-600 dark:text-red-400">
+                  <AlertCircle className="h-4 w-4" />
+                  Critical Issues ({result.criticalIssues.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {result.criticalIssues.map((issue, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-1.5 h-2 w-2 rounded-full bg-red-500 flex-shrink-0" />
+                      {issue}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Warnings */}
+          {result.warnings.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                  <AlertCircle className="h-4 w-4" />
+                  Warnings ({result.warnings.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {result.warnings.map((w, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-1.5 h-2 w-2 rounded-full bg-yellow-500 flex-shrink-0" />
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Recommendations */}
+          {result.recommendations.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <CheckCircle className="h-4 w-4" />
+                  Recommendations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {result.recommendations.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-0.5 text-blue-500 font-bold flex-shrink-0">{i + 1}.</span>
+                      {r}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function ConnectionHealthCard({ propertyId }: { propertyId: number }) {
   const { data: config } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -2513,6 +2756,7 @@ export default function ChannelManager() {
             <TabsTrigger value="push-inventory" data-testid="tab-push-inventory" className="flex-shrink-0">Push Inventory</TabsTrigger>
             <TabsTrigger value="logs" data-testid="tab-logs" className="flex-shrink-0">Sync Logs</TabsTrigger>
             <TabsTrigger value="whatsapp-test" data-testid="tab-whatsapp-test" className="flex-shrink-0 text-green-700 dark:text-green-400">WhatsApp Test</TabsTrigger>
+            <TabsTrigger value="ai-auditor" data-testid="tab-ai-auditor" className="flex-shrink-0 text-purple-700 dark:text-purple-400 gap-1"><BrainCircuit className="h-3.5 w-3.5" />AI Auditor</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -2522,6 +2766,7 @@ export default function ChannelManager() {
           <TabsContent value="push-inventory"><InventoryTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="logs"><SyncLogsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
+          <TabsContent value="ai-auditor"><AIAuditorTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>
       )}

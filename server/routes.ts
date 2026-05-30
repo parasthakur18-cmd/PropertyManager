@@ -20967,6 +20967,183 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  /**
+   * POST /api/aiosell/ai-audit
+   * AI-powered channel manager auditor.
+   * Consumes the existing verification engine (or a recent cached report) and
+   * sends structured audit context to OpenAI.  Advisory only — read-only.
+   * Input:  { propertyId: number, question: string }
+   * Output: { healthScore, criticalIssues, warnings, sections, aiAnalysis, ... }
+   */
+  app.post("/api/aiosell/ai-audit", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.body.propertyId);
+      const question: string = (req.body.question || "").trim();
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!question) {
+        return res.status(400).json({ message: "question is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // ── 1. Get audit data ────────────────────────────────────────────────────
+      // Prefer a cached report < 60 min old so the endpoint stays fast.
+      // Fall back to a fresh audit WITHOUT a live AioSell connection test
+      // (runLiveTest:false keeps it under 1s instead of 10s).
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const recentRows = await db
+        .select()
+        .from(aiosellAuditReports)
+        .where(
+          and(
+            eq(aiosellAuditReports.propertyId, propertyId),
+            gte(aiosellAuditReports.createdAt, oneHourAgo),
+          ),
+        )
+        .orderBy(desc(aiosellAuditReports.createdAt))
+        .limit(1);
+
+      const report: any = recentRows.length > 0
+        ? recentRows[0].reportData
+        : await auditProperty(propertyId, { runLiveTest: false });
+
+      // ── 2. Build structured context ──────────────────────────────────────────
+      const context = {
+        propertyName:   report.propertyName,
+        healthScore:    report.healthScore,
+        overallStatus:  report.overallStatus,
+        criticalIssues: report.criticalIssues,
+        warnings:       report.warnings,
+        recommendations: report.recommendations,
+        sections: (report.sections || []).map((s: any) => ({
+          name:      s.name,
+          status:    s.status,
+          score:     s.score,
+          maxScore:  s.maxScore,
+          issues: (s.checks || [])
+            .filter((c: any) => c.status === "fail" || c.status === "warn")
+            .map((c: any) => `${c.label}: ${c.detail}`),
+        })),
+      };
+
+      // ── 3. Call OpenAI ───────────────────────────────────────────────────────
+      const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const useFallback = !openaiKey || openaiKey === "_DUMMY_API_KEY_" || openaiKey.startsWith("_DUMMY");
+
+      let aiAnalysis: {
+        rootCause: string;
+        impact: string;
+        priority: string;
+        recommendedFix: string;
+        summary: string;
+      };
+
+      if (useFallback) {
+        aiAnalysis = {
+          rootCause:      "AI analysis unavailable — OpenAI API key not configured.",
+          impact:         "Manual review of the critical issues and warnings below is required.",
+          priority:       report.criticalIssues.length > 0 ? "Critical" : report.warnings.length > 0 ? "High" : "Low",
+          recommendedFix: report.recommendations.length > 0
+            ? report.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")
+            : "Review the critical issues listed and address them in order of severity.",
+          summary: `${report.propertyName} has a health score of ${report.healthScore}% with ${report.criticalIssues.length} critical issue(s) and ${report.warnings.length} warning(s). Configure the OpenAI API key in integrations to enable AI-powered analysis.`,
+        };
+      } else {
+        const systemPrompt = `You are a Channel Manager Auditor for Hostezee, a hotel property management system.
+You analyze AioSell channel manager audit data and explain issues in plain English to hotel staff.
+
+STRICT RULES:
+- Advisory only. Never suggest modifying databases directly, running SQL, or taking automated server actions.
+- Base your analysis SOLELY on the provided audit JSON — do not invent facts.
+- Be specific, concise, and action-oriented. Prioritize the most impactful issues.
+- For "recommendedFix" give 3-5 numbered, concrete steps the user can take in the Hostezee UI or AioSell dashboard.
+
+Respond ONLY with valid JSON (no markdown, no extra text):
+{
+  "rootCause": "1-2 sentences identifying the primary cause",
+  "impact": "1 sentence on the business/OTA impact",
+  "priority": "Critical|High|Medium|Low",
+  "recommendedFix": "numbered steps as a single string (use \\n between steps)",
+  "summary": "2-3 sentences directly answering the user question"
+}`;
+
+        const userMessage = `Property audit data:\n${JSON.stringify(context, null, 2)}\n\nUser question: "${question}"`;
+
+        console.log(`[AI-AUDIT] prop=${propertyId} question="${question.slice(0, 80)}" cached=${recentRows.length > 0}`);
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user",   content: userMessage },
+            ],
+            temperature: 0.3,
+            max_tokens: 700,
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.error(`[AI-AUDIT] OpenAI error ${response.status}:`, errText.slice(0, 200));
+          throw new Error(`OpenAI API returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        const aiText: string = data.choices?.[0]?.message?.content || "";
+
+        try {
+          // Strip possible markdown code fences
+          const clean = aiText.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+          aiAnalysis = JSON.parse(clean);
+        } catch {
+          const match = aiText.match(/\{[\s\S]*\}/);
+          if (match) {
+            aiAnalysis = JSON.parse(match[0]);
+          } else {
+            aiAnalysis = {
+              rootCause:      aiText.slice(0, 300),
+              impact:         "See analysis above.",
+              priority:       "High",
+              recommendedFix: report.recommendations.join("\n") || "Review critical issues.",
+              summary:        aiText.slice(0, 400),
+            };
+          }
+        }
+      }
+
+      console.log(`[AI-AUDIT] prop=${propertyId} priority=${aiAnalysis.priority} score=${report.healthScore}`);
+
+      res.json({
+        propertyName:   report.propertyName,
+        healthScore:    report.healthScore,
+        overallStatus:  report.overallStatus,
+        criticalIssues: report.criticalIssues,
+        warnings:       report.warnings,
+        recommendations: report.recommendations,
+        sections:       report.sections,
+        aiAnalysis,
+        question,
+        generatedAt:    new Date().toISOString(),
+        usedCachedAudit: recentRows.length > 0,
+      });
+    } catch (err: any) {
+      console.error("[AI-AUDIT]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Inventory Reconciliation ─────────────────────────────────────────────────
 
   /**

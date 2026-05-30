@@ -1,0 +1,175 @@
+# PHASE 5 - AI AUDITOR V1
+
+## Objective
+
+Build an AI Auditor that analyzes existing Hostezee audit data and explains issues in plain English.
+
+The AI must NOT directly modify:
+
+* Database
+* Inventory
+* Rates
+* Room Mappings
+* OTA Configurations
+
+AI is advisory only.
+
+---
+
+## New Menu
+
+Channel Manager
+
+Add:
+
+🤖 AI Auditor
+
+---
+
+## Data Sources
+
+AI should consume:
+
+1. Verify Property Report
+2. Audit History
+3. Connection Health Report
+4. Sync Logs
+5. Rate Plan Audit
+6. Inventory Health Status
+
+DO NOT query raw tables directly if verified audit data already exists.
+
+Use existing verification engine as the primary source.
+
+---
+
+## New API
+
+POST /api/aiosell/ai-audit
+
+Input:
+
+{
+propertyId: number,
+question: string
+}
+
+---
+
+## AI Context
+
+Collect:
+
+* Property Health Score
+* Audit Results
+* Critical Issues
+* Warnings
+* Recommendations
+* Last Inventory Push
+* Last Rate Push
+* Sync Failures
+* Mapping Status
+
+Send structured JSON to OpenAI.
+
+---
+
+## Example Questions
+
+Why is Blue Mont only 70% healthy?
+
+Why are rates not syncing?
+
+What should I fix first?
+
+Which room types are missing rate plans?
+
+Why is inventory stale?
+
+Show all critical issues.
+
+---
+
+## Expected Response
+
+Root Cause
+
+Impact
+
+Priority
+
+Recommended Fix
+
+Example:
+
+Property:
+Blue Mont
+
+Issue:
+No rate plans configured.
+
+Impact:
+OTA rates cannot be updated.
+
+Priority:
+High
+
+Fix:
+Create rate plan mappings for all 7 room types.
+
+---
+
+## AI Dashboard
+
+Display:
+
+Health Score
+Critical Issues
+Warnings
+AI Analysis
+
+---
+
+## Restrictions
+
+AI can:
+
+✅ Explain
+✅ Analyze
+✅ Prioritize
+✅ Recommend
+
+AI cannot:
+
+❌ Modify data
+❌ Run SQL
+❌ Push inventory
+❌ Push rates
+❌ Change mappings
+
+---
+
+## Future Compatibility
+
+Design AI Auditor so it can later power:
+
+* Inventory Doctor
+* Rate Doctor
+* Mapping Doctor
+* Booking Doctor
+* Finance Auditor
+* Housekeeping Auditor
+
+without architectural changes.
+
+---
+
+## Success Criteria
+
+User selects a property and asks:
+
+"Why is this property not healthy?"
+
+AI returns a clear explanation using the existing audit data and verification engine.
+
+No database investigation should be required.
