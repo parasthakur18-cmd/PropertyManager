@@ -2456,11 +2456,7 @@ function AIAuditorTab({ propertyId }: { propertyId: number }) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/aiosell/ai-audit", { propertyId, question });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ message: "Unknown error" }));
-        throw new Error(body.message || `HTTP ${res.status}`);
-      }
+      const res = await apiRequest("/api/aiosell/ai-audit", "POST", { propertyId, question });
       return res.json() as Promise<AiAuditResult>;
     },
     onSuccess: (data) => setResult(data),
