@@ -20826,11 +20826,13 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!auth) return res.status(401).json({ message: "Not authenticated" });
       const { tenant } = auth;
 
-      // Resolve accessible property IDs
-      const allProps = await storage.getProperties();
-      const accessibleProps = allProps.filter(p => canAccessProperty(tenant, p.id));
-      const propIds = accessibleProps.map(p => p.id);
+      // Resolve accessible property IDs (same pattern used across other multi-property routes)
+      const allProps = await storage.getAllProperties();
+      const propIds = (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0)
+        ? tenant.assignedPropertyIds
+        : allProps.map(p => p.id);
       if (propIds.length === 0) return res.json([]);
+      const accessibleProps = allProps.filter(p => propIds.includes(p.id));
 
       // Fetch everything in parallel
       const [allRooms, allConfigs, allMappings, allRatePlans, invLogs, rateLogs] = await Promise.all([
