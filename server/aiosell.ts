@@ -869,11 +869,13 @@ export async function autoSyncInventoryForProperty(
       // CRITICAL: Sending all ranges in a single batch risks Aiosell silently
       // dropping ranges beyond an internal limit. Pushing one range at a time
       // guarantees every date range is individually applied and logged.
-      // Add a 300ms delay between calls to avoid Aiosell rate-limiting (which
-      // returns HTML instead of JSON and causes the push to fail silently).
+      // We pause 2500ms between calls. On failure (rate-limit or any error) we
+      // STOP immediately — continuing to push more ranges while Aiosell is already
+      // rate-limiting only burns all retry budget and makes the blackout longer.
       const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
       let successCount = 0;
       let failCount = 0;
+      let stoppedEarly = false;
       for (let ri = 0; ri < inventoryUpdates.length; ri++) {
         const update = inventoryUpdates[ri];
         for (const room of update.rooms) {
@@ -885,11 +887,21 @@ export async function autoSyncInventoryForProperty(
             endDate: update.endDate,
           });
         }
-        if (ri > 0) await sleep(1200); // rate-limit guard (1200ms — Aiosell rate-limits aggressively)
+        if (ri > 0) await sleep(2500); // 2.5s between calls — clears Aiosell's per-second rate limit
         const result = await pushInventory(config, [update]);
-        if (result.success) { successCount++; } else { failCount++; }
+        if (result.success) {
+          successCount++;
+        } else {
+          failCount++;
+          // Stop immediately — Aiosell is rate-limiting. Continuing to push more
+          // ranges only creates more 429s and extends the blackout window.
+          // The next scheduled sync or manual "Sync Now" will resume.
+          console.warn(`[AIOSELL] Rate-limit or error at range ${ri + 1}/${inventoryUpdates.length} — stopping bulk sync to avoid cascading 429s. ${inventoryUpdates.length - ri - 1} range(s) skipped. Message: ${result.message}`);
+          stoppedEarly = true;
+          break;
+        }
       }
-      console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} success=${successCount} failed=${failCount} todayAvailability=[${availSummary}]`);
+      console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} success=${successCount} failed=${failCount} stoppedEarly=${stoppedEarly} todayAvailability=[${availSummary}]`);
 
       // ── Step 2b: Auto stop-sell — push stopSell=true for 0-inventory dates ──────
       // Pushing available=0 alone is NOT enough to block rooms on OTAs. Aiosell
@@ -899,9 +911,9 @@ export async function autoSyncInventoryForProperty(
       // Skip ranges where ALL rooms are open (available > 0) — no point sending stopSell=false for every range.
       const stopSellRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
       let ssSuccess = 0; let ssFail = 0;
-      for (let ri = 0; ri < stopSellRanges.length; ri++) {
+      if (!stoppedEarly) for (let ri = 0; ri < stopSellRanges.length; ri++) {
         const range = stopSellRanges[ri];
-        if (ri > 0) await sleep(1200); // rate-limit guard
+        if (ri > 0) await sleep(2500); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {
           startDate: range.startDate,
           endDate: range.endDate,
