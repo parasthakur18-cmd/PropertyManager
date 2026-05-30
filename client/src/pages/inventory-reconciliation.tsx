@@ -377,7 +377,7 @@ export default function InventoryReconciliation() {
                 : <Activity className="w-4 h-4 text-muted-foreground shrink-0" />}
           <span className="flex-1">
             {ls.time ? <>Last sync: <strong>{fmt(ls.time)}</strong> — <span className={
-              ls.hasFailedRecently || ls.status === "failed" ? "text-red-600 font-semibold"
+              ls.hasFailedRecently || ls.status === "failed" || ls.status === "error" ? "text-red-600 font-semibold"
               : ls.status === "warning" ? "text-amber-600 font-semibold"
               : "text-emerald-600 font-semibold"
             }>{ls.status?.toUpperCase()}</span></> : "No inventory push found for this property yet."}

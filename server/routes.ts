@@ -21078,9 +21078,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         propertyId,
         hotelCode: config.hotelCode,
         lastSync: {
-          time: lastSuccessLog?.createdAt?.toString() || null,
+          time: mostRecentLog?.createdAt?.toString() || null,
           status: mostRecentLog?.status || null,
-          errorMessage: lastFailedLog?.errorMessage || null,
+          errorMessage: (!!lastFailedLog && (!lastSuccessLog || lastFailedLog.createdAt! > lastSuccessLog.createdAt!))
+            ? lastFailedLog.errorMessage || null
+            : null,
           hasFailedRecently: !!lastFailedLog && (!lastSuccessLog || (lastFailedLog.createdAt! > lastSuccessLog.createdAt!)),
         },
         summary: { total: roomTypes.length, synced: roomTypes.filter(rt => rt.healthStatus === "synced").length, mismatches: roomTypes.filter(rt => rt.mismatches > 0).length, neverPushed: totalNeverPushed, totalCellMismatches: totalMismatches },
