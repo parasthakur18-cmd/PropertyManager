@@ -1,6 +1,6 @@
 ---
 name: Aiosell inventory sync behavior
-description: Key quirks, rate limits, debounce, and fixes for the Aiosell channel manager integration
+description: Key quirks, rate limits, debounce, concurrency fixes, and audit accuracy for the AioSell channel manager
 ---
 
 ## Key Finding: Aiosell "Update Rooms" Page Shows NET Count
@@ -51,37 +51,44 @@ makeAiosellRequest() in server/aiosell.ts now:
 
 ## Rate Limiting — Safe Parameters (Updated May 2026)
 - Aiosell enforces ~1 req/s rate limit; returns nginx 429 (HTML, not JSON) if exceeded.
-- **Safe inter-call delay: 1200ms** between individual range pushes (was 300ms → too fast).
-- **Retry backoff on 429: 3s → 6s → 10s** (3 attempts). Rate-limit window is ~10s so
-  short backoffs (1s/2s) don't clear it in time.
+- **Safe inter-call delay: 2500ms** between individual range pushes.
+- **Retry backoff on 429: 15s → 30s → 60s** (3 attempts in callAiosellApi).
 
-## Debounce for Booking Webhooks (Added May 2026)
-- Problem: burst of OTA webhooks (6 rapid bookings) each triggered a full 90-day sync
-  → parallel calls → 429 flood.
-- Fix: `scheduleSyncForProperty(propertyId, opts)` in `server/aiosell.ts`.
-  10-second debounce window. Multiple calls for same property within 10s collapse to ONE sync.
-- **Always use `scheduleSyncForProperty` for booking-event-triggered syncs.**
-  Use `autoSyncInventoryForProperty` directly ONLY for manual/admin-initiated syncs.
-- All 4 webhook callers in routes.ts use `scheduleSyncForProperty`.
+## Concurrency Bug Fixed (Phase 4, May 2026)
+`scheduleSyncForProperty` deleted its debounce timer BEFORE the sync ran.
+A new booking event mid-push would spawn a parallel sync → burst of simultaneous HTTP calls → 429.
+Fix: `_syncInProgress = new Set<number>()` — autoSyncInventoryForProperty sets/clears it in try/finally.
+`scheduleSyncForProperty` now defers 30s if property is in-progress instead of spawning parallel.
+**Always use `scheduleSyncForProperty` for booking-event-triggered syncs.**
 
 ## Stop-Sell Optimization (Added May 2026)
 - Only push `stopSell` restrictions for date ranges where at least one room has `available === 0`.
   All-open ranges are skipped → cuts API calls roughly in half for typical occupancy.
-- Auto stop-sell IS still needed: `available=0` alone doesn't block OTA rooms (Aiosell requires
-  explicit stopSell restriction to prevent new bookings).
 
 ## DEV/LIVE Isolation Guard (Added May 2026)
 - Preview and live share the same Aiosell hotelCode → preview test pushes corrupt live inventory.
-- Fix: `AIOSELL_PUSH_ENABLED=true` must be set on the LIVE server; dev environment has it set to "false".
-- Guard is at the top of `makeAiosellRequest()` — if env var ≠ "true", push is suppressed with a log.
-- Dev env var set via Replit's setEnvVars({ environment: "development" }) → persists across restarts.
+- Fix: `AIOSELL_PUSH_ENABLED=true` must be set on the LIVE server; dev has it "false".
+
+## Daily Health Job (Phase 4, May 2026)
+`startInventoryHealthJob()` in server/aiosell.ts — called at bottom of routes.ts.
+Runs every 24h, first run 3min after startup. Staggered 60s between properties.
+Pushes inventory for properties where last_sync_at is null or >23h old.
+**Prevents staleness at low-activity properties (Woodpecker) that get no booking events.**
+
+## Audit False Positives Fixed (Phase 4, May 2026)
+- SANDBOX hotel_code ("SANDBOX-PMS") previously passed `!!hotelCode.trim()` → now explicitly fails
+- `is_sandbox=true` now adds "fail" check + deducts 4pts from Section 1 score
+- Duplicate `aiosell_room_code` across mappings → Section 2 now catches and penalises
+- HTTP 500 from testConnection counted as connectivity pass for sandbox → overridden in Section 6
+
+## Property State (as of 2026-05-30)
+- **Woodpecker (id=1):** Production, 9 mappings, 2 dorm types missing rate plans (mapping_id=4,5)
+- **Forest Pinnacle (id=2):** SANDBOX (hotel_code=SANDBOX-PMS, is_sandbox=true), all 3 room
+  types use code "EXECUTIVE" (needs real AioSell codes), last_sync_at=null (never pushed to prod)
+- **Blue Mont (id=7):** Production, 7 mappings with correct AioSell codes, zero rate plans in DB
+  (need AioSell dashboard codes to add)
 
 ## Live Server Room Code Fix (Still Needed on Production)
 SQL to run on hostezee.in DB:
   UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
   WHERE aiosell_room_code = 'deluxe-room-with-balcony';
-Steps on live server:
-  1. Add AIOSELL_PUSH_ENABLED=true to PM2 env or shell
-  2. Run SQL above
-  3. git pull && pm2 restart propertymanager
-  4. Inventory Reconciliation → Sync All Rooms (Next 90 Days)

@@ -74,7 +74,7 @@ import {
 import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptions, subscriptionPayments, tasks, userPermissions, staffInvitations, dailyClosings, wallets, walletTransactions, changeApprovals, errorReports, aiosellConfigurations, aiosellRoomMappings, aiosellRatePlans, aiosellSyncLogs, aiosellRateUpdates, aiosellInventoryRestrictions, aiosellAuditReports, bookingGuests, bookingRoomStays, dailyReportSettings, restaurantPopup } from "@shared/schema";
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
-import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
+import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, startInventoryHealthJob, type AiosellReservation } from "./aiosell";
 import { verifyProperties, verifyProperty, auditProperty, storeAuditReport } from "./aiosell-verifier";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
@@ -23580,3 +23580,9 @@ function startKitchenAcceptanceEscalationJob() {
   setInterval(tick, TICK_MS);
   console.log("[KITCHEN-ESCALATION] Background job started — checks every 60s");
 }
+
+// ── AioSell Daily Inventory Health Job ────────────────────────────────────────
+// Pushes inventory for any active non-sandbox property whose last_sync_at is
+// null or older than 23 hours. Prevents staleness at low-activity properties
+// (e.g. Woodpecker) that get no booking events to trigger event-driven syncs.
+startInventoryHealthJob();

@@ -23,6 +23,12 @@ import { rooms, bookings, bookingRoomStays } from "@shared/schema";
 const _syncDebounceTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const _syncDebounceMeta  = new Map<number, { triggerBookingId?: number; webhookTs?: string }>();
 
+// ── Per-property in-progress lock ──────────────────────────────────────────────
+// Prevents concurrent autoSyncInventoryForProperty calls for the same property.
+// Without this guard, a new booking event arriving during a 30-90s push run would
+// start a parallel sync — causing all the simultaneous HTTP calls that trigger 429s.
+const _syncInProgress = new Set<number>();
+
 interface AiosellApiResponse {
   success: boolean;
   message?: string;
@@ -468,6 +474,15 @@ export async function autoSyncInventoryForProperty(
   propertyId: number,
   opts?: { triggerBookingId?: number; webhookTs?: string }
 ): Promise<void> {
+  // ── In-progress guard: prevents concurrent pushes for the same property ──────
+  // A single 90-day push takes 30-90s. Without this guard, a booking event
+  // arriving mid-push would start a second parallel push, flooding Aiosell
+  // with simultaneous requests and triggering 429 rate limits (Blue Mont pattern).
+  if (_syncInProgress.has(propertyId)) {
+    console.log(`[AIOSELL] autoSync: property ${propertyId} sync already in progress — skipping concurrent call (bookingId=${opts?.triggerBookingId})`);
+    return;
+  }
+  _syncInProgress.add(propertyId);
   try {
     const config = await getConfigForProperty(propertyId);
     if (!config || !config.isActive) return;
@@ -979,6 +994,8 @@ export async function autoSyncInventoryForProperty(
     }
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);
+  } finally {
+    _syncInProgress.delete(propertyId);
   }
 }
 
@@ -996,6 +1013,20 @@ export function scheduleSyncForProperty(
     webhookTs: opts?.webhookTs,
   });
 
+  // If a sync is already running, defer this call by 30s so it re-evaluates
+  // once the running push finishes rather than firing a parallel push.
+  if (_syncInProgress.has(propertyId)) {
+    if (!_syncDebounceTimers.has(propertyId)) {
+      console.log(`[AIOSELL] scheduleSyncForProperty: property ${propertyId} sync in progress — deferring 30s (bookingId=${opts?.triggerBookingId})`);
+      const timer = setTimeout(() => {
+        _syncDebounceTimers.delete(propertyId);
+        scheduleSyncForProperty(propertyId, _syncDebounceMeta.get(propertyId));
+      }, 30_000);
+      _syncDebounceTimers.set(propertyId, timer);
+    }
+    return;
+  }
+
   // If a timer is already pending for this property, do nothing — let it fire
   if (_syncDebounceTimers.has(propertyId)) {
     console.log(`[AIOSELL] scheduleSyncForProperty: debounce active for property ${propertyId}, skipping duplicate (bookingId=${opts?.triggerBookingId})`);
@@ -1011,4 +1042,84 @@ export function scheduleSyncForProperty(
   }, 10_000); // 10 second debounce window
 
   _syncDebounceTimers.set(propertyId, timer);
+}
+
+// ── Daily Inventory Health Job ─────────────────────────────────────────────────
+// Runs every 24 hours. For each active non-sandbox property, if last_sync_at is
+// null or older than 23 hours, triggers a full inventory push. This prevents
+// inventory from going stale at properties with low booking activity (Woodpecker)
+// and acts as a safety net for any missed event-driven push.
+// Properties are staggered 60s apart to avoid simultaneous 429s on AioSell.
+export function startInventoryHealthJob(): void {
+  const INTERVAL_MS      = 24 * 60 * 60 * 1000; // 24 hours between runs
+  const STALE_THRESHOLD_MS = 23 * 60 * 60 * 1000; // push if stale by 23h
+
+  async function runHealthCheck(): Promise<void> {
+    const now = new Date();
+    const staleThreshold = new Date(now.getTime() - STALE_THRESHOLD_MS);
+    console.log(`[AIOSELL-HEALTH] Daily inventory health check starting at ${now.toISOString()}`);
+
+    try {
+      const configs = await db
+        .select()
+        .from(aiosellConfigurations)
+        .where(
+          and(
+            eq(aiosellConfigurations.isActive, true),
+            eq(aiosellConfigurations.isSandbox, false),
+          ),
+        );
+
+      if (configs.length === 0) {
+        console.log("[AIOSELL-HEALTH] No active non-sandbox properties — nothing to check");
+        return;
+      }
+
+      console.log(`[AIOSELL-HEALTH] Checking ${configs.length} propert${configs.length !== 1 ? "ies" : "y"}...`);
+      let pushed = 0; let skipped = 0; let failed = 0;
+
+      for (let i = 0; i < configs.length; i++) {
+        const config = configs[i];
+        const lastSync = config.lastSyncAt ? new Date(config.lastSyncAt as any) : null;
+        const isStale  = !lastSync || lastSync < staleThreshold;
+        const ageHours = lastSync
+          ? Math.round((now.getTime() - lastSync.getTime()) / 360_000) / 10
+          : null;
+
+        if (!isStale) {
+          console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — fresh (${ageHours}h ago), skipping`);
+          skipped++;
+          continue;
+        }
+
+        const reason = lastSync ? `stale (${ageHours}h ago)` : "never pushed";
+        console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — ${reason}, triggering sync…`);
+        try {
+          await autoSyncInventoryForProperty(config.propertyId);
+          pushed++;
+          console.log(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync complete ✓`);
+        } catch (err: any) {
+          failed++;
+          console.error(`[AIOSELL-HEALTH] prop=${config.propertyId} — sync failed: ${err.message}`);
+        }
+
+        // Stagger between properties: wait 60s before the next one
+        if (i < configs.length - 1) {
+          await new Promise(r => setTimeout(r, 60_000));
+        }
+      }
+
+      console.log(
+        `[AIOSELL-HEALTH] Health check complete — pushed=${pushed} skipped=${skipped} failed=${failed}`,
+      );
+    } catch (err: any) {
+      console.error("[AIOSELL-HEALTH] Health check job failed:", err.message);
+    }
+  }
+
+  // First run 3 minutes after server startup (let other jobs finish init),
+  // then every 24 hours.
+  setTimeout(() => runHealthCheck(), 3 * 60 * 1000);
+  setInterval(() => runHealthCheck(), INTERVAL_MS);
+  console.log("[AIOSELL-HEALTH] Daily inventory health job started — first run in 3min, then every 24h");
 }

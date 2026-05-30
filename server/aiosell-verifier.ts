@@ -398,6 +398,22 @@ export async function auditProperty(
   const dormRooms        = allRooms.filter(r => r.roomCategory === "dormitory");
   const dormMissingBeds  = dormRooms.filter(r => !r.totalBeds || r.totalBeds <= 0);
   const invalidCodeMappings = allMappings.filter(m => !m.aiosellRoomCode?.trim());
+
+  // Sandbox detection — computed once, used in Section 1, Section 6, and issues
+  const isSandboxHotelCode = config
+    ? (config.hotelCode?.toUpperCase().includes("SANDBOX") ?? false)
+    : false;
+  const isSandboxMode = config?.isSandbox === true;
+
+  // Duplicate AioSell room codes — all different room types sharing the same code
+  // (e.g. Forest Pinnacle: all 3 rooms use "EXECUTIVE") means AioSell cannot
+  // differentiate inventory between them.
+  const codeCounts = new Map<string, number>();
+  for (const m of allMappings) {
+    const code = m.aiosellRoomCode?.trim();
+    if (code) codeCounts.set(code, (codeCounts.get(code) || 0) + 1);
+  }
+  const duplicateRoomCodes = [...codeCounts.entries()].filter(([, count]) => count > 1);
   const mappingsWithRates   = allMappings.filter(m => allRatePlans.some(rp => rp.roomMappingId === m.id));
   const mappingsWithoutRates = allMappings.filter(m => !allRatePlans.some(rp => rp.roomMappingId === m.id));
   const lastRateLog  = allLogsAny.find(l => l.syncType === "rate_push") || null;
@@ -411,10 +427,14 @@ export async function auditProperty(
     s1Checks.push({ label: "AioSell Configuration", value: null, status: "fail",
       detail: "No active AioSell configuration — property not connected to any OTA" });
   } else {
-    const hotelOk = !!config.hotelCode?.trim();
+    const hotelStr = config.hotelCode?.trim() || "";
+    const hotelOk  = !!hotelStr && !isSandboxHotelCode;
     s1Checks.push({ label: "Hotel Code", value: config.hotelCode || null,
-      status: hotelOk ? "pass" : "fail",
-      detail: hotelOk ? `Hotel code "${config.hotelCode}"` : "Hotel code is empty — cannot identify property in AioSell" });
+      status: isSandboxHotelCode ? "fail" : hotelOk ? "pass" : "fail",
+      detail: isSandboxHotelCode
+        ? `Hotel code "${config.hotelCode}" is a sandbox placeholder — update to the real production hotel code in Channel Manager → Settings`
+        : hotelOk ? `Hotel code "${config.hotelCode}"`
+          : "Hotel code is empty — cannot identify property in AioSell" });
     if (hotelOk) s1Score += 6;
 
     const pmsOk = !!config.pmsName?.trim();
@@ -434,6 +454,13 @@ export async function auditProperty(
       status: urlOk ? "pass" : "fail",
       detail: urlOk ? `Using ${config.apiBaseUrl}` : "API URL is missing or not HTTPS" });
     if (urlOk) s1Score += 5;
+
+    if (isSandboxMode) {
+      s1Checks.push({ label: "Sandbox Mode", value: "ACTIVE",
+        status: "fail",
+        detail: "is_sandbox=true — all inventory and rate pushes go to the AioSell test endpoint, not live OTAs. Disable sandbox mode in Channel Manager → Settings to go live." });
+      s1Score = Math.max(0, s1Score - 4);
+    }
   }
 
   const section1: AuditSection = {
@@ -463,8 +490,16 @@ export async function auditProperty(
         : dormMissingBeds.length === 0 ? `All ${dormRooms.length} dorm rooms have totalBeds set`
           : `${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds: ${dormMissingBeds.map(r => r.roomNumber).join(", ")}` },
   ];
+  // Duplicate room code check — push to s2Checks after the initial array literal
+  s2Checks.push({ label: "Duplicate Room Codes", value: duplicateRoomCodes.length > 0 ? duplicateRoomCodes.length : "None",
+    status: duplicateRoomCodes.length === 0 ? "pass" : "fail",
+    detail: duplicateRoomCodes.length === 0
+      ? "All room types have unique AioSell codes"
+      : `${duplicateRoomCodes.length} AioSell code${duplicateRoomCodes.length !== 1 ? "s" : ""} shared across multiple room types: ${duplicateRoomCodes.map(([code, cnt]) => `"${code}" ×${cnt}`).join(", ")} — AioSell cannot differentiate inventory between these room types` });
+
   if (allMappings.length > 0) s2Score += 12;
-  if (invalidCodeMappings.length === 0 && allMappings.length > 0) s2Score += 8;
+  if (invalidCodeMappings.length === 0 && allMappings.length > 0 && duplicateRoomCodes.length === 0) s2Score += 8;
+  else if (invalidCodeMappings.length === 0 && allMappings.length > 0) s2Score += 4; // partial: codes set but duplicated
 
   const section2: AuditSection = {
     name: "Room Mapping", key: "roomMapping",
@@ -613,6 +648,16 @@ export async function auditProperty(
     }
   }
 
+  // Sandbox override: even if HTTP credentials pass, sandbox mode means production
+  // OTAs are NOT reachable. HTTP 500 from a sandbox endpoint should not count as
+  // a connectivity pass for the production audit.
+  if (isSandboxMode && liveTestResult?.success) {
+    liveTestResult = {
+      success: false,
+      message: "Property is in sandbox mode (is_sandbox=true) — API credentials accepted but inventory targets the test endpoint, not live OTAs. Disable sandbox in Settings.",
+    };
+  }
+
   const recentWebhooks = inboundLogs7d.filter(l => l.syncType?.startsWith("reservation_"));
   const s6Checks: AuditCheck[] = [
     { label: "AioSell Connectivity",
@@ -650,8 +695,11 @@ export async function auditProperty(
 
   if (!config)                              criticalIssues.push("No AioSell configuration — property not connected to any OTA");
   if (!config?.pmsPassword)                 criticalIssues.push("PMS password not set — authentication will fail on all API calls");
+  if (isSandboxHotelCode)                   criticalIssues.push(`Hotel code "${config?.hotelCode}" is a sandbox placeholder — replace with the real production hotel code in Channel Manager → Settings`);
+  if (isSandboxMode)                        criticalIssues.push("Sandbox mode is active (is_sandbox=true) — production OTAs will NOT receive any inventory or rate updates");
   if (allMappings.length === 0)             criticalIssues.push("No room mappings — inventory cannot be pushed");
   if (invalidCodeMappings.length > 0)       criticalIssues.push(`${invalidCodeMappings.length} mapping${invalidCodeMappings.length !== 1 ? "s" : ""} have empty AioSell room codes`);
+  if (duplicateRoomCodes.length > 0)        criticalIssues.push(`Duplicate AioSell room codes detected: ${duplicateRoomCodes.map(([code, cnt]) => `"${code}" used by ${cnt} room types`).join(", ")} — AioSell cannot distinguish inventory between these room types`);
   if (!everPushed)                          criticalIssues.push("Inventory has never been pushed — OTAs are showing default availability");
   if (allRatePlans.length === 0 && allMappings.length > 0) criticalIssues.push("No rate plans configured — OTA rates will never be updated");
   if (liveTestResult !== null && !liveTestResult.success)  criticalIssues.push(`AioSell live connection failed: ${liveTestResult.message}`);
