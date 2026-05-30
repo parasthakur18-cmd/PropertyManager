@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   RefreshCw, CheckCircle2, AlertTriangle, XCircle, Zap, Activity,
   Building2, Calendar, Scale, Loader2, Info, WifiOff,
-  RotateCcw,
+  RotateCcw, Bug,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
@@ -439,6 +439,13 @@ export default function InventoryReconciliation() {
             <Button variant="outline" onClick={() => refetch()} disabled={isFetching} className="gap-2">
               <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />Recalculate
             </Button>
+            {selectedPropertyId && (
+              <Button variant="outline" asChild className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50">
+                <a href={`/inventory-debug?propertyId=${selectedPropertyId}`} target="_blank" rel="noreferrer">
+                  <Bug className="w-4 h-4" />Debug Audit
+                </a>
+              </Button>
+            )}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Info className="w-3.5 h-3.5" />
               Sync Now pushes inventory for all mapped rooms for the next 90 days to Aiosell. Aiosell then distributes to all OTAs.

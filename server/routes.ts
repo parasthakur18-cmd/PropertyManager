@@ -21093,6 +21093,420 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // ── Inventory Debug Audit ────────────────────────────────────────────────────
+
+  /**
+   * GET /api/admin/inventory/debug/:propertyId
+   * Full inventory audit: Hostezee calculation breakdown vs last-pushed vs live
+   * Aiosell probe (attempt GET). Returns per-room per-date comparison with
+   * booking-level detail showing exactly why each availability count is what it is.
+   */
+  app.get("/api/admin/inventory/debug/:propertyId", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.params.propertyId);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const fromStr = (req.query.from as string) || new Date().toISOString().split("T")[0];
+      const toStr = (req.query.to as string) || (() => { const d = new Date(); d.setDate(d.getDate() + 13); return d.toISOString().split("T")[0]; })();
+      const DAYS = Math.min(90, Math.round((new Date(toStr).getTime() - new Date(fromStr).getTime()) / 86400000) + 1);
+      const today = new Date(fromStr); today.setHours(0, 0, 0, 0);
+      const dates: string[] = [];
+      for (let i = 0; i < DAYS; i++) {
+        const d = new Date(today); d.setDate(today.getDate() + i);
+        dates.push(d.toISOString().split("T")[0]);
+      }
+
+      // ── 1. Fetch mappings, rooms, bookings ────────────────────────────────────
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+      const horizon = new Date(toStr); horizon.setDate(horizon.getDate() + 1);
+
+      const activeBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, bedsBooked: bookings.bedsBooked,
+        numberOfGuests: bookings.numberOfGuests, guestName: bookings.guestName,
+        source: bookings.source, externalBookingId: bookings.externalBookingId,
+      }).from(bookings).where(and(
+        eq(bookings.propertyId, propertyId),
+        inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+        lte(bookings.checkInDate, horizon),
+        gte(bookings.checkOutDate, today),
+      ));
+
+      const activeBookingIds = activeBookings.map(b => b.id);
+      const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+      const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
+
+      if (activeBookingIds.length > 0) {
+        const tbsStays = await db.select({
+          bookingId: bookingRoomStays.bookingId,
+          aiosellRoomCode: bookingRoomStays.aiosellRoomCode,
+        }).from(bookingRoomStays).where(and(
+          inArray(bookingRoomStays.bookingId, activeBookingIds),
+          isNull(bookingRoomStays.roomId),
+        ));
+        for (const stay of tbsStays) {
+          if (!stay.aiosellRoomCode) continue;
+          if (!tbsStaysByBookingId.has(stay.bookingId)) tbsStaysByBookingId.set(stay.bookingId, []);
+          tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
+        }
+        const confirmedStays = await db.select({
+          bookingId: bookingRoomStays.bookingId,
+          roomId: bookingRoomStays.roomId,
+        }).from(bookingRoomStays).where(and(
+          inArray(bookingRoomStays.bookingId, activeBookingIds),
+          isNotNull(bookingRoomStays.roomId),
+        ));
+        for (const stay of confirmedStays) {
+          if (stay.roomId == null) continue;
+          if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
+          confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
+        }
+      }
+
+      // ── 2. Load stop-sell restrictions ────────────────────────────────────────
+      const activeRestrictions = await db.select().from(aiosellInventoryRestrictions).where(and(
+        eq(aiosellInventoryRestrictions.configId, config.id),
+        gte(aiosellInventoryRestrictions.endDate, fromStr),
+      ));
+      const stopSellRanges = new Map<string, { start: string; end: string }[]>();
+      for (const r of activeRestrictions) {
+        if (!r.stopSell) continue;
+        const m = mappings.find(mm => mm.id === r.roomMappingId);
+        if (!m) continue;
+        if (!stopSellRanges.has(m.aiosellRoomCode)) stopSellRanges.set(m.aiosellRoomCode, []);
+        stopSellRanges.get(m.aiosellRoomCode)!.push({ start: r.startDate as string, end: r.endDate as string });
+      }
+
+      // ── 3. Last push logs → lastPushed map ───────────────────────────────────
+      const pushLogs = await db.select({
+        id: aiosellSyncLogs.id,
+        status: aiosellSyncLogs.status,
+        createdAt: aiosellSyncLogs.createdAt,
+        requestPayload: aiosellSyncLogs.requestPayload,
+        responsePayload: aiosellSyncLogs.responsePayload,
+        errorMessage: aiosellSyncLogs.errorMessage,
+        syncType: aiosellSyncLogs.syncType,
+      }).from(aiosellSyncLogs).where(and(
+        eq(aiosellSyncLogs.configId, config.id),
+        eq(aiosellSyncLogs.syncType, "inventory_push"),
+      )).orderBy(desc(aiosellSyncLogs.createdAt)).limit(500);
+
+      const lastPushed: Record<string, Record<string, { available: number; pushTime: string; status: string; logId: number }>> = {};
+      for (const log of pushLogs) {
+        if (log.status !== "success") continue;
+        const payload = log.requestPayload as any;
+        if (!payload?.updates) continue;
+        for (const update of payload.updates) {
+          if (!update.startDate || !update.rooms) continue;
+          const sD = new Date(update.startDate); sD.setHours(0, 0, 0, 0);
+          const eD = update.endDate ? new Date(update.endDate) : new Date(update.startDate); eD.setHours(0, 0, 0, 0);
+          const d = new Date(sD);
+          while (d <= eD) {
+            const ds = d.toISOString().split("T")[0];
+            for (const room of (update.rooms as Array<{ roomCode: string; available: number }>) || []) {
+              if (!room.roomCode) continue;
+              if (!lastPushed[room.roomCode]) lastPushed[room.roomCode] = {};
+              if (!lastPushed[room.roomCode][ds]) {
+                lastPushed[room.roomCode][ds] = {
+                  available: room.available,
+                  pushTime: log.createdAt?.toString() || "",
+                  status: log.status,
+                  logId: log.id,
+                };
+              }
+            }
+            d.setDate(d.getDate() + 1);
+          }
+        }
+      }
+
+      // ── 4. Attempt live Aiosell inventory fetch ────────────────────────────────
+      // Aiosell does not publish a documented GET inventory endpoint, but we probe
+      // two common patterns. If either succeeds, we include live data in the audit.
+      let aiosellLiveData: Record<string, Record<string, number>> | null = null;
+      let aiosellLiveFetchTime: string | null = null;
+      let aiosellLiveError: string | null = null;
+
+      const authHeader = config.pmsPassword
+        ? "Basic " + Buffer.from(`${config.pmsName}:${config.pmsPassword}`).toString("base64")
+        : null;
+
+      const probeEndpoints = [
+        `${config.apiBaseUrl}/api/v2/cm/get-inventory/${config.pmsName}`,
+        `${config.apiBaseUrl}/api/v2/cm/read/${config.pmsName}`,
+      ];
+
+      for (const probeUrl of probeEndpoints) {
+        try {
+          const probeResp = await fetch(probeUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...(authHeader ? { Authorization: authHeader } : {}) },
+            body: JSON.stringify({ hotelCode: config.hotelCode, from: fromStr, to: toStr }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (probeResp.ok) {
+            const probeData = await probeResp.json();
+            if (probeData?.inventory || probeData?.rooms || probeData?.data) {
+              aiosellLiveData = probeData;
+              aiosellLiveFetchTime = new Date().toISOString();
+              break;
+            }
+          }
+        } catch { /* endpoint doesn't exist — expected */ }
+      }
+
+      if (!aiosellLiveData) {
+        aiosellLiveError = "Aiosell does not expose a documented GET inventory API. Comparison uses last-pushed data from sync logs.";
+      }
+
+      // ── 5. Build per-mapping room audit ───────────────────────────────────────
+      const normalise = (s: string) => s.toLowerCase().replace(/[-_\s]+/g, " ").trim();
+      const specificMappingAudit: any[] = mappings.map(mapping => {
+        const normType = normalise(mapping.hostezeeRoomType);
+        const matchingRooms = allRooms.filter(r =>
+          normalise(r.roomType || "") === normType ||
+          normalise(r.roomType || "").includes(normType) ||
+          normType.includes(normalise(r.roomType || ""))
+        );
+        const blockedRooms = matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || ""));
+        const activeRooms = matchingRooms.filter(r => !["maintenance", "out-of-order", "blocked"].includes(r.status || ""));
+        const isDormitory = activeRooms.some(r => r.roomCategory === "dormitory");
+        const totalCapacity = isDormitory
+          ? activeRooms.reduce((s, r) => s + (r.totalBeds || 1), 0)
+          : activeRooms.length;
+
+        return {
+          mappingId: mapping.id,
+          aiosellRoomCode: mapping.aiosellRoomCode,
+          aiosellRoomId: mapping.aiosellRoomId,
+          hostezeeRoomType: mapping.hostezeeRoomType,
+          isDormitory,
+          totalCapacity,
+          matchedRooms: matchingRooms.map(r => ({
+            id: r.id, roomNumber: r.roomNumber, roomType: r.roomType,
+            roomCategory: r.roomCategory, totalBeds: r.totalBeds, status: r.status,
+          })),
+          blockedRooms: blockedRooms.map(r => ({ id: r.id, roomNumber: r.roomNumber, status: r.status })),
+          activeRoomCount: activeRooms.length,
+          matchStatus: matchingRooms.length === 0 ? "NO_MATCH" : "OK",
+        };
+      });
+
+      // ── 6. Per-date per-mapping inventory calculation with booking breakdown ───
+      const inventoryAudit: any[] = dates.map(dateStr => {
+        const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
+
+        const mappingResults = mappings.map(mapping => {
+          const normType = normalise(mapping.hostezeeRoomType);
+          const matchingRooms = allRooms.filter(r =>
+            normalise(r.roomType || "") === normType ||
+            normalise(r.roomType || "").includes(normType) ||
+            normType.includes(normalise(r.roomType || ""))
+          );
+          const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
+          const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
+          const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
+          const stopSell = (stopSellRanges.get(mapping.aiosellRoomCode) || []).some(r => dateStr >= r.start && dateStr <= r.end);
+
+          let hostezeeAvailable: number;
+          let bookingBreakdown: any[] = [];
+
+          if (isDormitory) {
+            const totalBeds = matchingRooms.filter(r => activeRoomIds.includes(r.id)).reduce((s, r) => s + (r.totalBeds || 1), 0);
+            const bedsBookedByRoom: Record<number, number> = {};
+            const contributingBookings: any[] = [];
+
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+              const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+
+              if (stayRoomIds.length > 0) {
+                const matchedStays = stayRoomIds.filter(rid => activeRoomIds.includes(rid));
+                for (const rid of matchedStays) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+                if (matchedStays.length > 0) {
+                  contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "confirmed_stay", roomIds: matchedStays, beds: matchedStays.length });
+                }
+              } else {
+                const beds = b.bedsBooked || b.numberOfGuests || 1;
+                const bookingRoomIds: number[] = [];
+                if (b.roomId && activeRoomIds.includes(b.roomId)) { bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds; bookingRoomIds.push(b.roomId); }
+                if (b.roomIds) { for (const rid of b.roomIds) { if (activeRoomIds.includes(rid)) { bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds; bookingRoomIds.push(rid); } } }
+                if (bookingRoomIds.length > 0) contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "direct", roomIds: bookingRoomIds, beds });
+              }
+
+              // TBS dorm beds
+              if (!b.roomId && tbsForBooking.some(stay => stay.aiosellRoomCode === mapping.aiosellRoomCode)) {
+                contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: "tbs_ota", beds: tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length });
+              }
+            }
+
+            // Cap overbooked rooms
+            for (const rid of activeRoomIds) {
+              const cap = matchingRooms.find(r => r.id === rid)?.totalBeds || 0;
+              if (cap > 0 && (bedsBookedByRoom[rid] || 0) > cap) bedsBookedByRoom[rid] = cap;
+            }
+
+            let tbsDormBeds = 0;
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout) || b.roomId) continue;
+              const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+              if (tbsForBooking.length > 0) { for (const stay of tbsForBooking) if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++; }
+              else { const confirmedIds = confirmedStayRoomIdsByBookingId.get(b.id) || []; if (confirmedIds.length === 0) tbsDormBeds += (b.bedsBooked || 1); }
+            }
+
+            const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
+            const occupied = bedsBooked + tbsDormBeds;
+            hostezeeAvailable = stopSell ? 0 : Math.max(0, totalBeds - occupied);
+            bookingBreakdown = contributingBookings;
+            const lp = lastPushed[mapping.aiosellRoomCode]?.[dateStr] || null;
+            const lpAvailable = lp?.available ?? null;
+            const isMismatch = lpAvailable !== null && lpAvailable !== hostezeeAvailable;
+            return {
+              roomCode: mapping.aiosellRoomCode,
+              roomType: mapping.hostezeeRoomType,
+              isDormitory: true,
+              stopSell,
+              hostezee: { available: hostezeeAvailable, totalBeds, bedsFromBookings: bedsBooked, tbsBeds: tbsDormBeds, occupied },
+              lastPushed: lp ? { available: lpAvailable, pushTime: lp.pushTime, status: lp.status, logId: lp.logId } : null,
+              aiosellLive: null,
+              difference: lpAvailable !== null ? hostezeeAvailable - lpAvailable : null,
+              status: lpAvailable === null ? "NEVER_PUSHED" : isMismatch ? "MISMATCH" : "SYNCED",
+              bookingsContributing: bookingBreakdown,
+              perRoomBreakdown: Object.entries(bedsBookedByRoom).map(([rid, cnt]) => {
+                const room = matchingRooms.find(r => r.id === parseInt(rid));
+                return { roomId: parseInt(rid), roomNumber: room?.roomNumber || "?", capacity: room?.totalBeds || 1, bedsBooked: cnt };
+              }),
+            };
+          } else {
+            const bookedRoomIds = new Set<number>();
+            let tbsCount = 0;
+            const contributingBookings: any[] = [];
+
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+
+              const bookedBefore = new Set(bookedRoomIds);
+              if (b.roomId && activeRoomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+              if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+              for (const rid of stayRoomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+              const myTbs = tbsForBooking.filter(s => s.aiosellRoomCode === mapping.aiosellRoomCode).length;
+              tbsCount += myTbs;
+
+              const addedRooms = [...bookedRoomIds].filter(id => !bookedBefore.has(id));
+              if (addedRooms.length > 0 || myTbs > 0) {
+                contributingBookings.push({ bookingId: b.id, guestName: b.guestName, source: b.source, externalId: b.externalBookingId, type: myTbs > 0 ? "tbs_ota" : "confirmed", roomIds: addedRooms, tbsCount: myTbs });
+              }
+            }
+
+            const physicallyAvailable = activeRoomIds.filter(id => !bookedRoomIds.has(id)).length;
+            hostezeeAvailable = stopSell ? 0 : Math.max(0, physicallyAvailable - tbsCount);
+
+            const lp = lastPushed[mapping.aiosellRoomCode]?.[dateStr] || null;
+            const lpAvailable = lp?.available ?? null;
+            const isMismatch = lpAvailable !== null && lpAvailable !== hostezeeAvailable;
+            return {
+              roomCode: mapping.aiosellRoomCode,
+              roomType: mapping.hostezeeRoomType,
+              isDormitory: false,
+              stopSell,
+              hostezee: { available: hostezeeAvailable, totalRooms: activeRoomIds.length, bookedRooms: bookedRoomIds.size, tbsRooms: tbsCount },
+              lastPushed: lp ? { available: lpAvailable, pushTime: lp.pushTime, status: lp.status, logId: lp.logId } : null,
+              aiosellLive: null,
+              difference: lpAvailable !== null ? hostezeeAvailable - lpAvailable : null,
+              status: lpAvailable === null ? "NEVER_PUSHED" : isMismatch ? "MISMATCH" : "SYNCED",
+              bookingsContributing: contributingBookings,
+            };
+          }
+        });
+
+        const hasMismatch = mappingResults.some(r => r.status === "MISMATCH");
+        const hasNeverPushed = mappingResults.some(r => r.status === "NEVER_PUSHED");
+        return {
+          date: dateStr,
+          dayStatus: hasMismatch ? "MISMATCH" : hasNeverPushed ? "NEVER_PUSHED" : "SYNCED",
+          mappings: mappingResults,
+        };
+      });
+
+      // ── 7. Recent push log summary ─────────────────────────────────────────────
+      const recentLogs = pushLogs.slice(0, 20).map(l => ({
+        id: l.id,
+        status: l.status,
+        syncType: l.syncType,
+        pushTime: l.createdAt?.toString(),
+        errorMessage: l.errorMessage,
+        rangesInPayload: (() => {
+          try { return (l.requestPayload as any)?.updates?.length ?? null; } catch { return null; }
+        })(),
+        aiosellResponse: (() => {
+          try { return (l.responsePayload as any)?.message ?? null; } catch { return null; }
+        })(),
+      }));
+
+      // ── 8. Summary statistics ─────────────────────────────────────────────────
+      const allCells = inventoryAudit.flatMap(d => d.mappings);
+      const mismatchCells = allCells.filter((c: any) => c.status === "MISMATCH");
+      const neverPushedCells = allCells.filter((c: any) => c.status === "NEVER_PUSHED");
+
+      res.json({
+        generatedAt: new Date().toISOString(),
+        propertyId,
+        dateRange: { from: fromStr, to: toStr, days: DAYS },
+        config: {
+          id: config.id,
+          hotelCode: config.hotelCode,
+          pmsName: config.pmsName,
+          apiBaseUrl: config.apiBaseUrl,
+          isActive: config.isActive,
+          lastSyncAt: config.lastSyncAt,
+        },
+        summary: {
+          totalCells: allCells.length,
+          synced: allCells.length - mismatchCells.length - neverPushedCells.length,
+          mismatches: mismatchCells.length,
+          neverPushed: neverPushedCells.length,
+          mismatchedRoomCodes: [...new Set(mismatchCells.map((c: any) => c.roomCode))],
+          mismatchedDates: [...new Set(mismatchCells.map((c: any) => inventoryAudit.find((d: any) => d.mappings.includes(c))?.date).filter(Boolean))],
+        },
+        aiosellLive: {
+          available: !!aiosellLiveData,
+          fetchTime: aiosellLiveFetchTime,
+          error: aiosellLiveError,
+          note: "Aiosell does not expose a documented public GET inventory endpoint. The 'lastPushed' values in this report come from our own sync logs and represent exactly what Hostezee sent to Aiosell. If Aiosell Live (Update Rooms page) shows different numbers, see the explanation below.",
+          whyAiosellMayDiffer: [
+            "1. OTA bookings arrived through Aiosell AFTER the last Hostezee push. These reduce Aiosell's displayed count but Hostezee doesn't know about them until the webhook arrives.",
+            "2. Hostezee pushed `available: N` but Aiosell ALSO subtracts its own tracked OTA bookings from that number before displaying. So Aiosell shows N minus their bookings.",
+            "3. The push partially applied — Aiosell accepted the request but only processed some date ranges (fixed: each range is now a separate API call).",
+          ],
+        },
+        mappingAudit: specificMappingAudit,
+        inventoryAudit,
+        recentPushLogs: recentLogs,
+      });
+    } catch (err: any) {
+      console.error("[INVENTORY-DEBUG]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Connectivity Audit ──────────────────────────────────────────────────────
 
   /**

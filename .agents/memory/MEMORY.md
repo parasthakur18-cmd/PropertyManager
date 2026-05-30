@@ -1,1 +1,2 @@
 - [Customer menu premium UX](customer-menu-ux.md) — Phase 1 hotel dining homepage: MEAL_SLOTS + activeMealSlot navigation, all frontend-only in customer-menu.tsx
+- [Aiosell inventory sync behavior](aiosell-inventory-sync.md) — Aiosell shows pushed_count minus its own OTA bookings; no GET API; debug endpoint at /inventory-debug
