@@ -522,14 +522,25 @@ export async function autoSyncInventoryForProperty(
       }
     }
 
-    // Group rooms by type (using hostezeeRoomType from mappings)
+    // Normalise room type strings for fuzzy matching (handles hyphens vs spaces, case differences)
+    const normaliseRoomType = (s: string) =>
+      s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+    // Group rooms by type (using hostezeeRoomType from mappings) — normalised match
     const roomsByType: Record<string, number[]> = {};
     for (const mapping of mappings) {
-      const matchingRooms = allRooms.filter(r =>
-        r.roomType === mapping.hostezeeRoomType
-      );
+      const normMapped = normaliseRoomType(mapping.hostezeeRoomType);
+      const matchingRooms = allRooms.filter(r => {
+        const normRoom = normaliseRoomType(r.roomType || "");
+        return normRoom === normMapped || normRoom.includes(normMapped) || normMapped.includes(normRoom);
+      });
       if (matchingRooms.length > 0) {
         roomsByType[mapping.hostezeeRoomType] = matchingRooms.map(r => r.id);
+        if (matchingRooms.some(r => normaliseRoomType(r.roomType || "") !== normaliseRoomType(mapping.hostezeeRoomType))) {
+          console.log(`[AIOSELL] Room type fuzzy match: mapping "${mapping.hostezeeRoomType}" → rooms [${matchingRooms.map(r => `"${r.roomType}"`).join(", ")}]`);
+        }
+      } else {
+        console.warn(`[AIOSELL] No rooms found for mapping "${mapping.hostezeeRoomType}" (roomCode=${mapping.aiosellRoomCode}) — will push 0`);
       }
     }
 
