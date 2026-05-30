@@ -1,0 +1,166 @@
+INVENTORY RECONCILIATION & SYNC TOOL
+
+Purpose:
+
+Sometimes Hostezee shows a room as occupied or unavailable, but Booking.com or MMT shows different availability for the same dates.
+
+I need a tool that compares inventory between Hostezee, Aiosell, Booking.com, and MMT and helps identify and repair mismatches.
+
+---
+
+1. INVENTORY COMPARISON
+
+For each room and date show:
+
+Property Name
+
+Room Name
+
+Date
+
+Hostezee Availability
+
+Aiosell Availability
+
+Booking.com Availability
+
+MMT Availability
+
+---
+
+2. MISMATCH DETECTION
+
+Highlight when:
+
+Hostezee = 0
+Booking.com = 1
+
+Hostezee = 2
+MMT = 0
+
+Aiosell ≠ Hostezee
+
+Any inventory mismatch
+
+Show exact dates affected.
+
+---
+
+3. ROOT CAUSE ANALYSIS
+
+For each mismatch show:
+
+Room Name
+
+Date
+
+Hostezee Availability
+
+Aiosell Availability
+
+Booking.com Availability
+
+MMT Availability
+
+Last Inventory Push Time
+
+Last Inventory Sync Time
+
+Last Error Message
+
+Last Successful Sync
+
+---
+
+4. REPAIR ACTIONS
+
+Buttons:
+
+Sync Hostezee → Aiosell
+
+Force Inventory Push
+
+Recalculate Occupancy
+
+Rebuild Inventory
+
+Refresh OTA Inventory
+
+Repair All Mismatches
+
+Re-sync All Connected Rooms
+
+---
+
+5. INVENTORY HEALTH STATUS
+
+🟢 Synced
+
+All systems match
+
+🟡 Warning
+
+Inventory mismatch detected
+
+Last sync failed
+
+🔴 Critical
+
+Room disconnected
+
+Inventory difference greater than 1
+
+Mapping missing
+
+---
+
+6. ROOM DETAILS
+
+For each room display:
+
+Aiosell Room ID
+
+Booking.com Mapping
+
+MMT Mapping
+
+Inventory Mapping Status
+
+Rate Mapping Status
+
+Last Inventory Push Result
+
+Last Inventory Push Error
+
+---
+
+7. BULK OPERATIONS
+
+Repair All Inventory Mismatches
+
+Recalculate Inventory From Bookings
+
+Force Push Inventory To All Connected Rooms
+
+Verify Inventory Across Next 365 Days
+
+---
+
+8. FINAL GOAL
+
+I want to instantly see:
+
+* Which rooms have inventory mismatches
+* Which dates have inventory mismatches
+* Why the mismatch occurred
+* Which OTA is different
+* One-click repair options
+* Whether the issue is:
+
+  * Hostezee occupancy
+  * Aiosell sync
+  * Booking.com inventory
+  * MMT inventory
+  * Missing room mapping
+
+The system should clearly identify the source of the mismatch and provide a direct action to repair it.

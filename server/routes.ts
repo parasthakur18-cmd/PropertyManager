@@ -20813,6 +20813,268 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // ── Inventory Reconciliation ─────────────────────────────────────────────────
+
+  /**
+   * GET /api/aiosell/inventory-reconciliation
+   * Compares Hostezee's current calculated availability against what was last
+   * pushed to Aiosell, per room-type per date, for a given property + date range.
+   * Returns mismatch flags and last-push metadata for repair decisions.
+   */
+  app.get("/api/aiosell/inventory-reconciliation", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const fromStr = (req.query.from as string) || new Date().toISOString().split("T")[0];
+      const toStr = (req.query.to as string) || (() => { const d = new Date(); d.setDate(d.getDate() + 29); return d.toISOString().split("T")[0]; })();
+      const from = new Date(fromStr); from.setHours(0, 0, 0, 0);
+      const to = new Date(toStr); to.setHours(0, 0, 0, 0);
+      const DAYS = Math.min(Math.round((to.getTime() - from.getTime()) / 86400000) + 1, 90);
+      const dates: string[] = [];
+      for (let i = 0; i < DAYS; i++) {
+        const d = new Date(from); d.setDate(from.getDate() + i);
+        dates.push(d.toISOString().split("T")[0]);
+      }
+
+      // ── 1. HOSTEZEE CURRENT AVAILABILITY (mirrors inventory-calendar logic) ─
+      const mappings = await getRoomMappingsForConfig(config.id);
+      const allRooms = await db.select().from(rooms).where(eq(rooms.propertyId, propertyId));
+      const ratePlansAll = await getRatePlansForConfig(config.id);
+
+      const horizon = new Date(to); horizon.setDate(horizon.getDate() + 1);
+      const activeBookings = await db.select({
+        id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+        checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate,
+        status: bookings.status, bedsBooked: bookings.bedsBooked,
+      }).from(bookings).where(and(
+        eq(bookings.propertyId, propertyId),
+        inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+        lte(bookings.checkInDate, horizon), gte(bookings.checkOutDate, from),
+      ));
+
+      const activeBookingIds = activeBookings.map(b => b.id);
+      const tbsStaysByBookingId = new Map<number, { aiosellRoomCode: string }[]>();
+      const confirmedStayRoomIdsByBookingId = new Map<number, number[]>();
+      if (activeBookingIds.length > 0) {
+        const tbsStays = await db.select({ bookingId: bookingRoomStays.bookingId, aiosellRoomCode: bookingRoomStays.aiosellRoomCode }).from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNull(bookingRoomStays.roomId)));
+        for (const stay of tbsStays) {
+          if (!stay.aiosellRoomCode) continue;
+          if (!tbsStaysByBookingId.has(stay.bookingId)) tbsStaysByBookingId.set(stay.bookingId, []);
+          tbsStaysByBookingId.get(stay.bookingId)!.push({ aiosellRoomCode: stay.aiosellRoomCode });
+        }
+        const confirmedStays = await db.select({ bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId }).from(bookingRoomStays).where(and(inArray(bookingRoomStays.bookingId, activeBookingIds), isNotNull(bookingRoomStays.roomId)));
+        for (const stay of confirmedStays) {
+          if (stay.roomId == null) continue;
+          if (!confirmedStayRoomIdsByBookingId.has(stay.bookingId)) confirmedStayRoomIdsByBookingId.set(stay.bookingId, []);
+          confirmedStayRoomIdsByBookingId.get(stay.bookingId)!.push(stay.roomId);
+        }
+      }
+
+      const activeRestrictions = await db.select().from(aiosellInventoryRestrictions).where(and(eq(aiosellInventoryRestrictions.configId, config.id), gte(aiosellInventoryRestrictions.endDate, fromStr)));
+      const stopSellRanges = new Map<string, { start: string; end: string }[]>();
+      for (const restriction of activeRestrictions) {
+        if (!restriction.stopSell) continue;
+        const m = mappings.find(mm => mm.id === restriction.roomMappingId);
+        if (!m) continue;
+        if (!stopSellRanges.has(m.aiosellRoomCode)) stopSellRanges.set(m.aiosellRoomCode, []);
+        stopSellRanges.get(m.aiosellRoomCode)!.push({ start: restriction.startDate as string, end: restriction.endDate as string });
+      }
+
+      // ── 2. LAST PUSHED DATA — parse recent inventory_push sync logs ───────────
+      const recentPushLogs = await db.select({
+        id: aiosellSyncLogs.id,
+        requestPayload: aiosellSyncLogs.requestPayload,
+        status: aiosellSyncLogs.status,
+        createdAt: aiosellSyncLogs.createdAt,
+        errorMessage: aiosellSyncLogs.errorMessage,
+      }).from(aiosellSyncLogs).where(and(
+        eq(aiosellSyncLogs.configId, config.id),
+        eq(aiosellSyncLogs.syncType, "inventory_push"),
+      )).orderBy(desc(aiosellSyncLogs.createdAt)).limit(30);
+
+      // Build: roomCode → date → { available, pushTime, status }
+      const lastPushed: Record<string, Record<string, { available: number; pushTime: string; status: string }>> = {};
+      for (const log of recentPushLogs) {
+        if (log.status !== "success") continue;
+        const payload = log.requestPayload as any;
+        if (!payload?.updates) continue;
+        for (const update of payload.updates) {
+          if (!update.startDate || !update.rooms) continue;
+          const sD = new Date(update.startDate); sD.setHours(0, 0, 0, 0);
+          const eD = update.endDate ? new Date(update.endDate) : new Date(update.startDate); eD.setHours(0, 0, 0, 0);
+          const d = new Date(sD);
+          while (d <= eD) {
+            const ds = d.toISOString().split("T")[0];
+            for (const room of (update.rooms as Array<{ roomCode: string; available: number }>)) {
+              if (!room.roomCode) continue;
+              if (!lastPushed[room.roomCode]) lastPushed[room.roomCode] = {};
+              if (!lastPushed[room.roomCode][ds]) {
+                lastPushed[room.roomCode][ds] = {
+                  available: room.available,
+                  pushTime: log.createdAt?.toString() || "",
+                  status: log.status,
+                };
+              }
+            }
+            d.setDate(d.getDate() + 1);
+          }
+        }
+      }
+
+      const lastSuccessLog = recentPushLogs.find(l => l.status === "success");
+      const lastFailedLog = recentPushLogs.find(l => l.status === "failed" || l.status === "error");
+      const mostRecentLog = recentPushLogs[0] || null;
+
+      // ── 3. BUILD PER-MAPPING COMPARISON ──────────────────────────────────────
+      const normaliseType2 = (s: string) => s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+      const roomTypes = mappings.map(mapping => {
+        const normType = normaliseType2(mapping.hostezeeRoomType);
+        const matchingRooms = allRooms.filter(r => normaliseType2(r.roomType || "") === normType || normaliseType2(r.roomType || "").includes(normType) || normType.includes(normaliseType2(r.roomType || "")));
+        const blockedRoomIds = new Set(matchingRooms.filter(r => ["maintenance", "out-of-order", "blocked"].includes(r.status || "")).map(r => r.id));
+        const activeRoomIds = matchingRooms.map(r => r.id).filter(id => !blockedRoomIds.has(id));
+        const isDormitory = matchingRooms.some(r => activeRoomIds.includes(r.id) && r.roomCategory === "dormitory");
+        const rps = ratePlansAll.filter(rp => rp.roomMappingId === mapping.id);
+
+        const days = dates.map(dateStr => {
+          const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
+          const stopSell = (stopSellRanges.get(mapping.aiosellRoomCode) || []).some(r => dateStr >= r.start && dateStr <= r.end);
+
+          let hostezeeAvailable: number;
+          let booked: number;
+          let total: number;
+
+          if (isDormitory) {
+            const totalBeds = matchingRooms.filter(r => activeRoomIds.includes(r.id)).reduce((s, r) => s + (r.totalBeds || 1), 0);
+            const bedsBookedByRoom: Record<number, number> = {};
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+              const stayRoomIds = confirmedStayRoomIdsByBookingId.get(b.id) || [];
+              if (stayRoomIds.length > 0) {
+                for (const rid of stayRoomIds) if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + 1;
+              } else {
+                const beds = b.bedsBooked || 1;
+                if (b.roomId && activeRoomIds.includes(b.roomId)) bedsBookedByRoom[b.roomId] = (bedsBookedByRoom[b.roomId] || 0) + beds;
+                if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bedsBookedByRoom[rid] = (bedsBookedByRoom[rid] || 0) + beds;
+              }
+            }
+            for (const rid of activeRoomIds) {
+              const cap = matchingRooms.find(r => r.id === rid)?.totalBeds || 0;
+              if (cap > 0 && (bedsBookedByRoom[rid] || 0) > cap) bedsBookedByRoom[rid] = cap;
+            }
+            let tbsDormBeds = 0;
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout) || b.roomId) continue;
+              const tbsForBooking = tbsStaysByBookingId.get(b.id) || [];
+              if (tbsForBooking.length > 0) { for (const stay of tbsForBooking) if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsDormBeds++; }
+              else { const confirmedIds = confirmedStayRoomIdsByBookingId.get(b.id) || []; if (confirmedIds.length === 0) tbsDormBeds += (b.bedsBooked || 1); }
+            }
+            const bedsBooked = Object.values(bedsBookedByRoom).reduce((s, n) => s + n, 0);
+            const occupied = bedsBooked + tbsDormBeds;
+            hostezeeAvailable = stopSell ? 0 : Math.max(0, Math.min(totalBeds, totalBeds - occupied));
+            booked = occupied; total = totalBeds;
+          } else {
+            const bookedRoomIds = new Set<number>();
+            let tbsCount = 0;
+            for (const b of activeBookings) {
+              const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+              const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+              if (!(cin <= date && date < cout)) continue;
+              if (b.roomId && activeRoomIds.includes(b.roomId)) bookedRoomIds.add(b.roomId);
+              if (b.roomIds) for (const rid of b.roomIds) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              for (const rid of (confirmedStayRoomIdsByBookingId.get(b.id) || [])) if (activeRoomIds.includes(rid)) bookedRoomIds.add(rid);
+              for (const stay of (tbsStaysByBookingId.get(b.id) || [])) if (stay.aiosellRoomCode === mapping.aiosellRoomCode) tbsCount++;
+            }
+            hostezeeAvailable = stopSell ? 0 : Math.max(0, activeRoomIds.filter(id => !bookedRoomIds.has(id)).length - tbsCount);
+            booked = bookedRoomIds.size + tbsCount; total = activeRoomIds.length;
+          }
+
+          const pushedInfo = lastPushed[mapping.aiosellRoomCode]?.[dateStr] || null;
+          const lastPushedAvailable = pushedInfo?.available ?? null;
+          const mismatch = lastPushedAvailable !== null && lastPushedAvailable !== hostezeeAvailable;
+          const neverPushed = lastPushedAvailable === null;
+
+          return { date: dateStr, hostezeeAvailable, lastPushedAvailable, mismatch, neverPushed, booked, total, stopSell, pushTime: pushedInfo?.pushTime || null };
+        });
+
+        const mismatches = days.filter(d => d.mismatch).length;
+        const neverPushed = days.filter(d => d.neverPushed).length;
+
+        return {
+          roomCode: mapping.aiosellRoomCode,
+          aiosellRoomId: mapping.aiosellRoomId,
+          hostezeeRoomType: mapping.hostezeeRoomType,
+          mappingId: mapping.id,
+          totalRooms: matchingRooms.length,
+          isDormitory,
+          ratePlans: rps.map(rp => ({ id: rp.id, code: rp.ratePlanCode, name: rp.ratePlanName })),
+          healthStatus: mismatches > 0 ? "mismatch" : neverPushed === days.length ? "never_pushed" : "synced",
+          mismatches, neverPushed, days,
+        };
+      });
+
+      const totalMismatches = roomTypes.reduce((s, rt) => s + rt.mismatches, 0);
+      const totalNeverPushed = roomTypes.filter(rt => rt.healthStatus === "never_pushed").length;
+
+      res.json({
+        dates,
+        propertyId,
+        hotelCode: config.hotelCode,
+        lastSync: {
+          time: lastSuccessLog?.createdAt?.toString() || null,
+          status: mostRecentLog?.status || null,
+          errorMessage: lastFailedLog?.errorMessage || null,
+          hasFailedRecently: !!lastFailedLog && (!lastSuccessLog || (lastFailedLog.createdAt! > lastSuccessLog.createdAt!)),
+        },
+        summary: { total: roomTypes.length, synced: roomTypes.filter(rt => rt.healthStatus === "synced").length, mismatches: roomTypes.filter(rt => rt.mismatches > 0).length, neverPushed: totalNeverPushed, totalCellMismatches: totalMismatches },
+        roomTypes,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/inventory-reconciliation/sync-now
+   * Triggers a full inventory sync for a property (same as auto-sync after a booking).
+   * Pushes all room types for the next 90 days.
+   */
+  app.post("/api/aiosell/inventory-reconciliation/sync-now", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured" });
+
+      await autoSyncInventoryForProperty(propertyId);
+
+      // Return the last push log for confirmation
+      const [lastLog] = await db.select({ status: aiosellSyncLogs.status, createdAt: aiosellSyncLogs.createdAt, errorMessage: aiosellSyncLogs.errorMessage, responsePayload: aiosellSyncLogs.responsePayload })
+        .from(aiosellSyncLogs)
+        .where(and(eq(aiosellSyncLogs.configId, config.id), eq(aiosellSyncLogs.syncType, "inventory_push")))
+        .orderBy(desc(aiosellSyncLogs.createdAt))
+        .limit(1);
+
+      res.json({ success: lastLog?.status === "success", status: lastLog?.status, syncedAt: lastLog?.createdAt?.toString(), errorMessage: lastLog?.errorMessage, response: lastLog?.responsePayload });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ── Connectivity Audit ──────────────────────────────────────────────────────
 
   /**
