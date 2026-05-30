@@ -41,7 +41,6 @@ import {
   TrendingUp as TrendingUpIcon,
   Users2,
   CalendarPlus,
-  Scale,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -129,8 +128,6 @@ const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Channel Manager", url: "/channel-manager", icon: ArrowUpDown },
-  { title: "Connectivity Audit", url: "/connectivity-audit", icon: ArrowUpDown },
-  { title: "Inventory Reconciliation", url: "/inventory-reconciliation", icon: Scale },
   { title: "Dynamic Pricing", url: "/dynamic-pricing", icon: TrendingUpIcon },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Audit Trail", url: "/audit-logs", icon: Shield },

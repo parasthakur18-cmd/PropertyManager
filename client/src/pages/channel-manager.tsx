@@ -7,7 +7,6 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
 import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone } from "lucide-react";
@@ -15,7 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { usePropertyFilter } from "@/hooks/usePropertyFilter";
-import { format, addDays, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 interface AiosellConfig {
   id: number;
@@ -162,7 +161,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
   const [pmsPassword, setPmsPassword] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState("https://live.aiosell.com");
   const [isSandbox, setIsSandbox] = useState(false);
-  const [showSandboxGuide, setShowSandboxGuide] = useState(false);
 
   const { data: config, isLoading } = useQuery<AiosellConfig | null>({
     queryKey: ["/api/aiosell/config", { propertyId }],
@@ -207,19 +205,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const forceSync = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("/api/aiosell/force-sync", "POST", { propertyId });
-      const text = await response.text();
-      try { return JSON.parse(text); } catch { throw new Error("Server returned an unexpected response. Please redeploy and try again."); }
-    },
-    onSuccess: (data: any) => {
-      toast({ title: data.success ? "Sync pushed!" : "Sync failed", description: data.message, variant: data.success ? "default" : "destructive" });
-      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
   const testWebhook = useMutation({
     mutationFn: async () => {
       const response = await apiRequest("/api/aiosell/test-webhook", "POST", { propertyId });
@@ -250,66 +235,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="space-y-6">
-      {/* Sandbox Setup Guide */}
-      <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-        <CardContent className="pt-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <TestTube2 className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Sandbox Testing (from AioSell team)</p>
-                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                  Use sandbox credentials to test rate/inventory push before going live. Verify updates at{" "}
-                  <a href="https://live.aiosell.com" target="_blank" rel="noopener noreferrer" className="underline">live.aiosell.com</a>{" "}
-                  (login: <strong>sandboxpms / sandboxpms</strong>).
-                </p>
-              </div>
-            </div>
-            <Button
-              data-testid="button-show-sandbox-guide"
-              variant="outline"
-              size="sm"
-              className="border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300 flex-shrink-0"
-              onClick={() => setShowSandboxGuide(!showSandboxGuide)}
-            >
-              {showSandboxGuide ? "Hide" : "Show"} Details
-            </Button>
-          </div>
-
-          {showSandboxGuide && (
-            <div className="mt-4 space-y-3 border-t border-amber-200 dark:border-amber-700 pt-3">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="bg-white dark:bg-gray-900 rounded p-2 border border-amber-200 dark:border-amber-700">
-                  <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">API Credentials</p>
-                  <p><span className="text-muted-foreground">PMS Name:</span> <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">aiosell</code></p>
-                  <p><span className="text-muted-foreground">Password:</span> <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">AIOsell@123</code></p>
-                  <p><span className="text-muted-foreground">Hotel Code:</span> <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">SANDBOX-PMS</code></p>
-                  <p><span className="text-muted-foreground">API URL:</span> <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">https://live.aiosell.com</code></p>
-                </div>
-                <div className="bg-white dark:bg-gray-900 rounded p-2 border border-amber-200 dark:border-amber-700">
-                  <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Room Mapping (Sandbox)</p>
-                  <p><span className="text-muted-foreground">Room codes:</span> <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">SUITE</code>, <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">EXECUTIVE</code></p>
-                  <p className="mt-1 text-muted-foreground">Rate plans: <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">SUITE-S-101</code>, <code className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded">EXECUTIVE-S-101</code></p>
-                  <p className="mt-1 text-muted-foreground text-xs">Map your room types to these codes in Room Mappings tab.</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  data-testid="button-fill-sandbox"
-                  size="sm"
-                  variant="outline"
-                  className="border-amber-400 text-amber-800 hover:bg-amber-100 dark:text-amber-300"
-                  onClick={fillSandboxCredentials}
-                >
-                  Auto-fill Sandbox Credentials
-                </Button>
-                <p className="text-xs text-amber-600 dark:text-amber-400">Fills the form below with sandbox values — still need to click Save.</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -365,13 +290,6 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               <Input data-testid="input-api-url" value={apiBaseUrl} onChange={e => setApiBaseUrl(e.target.value)} />
               <p className="text-xs text-muted-foreground">Default: https://live.aiosell.com</p>
             </div>
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div>
-                <Label>Sandbox Mode</Label>
-                <p className="text-xs text-muted-foreground">Mark this config as sandbox/test (does not change API URL)</p>
-              </div>
-              <Switch data-testid="switch-sandbox" checked={isSandbox} onCheckedChange={setIsSandbox} />
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2 pt-4">
@@ -380,23 +298,12 @@ function SettingsTab({ propertyId }: { propertyId: number }) {
               Save Configuration
             </Button>
             {isConfigured && (
-              <>
-                <Button data-testid="button-test-connection" variant="outline" onClick={() => testConn.mutate()} disabled={testConn.isPending}>
-                  {testConn.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wifi className="h-4 w-4 mr-2" />}
-                  Test Connection
-                </Button>
-                <Button data-testid="button-force-sync" variant="outline" onClick={() => forceSync.mutate()} disabled={forceSync.isPending} className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:text-blue-400">
-                  {forceSync.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Force Sync Inventory Now
-                </Button>
-              </>
+              <Button data-testid="button-test-connection" variant="outline" onClick={() => testConn.mutate()} disabled={testConn.isPending}>
+                {testConn.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wifi className="h-4 w-4 mr-2" />}
+                Test Connection
+              </Button>
             )}
           </div>
-          {isConfigured && (
-            <p className="text-xs text-muted-foreground">
-              "Force Sync" pushes current inventory (next 90 days) for all mapped room types to AioSell right now. Useful for testing or after bulk booking changes.
-            </p>
-          )}
         </CardContent>
       </Card>
 

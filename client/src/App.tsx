@@ -88,8 +88,6 @@ const Privacy = lazy(() => import("@/pages/privacy"));
 const ContactEnquiries = lazy(() => import("@/pages/contact-enquiries"));
 const ReportIssue = lazy(() => import("@/pages/report-issue"));
 const ChannelManager = lazy(() => import("@/pages/channel-manager"));
-const ConnectivityAudit = lazy(() => import("@/pages/connectivity-audit"));
-const InventoryReconciliation = lazy(() => import("@/pages/inventory-reconciliation"));
 const InventoryDebug = lazy(() => import("@/pages/inventory-debug"));
 const AcceptInvite = lazy(() => import("@/pages/accept-invite"));
 const Notifications = lazy(() => import("@/pages/notifications"));
@@ -231,8 +229,6 @@ function Router({ showDashboard }: { showDashboard: boolean }) {
           <Route path="/performance" component={Performance} />
           <Route path="/travel-agents" component={TravelAgents} />
           <Route path="/channel-manager" component={ChannelManager} />
-          <Route path="/connectivity-audit" component={ConnectivityAudit} />
-          <Route path="/inventory-reconciliation" component={InventoryReconciliation} />
           <Route path="/inventory-debug" component={InventoryDebug} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/audit-logs" component={AuditLogs} />
