@@ -5231,7 +5231,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         }
       }
 
-      if (booking.propertyId && (status === "checked-in" || status === "checked-out" || status === "cancelled")) {
+      if (booking.propertyId && (status === "confirmed" || status === "checked-in" || status === "checked-out" || status === "cancelled")) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_STATUS_CHANGED bookingId=${booking.id} newStatus=${status} propertyId=${booking.propertyId}`);
         syncWithRetry(booking.propertyId, "BOOKING_STATUS_CHANGED").catch(() => {});
       }
@@ -6830,6 +6830,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       
       console.log(`[BOOKING] Booking #${bookingId} manually confirmed`);
 
+      // Sync inventory to Aiosell so OTAs (Booking.com, MMT) reflect this confirmation
+      if (booking.propertyId) {
+        console.log(`[SYNC_TRIGGER] event=BOOKING_CONFIRMED bookingId=${bookingId} propertyId=${booking.propertyId}`);
+        syncWithRetry(booking.propertyId, "BOOKING_CONFIRMED").catch(() => {});
+      }
+
       // Send booking confirmed WhatsApp notification (template 29294) — non-blocking
       setImmediate(async () => {
         try {
@@ -6893,6 +6899,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       storage.invalidateBookingsCache();
       
       console.log(`[ADVANCE PAYMENT] Booking #${bookingId} manually confirmed - advance payment marked as received`);
+
+      // Sync inventory to Aiosell so OTAs reflect the newly confirmed booking
+      if (booking.propertyId) {
+        console.log(`[SYNC_TRIGGER] event=ADVANCE_PAYMENT_CONFIRMED bookingId=${bookingId} propertyId=${booking.propertyId}`);
+        syncWithRetry(booking.propertyId, "ADVANCE_PAYMENT_CONFIRMED").catch(() => {});
+      }
       
       // Send WhatsApp confirmation to guest (same as webhook flow) - check template controls
       if (sendWhatsApp) {
@@ -10594,6 +10606,12 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Update enquiry status to confirmed and payment status to received
       await storage.updateEnquiryStatus(enquiryId, "confirmed");
       await storage.updateEnquiryPaymentStatus(enquiryId, "received");
+
+      // Sync inventory to Aiosell so OTAs are updated for this walk-in booking
+      if (booking.propertyId) {
+        console.log(`[SYNC_TRIGGER] event=WALKIN_BOOKING_CREATED bookingId=${booking.id} propertyId=${booking.propertyId}`);
+        syncWithRetry(booking.propertyId, "WALKIN_BOOKING_CREATED").catch(() => {});
+      }
 
       res.status(201).json(booking);
     } catch (error: any) {

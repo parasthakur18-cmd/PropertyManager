@@ -1,0 +1,128 @@
+URGENT INVENTORY SYNC AUDIT
+
+I have attached screenshots.
+
+Issue:
+
+A booking was successfully created and confirmed in Hostezee.
+
+Booking Details:
+
+* Property: The Blue Mont Sojha
+* Room: 202
+* Source: Walk-in
+* Status: Confirmed
+* Stay: 30–31 May
+* Guest Count: 1
+
+However:
+
+* The booking exists in Hostezee.
+* The room inventory was NOT reduced in Aiosell.
+* Booking.com availability was NOT updated.
+* Manual "Sync Now" works correctly.
+* Automatic inventory sync after booking creation/confirmation appears to be failing.
+
+Please investigate using the attached screenshots.
+
+Audit Required:
+
+1. Booking Creation Flow
+
+Trace:
+
+Create Booking
+→ Confirm Booking
+→ Inventory Recalculation
+→ Inventory Push To Aiosell
+
+Show exact functions involved.
+
+2. Walk-in Booking Flow
+
+Verify:
+
+* Do walk-in bookings trigger inventory sync?
+* Is autoSyncInventoryForProperty() called?
+* Is pushInventoryToAiosell() called?
+* Is there any condition skipping walk-in bookings?
+
+3. Booking Confirmation Flow
+
+Verify:
+
+When status changes to Confirmed:
+
+* Is inventory recalculated?
+* Is inventory sync triggered?
+* Is Aiosell API called?
+
+4. Room Mapping Audit
+
+For Room 202 show:
+
+* Room ID
+* Room Number
+* Room Type
+* Aiosell Room Type ID
+* Aiosell Room Code
+* Inventory Mapping Status
+
+Verify that Room 202 belongs to the correct Aiosell room type.
+
+5. Inventory Calculation Audit
+
+For date 30 May:
+
+Show:
+
+Availability before booking
+
+Availability after booking
+
+Inventory value pushed to Aiosell
+
+Inventory value currently showing in Aiosell
+
+6. Sync Log Audit
+
+Search sync logs for this booking.
+
+Show:
+
+* Inventory sync triggered? YES/NO
+* Timestamp
+* Payload sent
+* Aiosell response
+* Error message (if any)
+
+7. Root Cause
+
+Determine whether the issue is:
+
+A. Booking created but sync not triggered
+
+B. Sync triggered but Aiosell API failed
+
+C. Wrong room type mapped
+
+D. Walk-in bookings excluded from sync
+
+E. Inventory calculation incorrect
+
+F. Sync queued but never executed
+
+8. Required Fix
+
+Return:
+
+* Exact file names
+* Exact functions
+* Root cause
+* Code fix required
+
+Important:
+
+Manual Inventory Reconciliation → Sync Now works correctly.
+
+Therefore focus on why automatic inventory sync is NOT happening immediately after booking creation or confirmation.
