@@ -408,7 +408,7 @@ export default function ConnectivityAudit() {
     const key = `inv-${entry.roomId}`;
     setLoadingAction(key);
     try {
-      const res = await apiRequest("POST", "/api/aiosell/connectivity-audit/test-inventory", {
+      const res = await apiRequest("/api/aiosell/connectivity-audit/test-inventory", "POST", {
         propertyId: entry.propertyId,
         mappingId: entry.mapping.id,
       });
@@ -429,7 +429,7 @@ export default function ConnectivityAudit() {
     const key = `rate-${entry.roomId}-${rp.id}`;
     setLoadingAction(key);
     try {
-      const res = await apiRequest("POST", "/api/aiosell/connectivity-audit/test-rate", {
+      const res = await apiRequest("/api/aiosell/connectivity-audit/test-rate", "POST", {
         propertyId: entry.propertyId,
         mappingId: entry.mapping.id,
         ratePlanId: rp.id,
@@ -450,7 +450,7 @@ export default function ConnectivityAudit() {
     const key = `verify-${entry.propertyId}`;
     setLoadingAction(key);
     try {
-      const res = await apiRequest("POST", "/api/aiosell/connectivity-audit/verify-mapping", {
+      const res = await apiRequest("/api/aiosell/connectivity-audit/verify-mapping", "POST", {
         propertyId: entry.propertyId,
       });
       const data = await res.json();
