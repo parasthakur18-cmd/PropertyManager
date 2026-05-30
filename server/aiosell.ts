@@ -87,12 +87,11 @@ async function makeAiosellRequest(
   payload: any,
   syncType: string,
 ): Promise<AiosellApiResponse> {
-  // ── DEV GUARD: never push to live Aiosell from non-production environments ──
-  // Set AIOSELL_PUSH_ENABLED=true on the live server to allow pushes.
-  // In development/preview, this defaults to "false" so test data never corrupts
-  // live Aiosell inventory.
-  if (process.env.AIOSELL_PUSH_ENABLED !== "true") {
-    console.log(`[AIOSELL] 🚫 DEV MODE — push suppressed (AIOSELL_PUSH_ENABLED≠true). Would have called ${endpoint} for property ${config.propertyId}. Set AIOSELL_PUSH_ENABLED=true on the live server.`);
+  // ── DEV GUARD: never push to live Aiosell from the preview/dev environment ──
+  // Default is ALLOW. Set AIOSELL_PUSH_ENABLED=false to suppress (done in Replit dev env).
+  // Live server needs no env var change — pushes flow normally unless explicitly disabled.
+  if (process.env.AIOSELL_PUSH_ENABLED === "false") {
+    console.log(`[AIOSELL] 🚫 DEV MODE — push suppressed (AIOSELL_PUSH_ENABLED=false). Would have called ${endpoint} for property ${config.propertyId}.`);
     return { success: true, message: "DEV MODE: push suppressed, not sent to Aiosell" };
   }
 
