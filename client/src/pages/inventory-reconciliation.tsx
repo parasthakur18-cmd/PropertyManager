@@ -277,7 +277,7 @@ export default function InventoryReconciliation() {
       <div className="flex items-start justify-between mb-5 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <GitCompare className="w-6 h-6 text-primary" />Inventory Reconciliation
+            <Scale className="w-6 h-6 text-primary" />Inventory Reconciliation
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             Compare Hostezee availability vs Aiosell last push — detect and repair inventory mismatches that affect Booking.com, MMT, and all OTAs
