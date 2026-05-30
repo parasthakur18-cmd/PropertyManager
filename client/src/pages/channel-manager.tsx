@@ -65,6 +65,228 @@ interface SyncLog {
   createdAt: string;
 }
 
+type ConnectionStatus = "connected" | "partial" | "disconnected";
+
+interface VerifyCheck {
+  name: string;
+  label: string;
+  status: "pass" | "fail";
+  detail: string;
+}
+
+interface MappingVerification {
+  mappingId: number;
+  hostezeeRoomType: string;
+  aiosellRoomCode: string;
+  aiosellRoomId: string | null;
+  ratePlanCount: number;
+  checks: {
+    mappingExists:     VerifyCheck;
+    roomCodeValid:     VerifyCheck;
+    everPushed:        VerifyCheck;
+    lastPushSucceeded: VerifyCheck;
+    pushedWithin24h:   VerifyCheck;
+  };
+  lastInventoryPush: {
+    at: string;
+    status: string;
+    errorMessage: string | null;
+    hoursSince: number;
+  } | null;
+  connectionStatus: ConnectionStatus;
+  statusLabel: "Connected" | "Partially Connected" | "Not Connected";
+  failedChecks: string[];
+}
+
+interface PropertyVerification {
+  propertyId: number;
+  propertyName: string;
+  hotelCode: string | null;
+  aiosellConfigured: boolean;
+  configId: number | null;
+  mappings: MappingVerification[];
+  summary: {
+    totalMappings: number;
+    connected: number;
+    partial: number;
+    disconnected: number;
+    lastSuccessfulPushAt: string | null;
+    hoursSinceLastPush: number | null;
+  };
+  overallStatus: ConnectionStatus;
+  generatedAt: string;
+}
+
+function ConnStatusBadge({ status, label }: { status: ConnectionStatus; label: string }) {
+  if (status === "connected") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700" data-testid="badge-conn-connected">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+        {label}
+      </span>
+    );
+  }
+  if (status === "partial") {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200 dark:border-amber-700" data-testid="badge-conn-partial">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-700" data-testid="badge-conn-disconnected">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      {label}
+    </span>
+  );
+}
+
+function CheckRow({ check }: { check: VerifyCheck }) {
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      {check.status === "pass"
+        ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0 mt-0.5" />
+        : <AlertCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+      }
+      <div>
+        <span className={check.status === "pass" ? "text-muted-foreground" : "text-foreground font-medium"}>
+          {check.label}
+        </span>
+        {check.status === "fail" && (
+          <p className="text-muted-foreground mt-0.5">{check.detail}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionHealthPanel({ propertyId }: { propertyId: number }) {
+  const { data: verification, isLoading, refetch, isFetching } = useQuery<PropertyVerification>({
+    queryKey: ["/api/aiosell/verify", { propertyId }],
+    queryFn: async () => {
+      const res = await fetch(`/api/aiosell/verify?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load verification data");
+      return res.json();
+    },
+    enabled: !!propertyId,
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="py-4 flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Checking connection health…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!verification) return null;
+
+  const { summary, mappings, overallStatus, generatedAt } = verification;
+  const generatedDate = new Date(generatedAt);
+
+  return (
+    <Card className={
+      overallStatus === "connected"
+        ? "border-emerald-200 dark:border-emerald-800"
+        : overallStatus === "partial"
+          ? "border-amber-200 dark:border-amber-800"
+          : "border-red-200 dark:border-red-800"
+    } data-testid="card-connection-health">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Wifi className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <CardTitle className="text-base">Connection Health</CardTitle>
+              <CardDescription className="text-xs mt-0.5">
+                {summary.totalMappings} mapping{summary.totalMappings !== 1 ? "s" : ""} · checked {generatedDate.toLocaleTimeString()}
+              </CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <ConnStatusBadge status={overallStatus} label={
+              overallStatus === "connected" ? "Connected"
+                : overallStatus === "partial" ? "Partially Connected"
+                  : "Not Connected"
+            } />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => refetch()} disabled={isFetching} data-testid="button-refresh-health">
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {summary.lastSuccessfulPushAt && (
+          <div className="text-xs text-muted-foreground mt-1 pl-8">
+            Last successful inventory push: <span className="font-medium">{new Date(summary.lastSuccessfulPushAt).toLocaleString()}</span>
+            {summary.hoursSinceLastPush !== null && (
+              <span className={`ml-1 ${summary.hoursSinceLastPush > 24 ? "text-amber-600 dark:text-amber-400 font-medium" : ""}`}>
+                ({summary.hoursSinceLastPush}h ago)
+              </span>
+            )}
+          </div>
+        )}
+        {!summary.lastSuccessfulPushAt && (
+          <div className="text-xs text-red-600 dark:text-red-400 mt-1 pl-8 font-medium">
+            No successful inventory push on record for this property
+          </div>
+        )}
+      </CardHeader>
+
+      {mappings.length > 0 && (
+        <CardContent className="pt-0 space-y-3">
+          {mappings.map(m => (
+            <div
+              key={m.mappingId}
+              className={`rounded-lg border p-3 ${
+                m.connectionStatus === "connected"
+                  ? "border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-900/10"
+                  : m.connectionStatus === "partial"
+                    ? "border-amber-100 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-900/10"
+                    : "border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-900/10"
+              }`}
+              data-testid={`card-mapping-health-${m.mappingId}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-sm truncate">{m.hostezeeRoomType}</span>
+                  <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded flex-shrink-0">{m.aiosellRoomCode || <em className="not-italic text-red-500">no code</em>}</span>
+                  {m.ratePlanCount === 0 && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 flex-shrink-0">· no rate plans</span>
+                  )}
+                </div>
+                <ConnStatusBadge status={m.connectionStatus} label={m.statusLabel} />
+              </div>
+
+              <div className="space-y-1.5">
+                {Object.values(m.checks).map(check => (
+                  <CheckRow key={check.name} check={check} />
+                ))}
+              </div>
+
+              {m.lastInventoryPush && (
+                <div className={`mt-2 text-xs px-2 py-1 rounded ${m.lastInventoryPush.status === "success" ? "bg-emerald-100/50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "bg-red-100/50 dark:bg-red-900/20 text-red-700 dark:text-red-300"}`}>
+                  Last push: {m.lastInventoryPush.status} · {new Date(m.lastInventoryPush.at).toLocaleString()}
+                  {m.lastInventoryPush.errorMessage && <span className="block">{m.lastInventoryPush.errorMessage}</span>}
+                </div>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      )}
+
+      {mappings.length === 0 && (
+        <CardContent className="pt-0">
+          <p className="text-sm text-muted-foreground">No room mappings configured. Add a mapping below to connect this property to AioSell.</p>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 function SyncExistingBookingsSection({ config }: { config: AiosellConfig | null | undefined }) {
   const { toast } = useToast();
   const [fromDate, setFromDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -382,6 +604,7 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/aiosell/room-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/verify", { propertyId }] });
       setNewMappings([]);
       toast({ title: "Room mappings saved" });
     },
@@ -433,6 +656,7 @@ function RoomMappingTab({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="space-y-6">
+      <ConnectionHealthPanel propertyId={propertyId} />
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">

@@ -75,6 +75,7 @@ import { preBills, rooms, guests, properties, subscriptionPlans, userSubscriptio
 import { sendDailyReport, startDailyReportJob, getDailyReportData, buildReportMessage, getReportTimeRange } from "./daily-report";
 import webpush from "web-push";
 import { pushInventory, pushRates, pushInventoryRestrictions, pushRateRestrictions, pushNoShow, testConnection, getConfigForProperty, getRoomMappingsForConfig, getRatePlansForConfig, autoSyncInventoryForProperty, scheduleSyncForProperty, pullReservationsFromAioSell, type AiosellReservation } from "./aiosell";
+import { verifyProperties, verifyProperty } from "./aiosell-verifier";
 import { sendIssueReportNotificationEmail } from "./email-service";
 import { createPaymentLink, createEnquiryPaymentLink, getPaymentLinkStatus, verifyWebhookSignature, isRealPhone } from "./razorpay";
 import { 
@@ -20851,6 +20852,53 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         .where(and(inArray(aiosellConfigurations.propertyId, propIds), eq(aiosellConfigurations.isActive, true)));
       const configuredIds = new Set(configs.map(c => c.propertyId));
       const result = allProps.filter(p => configuredIds.has(p.id)).map(p => ({ id: p.id, name: p.name }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Verification Engine ───────────────────────────────────────────────────────
+
+  /**
+   * GET /api/aiosell/verify?propertyId=X
+   * Returns a full MappingVerification report for a single property.
+   * Powered by aiosell-verifier.ts — the single source of truth for
+   * connection health used by Channel Manager, future Verify Property,
+   * AI Auditor, Inventory Doctor, and Mapping Doctor.
+   *
+   * GET /api/aiosell/verify/all
+   * Returns PropertyVerification[] for every property the caller can access.
+   */
+  app.get("/api/aiosell/verify/all", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const allProps = await storage.getAllProperties();
+      const propIds = (!tenant.hasUnlimitedAccess && tenant.assignedPropertyIds.length > 0)
+        ? tenant.assignedPropertyIds
+        : allProps.map((p: any) => p.id);
+      const results = await verifyProperties(propIds);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/aiosell/verify", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || isNaN(propertyId)) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      if (!canAccessProperty(tenant, propertyId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const result = await verifyProperty(propertyId);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
