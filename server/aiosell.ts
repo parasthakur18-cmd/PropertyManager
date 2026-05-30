@@ -841,6 +841,37 @@ export async function autoSyncInventoryForProperty(
       await pushInventory(config, inventoryUpdates);
       const sentSummary = inventoryUpdates[0]?.rooms.map(r => `${r.roomCode}:${r.available}`).join(", ") ?? "none";
       console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} todayAvailability=[${sentSummary}]`);
+
+      // ── Step 2b: Auto stop-sell — push stopSell=true for 0-inventory dates ──────
+      // Pushing available=0 alone is NOT enough to block rooms on OTAs. Aiosell
+      // (and most channel managers) require an explicit stopSell restriction to
+      // actually prevent new bookings. We push stopSell=true for every room/date
+      // range where availability is 0, and stopSell=false to re-open ranges that
+      // have become available again. User-set restrictions (Step 3) override these.
+      const autoStopSellUpdates: InventoryRestrictionUpdate[] = inventoryUpdates.map(range => ({
+        startDate: range.startDate,
+        endDate: range.endDate,
+        rooms: range.rooms.map(r => ({
+          roomCode: r.roomCode,
+          restrictions: {
+            stopSell: r.available === 0,
+            minimumStay: null,
+            closeOnArrival: false,
+            closeOnDeparture: false,
+            exactStayArrival: null,
+            maximumStayArrival: null,
+            minimumAdvanceReservation: null,
+            maximumStay: null,
+            maximumAdvanceReservation: null,
+            minimumStayArrival: null,
+          },
+        })),
+      }));
+      await pushInventoryRestrictions(config, autoStopSellUpdates);
+      const stopSellSummary = autoStopSellUpdates[0]?.rooms
+        .map(r => `${r.roomCode}:${r.restrictions.stopSell ? "CLOSED" : "open"}`)
+        .join(", ") ?? "none";
+      console.log(`[AIOSELL] Auto stop-sell pushed for ${autoStopSellUpdates.length} range(s). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────
