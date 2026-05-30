@@ -70,8 +70,18 @@ makeAiosellRequest() in server/aiosell.ts now:
 - Auto stop-sell IS still needed: `available=0` alone doesn't block OTA rooms (Aiosell requires
   explicit stopSell restriction to prevent new bookings).
 
+## DEV/LIVE Isolation Guard (Added May 2026)
+- Preview and live share the same Aiosell hotelCode → preview test pushes corrupt live inventory.
+- Fix: `AIOSELL_PUSH_ENABLED=true` must be set on the LIVE server; dev environment has it set to "false".
+- Guard is at the top of `makeAiosellRequest()` — if env var ≠ "true", push is suppressed with a log.
+- Dev env var set via Replit's setEnvVars({ environment: "development" }) → persists across restarts.
+
 ## Live Server Room Code Fix (Still Needed on Production)
 SQL to run on hostezee.in DB:
   UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
   WHERE aiosell_room_code = 'deluxe-room-with-balcony';
-Then run Sync All Rooms from Inventory Reconciliation page.
+Steps on live server:
+  1. Add AIOSELL_PUSH_ENABLED=true to PM2 env or shell
+  2. Run SQL above
+  3. git pull && pm2 restart propertymanager
+  4. Inventory Reconciliation → Sync All Rooms (Next 90 Days)

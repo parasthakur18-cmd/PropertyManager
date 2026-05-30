@@ -53,6 +53,9 @@ VAPID_PUBLIC_KEY = "BKYfCGm6Ik5NuELHVmgTCzqtsGEgMwxWVWwmQU8-kswu_R7FmHGRywr7k6aJ
 VAPID_PRIVATE_KEY = "pr3xrrvY3sNv5-T0-zDvcVgB9-HNGPDofIin6txXgt0"
 VAPID_SUBJECT = "mailto:admin@hostezee.com"
 
+[userenv.development]
+AIOSELL_PUSH_ENABLED = "false"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000

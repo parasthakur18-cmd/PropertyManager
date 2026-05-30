@@ -87,6 +87,15 @@ async function makeAiosellRequest(
   payload: any,
   syncType: string,
 ): Promise<AiosellApiResponse> {
+  // ── DEV GUARD: never push to live Aiosell from non-production environments ──
+  // Set AIOSELL_PUSH_ENABLED=true on the live server to allow pushes.
+  // In development/preview, this defaults to "false" so test data never corrupts
+  // live Aiosell inventory.
+  if (process.env.AIOSELL_PUSH_ENABLED !== "true") {
+    console.log(`[AIOSELL] 🚫 DEV MODE — push suppressed (AIOSELL_PUSH_ENABLED≠true). Would have called ${endpoint} for property ${config.propertyId}. Set AIOSELL_PUSH_ENABLED=true on the live server.`);
+    return { success: true, message: "DEV MODE: push suppressed, not sent to Aiosell" };
+  }
+
   const url = `${config.apiBaseUrl}/api/v2/cm/${endpoint}/${config.pmsName}`;
 
   console.log(`[AIOSELL] ${syncType} → ${url} | hotelCode=${config.hotelCode} | pmsName=${config.pmsName} | hasPassword=${!!config.pmsPassword}`);
