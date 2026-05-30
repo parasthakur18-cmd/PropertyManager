@@ -1,0 +1,246 @@
+URGENT DORM BED ASSIGNMENT & OTA INVENTORY AUDIT
+
+Issue Summary:
+
+Dorm bookings with multiple guests are not remaining allocated correctly after confirmation.
+
+Example:
+
+Booking Name: Test
+Property: Yolo Hostel
+Dates: 1 Jun – 2 Jun
+Guest Count: 4 Guests
+Room Type: 4-Bed Dorm
+
+Current Behavior:
+
+1. When the booking is first created, the calendar temporarily shows all 4 beds occupied.
+2. The booking details correctly show 4 guests.
+3. After changing status to Confirmed, only 1 bed remains occupied in the calendar.
+4. Availability becomes incorrect.
+5. Dorm inventory becomes incorrect because only 1 bed is counted as occupied.
+6. The booking still shows 4 guests in reservation details.
+
+Expected Behavior:
+
+For a booking with 4 guests in a 4-bed dorm:
+
+Bed 1 → Test
+Bed 2 → Test
+Bed 3 → Test
+Bed 4 → Test
+
+OR
+
+4 separate bed allocations linked to the same booking.
+
+Calendar should show:
+- 0 beds available
+- 4 beds occupied
+
+Inventory sync should push:
+- Remaining beds = Total beds - 4
+
+--------------------------------------------------
+ADDITIONAL OTA ISSUE
+--------------------------------------------------
+
+When a booking comes from an OTA (Booking.com, Hostelworld, Goibibo, MakeMyTrip, Airbnb, etc.):
+
+Example:
+
+Dorm Capacity = 4 Beds
+
+OTA Booking:
+- Guests = 3
+- Room Type = Dorm Bed
+- Dates = 1 Jun – 2 Jun
+
+Current Behavior:
+
+- Booking is created for 3 guests.
+- Calendar blocks only 1 bed.
+- Inventory counts only 1 occupied bed.
+- Remaining availability becomes incorrect.
+- Overbooking risk is created.
+
+Expected Behavior:
+
+OTA booking with 3 guests must:
+
+- Allocate 3 separate beds.
+- Block 3 beds in calendar.
+- Reduce inventory by 3 beds.
+- Sync correct remaining availability to all channels.
+
+Example:
+
+Dorm Capacity = 4 Beds
+
+OTA Booking = 3 Guests
+
+Calendar:
+
+Bed 1 → Guest
+Bed 2 → Guest
+Bed 3 → Guest
+Bed 4 → Free
+
+Availability:
+
+1 Free
+3 Occupied
+
+Inventory Push:
+
+Remaining Beds = 1
+
+This rule must work for:
+- Direct bookings
+- Walk-ins
+- OTA bookings
+- Imported reservations
+- API reservations
+- Group bookings
+
+--------------------------------------------------
+AUDIT REQUIRED
+--------------------------------------------------
+
+1. Find all dorm booking creation logic.
+
+Search:
+- createBooking
+- createDormBooking
+- assignDormBeds
+- allocateBeds
+- createBedStay
+
+Verify:
+- guestCount = number of allocated beds
+
+2. Find all OTA import logic.
+
+Search:
+- booking.com import
+- hostelworld import
+- ota reservation sync
+- importReservation
+- syncReservation
+- channel manager mapping
+- reservation webhook
+
+Verify:
+- OTA guest count is converted into bed allocations
+- OTA guest count is not being ignored
+
+3. Find all booking confirmation logic.
+
+Search:
+- confirmBooking
+- updateBookingStatus
+- changeStatus
+
+Verify:
+- Pending → Confirmed does not remove bed allocations
+- Bed allocations remain equal to guest count
+
+4. Find all occupancy tables.
+
+Identify:
+- bed assignments
+- bed stays
+- occupancy records
+- inventory records
+
+Verify:
+4 guest booking = 4 occupancy records
+
+5. Audit calendar rendering.
+
+Search:
+- getCalendarBookings
+- roomCalendar
+- calendarEvents
+- occupancy queries
+
+Verify:
+Calendar uses actual bed allocations and not just booking count.
+
+6. Audit inventory sync.
+
+Search:
+- autoSyncInventoryForProperty
+- getDormAvailability
+- countOccupiedBeds
+- syncInventory
+- pushInventory
+
+Verify:
+
+Occupied Beds = Total Allocated Beds
+
+NOT
+
+Occupied Beds = Number Of Bookings
+
+Because:
+
+1 booking can occupy multiple beds.
+
+--------------------------------------------------
+DATABASE VALIDATION
+--------------------------------------------------
+
+Check:
+
+Booking:
+Guest Count = 4
+
+Expected:
+
+4 linked bed assignments
+
+Actual:
+
+Likely only 1 linked bed assignment after confirmation.
+
+Check the same for OTA bookings:
+
+OTA Guest Count = 3
+
+Expected:
+
+3 linked bed assignments
+
+Actual:
+
+Likely only 1 linked bed assignment.
+
+--------------------------------------------------
+RETURN
+--------------------------------------------------
+
+1. Root cause.
+2. Exact file names.
+3. Exact functions involved.
+4. Database tables involved.
+5. Why direct bookings fail.
+6. Why OTA bookings fail.
+7. Why confirmation changes occupancy.
+8. Why calendar shows fewer beds than guest count.
+9. Why inventory sync becomes incorrect.
+10. Exact code fix required.
+11. Permanent fix to ensure:
+
+Allocated Beds = Guest Count
+
+for all booking sources:
+- Direct
+- Walk-in
+- OTA
+- API
+- Imported reservations
+- Group bookings
+
+No booking should ever occupy fewer beds than its guest count.

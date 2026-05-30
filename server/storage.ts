@@ -1078,6 +1078,16 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Auto-set bedsBooked for dormitory rooms: if not explicitly provided,
+    // use numberOfGuests so 1 booking with 4 guests correctly occupies 4 beds.
+    if (!booking.bedsBooked && booking.roomId && (booking.numberOfGuests || 0) > 0) {
+      const dormRoom = await this.getRoom(booking.roomId);
+      if (dormRoom?.roomCategory === 'dormitory') {
+        booking = { ...booking, bedsBooked: booking.numberOfGuests || 1 };
+        console.log(`[DORM-AUTO] bedsBooked auto-set to ${booking.bedsBooked} (numberOfGuests) for room ${dormRoom.roomNumber}`);
+      }
+    }
+
     if (booking.guestId != null) {
       await db
         .update(guests)

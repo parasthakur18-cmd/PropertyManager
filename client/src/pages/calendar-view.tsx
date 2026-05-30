@@ -569,7 +569,7 @@ export default function CalendarView() {
         return diff !== 0 ? diff : a.id - b.id;
       });
     for (const booking of sorted) {
-      const bedsNeeded = booking.bedsBooked || 1;
+      const bedsNeeded = booking.bedsBooked || (booking as any).numberOfGuests || 1;
       const cin = startOfDay(new Date(booking.checkInDate));
       const cout = startOfDay(new Date(booking.checkOutDate));
       let assigned = false;

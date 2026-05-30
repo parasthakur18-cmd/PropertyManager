@@ -245,7 +245,7 @@ export function NewBookingDialog({ open, onOpenChange }: NewBookingDialogProps) 
         mealPlan: data.mealPlan || "EP",
         specialRequests: data.specialRequests || "",
         isGroupBooking: bookingType === "group",
-        bedsBooked: bookingType === "group" ? selectedRoomIds.length : (bookingType === "dormitory" && data.bedsBooked ? parseInt(String(data.bedsBooked)) : null),
+        bedsBooked: bookingType === "group" ? selectedRoomIds.length : (bookingType === "dormitory" ? (data.bedsBooked ? parseInt(String(data.bedsBooked)) : numGuests) : null),
         travelAgentId: data.travelAgentId || null,
       } as InsertBooking);
     } catch (error: any) {

@@ -4093,8 +4093,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         if (room?.roomCategory === 'dormitory') {
           // For dormitory rooms: only block if there are not enough beds left
           const totalBeds = room.totalBeds ?? 1;
-          const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-          const bedsRequested = data.bedsBooked || 1;
+          const bedsAlreadyBooked = overlapping.reduce((sum, b) => sum + (b.bedsBooked || b.numberOfGuests || 1), 0);
+          const bedsRequested = data.bedsBooked || data.numberOfGuests || 1;
           const bedsAvailable = totalBeds - bedsAlreadyBooked;
           if (bedsAvailable < bedsRequested) {
             console.log(`[BOOKING_BLOCKED] room=${room?.roomNumber ?? roomId} reason=dormitory_full totalBeds=${totalBeds} bedsBooked=${bedsAlreadyBooked} requested=${bedsRequested}`);
@@ -4183,8 +4183,8 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         });
         if (freshRoom?.roomCategory === "dormitory") {
           const totalBeds = freshRoom.totalBeds ?? 1;
-          const bedsBooked = freshOverlapping.reduce((sum, b) => sum + (b.bedsBooked || 1), 0);
-          const bedsRequested = bookingData.bedsBooked || 1;
+          const bedsBooked = freshOverlapping.reduce((sum, b) => sum + (b.bedsBooked || b.numberOfGuests || 1), 0);
+          const bedsRequested = bookingData.bedsBooked || bookingData.numberOfGuests || 1;
           if (totalBeds - bedsBooked < bedsRequested) {
             console.log(`[BOOKING_BLOCKED] room=${rId} reason=race_condition_dormitory_full`);
             return res.status(409).json({ message: `Room ${freshRoom.roomNumber || rId} ran out of beds just now. Please refresh and try again.` });
@@ -21421,7 +21421,11 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
             source: `aiosell-${channel}`,
             externalBookingId: bookingId,
             externalSource: `aiosell-${channel}`,
-            ...(primaryBedsBooked !== null ? { bedsBooked: primaryBedsBooked } : {}),
+            // For dorm rooms: use explicit bedsBooked from AioSell stays, else fall back
+            // to total guest count so 3 OTA guests correctly occupy 3 beds (not just 1).
+            ...(primaryBedsBooked !== null
+              ? { bedsBooked: primaryBedsBooked }
+              : (totalAdults + totalChildren > 0 ? { bedsBooked: totalAdults + totalChildren } : {})),
           }).returning();
 
           // Insert one room_stay per room inside the same transaction

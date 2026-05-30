@@ -856,6 +856,34 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
     },
   },
   {
+    // Dorm bookings created before the auto-set fix may have beds_booked = NULL
+    // or beds_booked = 1 even though number_of_guests > 1. This backfill sets
+    // beds_booked = number_of_guests for active dorm bookings so the calendar,
+    // availability checks, and OTA inventory sync all count correctly.
+    name: "backfill_dorm_bookings_beds_booked_from_guests",
+    async run() {
+      if (!(await tableExists("bookings")) || !(await tableExists("rooms"))) return;
+      const client = await pool.connect();
+      try {
+        const result = await client.query(`
+          UPDATE bookings b
+          SET beds_booked = b.number_of_guests, updated_at = NOW()
+          FROM rooms r
+          WHERE r.id = b.room_id
+            AND r.room_category = 'dormitory'
+            AND (b.beds_booked IS NULL OR b.beds_booked = 1)
+            AND b.number_of_guests > 1
+            AND b.status NOT IN ('cancelled', 'checked-out', 'no_show')
+        `);
+        if (result.rowCount && result.rowCount > 0) {
+          console.log(`[MIGRATIONS] backfill_dorm_bookings_beds_booked_from_guests: fixed ${result.rowCount} dorm booking(s)`);
+        }
+      } finally {
+        client.release();
+      }
+    },
+  },
+  {
     // Test Order Mode — adds is_test flag to orders so test orders can be
     // excluded from all financial reports/wallets. Idempotent.
     name: "add_orders_is_test_flag",
