@@ -20856,17 +20856,31 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       const result = allRooms.map(room => {
         const config = configByProp.get(room.propertyId) || null;
 
-        // Match mapping: prefer explicit hostezeeRoomId link, then fall back to room type name similarity
+        // Match mapping: prefer explicit hostezeeRoomId link, then fall back to normalised type match.
+        // Normalise: lowercase + collapse hyphens/underscores/spaces → single space, so
+        // "4-Bed Male Dormitory" == "4-bed-male-dormitory" == "4 bed male dormitory".
+        const normaliseType = (s: string) =>
+          s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
         let mapping = allMappings.find(m => m.hostezeeRoomId === room.id) || null;
         if (!mapping && config) {
-          const typeLower = ((room as any).roomType || room.roomCategory || "").toLowerCase();
-          mapping = allMappings.find(m =>
-            m.configId === config.id &&
-            !!m.hostezeeRoomType &&
-            typeLower.length > 1 &&
-            (m.hostezeeRoomType.toLowerCase().includes(typeLower) ||
-             typeLower.includes(m.hostezeeRoomType.toLowerCase()))
-          ) || null;
+          const roomTypeNorm = normaliseType((room as any).roomType || room.roomCategory || "");
+          if (roomTypeNorm.length > 1) {
+            // 1st pass: exact normalised match
+            mapping = allMappings.find(m =>
+              m.configId === config.id && !!m.hostezeeRoomType &&
+              normaliseType(m.hostezeeRoomType) === roomTypeNorm
+            ) || null;
+            // 2nd pass: substring match as fallback
+            if (!mapping) {
+              mapping = allMappings.find(m =>
+                m.configId === config.id && !!m.hostezeeRoomType && (() => {
+                  const mn = normaliseType(m.hostezeeRoomType);
+                  return mn.includes(roomTypeNorm) || roomTypeNorm.includes(mn);
+                })()
+              ) || null;
+            }
+          }
         }
 
         const ratePlans = mapping ? allRatePlans.filter(rp => rp.roomMappingId === mapping!.id) : [];
@@ -21054,6 +21068,132 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         mappings,
         ratePlans,
       });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * GET /api/aiosell/connectivity-audit/property-config
+   * Returns existing mappings + rate plans for a property.
+   * Used by the Fix Panel dropdowns so users can pick from what's already configured.
+   */
+  app.get("/api/aiosell/connectivity-audit/property-config", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.json({ mappings: [], ratePlans: [] });
+      const [mappings, ratePlans] = await Promise.all([
+        getRoomMappingsForConfig(config.id),
+        getRatePlansForConfig(config.id),
+      ]);
+      res.json({ mappings, ratePlans, configId: config.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/connectivity-audit/fix-room-mapping
+   * Creates a room mapping for the given room type using the supplied Aiosell codes.
+   * If a mapping for that aiosellRoomCode already exists for this property, it is reused
+   * (hostezeeRoomType updated to match the room's actual type so future audits find it).
+   * Body: { propertyId, roomId, roomType, aiosellRoomCode, aiosellRoomId? }
+   */
+  app.post("/api/aiosell/connectivity-audit/fix-room-mapping", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, roomId, roomType, aiosellRoomCode, aiosellRoomId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      if (!aiosellRoomCode) return res.status(400).json({ message: "aiosellRoomCode is required" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      // Check if a mapping with this room code already exists for this config
+      const [existing] = await db.select().from(aiosellRoomMappings)
+        .where(and(eq(aiosellRoomMappings.configId, config.id), eq(aiosellRoomMappings.aiosellRoomCode, aiosellRoomCode)));
+
+      let savedMapping;
+      if (existing) {
+        // Reuse existing — just make sure hostezeeRoomType matches the actual room type
+        // so that future normalised type-matching finds it correctly.
+        const [updated] = await db.update(aiosellRoomMappings)
+          .set({ hostezeeRoomType: roomType || existing.hostezeeRoomType })
+          .where(eq(aiosellRoomMappings.id, existing.id))
+          .returning();
+        savedMapping = updated;
+      } else {
+        // Create a brand-new mapping for this room type
+        const [created] = await db.insert(aiosellRoomMappings).values({
+          configId: config.id,
+          propertyId,
+          hostezeeRoomId: roomId || null,
+          hostezeeRoomType: roomType || aiosellRoomCode,
+          aiosellRoomCode,
+          aiosellRoomId: aiosellRoomId ? String(aiosellRoomId).trim() : null,
+        }).returning();
+        savedMapping = created;
+      }
+
+      res.json({ success: true, mapping: savedMapping });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/connectivity-audit/fix-rate-plan
+   * Adds a rate plan to an existing room mapping.
+   * If a rate plan with the same code already exists on this mapping it is updated.
+   * Body: { propertyId, mappingId, ratePlanCode, ratePlanName, baseRate?, occupancy? }
+   */
+  app.post("/api/aiosell/connectivity-audit/fix-rate-plan", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, mappingId, ratePlanCode, ratePlanName, baseRate, occupancy } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      if (!mappingId || !ratePlanCode || !ratePlanName) return res.status(400).json({ message: "mappingId, ratePlanCode and ratePlanName are required" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      // Verify the mapping belongs to this property
+      const [mapping] = await db.select().from(aiosellRoomMappings)
+        .where(and(eq(aiosellRoomMappings.id, mappingId), eq(aiosellRoomMappings.propertyId, propertyId)));
+      if (!mapping) return res.status(404).json({ message: "Room mapping not found" });
+
+      // Upsert: check if same rate plan code already exists on this mapping
+      const [existing] = await db.select().from(aiosellRatePlans)
+        .where(and(eq(aiosellRatePlans.roomMappingId, mappingId), eq(aiosellRatePlans.ratePlanCode, ratePlanCode)));
+
+      let savedPlan;
+      if (existing) {
+        const [updated] = await db.update(aiosellRatePlans)
+          .set({ ratePlanName, baseRate: baseRate ? String(baseRate) : existing.baseRate, occupancy: occupancy || existing.occupancy })
+          .where(eq(aiosellRatePlans.id, existing.id))
+          .returning();
+        savedPlan = updated;
+      } else {
+        const [created] = await db.insert(aiosellRatePlans).values({
+          configId: config.id,
+          propertyId,
+          roomMappingId: mappingId,
+          ratePlanCode,
+          ratePlanName,
+          baseRate: baseRate ? String(baseRate) : null,
+          occupancy: occupancy || "single",
+        }).returning();
+        savedPlan = created;
+      }
+
+      res.json({ success: true, ratePlan: savedPlan });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
