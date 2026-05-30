@@ -1,0 +1,497 @@
+# HOSTEZEE AI AUDITOR + AI AUTO-FIX ENGINE (COMPLETE IMPLEMENTATION)
+
+## OBJECTIVE
+
+Build an AI-powered PMS Diagnostic and Auto-Fix System inside Hostezee.
+
+The purpose is:
+
+Whenever inventory, rates, room mapping, bookings, dormitories, OTA sync, Aiosell sync, Booking.com sync, GoMMT sync, Agoda sync, or channel manager issues occur, the system should automatically:
+
+1. Detect the issue.
+2. Explain the root cause.
+3. Suggest the fix.
+4. Optionally apply safe fixes automatically.
+5. Verify the result.
+6. Generate a human-readable report.
+
+Hostezee should become self-diagnosing.
+
+---
+
+# PRIMARY GOAL
+
+I should never need to manually inspect:
+
+* Database tables
+* Room mappings
+* API payloads
+* Inventory logs
+* Rate logs
+* Dorm calculations
+
+Instead I should be able to click:
+
+🤖 AI Audit Property
+
+and receive a complete diagnosis.
+
+---
+
+# MENU STRUCTURE
+
+Admin
+
+├── Dashboard
+├── Channel Manager
+├── Properties
+├── Bookings
+├── Reports
+└── AI Auditor
+
+---
+
+# AI AUDITOR PAGE
+
+Create a dedicated page:
+
+/ai-auditor
+
+Features:
+
+1. Audit Property
+2. Verify Property
+3. Inventory Doctor
+4. Rate Doctor
+5. Booking Doctor
+6. Mapping Doctor
+7. Auto Fix Center
+8. AI Chat Console
+
+---
+
+# PROPERTY AUDIT BUTTON
+
+Button:
+
+🤖 Audit Property
+
+When clicked:
+
+System automatically collects:
+
+## Property Configuration
+
+* Property ID
+* Property Name
+* Hotel Code
+* PMS Credentials
+* Aiosell Configuration
+* Channel Status
+
+---
+
+## Room Mapping
+
+For every room:
+
+* Hostezee Room Name
+* Hostezee Room Type ID
+* Aiosell Room Code
+* Aiosell Room ID
+* Room Category
+* Active Status
+
+---
+
+## Inventory
+
+For next 90 days:
+
+* Available Inventory
+* Occupied Inventory
+* Blocked Inventory
+* Last Pushed Inventory
+* Last Push Timestamp
+
+---
+
+## Rates
+
+* Current Rate
+* Last Pushed Rate
+* Rate Plan Mapping
+* Last Rate Sync
+
+---
+
+## Bookings
+
+* Active Bookings
+* Future Bookings
+* Group Bookings
+* Dormitory Bookings
+* OTA Bookings
+
+---
+
+## Sync Logs
+
+Last 1000 records:
+
+* Inventory Push
+* Rate Push
+* Pull Reservations
+* OTA Updates
+
+---
+
+## Errors
+
+* Failed Syncs
+* API Errors
+* Queue Errors
+* Mapping Errors
+* Validation Errors
+
+---
+
+# AI ANALYSIS ENGINE
+
+Create service:
+
+server/services/ai-auditor.ts
+
+Function:
+
+auditProperty(propertyId)
+
+The service should:
+
+1. Gather all data.
+2. Create structured audit JSON.
+3. Send JSON to OpenAI.
+4. Receive analysis.
+5. Store report.
+6. Display report.
+
+---
+
+# OPENAI INTEGRATION
+
+Environment Variables
+
+OPENAI_API_KEY=
+
+MODEL=gpt-5
+
+Create service:
+
+server/services/openai.ts
+
+Reusable function:
+
+analyzeAuditData()
+
+---
+
+# SECURITY RULES
+
+NEVER SEND:
+
+* Guest Names
+* Phone Numbers
+* Emails
+* Payment Details
+* Card Information
+* Personal Information
+
+Only operational PMS data.
+
+---
+
+# AI AUDIT PROMPT
+
+You are a PMS, OTA, Revenue Management and Channel Manager expert.
+
+Analyze:
+
+* Room mappings
+* Inventory calculations
+* Rate calculations
+* Dormitory calculations
+* OTA connectivity
+* Booking allocations
+* Sync logs
+* API responses
+
+Tasks:
+
+1. Find all issues.
+2. Find root causes.
+3. Explain impact.
+4. Suggest fixes.
+5. Prioritize fixes.
+6. Assign severity.
+
+Return JSON:
+
+{
+"healthScore": 100,
+"criticalIssues": [],
+"warnings": [],
+"recommendations": [],
+"summary": ""
+}
+
+---
+
+# INVENTORY DOCTOR
+
+Button:
+
+Inventory Doctor
+
+Questions it answers:
+
+* Why is inventory not updating?
+* Why is Booking.com showing wrong inventory?
+* Why is Aiosell rejecting inventory?
+* Why is inventory mismatch occurring?
+
+Checks:
+
+* Room mapping
+* Inventory calculations
+* Push logs
+* API responses
+
+---
+
+# RATE DOCTOR
+
+Questions:
+
+* Why are rates not syncing?
+* Why are OTA rates different?
+* Why was rate push rejected?
+
+Checks:
+
+* Rate plans
+* Rate mapping
+* Push payload
+* API response
+
+---
+
+# BOOKING DOCTOR
+
+Questions:
+
+* Why is room overbooked?
+* Why was booking assigned incorrectly?
+* Why is group booking not calculating correctly?
+
+Checks:
+
+* Booking allocations
+* Room assignments
+* Group booking logic
+* Dormitory allocations
+
+---
+
+# MAPPING DOCTOR
+
+Checks:
+
+* Missing room mapping
+* Duplicate room mapping
+* Invalid room mapping
+* Missing rate mapping
+
+Example:
+
+Expected:
+bed-in-4-bed-male-dormitory-room
+
+Found:
+4-bed-male-dormitory
+
+Severity:
+Critical
+
+---
+
+# VERIFY PROPERTY BUTTON
+
+Button:
+
+✅ Verify Property
+
+Checks:
+
+1. Connection
+2. Room Mapping
+3. Inventory Sync
+4. Rate Sync
+5. OTA Connectivity
+6. Booking Logic
+7. Dormitory Logic
+
+Returns:
+
+GREEN
+YELLOW
+RED
+
+---
+
+# HEALTH SCORE
+
+Room Mapping       20%
+Inventory Sync     25%
+Rate Sync          20%
+Booking Logic      15%
+OTA Connectivity   10%
+Push Success       10%
+
+Total = 100
+
+---
+
+# AUTO FIX CENTER
+
+Button:
+
+⚡ Auto Fix
+
+Before any fix:
+
+1. Create backup
+2. Validate fix
+3. Apply fix
+4. Verify result
+5. Log action
+
+---
+
+# SAFE AUTO FIXES
+
+Allowed:
+
+✅ Reconnect mappings
+✅ Recalculate inventory
+✅ Retry failed sync
+✅ Regenerate inventory queue
+✅ Rebuild rate queue
+✅ Revalidate room mapping
+✅ Refresh OTA status
+
+Not Allowed:
+
+❌ Delete bookings
+❌ Modify payments
+❌ Delete room types
+❌ Modify guest records
+
+---
+
+# AI CHAT CONSOLE
+
+Add:
+
+Ask Hostezee AI
+
+Examples:
+
+"Why is Blue Mont inventory not syncing?"
+
+"Check all dormitory mappings."
+
+"Why are Booking.com rates different?"
+
+"Show failed syncs from today."
+
+"Verify Woodpecker inventory."
+
+---
+
+# AUDIT HISTORY
+
+Store all reports.
+
+Tables:
+
+ai_audit_reports
+
+Fields:
+
+id
+property_id
+audit_date
+health_score
+issues
+recommendations
+summary
+
+---
+
+# DASHBOARD WIDGET
+
+Property Health
+
+Inventory Health
+Rate Health
+Mapping Health
+OTA Health
+Booking Health
+
+Overall Score
+
+---
+
+# FUTURE PHASES
+
+Phase 1
+AI Auditor
+
+Phase 2
+Inventory Doctor
+
+Phase 3
+Rate Doctor
+
+Phase 4
+Booking Doctor
+
+Phase 5
+Mapping Doctor
+
+Phase 6
+Auto Fix Center
+
+Phase 7
+AI Chat Console
+
+Phase 8
+Property Health Dashboard
+
+---
+
+# SUCCESS CRITERIA
+
+A property manager should be able to click:
+
+🤖 Audit Property
+
+and within seconds know:
+
+* What is broken
+* Why it is broken
+* What impact it has
+* How to fix it
+* Whether Hostezee can fix it automatically
+
+without needing developer intervention or manual database investigation.
