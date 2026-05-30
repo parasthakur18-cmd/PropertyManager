@@ -31,6 +31,20 @@ function isChunkLoadError(error: Error): boolean {
   );
 }
 
+const CHUNK_RELOAD_KEY = 'chunk_reload_ts';
+const CHUNK_RELOAD_COOLDOWN_MS = 30_000; // 30 seconds
+
+function tryChunkReload(): boolean {
+  const last = parseInt(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? '0', 10);
+  const now = Date.now();
+  if (now - last > CHUNK_RELOAD_COOLDOWN_MS) {
+    sessionStorage.setItem(CHUNK_RELOAD_KEY, String(now));
+    window.location.reload();
+    return true;
+  }
+  return false;
+}
+
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -50,14 +64,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
     this.setState({ errorInfo });
 
     if (isChunkLoadError(error)) {
-      const key = 'chunk_reload_attempted';
-      const alreadyTried = sessionStorage.getItem(key);
-      if (!alreadyTried) {
-        sessionStorage.setItem(key, '1');
-        window.location.reload();
-        return;
-      }
-      sessionStorage.removeItem(key);
+      const reloading = tryChunkReload();
+      if (reloading) return;
     }
 
     this.reportError(error, errorInfo);
@@ -83,18 +91,44 @@ export class ErrorBoundary extends React.Component<Props, State> {
   };
 
   handleReload = () => {
-    sessionStorage.removeItem('chunk_reload_attempted');
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
     window.location.href = '/';
   };
 
   handleRefresh = () => {
-    sessionStorage.removeItem('chunk_reload_attempted');
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
     window.location.reload();
   };
 
   render() {
     if (this.state.hasError) {
       const { isChunkError } = this.state;
+
+      if (isChunkError) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 flex items-center justify-center p-4">
+            <Card className="max-w-md w-full border-blue-200 dark:border-blue-800">
+              <CardContent className="pt-6">
+                <div className="flex gap-4">
+                  <RefreshCw className="h-8 w-8 text-blue-600 dark:text-blue-400 flex-shrink-0 animate-spin" />
+                  <div className="flex-1">
+                    <h2 className="text-lg font-bold text-blue-900 dark:text-blue-200 mb-2">
+                      Refreshing…
+                    </h2>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-4">
+                      A new version of the app was loaded. Refreshing automatically…
+                    </p>
+                    <Button onClick={this.handleRefresh} className="w-full">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh now
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      }
 
       return (
         <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950 dark:to-orange-950 flex items-center justify-center p-4">
@@ -104,38 +138,22 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400 flex-shrink-0" />
                 <div className="flex-1">
                   <h2 className="text-lg font-bold text-red-900 dark:text-red-200 mb-2">
-                    {isChunkError ? 'Page update available' : 'Oops! Something went wrong'}
+                    Oops! Something went wrong
                   </h2>
                   <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-                    {isChunkError
-                      ? 'The app was updated. Please refresh the page to load the latest version.'
-                      : "We've automatically reported this error to our team. They'll fix it soon!"}
+                    We've automatically reported this error to our team. They'll fix it soon!
                   </p>
-                  {!isChunkError && (
-                    <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded mb-4 max-h-32 overflow-auto">
-                      <code className="text-xs text-red-800 dark:text-red-200 break-words">
-                        {this.state.error?.toString()}
-                      </code>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    {isChunkError && (
-                      <Button
-                        onClick={this.handleRefresh}
-                        className="w-full bg-red-600 hover:bg-red-700"
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Refresh Page
-                      </Button>
-                    )}
-                    <Button
-                      onClick={this.handleReload}
-                      variant={isChunkError ? 'outline' : undefined}
-                      className={isChunkError ? 'w-full' : 'w-full bg-red-600 hover:bg-red-700'}
-                    >
-                      Go Back Home
-                    </Button>
+                  <div className="bg-red-100 dark:bg-red-900/30 p-3 rounded mb-4 max-h-32 overflow-auto">
+                    <code className="text-xs text-red-800 dark:text-red-200 break-words">
+                      {this.state.error?.toString()}
+                    </code>
                   </div>
+                  <Button
+                    onClick={this.handleReload}
+                    className="w-full bg-red-600 hover:bg-red-700"
+                  >
+                    Go Back Home
+                  </Button>
                 </div>
               </div>
             </CardContent>

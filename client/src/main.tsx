@@ -2,6 +2,9 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+const CHUNK_RELOAD_KEY = 'chunk_reload_ts';
+const CHUNK_RELOAD_COOLDOWN_MS = 30_000;
+
 function isChunkLoadError(message: string): boolean {
   return (
     message.includes('Failed to fetch dynamically imported module') ||
@@ -15,12 +18,10 @@ window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
   const msg = reason?.message ?? String(reason ?? '');
   if (isChunkLoadError(msg)) {
-    const key = 'chunk_reload_attempted';
-    if (!sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, '1');
+    const last = parseInt(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? '0', 10);
+    if (Date.now() - last > CHUNK_RELOAD_COOLDOWN_MS) {
+      sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
       window.location.reload();
-    } else {
-      sessionStorage.removeItem(key);
     }
   }
 });
