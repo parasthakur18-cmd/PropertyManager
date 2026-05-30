@@ -128,6 +128,7 @@ const adminAdminItems = [
   { title: "Enquiries", url: "/enquiries", icon: MessageSquare },
   { title: "Travel Agents", url: "/travel-agents", icon: Briefcase },
   { title: "Channel Manager", url: "/channel-manager", icon: ArrowUpDown },
+  { title: "Connectivity Audit", url: "/connectivity-audit", icon: ArrowUpDown },
   { title: "Dynamic Pricing", url: "/dynamic-pricing", icon: TrendingUpIcon },
   { title: "Users", url: "/users", icon: UserCog },
   { title: "Audit Trail", url: "/audit-logs", icon: Shield },

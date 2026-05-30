@@ -20813,6 +20813,250 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
     }
   });
 
+  // ── Connectivity Audit ──────────────────────────────────────────────────────
+
+  /**
+   * GET /api/aiosell/connectivity-audit
+   * Per-room connection health check across all accessible properties.
+   * Returns mapping status, rate plan status, last push results, and overall health.
+   */
+  app.get("/api/aiosell/connectivity-audit", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+
+      // Resolve accessible property IDs
+      const allProps = await storage.getProperties();
+      const accessibleProps = allProps.filter(p => canAccessProperty(tenant, p.id));
+      const propIds = accessibleProps.map(p => p.id);
+      if (propIds.length === 0) return res.json([]);
+
+      // Fetch everything in parallel
+      const [allRooms, allConfigs, allMappings, allRatePlans, invLogs, rateLogs] = await Promise.all([
+        db.select().from(rooms).where(inArray(rooms.propertyId, propIds)),
+        db.select().from(aiosellConfigurations).where(
+          and(inArray(aiosellConfigurations.propertyId, propIds), eq(aiosellConfigurations.isActive, true))
+        ),
+        db.select().from(aiosellRoomMappings).where(inArray(aiosellRoomMappings.propertyId, propIds)),
+        db.select().from(aiosellRatePlans).where(inArray(aiosellRatePlans.propertyId, propIds)),
+        db.select().from(aiosellSyncLogs).where(
+          and(inArray(aiosellSyncLogs.propertyId, propIds), eq(aiosellSyncLogs.syncType, "inventory_push"))
+        ).orderBy(desc(aiosellSyncLogs.createdAt)).limit(300),
+        db.select().from(aiosellSyncLogs).where(
+          and(inArray(aiosellSyncLogs.propertyId, propIds), eq(aiosellSyncLogs.syncType, "rate_push"))
+        ).orderBy(desc(aiosellSyncLogs.createdAt)).limit(300),
+      ]);
+
+      const propMap = new Map(accessibleProps.map(p => [p.id, p]));
+      const configByProp = new Map(allConfigs.map(c => [c.propertyId, c]));
+
+      const result = allRooms.map(room => {
+        const config = configByProp.get(room.propertyId) || null;
+
+        // Match mapping: prefer explicit hostezeeRoomId link, then fall back to room type name similarity
+        let mapping = allMappings.find(m => m.hostezeeRoomId === room.id) || null;
+        if (!mapping && config) {
+          const typeLower = ((room as any).roomType || room.roomCategory || "").toLowerCase();
+          mapping = allMappings.find(m =>
+            m.configId === config.id &&
+            !!m.hostezeeRoomType &&
+            typeLower.length > 1 &&
+            (m.hostezeeRoomType.toLowerCase().includes(typeLower) ||
+             typeLower.includes(m.hostezeeRoomType.toLowerCase()))
+          ) || null;
+        }
+
+        const ratePlans = mapping ? allRatePlans.filter(rp => rp.roomMappingId === mapping!.id) : [];
+        const lastInvLog = config ? invLogs.find(l => l.configId === config.id) || null : null;
+        const lastRateLog = config ? rateLogs.find(l => l.configId === config.id) || null : null;
+
+        const aiosellConfigured = !!config;
+        const inventoryMappingFound = !!mapping;
+        const rateMappingFound = ratePlans.length > 0;
+        const lastInvOk = !lastInvLog || lastInvLog.status === "success";
+        const lastRateOk = !lastRateLog || lastRateLog.status === "success";
+
+        const statusReasons: string[] = [];
+        let connectionStatus: "fully_connected" | "partially_connected" | "not_connected";
+
+        if (!aiosellConfigured) {
+          connectionStatus = "not_connected";
+          statusReasons.push("Aiosell not configured for this property");
+        } else if (!inventoryMappingFound && !rateMappingFound) {
+          connectionStatus = "not_connected";
+          statusReasons.push("No room mapping found");
+          statusReasons.push("No rate plan configured");
+        } else if (inventoryMappingFound && rateMappingFound && lastInvOk && lastRateOk) {
+          connectionStatus = "fully_connected";
+        } else {
+          connectionStatus = "partially_connected";
+          if (!inventoryMappingFound) statusReasons.push("Missing inventory room mapping");
+          if (!rateMappingFound) statusReasons.push("No rate plan configured");
+          if (!mapping?.aiosellRoomId) statusReasons.push("Aiosell Room ID not set");
+          if (lastInvLog && lastInvLog.status !== "success") statusReasons.push(`Last inventory push ${lastInvLog.status}: ${lastInvLog.errorMessage || ""}`);
+          if (lastRateLog && lastRateLog.status !== "success") statusReasons.push(`Last rate push ${lastRateLog.status}: ${lastRateLog.errorMessage || ""}`);
+        }
+
+        return {
+          roomId: room.id,
+          roomNumber: room.roomNumber,
+          roomType: (room as any).roomType || room.roomCategory || "Standard",
+          roomCategory: room.roomCategory,
+          propertyId: room.propertyId,
+          propertyName: propMap.get(room.propertyId)?.name || "Unknown",
+          configId: config?.id ?? null,
+          hotelCode: config?.hotelCode ?? null,
+          aiosellConfigured,
+          mapping: mapping ? {
+            id: mapping.id,
+            aiosellRoomCode: mapping.aiosellRoomCode,
+            aiosellRoomId: mapping.aiosellRoomId || null,
+            hostezeeRoomType: mapping.hostezeeRoomType,
+          } : null,
+          inventoryMappingFound,
+          ratePlans: ratePlans.map(rp => ({
+            id: rp.id,
+            ratePlanCode: rp.ratePlanCode,
+            ratePlanName: rp.ratePlanName,
+            baseRate: rp.baseRate,
+            occupancy: rp.occupancy,
+          })),
+          rateMappingFound,
+          lastInventoryPush: lastInvLog ? {
+            time: lastInvLog.createdAt,
+            status: lastInvLog.status,
+            payload: lastInvLog.requestPayload,
+            response: lastInvLog.responsePayload,
+            errorMessage: lastInvLog.errorMessage,
+          } : null,
+          lastRatePush: lastRateLog ? {
+            time: lastRateLog.createdAt,
+            status: lastRateLog.status,
+            payload: lastRateLog.requestPayload,
+            response: lastRateLog.responsePayload,
+            errorMessage: lastRateLog.errorMessage,
+          } : null,
+          connectionStatus,
+          statusReasons,
+        };
+      });
+
+      // Sort: not_connected → partially_connected → fully_connected, then property name + room number
+      const order = { not_connected: 0, partially_connected: 1, fully_connected: 2 };
+      result.sort((a, b) => {
+        const d = order[a.connectionStatus] - order[b.connectionStatus];
+        if (d !== 0) return d;
+        if (a.propertyName !== b.propertyName) return a.propertyName.localeCompare(b.propertyName);
+        return a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true });
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/connectivity-audit/test-inventory
+   * Push a live 1-day inventory probe for a specific room mapping.
+   * Returns exact payload sent + exact Aiosell response (no hiding errors).
+   */
+  app.post("/api/aiosell/connectivity-audit/test-inventory", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, mappingId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const [mapping] = await db.select().from(aiosellRoomMappings)
+        .where(and(eq(aiosellRoomMappings.id, mappingId), eq(aiosellRoomMappings.propertyId, propertyId)));
+      if (!mapping) return res.status(404).json({ message: "Room mapping not found" });
+
+      const today = new Date().toISOString().split("T")[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+
+      const updates = [{ startDate: today, endDate: tomorrow, rooms: [{ roomCode: mapping.aiosellRoomCode, available: 1, ...(mapping.aiosellRoomId ? { roomId: mapping.aiosellRoomId } : {}) }] }];
+      const fullPayload = { hotelCode: config.hotelCode, updates };
+      const response = await pushInventory(config, updates as any);
+
+      res.json({ payload: fullPayload, response, success: response.success });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/connectivity-audit/test-rate
+   * Push a live rate probe for a specific rate plan.
+   * Returns exact payload sent + exact Aiosell response (no hiding errors).
+   */
+  app.post("/api/aiosell/connectivity-audit/test-rate", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId, mappingId, ratePlanId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const [mapping] = await db.select().from(aiosellRoomMappings)
+        .where(and(eq(aiosellRoomMappings.id, mappingId), eq(aiosellRoomMappings.propertyId, propertyId)));
+      if (!mapping) return res.status(404).json({ message: "Room mapping not found" });
+
+      const [ratePlan] = await db.select().from(aiosellRatePlans)
+        .where(and(eq(aiosellRatePlans.id, ratePlanId), eq(aiosellRatePlans.propertyId, propertyId)));
+      if (!ratePlan) return res.status(404).json({ message: "Rate plan not found" });
+
+      const today = new Date().toISOString().split("T")[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+      const testRate = ratePlan.baseRate ? parseFloat(String(ratePlan.baseRate)) : 1000;
+
+      const updates = [{ startDate: today, endDate: tomorrow, rates: [{ roomCode: mapping.aiosellRoomCode, ...(mapping.aiosellRoomId ? { roomId: mapping.aiosellRoomId } : {}), rate: testRate, rateplanCode: ratePlan.ratePlanCode }] }];
+      const fullPayload = { hotelCode: config.hotelCode, updates };
+      const response = await pushRates(config, updates as any);
+
+      res.json({ payload: fullPayload, response, success: response.success });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/aiosell/connectivity-audit/verify-mapping
+   * Live connection test + returns full mapping/rate-plan config for a property.
+   */
+  app.post("/api/aiosell/connectivity-audit/verify-mapping", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const { propertyId } = req.body;
+      if (!propertyId || !canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+      const config = await getConfigForProperty(propertyId);
+      if (!config) return res.status(404).json({ message: "Aiosell not configured for this property" });
+
+      const [connectionResult, mappings, ratePlans] = await Promise.all([
+        testConnection(config),
+        getRoomMappingsForConfig(config.id),
+        getRatePlansForConfig(config.id),
+      ]);
+
+      res.json({
+        connectionResult,
+        config: { hotelCode: config.hotelCode, pmsName: config.pmsName, apiBaseUrl: config.apiBaseUrl, isActive: config.isActive, isSandbox: config.isSandbox, lastSyncAt: config.lastSyncAt },
+        mappings,
+        ratePlans,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // AIOSELL WEBHOOK - Receive reservations from AioSell (no auth required - external webhook)
   app.get("/api/aiosell/reservation", (_req, res) => {
     res.json({ status: "ok", message: "Hostezee AioSell webhook endpoint is active. Send POST requests to this URL." });
