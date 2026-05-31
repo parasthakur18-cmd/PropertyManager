@@ -20309,19 +20309,15 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
       const mappings = await getRoomMappingsForConfig(config.id);
       if (mappings.length === 0) return res.status(400).json({ message: "No room mappings configured. Add room mappings first." });
-      try {
-        await autoSyncInventoryForProperty(propertyId);
-        res.json({ success: true, message: `Inventory synced for ${mappings.length} room type(s) — next 90 days pushed to AioSell.` });
-      } catch (syncErr: any) {
-        // Partial failure (some ranges failed) — return 200 with a warning, not 500.
-        // The error message from autoSyncInventoryForProperty already describes what happened.
-        const isPartial = syncErr.message?.includes("partial failure");
-        if (isPartial) {
-          res.json({ success: false, message: syncErr.message });
-        } else {
-          res.status(500).json({ message: syncErr.message });
-        }
-      }
+      // Fire-and-forget — the sync takes 60-90 seconds (26 ranges × 2.5s each).
+      // Awaiting it here would cause nginx to 504. Return immediately and let
+      // it run in the background. User can watch progress in Sync Logs tab.
+      autoSyncInventoryForProperty(propertyId).then(() => {
+        console.log(`[FORCE-SYNC] Property ${propertyId} sync completed successfully.`);
+      }).catch((err: any) => {
+        console.error(`[FORCE-SYNC] Property ${propertyId} sync failed: ${err.message}`);
+      });
+      res.json({ success: true, message: `Sync started for ${mappings.length} room type(s). This runs in the background (~60s) — check the Sync Logs tab for results.` });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

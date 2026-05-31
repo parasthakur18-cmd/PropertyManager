@@ -52,7 +52,20 @@ makeAiosellRequest() in server/aiosell.ts now:
 ## Rate Limiting — Safe Parameters (Updated May 2026)
 - Aiosell enforces ~1 req/s rate limit; returns nginx 429 (HTML, not JSON) if exceeded.
 - **Safe inter-call delay: 2500ms** between individual range pushes.
+- **On failure: 6s backoff then CONTINUE** (don't break — remaining ranges still need pushing).
 - **Retry backoff on 429: 15s → 30s → 60s** (3 attempts in callAiosellApi).
+
+## Force Sync — Must Be Fire-and-Forget (Critical)
+`/api/aiosell/force-sync` must NOT await `autoSyncInventoryForProperty()`.
+- 26 ranges × 2.5s = ~65s minimum → nginx 60s timeout → 504 Gateway Timeout on live server.
+- Fix: fire-and-forget (`.then().catch()`), return 200 immediately with "Sync started".
+- User checks Sync Logs tab for result.
+**Why:** Any long-running sync endpoint on a standard nginx proxy will 504. Always
+  fire-and-forget for operations taking >30s.
+
+## Stop-Sell Always Runs (Critical)
+- Stop-sell restrictions are what actually BLOCK bookings on OTAs (available=0 alone is not enough).
+- Never gate stop-sell on `stoppedEarly` — always run it even if some inventory ranges failed.
 
 ## Concurrency Bug Fixed (Phase 4, May 2026)
 `scheduleSyncForProperty` deleted its debounce timer BEFORE the sync ran.
