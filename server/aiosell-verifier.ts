@@ -339,6 +339,15 @@ export interface AuditSection {
 
 export type AuditOverallStatus = "healthy" | "attention" | "critical";
 
+export interface ScoreBreakdown {
+  sections: { name: string; key: string; score: number; maxScore: number }[];
+  rawScore: number;
+  penalties: { label: string; points: number }[];
+  penaltyTotal: number;
+  finalScore: number;
+  breakdownText: string;
+}
+
 export interface AuditReport {
   id?: number;
   propertyId: number;
@@ -352,6 +361,7 @@ export interface AuditReport {
   criticalIssues: string[];
   warnings: string[];
   recommendations: string[];
+  scoreBreakdown: ScoreBreakdown;
 }
 
 export async function auditProperty(
@@ -419,7 +429,7 @@ export async function auditProperty(
   const lastRateLog  = allLogsAny.find(l => l.syncType === "rate_push") || null;
   const lastRateOkLog = allLogsAny.find(l => l.syncType === "rate_push" && l.status === "success") || null;
 
-  // ── Section 1: Configuration (20 pts) ───────────────────────────────────────
+  // ── Section 1: Configuration (15 pts) ───────────────────────────────────────
   let s1Score = 0;
   const s1Checks: AuditCheck[] = [];
 
@@ -435,25 +445,25 @@ export async function auditProperty(
         ? `Hotel code "${config.hotelCode}" is a sandbox placeholder — update to the real production hotel code in Channel Manager → Settings`
         : hotelOk ? `Hotel code "${config.hotelCode}"`
           : "Hotel code is empty — cannot identify property in AioSell" });
-    if (hotelOk) s1Score += 6;
+    if (hotelOk) s1Score += 4;
 
     const pmsOk = !!config.pmsName?.trim();
     s1Checks.push({ label: "PMS Name", value: config.pmsName || null,
       status: pmsOk ? "pass" : "fail",
       detail: pmsOk ? `PMS name "${config.pmsName}"` : "PMS name is missing" });
-    if (pmsOk) s1Score += 4;
+    if (pmsOk) s1Score += 3;
 
     const passOk = !!config.pmsPassword;
     s1Checks.push({ label: "PMS Password", value: passOk ? "●●●●●●●●" : null,
       status: passOk ? "pass" : "fail",
       detail: passOk ? "Password is set" : "PMS password not set — authentication will fail on all API calls" });
-    if (passOk) s1Score += 5;
+    if (passOk) s1Score += 4;
 
     const urlOk = !!config.apiBaseUrl?.startsWith("https://");
     s1Checks.push({ label: "API Base URL", value: config.apiBaseUrl || null,
       status: urlOk ? "pass" : "fail",
       detail: urlOk ? `Using ${config.apiBaseUrl}` : "API URL is missing or not HTTPS" });
-    if (urlOk) s1Score += 5;
+    if (urlOk) s1Score += 4;
 
     if (isSandboxMode) {
       s1Checks.push({ label: "Sandbox Mode", value: "ACTIVE",
@@ -465,11 +475,11 @@ export async function auditProperty(
 
   const section1: AuditSection = {
     name: "Property Configuration", key: "configuration",
-    status: s1Score >= 16 ? "healthy" : s1Score >= 8 ? "attention" : "critical",
-    score: s1Score, maxScore: 20, checks: s1Checks,
+    status: s1Score >= 12 ? "healthy" : s1Score >= 7 ? "attention" : "critical",
+    score: s1Score, maxScore: 15, checks: s1Checks,
   };
 
-  // ── Section 2: Room Mapping (20 pts) ────────────────────────────────────────
+  // ── Section 2: Room Mapping (15 pts) ────────────────────────────────────────
   let s2Score = 0;
   const s2Checks: AuditCheck[] = [
     { label: "Total Rooms", value: allRooms.length, status: "info",
@@ -490,24 +500,24 @@ export async function auditProperty(
         : dormMissingBeds.length === 0 ? `All ${dormRooms.length} dorm rooms have totalBeds set`
           : `${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds: ${dormMissingBeds.map(r => r.roomNumber).join(", ")}` },
   ];
-  // Duplicate room code check — push to s2Checks after the initial array literal
+  // Duplicate room code check
   s2Checks.push({ label: "Duplicate Room Codes", value: duplicateRoomCodes.length > 0 ? duplicateRoomCodes.length : "None",
     status: duplicateRoomCodes.length === 0 ? "pass" : "fail",
     detail: duplicateRoomCodes.length === 0
       ? "All room types have unique AioSell codes"
       : `${duplicateRoomCodes.length} AioSell code${duplicateRoomCodes.length !== 1 ? "s" : ""} shared across multiple room types: ${duplicateRoomCodes.map(([code, cnt]) => `"${code}" ×${cnt}`).join(", ")} — AioSell cannot differentiate inventory between these room types` });
 
-  if (allMappings.length > 0) s2Score += 12;
-  if (invalidCodeMappings.length === 0 && allMappings.length > 0 && duplicateRoomCodes.length === 0) s2Score += 8;
-  else if (invalidCodeMappings.length === 0 && allMappings.length > 0) s2Score += 4; // partial: codes set but duplicated
+  if (allMappings.length > 0) s2Score += 8;
+  if (allMappings.length > 0 && invalidCodeMappings.length === 0) s2Score += 4;
+  if (allMappings.length > 0 && duplicateRoomCodes.length === 0) s2Score += 3;
 
   const section2: AuditSection = {
     name: "Room Mapping", key: "roomMapping",
-    status: s2Score >= 16 ? "healthy" : s2Score >= 8 ? "attention" : "critical",
-    score: s2Score, maxScore: 20, checks: s2Checks,
+    status: s2Score >= 12 ? "healthy" : s2Score >= 7 ? "attention" : "critical",
+    score: s2Score, maxScore: 15, checks: s2Checks,
   };
 
-  // ── Section 3: Inventory Sync (20 pts) ──────────────────────────────────────
+  // ── Section 3: Inventory Sync (25 pts) ──────────────────────────────────────
   let s3Score = 0;
   const failedInv7d = invLogs7d.filter(l => l.status !== "success");
   const lastAnyInv  = invLogsAny[0] || null;
@@ -542,18 +552,18 @@ export async function auditProperty(
         : `${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds — availability calculation incorrect` });
   }
 
-  if (everPushed) s3Score += 4;
-  if (lastSuccessInv) s3Score += 6;
-  if (within24h) s3Score += 6;
+  if (everPushed) s3Score += 5;
+  if (lastSuccessInv) s3Score += 8;
+  if (within24h) s3Score += 8;
   if (dormRooms.length === 0 || dormMissingBeds.length === 0) s3Score += 4;
 
   const section3: AuditSection = {
     name: "Inventory Sync", key: "inventorySync",
-    status: s3Score >= 16 ? "healthy" : s3Score >= 8 ? "attention" : "critical",
-    score: s3Score, maxScore: 20, checks: s3Checks,
+    status: s3Score >= 20 ? "healthy" : s3Score >= 12 ? "attention" : "critical",
+    score: s3Score, maxScore: 25, checks: s3Checks,
   };
 
-  // ── Section 4: Rate Plans (15 pts) ──────────────────────────────────────────
+  // ── Section 4: Rate Plans (10 pts) ──────────────────────────────────────────
   let s4Score = 0;
   const s4Checks: AuditCheck[] = [
     { label: "Rate Plans Configured", value: allRatePlans.length,
@@ -574,17 +584,17 @@ export async function auditProperty(
         : lastRateLog ? `Last push failed: ${lastRateLog.errorMessage || "unknown"}`
           : "Rates have never been pushed to AioSell" },
   ];
-  if (allRatePlans.length > 0) s4Score += 5;
-  if (mappingsWithoutRates.length === 0 && allMappings.length > 0) s4Score += 10;
-  else if (mappingsWithRates.length > 0) s4Score += 5;
+  if (allRatePlans.length > 0) s4Score += 3;
+  if (mappingsWithoutRates.length === 0 && allMappings.length > 0) s4Score += 7;
+  else if (mappingsWithRates.length > 0) s4Score += 3;
 
   const section4: AuditSection = {
     name: "Rate Plans", key: "ratePlans",
-    status: s4Score >= 12 ? "healthy" : s4Score >= 5 ? "attention" : "critical",
-    score: s4Score, maxScore: 15, checks: s4Checks,
+    status: s4Score >= 8 ? "healthy" : s4Score >= 4 ? "attention" : "critical",
+    score: s4Score, maxScore: 10, checks: s4Checks,
   };
 
-  // ── Section 5: Sync Logs (15 pts) ───────────────────────────────────────────
+  // ── Section 5: Sync Logs (25 pts) ───────────────────────────────────────────
   let s5Score = 0;
   const totalLogs7d  = allLogs7d.length;
   const failedLogs7d = allLogs7d.filter(l => l.status !== "success");
@@ -620,15 +630,18 @@ export async function auditProperty(
         `[${new Date(l.createdAt!).toLocaleString()}] ${l.syncType}: ${l.errorMessage || l.status}`
       ).join(" | ") });
   }
-  if (errorRate < 0.1) s5Score += 8;
-  else if (errorRate < 0.25) s5Score += 4;
-  if (recentFails.length === 0) s5Score += 7;
-  else if (recentFails.length <= 2) s5Score += 3;
+  // 25-point split: 13 pts for error rate health + 12 pts for recent failure health
+  if (errorRate < 0.1) s5Score += 13;
+  else if (errorRate < 0.25) s5Score += 6;
+  // else 0 — ≥25% failure rate earns nothing in this section
+  if (recentFails.length === 0) s5Score += 12;
+  else if (recentFails.length <= 2) s5Score += 5;
+  // else 0 — >2 active failures in 24h earns nothing
 
   const section5: AuditSection = {
     name: "Sync Logs", key: "syncLogs",
-    status: s5Score >= 12 ? "healthy" : s5Score >= 6 ? "attention" : "critical",
-    score: s5Score, maxScore: 15, checks: s5Checks,
+    status: s5Score >= 20 ? "healthy" : s5Score >= 12 ? "attention" : "critical",
+    score: s5Score, maxScore: 25, checks: s5Checks,
   };
 
   // ── Section 6: OTA Status (10 pts) ──────────────────────────────────────────
@@ -683,11 +696,38 @@ export async function auditProperty(
   };
 
   // ── Score + Issues ──────────────────────────────────────────────────────────
-  const sections   = [section1, section2, section3, section4, section5, section6];
-  const totalScore = sections.reduce((s, sec) => s + sec.score, 0);
-  const maxTotal   = sections.reduce((s, sec) => s + sec.maxScore, 0);
-  const healthScore  = Math.round((totalScore / maxTotal) * 100);
-  const overallStatus: AuditOverallStatus = healthScore >= 80 ? "healthy" : healthScore >= 50 ? "attention" : "critical";
+  // New weighting: Config 15 | RoomMapping 15 | InventorySync 25 |
+  //                RatePlans 10 | SyncLogs 25 | OTAStatus 10  = 100 pts
+  const sections  = [section1, section2, section3, section4, section5, section6];
+  const rawScore  = sections.reduce((s, sec) => s + sec.score, 0); // 0–100
+
+  // ── Penalty matrix (applied on top of section scores) ───────────────────────
+  const errorRatePct = Math.round(errorRate * 100);
+  const penaltyList: { label: string; points: number }[] = [];
+
+  if (errorRate >= 0.2)
+    penaltyList.push({ label: `Error rate ${errorRatePct}% ≥ 20%`, points: -15 });
+  else if (errorRate >= 0.1)
+    penaltyList.push({ label: `Error rate ${errorRatePct}% (10–19%)`, points: -5 });
+
+  if (failedInv7d.length > 50)
+    penaltyList.push({ label: `Failed inventory pushes ${failedInv7d.length} > 50`, points: -10 });
+  else if (failedInv7d.length > 3)
+    penaltyList.push({ label: `Failed inventory pushes ${failedInv7d.length} > 3`, points: -3 });
+
+  if (recentFails.length > 20)
+    penaltyList.push({ label: `Recent failures ${recentFails.length} > 20 (24h)`, points: -10 });
+  else if (recentFails.length > 2)
+    penaltyList.push({ label: `Recent failures ${recentFails.length} > 2 (24h)`, points: -3 });
+
+  const penaltyTotal = penaltyList.reduce((s, p) => s + p.points, 0);
+  const healthScore  = Math.max(0, rawScore + penaltyTotal);
+
+  // ── Status rules ─────────────────────────────────────────────────────────────
+  // CRITICAL: score < 60  OR  Sync Logs section critical  OR  error rate ≥ 30%
+  // ATTENTION: score 60–84  OR  any critical issue present (computed below)
+  // HEALTHY:  score ≥ 85  AND  no critical issues
+  // (overallStatus is finalised after criticalIssues is built)
 
   const criticalIssues: string[] = [];
   const warnings: string[] = [];
@@ -715,10 +755,7 @@ export async function auditProperty(
   if (liveTestResult !== null && !liveTestResult.success)
     criticalIssues.push(`AioSell live connection failed: ${liveTestResult.message}`);
 
-  // ── 2. Quantitative sync-health thresholds ───────────────────────────────────
-  // These are derived from section check values — the primary source of truth.
-  const errorRatePct = Math.round(errorRate * 100);
-
+  // ── 2. Quantitative sync-health thresholds → criticalIssues / warnings ───────
   if (errorRate >= 0.2) {
     criticalIssues.push(`${errorRatePct}% sync failure rate in last 7 days — OTAs are likely showing stale inventory or rates`);
   } else if (errorRate >= 0.1) {
@@ -740,15 +777,12 @@ export async function auditProperty(
   }
 
   if (section3.status === "critical") {
-    const s3FailLabels = section3.checks
-      .filter(c => c.status === "fail")
-      .map(c => c.label);
+    const s3FailLabels = section3.checks.filter(c => c.status === "fail").map(c => c.label);
     if (s3FailLabels.length > 0)
       criticalIssues.push(`Inventory Sync section critical: ${s3FailLabels.join(", ")}`);
   }
 
   // ── 3. Error-content scan (HTTP 429 / INVALID codes in sync log messages) ────
-  // Build one combined lowercase string from errorMessage + responsePayload for each failed log
   const failedLogTexts = failedLogs7d.map(l => {
     const msg  = l.errorMessage || "";
     const resp = typeof l.responsePayload === "string"
@@ -792,7 +826,6 @@ export async function auditProperty(
     warnings.push(`${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds — bed availability incorrect`);
 
   // ── 5. Section-check sweep — any remaining "fail" check not yet surfaced ─────
-  // Checks handled explicitly above (by structural logic or quantitative thresholds)
   const explicitlyHandledLabels = new Set([
     "AioSell Configuration", "Hotel Code", "PMS Name", "PMS Password", "API Base URL",
     "Sandbox Mode", "Mapped Rooms", "Invalid Room Codes", "Duplicate Room Codes",
@@ -803,7 +836,6 @@ export async function auditProperty(
     for (const chk of sec.checks) {
       if (chk.status !== "fail") continue;
       if (explicitlyHandledLabels.has(chk.label)) continue;
-      // Skip if the check detail is already captured in criticalIssues or warnings
       const detailSnippet = chk.detail.toLowerCase().slice(0, 40);
       const alreadySurfaced =
         criticalIssues.some(s => s.toLowerCase().includes(detailSnippet)) ||
@@ -813,7 +845,16 @@ export async function auditProperty(
     }
   }
 
-  // ── 6. Recommendations ──────────────────────────────────────────────────────
+  // ── 6. Overall status (finalised after criticalIssues is built) ──────────────
+  const syncLogsCritical = section5.status === "critical";
+  const overallStatus: AuditOverallStatus =
+    healthScore < 60 || syncLogsCritical || errorRate >= 0.3
+      ? "critical"
+      : healthScore < 85 || criticalIssues.length > 0
+        ? "attention"
+        : "healthy";
+
+  // ── 7. Recommendations ───────────────────────────────────────────────────────
   if (allRatePlans.length === 0)
     recommendations.push("Configure rate plans in Rate Plans tab before enabling OTA rate sync");
   if (!within24h && allMappings.length > 0)
@@ -833,6 +874,31 @@ export async function auditProperty(
   if (hasInvalidRatePlan)
     recommendations.push("Compare rate plan codes in Rate Plans tab against the exact codes configured in AioSell");
 
+  // ── 8. Score breakdown (visible in JSON + AI context) ────────────────────────
+  const pad = (s: string, len: number) => s + ".".repeat(Math.max(1, len - s.length));
+  const breakdownLines = sections.map(sec =>
+    `${pad(sec.name, 24)} ${String(sec.score).padStart(2)}/${sec.maxScore}`
+  );
+  const penaltyLines = penaltyList.map(p => `  Penalty: ${p.label} → ${p.points}`);
+  const breakdownText = [
+    "── Health Score Breakdown ──────────────────",
+    ...breakdownLines,
+    "────────────────────────────────────────────",
+    `Raw Score:   ${rawScore}/100`,
+    ...(penaltyLines.length > 0 ? penaltyLines : ["  No penalties applied"]),
+    `Final Score: ${healthScore}/100  (${overallStatus.toUpperCase()})`,
+    "────────────────────────────────────────────",
+  ].join("\n");
+
+  const scoreBreakdown: ScoreBreakdown = {
+    sections: sections.map(s => ({ name: s.name, key: s.key, score: s.score, maxScore: s.maxScore })),
+    rawScore,
+    penalties: penaltyList,
+    penaltyTotal,
+    finalScore: healthScore,
+    breakdownText,
+  };
+
   return {
     propertyId,
     propertyName:  prop?.name || "Unknown",
@@ -845,6 +911,7 @@ export async function auditProperty(
     criticalIssues,
     warnings,
     recommendations,
+    scoreBreakdown,
   };
 }
 

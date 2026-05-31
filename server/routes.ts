@@ -21021,6 +21021,7 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
         criticalIssues: report.criticalIssues,
         warnings:       report.warnings,
         recommendations: report.recommendations,
+        scoreBreakdown: report.scoreBreakdown?.breakdownText || null,
         sections: (report.sections || []).map((s: any) => ({
           name:      s.name,
           status:    s.status,
@@ -21072,7 +21073,8 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
           recommendedFix: report.recommendations.length > 0
             ? report.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")
             : "No action required.",
-          summary: `${report.propertyName} — Health: ${report.healthScore}% | ${ci.length} critical issue(s), ${wa.length} warning(s).\n\n` +
+          summary: `${report.propertyName} — Health: ${report.healthScore} | Status: ${(report.overallStatus || "").toUpperCase()} | ${ci.length} critical issue(s), ${wa.length} warning(s).\n\n` +
+            (report.scoreBreakdown?.breakdownText ? report.scoreBreakdown.breakdownText + "\n\n" : "") +
             (issueLines.length > 0 ? issueLines.join("\n") : "All checks passed.") +
             "\n\n(AI-powered analysis unavailable — configure OpenAI API key to enable GPT diagnosis.)",
         };
@@ -21148,16 +21150,17 @@ Respond ONLY with valid JSON (no markdown, no extra text):
       console.log(`[AI-AUDIT] prop=${propertyId} priority=${aiAnalysis.priority} score=${report.healthScore}`);
 
       res.json({
-        propertyName:   report.propertyName,
-        healthScore:    report.healthScore,
-        overallStatus:  report.overallStatus,
-        criticalIssues: report.criticalIssues,
-        warnings:       report.warnings,
+        propertyName:    report.propertyName,
+        healthScore:     report.healthScore,
+        overallStatus:   report.overallStatus,
+        criticalIssues:  report.criticalIssues,
+        warnings:        report.warnings,
         recommendations: report.recommendations,
-        sections:       report.sections,
+        sections:        report.sections,
+        scoreBreakdown:  report.scoreBreakdown || null,
         aiAnalysis,
         question,
-        generatedAt:    new Date().toISOString(),
+        generatedAt:     new Date().toISOString(),
         usedCachedAudit: recentRows.length > 0,
       });
     } catch (err: any) {
