@@ -406,7 +406,12 @@ export default function CalendarView() {
 
   const getBookingForDate = (roomId: number, date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
+    // Property guard: look up the room's propertyId so we never bleed bookings
+    // from a different property into this calendar row, even if roomIds coincide.
+    const roomPropertyId = rooms.find(r => r.id === roomId)?.propertyId;
     return bookings.find(b => {
+      // Skip if booking belongs to a different property than the room
+      if (roomPropertyId != null && b.propertyId !== roomPropertyId) return false;
       // For group bookings that have a roomIds array, ONLY use that array for room matching.
       // Never fall back to booking.roomId for group bookings — roomId on a group booking is
       // the "primary" room and can diverge from roomIds after a room-change operation,
@@ -427,6 +432,8 @@ export default function CalendarView() {
 
   const getBookingsForRoom = (roomId: number) => {
     const bookingSet = new Map<number, Booking>();
+    // Property guard — same rule as getBookingForDate
+    const roomPropertyId = rooms.find(r => r.id === roomId)?.propertyId;
     dates.forEach(date => {
       const booking = getBookingForDate(roomId, date);
       if (booking) {
@@ -437,6 +444,8 @@ export default function CalendarView() {
     // Also include group bookings that contain this room (exclude cancelled and no-show)
     bookings.forEach(booking => {
       if (booking.status === "cancelled" || booking.status === "no_show") return;
+      // Skip bookings from a different property
+      if (roomPropertyId != null && booking.propertyId !== roomPropertyId) return;
       if (booking.roomIds && booking.roomIds.includes(roomId)) {
         // Check if this booking overlaps with our date range
         const bookingStart = new Date(booking.checkInDate);
@@ -456,7 +465,10 @@ export default function CalendarView() {
   // Get ALL bookings for a dormitory room on a specific date (allows multiple bookings)
   const getAllDormitoryBookingsForDate = (roomId: number, date: Date): Booking[] => {
     const dateStr = format(date, "yyyy-MM-dd");
+    const roomPropertyId = rooms.find(r => r.id === roomId)?.propertyId;
     return bookings.filter(b => {
+      // Property guard: skip bookings from a different property
+      if (roomPropertyId != null && b.propertyId !== roomPropertyId) return false;
       const roomMatches = (b.isGroupBooking && b.roomIds && b.roomIds.length > 0)
         ? b.roomIds.includes(roomId)
         : b.roomId === roomId || (b.roomIds && b.roomIds.includes(roomId));
