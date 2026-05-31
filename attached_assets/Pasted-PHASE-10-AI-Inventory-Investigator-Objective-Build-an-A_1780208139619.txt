@@ -1,0 +1,346 @@
+PHASE 10 – 🤖 AI Inventory Investigator
+
+Objective:
+
+Build an AI-powered troubleshooting assistant that automatically investigates inventory, OTA sync, availability mismatches, booking discrepancies, and calendar inconsistencies.
+
+Location:
+
+Channel Manager
+→ Verify Property
+→ AI Investigator
+
+or
+
+Add button:
+
+🤖 Investigate
+
+inside:
+
+* OTA Test
+* Inventory Consistency
+* Reconciliation
+
+---
+
+Problem
+
+Today staff must manually inspect:
+
+* OTA Test
+* Inventory Consistency
+* Reconciliation
+* Sync Logs
+* Bookings
+* Room Mapping
+
+to understand why inventory is incorrect.
+
+The AI Investigator should perform this analysis automatically.
+
+---
+
+User Experience
+
+User clicks:
+
+🤖 Investigate
+
+or asks:
+
+"Why is Deluxe Room showing 3 available on 10 June?"
+
+---
+
+AI Investigation Engine
+
+The AI should automatically collect:
+
+1. OTA Health Audit
+2. Inventory Consistency Results
+3. Inventory Reconciliation Results
+4. Recent Sync Logs
+5. Failed Push Logs
+6. Room Mapping
+7. Rate Plan Mapping
+8. OTA Test Results
+9. Booking Breakdown
+10. Blocked Room Data
+11. Recent OTA Reservations
+12. Recent Offline Reservations
+
+---
+
+New Endpoint
+
+POST /api/ai-investigator
+
+Request:
+
+{
+propertyId: 7,
+roomType: "Deluxe Room",
+date: "2026-06-10",
+question: "Why is inventory different?"
+}
+
+---
+
+Investigation Workflow
+
+Step 1
+
+Check:
+
+Hostezee Inventory
+
+vs
+
+AioSell Inventory
+
+---
+
+Step 2
+
+Check:
+
+OTA Bookings
+Offline Bookings
+Blocked Rooms
+
+---
+
+Step 3
+
+Check:
+
+Recent Sync Failures
+
+---
+
+Step 4
+
+Check:
+
+Room Mapping
+
+---
+
+Step 5
+
+Check:
+
+Rate Plan Mapping
+
+---
+
+Step 6
+
+Check:
+
+Recent OTA Imports
+
+---
+
+Step 7
+
+Generate Root Cause Analysis
+
+---
+
+Expected Responses
+
+Case 1
+
+Inventory Mismatch
+
+Output:
+
+🔴 Investigation Complete
+
+Room:
+Deluxe Room
+
+Date:
+10 June
+
+Hostezee:
+4 Available
+
+AioSell:
+5 Available
+
+Root Cause:
+Walk-in booking reduced inventory in Hostezee.
+
+Inventory push failed.
+
+Last Error:
+HTTP 429 Too Many Requests
+
+Impact:
+OTA inventory is stale.
+
+Recommended Action:
+Run inventory sync and verify AioSell update.
+
+---
+
+Case 2
+
+Room Mapping Issue
+
+Output:
+
+🔴 Investigation Complete
+
+Root Cause:
+INVALID_ROOM_CODE detected.
+
+Room:
+4-bed Female Dormitory
+
+AioSell does not recognise the configured room code.
+
+Recommended Action:
+Correct room mapping in Channel Manager.
+
+---
+
+Case 3
+
+Rate Plan Issue
+
+Output:
+
+🟡 Investigation Complete
+
+Root Cause:
+INVALID_RATEPLAN_CODE detected.
+
+Recommended Action:
+Verify rate plan code in AioSell and Hostezee.
+
+---
+
+Case 4
+
+Everything Healthy
+
+Output:
+
+🟢 Investigation Complete
+
+No issues detected.
+
+Inventory:
+Synchronized
+
+OTA Connectivity:
+Healthy
+
+Recent Inventory Push:
+Success
+
+Last OTA Reservation:
+Imported Successfully
+
+No action required.
+
+---
+
+AI Analysis Prompt Context
+
+Provide AI with:
+
+* Audit Report
+* Score Breakdown
+* Critical Issues
+* Warnings
+* Inventory Consistency Result
+* Reconciliation Result
+* Sync Log Summary
+* Booking Source Breakdown
+
+---
+
+Frontend
+
+Create:
+
+AIInvestigatorTab
+
+Features:
+
+Question Input
+
+Examples:
+
+Why is inventory different?
+Why is this room unavailable?
+Why is OTA inventory stale?
+Why are bookings not syncing?
+
+Button:
+
+Run Investigation
+
+---
+
+Output Card
+
+Status Badge
+
+Root Cause
+
+Business Impact
+
+Evidence
+
+Recommended Fix
+
+Confidence Score
+
+---
+
+Quick Actions
+
+If AI identifies:
+
+Inventory mismatch
+
+Show:
+
+Run Inventory Sync
+
+If mapping issue:
+
+Show:
+
+Open Room Mapping
+
+If rate plan issue:
+
+Show:
+
+Open Rate Plans
+
+---
+
+Success Criteria
+
+A hotel staff member should be able to ask:
+
+"Why is this room showing different availability?"
+
+and receive:
+
+* Root Cause
+* Evidence
+* Impact
+* Recommended Fix
+
+without manually opening multiple audit screens.
+
+This becomes the intelligent troubleshooting layer on top of the OTA Auditor, Inventory Consistency Test, and Reconciliation system.

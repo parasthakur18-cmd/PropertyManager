@@ -21808,6 +21808,280 @@ Respond ONLY with valid JSON (no markdown, no extra text):
   });
 
   /**
+   * POST /api/ai-investigator
+   * AI-powered inventory & OTA sync investigator.
+   * Collects audit, sync log, booking, mapping, and consistency data in parallel,
+   * then feeds it to GPT-4o-mini for root-cause analysis.
+   * Input:  { propertyId, question, roomType?, date? }
+   * Output: { status, rootCause, evidence, businessImpact, recommendedFix,
+   *           quickActions, confidenceScore, summary, contextUsed, generatedAt }
+   */
+  app.post("/api/ai-investigator", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.body.propertyId);
+      const question: string = (req.body.question || "").trim();
+      const roomType: string | null = req.body.roomType?.trim() || null;
+      const dateStr: string = req.body.date || new Date().toISOString().split("T")[0];
+      if (!propertyId || isNaN(propertyId)) return res.status(400).json({ message: "propertyId is required" });
+      if (!question) return res.status(400).json({ message: "question is required" });
+      if (!canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+
+      const dateObj = new Date(dateStr); dateObj.setHours(0, 0, 0, 0);
+      const nextDay = new Date(dateObj); nextDay.setDate(dateObj.getDate() + 1);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const oneHourAgo  = new Date(Date.now() - 60 * 60 * 1000);
+
+      // ── Gather all data in parallel ────────────────────────────────────────
+      const config = await getConfigForProperty(propertyId);
+
+      const recentAuditRows = await db.select().from(aiosellAuditReports)
+        .where(and(eq(aiosellAuditReports.propertyId, propertyId), gte(aiosellAuditReports.createdAt, oneHourAgo)))
+        .orderBy(desc(aiosellAuditReports.createdAt)).limit(1);
+
+      const [auditReport, recentLogs, blockedRoomsData, dayBookings, mappings] = await Promise.all([
+        recentAuditRows.length > 0
+          ? Promise.resolve(recentAuditRows[0].reportData as any)
+          : auditProperty(propertyId, { runLiveTest: false }),
+        config
+          ? db.select({
+              syncType: aiosellSyncLogs.syncType, status: aiosellSyncLogs.status,
+              responseBody: aiosellSyncLogs.responseBody, createdAt: aiosellSyncLogs.createdAt,
+            }).from(aiosellSyncLogs)
+            .where(and(eq(aiosellSyncLogs.configId, config.id), gte(aiosellSyncLogs.createdAt, sevenDaysAgo)))
+            .orderBy(desc(aiosellSyncLogs.createdAt)).limit(30)
+          : Promise.resolve([] as any[]),
+        db.select({ id: rooms.id, roomType: rooms.roomType, status: rooms.status })
+          .from(rooms)
+          .where(and(eq(rooms.propertyId, propertyId), inArray(rooms.status, ["maintenance", "out-of-order", "blocked"]))),
+        db.select({
+          id: bookings.id, roomId: bookings.roomId, roomType: bookings.roomType,
+          source: bookings.source, externalSource: bookings.externalSource,
+          checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
+        }).from(bookings).where(and(
+          eq(bookings.propertyId, propertyId),
+          inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+          lte(bookings.checkInDate, nextDay), gte(bookings.checkOutDate, dateObj),
+        )),
+        config ? getRoomMappingsForConfig(config.id) : Promise.resolve([] as any[]),
+      ]);
+
+      // ── Derive insights ────────────────────────────────────────────────────
+      const failedLogs  = recentLogs.filter((l: any) => l.status === "failed" || l.status === "error");
+      const successLogs = recentLogs.filter((l: any) => l.status === "success");
+      const lastFailMsg = failedLogs[0]?.responseBody
+        ? (typeof failedLogs[0].responseBody === "string"
+            ? failedLogs[0].responseBody
+            : JSON.stringify(failedLogs[0].responseBody)).slice(0, 250)
+        : null;
+
+      const activeDayBookings = dayBookings.filter((b: any) => {
+        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+        return cin <= dateObj && dateObj < cout;
+      });
+      const roomFilteredBookings = roomType
+        ? activeDayBookings.filter((b: any) => b.roomType === roomType || !b.roomType)
+        : activeDayBookings;
+      const otaBookings     = roomFilteredBookings.filter((b: any) => _classifySource(b.externalSource || b.source) === "ota");
+      const offlineBookings = roomFilteredBookings.filter((b: any) => _classifySource(b.externalSource || b.source) === "offline");
+
+      // Pull from in-process caches (warmed by earlier clicks on those tabs)
+      const consistencyHit = invConsistencyCache.get(propertyId);
+      const consistencyData = (consistencyHit && consistencyHit.expiry > Date.now()) ? consistencyHit.result : null;
+
+      const reconKey  = `${propertyId}:${dateStr}`;
+      const reconHit  = invReconCache.get(reconKey);
+      const reconcData = (reconHit && reconHit.expiry > Date.now()) ? reconHit.result : null;
+      const reconForRoom = reconcData?.reconciliation?.find((r: any) => !roomType || r.roomType === roomType) ?? null;
+
+      // ── Build AI context ───────────────────────────────────────────────────
+      const context = {
+        question,
+        target: { propertyId, date: dateStr, roomType: roomType || "all" },
+        audit: {
+          propertyName: auditReport.propertyName,
+          healthScore:  auditReport.healthScore,
+          status:       auditReport.overallStatus,
+          criticalIssues: (auditReport.criticalIssues || []).slice(0, 5),
+          warnings:       (auditReport.warnings || []).slice(0, 5),
+          recommendations: (auditReport.recommendations || []).slice(0, 3),
+          scoreBreakdown: auditReport.scoreBreakdown?.breakdownText || null,
+        },
+        syncLogs: {
+          totalLast7d: recentLogs.length,
+          failures:    failedLogs.length,
+          successes:   successLogs.length,
+          errorRate:   recentLogs.length > 0 ? Math.round((failedLogs.length / recentLogs.length) * 100) : 0,
+          lastFailureMsg,
+          lastSuccessAt:  successLogs[0]?.createdAt  || null,
+          lastFailureAt:  failedLogs[0]?.createdAt   || null,
+        },
+        roomMapping: {
+          count: mappings.length,
+          pairs: mappings.map((m: any) => ({ hostezee: m.hostezeeRoomType, aiosell: m.aiosellRoomCode })),
+        },
+        blockedRooms: {
+          totalBlocked: blockedRoomsData.length,
+          targetTypeBlocked: roomType ? blockedRoomsData.filter((r: any) => r.roomType === roomType).length : "N/A",
+        },
+        bookingsOnDate: {
+          date: dateStr,
+          roomType: roomType || "all",
+          total: roomFilteredBookings.length,
+          ota: otaBookings.length,
+          offline: offlineBookings.length,
+          sources: [...new Set(roomFilteredBookings.map((b: any) => b.externalSource || b.source || "unknown"))],
+        },
+        inventoryConsistency: consistencyData ? {
+          status:       consistencyData.status,
+          mismatches:   consistencyData.mismatches,
+          datesChecked: consistencyData.datesChecked,
+          hasPushData:  consistencyData.hasPushData,
+          targetMismatch: consistencyData.mismatchDetails?.find((m: any) => m.date === dateStr && (!roomType || m.roomType === roomType)) ?? null,
+        } : null,
+        reconciliation: reconForRoom ? {
+          roomType:          reconForRoom.roomType,
+          totalInventory:    reconForRoom.totalInventory,
+          otaBookings:       reconForRoom.otaBookings?.count,
+          offlineBookings:   reconForRoom.offlineBookings?.count,
+          blockedRooms:      reconForRoom.blockedRooms,
+          availableInventory: reconForRoom.availableInventory,
+          balanced:          reconForRoom.balanced,
+          otaBreakdown:      reconForRoom.otaBookings?.breakdown,
+          offlineBreakdown:  reconForRoom.offlineBookings?.breakdown,
+        } : null,
+      };
+
+      // ── OpenAI call ────────────────────────────────────────────────────────
+      const openaiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+      const useFallback = !openaiKey || openaiKey.startsWith("_DUMMY");
+
+      type InvAnalysis = {
+        status: string; rootCause: string; evidence: string[];
+        businessImpact: string; recommendedFix: string;
+        quickActions: { label: string; action: string }[];
+        confidenceScore: number; summary: string;
+      };
+      let analysis: InvAnalysis;
+
+      if (useFallback) {
+        const ci = auditReport.criticalIssues || [];
+        const wa = auditReport.warnings || [];
+        const hasFails = failedLogs.length > 0;
+        const status = (ci.length > 0 || hasFails) ? "critical" : wa.length > 0 ? "warning" : "healthy";
+
+        const evidence: string[] = [];
+        if (hasFails) evidence.push(`${failedLogs.length} sync failure(s) in last 7 days. Last error: ${lastFailMsg || "unknown"}`);
+        if (ci.length > 0) evidence.push(...ci.slice(0, 3).map((i: string) => `Critical: ${i}`));
+        if (wa.length > 0) evidence.push(...wa.slice(0, 2).map((w: string) => `Warning: ${w}`));
+        if (blockedRoomsData.length > 0) evidence.push(`${blockedRoomsData.length} blocked/OOO room(s) on this property`);
+        if (otaBookings.length > 0) evidence.push(`${otaBookings.length} OTA booking(s) occupying ${roomType || "rooms"} on ${dateStr}`);
+        if (offlineBookings.length > 0) evidence.push(`${offlineBookings.length} offline booking(s) occupying ${roomType || "rooms"} on ${dateStr}`);
+        if (consistencyData?.mismatches > 0) evidence.push(`${consistencyData.mismatches} inventory mismatch(es) between Hostezee and AioSell`);
+        if (reconForRoom && !reconForRoom.balanced) evidence.push(`Reconciliation FAIL: ${reconForRoom.totalInventory} total ≠ ${reconForRoom.otaBookings?.count ?? 0}+${reconForRoom.offlineBookings?.count ?? 0}+${reconForRoom.blockedRooms}+${reconForRoom.availableInventory}`);
+
+        const qa: { label: string; action: string }[] = [];
+        if (hasFails) qa.push({ label: "Run Inventory Sync", action: "sync-inventory" });
+        if (ci.some((i: string) => /mapping|room code/i.test(i))) qa.push({ label: "Open Room Mapping", action: "open-room-mapping" });
+        if (ci.some((i: string) => /rate/i.test(i))) qa.push({ label: "Open Rate Plans", action: "open-rate-plans" });
+        if (hasFails) qa.push({ label: "View Sync Logs", action: "open-sync-logs" });
+        qa.push({ label: "View Reconciliation", action: "open-reconciliation" });
+
+        analysis = {
+          status,
+          rootCause: ci.length > 0 ? ci[0]
+            : hasFails ? `Inventory sync failures detected (${failedLogs.length} in last 7 days). Last error: ${lastFailMsg || "unknown"}`
+            : wa.length > 0 ? wa[0]
+            : "No issues detected — inventory appears synchronized.",
+          evidence,
+          businessImpact: status === "critical"
+            ? "OTA availability may be inaccurate — guests may see wrong inventory on Booking.com, MMT, Agoda, etc."
+            : status === "warning"
+              ? "Minor inconsistencies may affect OTA accuracy. Monitor and resolve promptly."
+              : "No business impact detected. OTA inventory appears healthy.",
+          recommendedFix: auditReport.recommendations?.length > 0
+            ? auditReport.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")
+            : "1. Run a manual inventory sync from the Push Inventory tab.\n2. Check sync logs for specific errors.\n3. Verify room mapping codes match AioSell exactly.",
+          quickActions: qa,
+          confidenceScore: ci.length > 0 ? 80 : hasFails ? 70 : 90,
+          summary: `Investigation complete. Status: ${status.toUpperCase()}. ${evidence[0] || "No issues found."} (Configure OpenAI API key for AI-powered root cause analysis.)`,
+        };
+      } else {
+        const systemPrompt = `You are Hostezee AI Investigator, an expert OTA inventory troubleshooter for hotel property management systems.
+
+Your job: investigate OTA/inventory sync issues and provide clear root-cause analysis for hotel staff who may not be technical.
+
+STRICT RULES:
+- Advisory only. Never suggest SQL, database modifications, or automated server actions.
+- Base your analysis SOLELY on the provided context JSON — do not invent facts.
+- Be specific: reference actual numbers from the data (e.g. "3 sync failures in the last 7 days").
+- evidence: 2–6 specific, factual bullet points drawn from the context.
+- quickActions: choose ONLY from these action values: "sync-inventory", "open-room-mapping", "open-rate-plans", "open-sync-logs", "open-reconciliation"
+- confidenceScore: 0–100 (higher = more evidence supports the diagnosis)
+
+Respond ONLY with valid JSON (no markdown, no extra text):
+{
+  "status": "critical|warning|healthy",
+  "rootCause": "1-2 sentences identifying the primary cause",
+  "evidence": ["specific data point 1 with actual numbers", "..."],
+  "businessImpact": "1 sentence on OTA/guest booking impact",
+  "recommendedFix": "numbered steps as a single string (\\n between steps)",
+  "quickActions": [{"label": "Run Inventory Sync", "action": "sync-inventory"}],
+  "confidenceScore": 75,
+  "summary": "2-3 sentences answering the user question in plain English for hotel staff"
+}`;
+
+        const aiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user",   content: `Investigation context:\n${JSON.stringify(context, null, 2)}\n\nUser question: "${question}"` },
+            ],
+            temperature: 0.2, max_tokens: 900,
+          }),
+        });
+        if (!aiResponse.ok) throw new Error(`OpenAI API returned ${aiResponse.status}`);
+        const aiData = await aiResponse.json();
+        const aiText: string = aiData.choices?.[0]?.message?.content || "";
+        try {
+          const clean = aiText.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+          analysis = JSON.parse(clean);
+        } catch {
+          const match = aiText.match(/\{[\s\S]*\}/);
+          analysis = match ? JSON.parse(match[0]) : {
+            status: "warning", rootCause: aiText.slice(0, 200), evidence: [],
+            businessImpact: "See analysis above.",
+            recommendedFix: "1. Run inventory sync.\n2. Check sync logs.",
+            quickActions: [{ label: "View Sync Logs", action: "open-sync-logs" }],
+            confidenceScore: 50, summary: aiText.slice(0, 300),
+          };
+        }
+      }
+
+      console.log(`[AI-INVESTIGATOR] prop=${propertyId} date=${dateStr} room="${roomType || "all"}" status=${analysis.status} confidence=${analysis.confidenceScore}`);
+      res.json({
+        ...analysis,
+        contextUsed: {
+          auditScore: auditReport.healthScore,
+          reconciliationChecked: !!reconcData,
+          consistencyChecked: !!consistencyData,
+          syncLogsFetched: recentLogs.length,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error("[AI-INVESTIGATOR]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
    * GET /api/aiosell/diagnostic-package?propertyId=X
    * Returns a comprehensive JSON package for support/debugging:
    * full audit report + last 50 sync logs + room mappings + rate plans + config.

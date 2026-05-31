@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle, Bot, Zap, BadgeCheck } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -3017,6 +3017,316 @@ function OtaTestTab({ propertyId }: { propertyId: number }) {
   );
 }
 
+// ── AI Investigator ───────────────────────────────────────────────────────────
+interface InvestigatorResult {
+  status: "critical" | "warning" | "healthy";
+  rootCause: string;
+  evidence: string[];
+  businessImpact: string;
+  recommendedFix: string;
+  quickActions: { label: string; action: string }[];
+  confidenceScore: number;
+  summary: string;
+  contextUsed: {
+    auditScore: number;
+    reconciliationChecked: boolean;
+    consistencyChecked: boolean;
+    syncLogsFetched: number;
+  };
+  generatedAt: string;
+}
+
+const INVESTIGATOR_PRESETS = [
+  "Why is inventory different on OTA vs Hostezee?",
+  "Why is this room showing unavailable?",
+  "Why is OTA inventory stale?",
+  "Why are bookings not syncing from OTA?",
+  "Is my room mapping correct?",
+  "What caused the last sync failure?",
+];
+
+function AIInvestigatorTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [question, setQuestion] = useState(INVESTIGATOR_PRESETS[0]);
+  const [roomType, setRoomType] = useState("");
+  const [date, setDate] = useState(todayStr);
+  const [result, setResult] = useState<InvestigatorResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const investigate = async () => {
+    if (!question.trim()) return;
+    setIsRunning(true);
+    try {
+      const res = await apiRequest("/api/ai-investigator", "POST", {
+        propertyId,
+        question: question.trim(),
+        roomType: roomType.trim() || undefined,
+        date,
+      });
+      setResult(await res.json());
+    } catch (err: any) {
+      toast({ title: "Investigation failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleQuickAction = (action: string) => {
+    const tabMap: Record<string, string> = {
+      "sync-inventory":    "push-inventory",
+      "open-room-mapping": "room-mapping",
+      "open-rate-plans":   "rate-plans",
+      "open-sync-logs":    "logs",
+      "open-reconciliation": "reconciliation",
+    };
+    const target = tabMap[action];
+    if (target) {
+      const btn = document.querySelector(`[data-testid="tab-${target}"]`) as HTMLButtonElement | null;
+      if (btn) btn.click();
+    }
+  };
+
+  const statusConfig = {
+    critical: {
+      border: "border-red-500",
+      bg: "bg-red-50 dark:bg-red-950/30",
+      icon: <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />,
+      label: "🔴 Critical",
+      labelClass: "text-red-700 dark:text-red-400",
+      badgeCls: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border-red-200 dark:border-red-700",
+    },
+    warning: {
+      border: "border-amber-500",
+      bg: "bg-amber-50 dark:bg-amber-950/30",
+      icon: <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />,
+      label: "🟡 Warning",
+      labelClass: "text-amber-700 dark:text-amber-400",
+      badgeCls: "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border-amber-200 dark:border-amber-700",
+    },
+    healthy: {
+      border: "border-emerald-500",
+      bg: "bg-emerald-50 dark:bg-emerald-950/30",
+      icon: <BadgeCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />,
+      label: "🟢 Healthy",
+      labelClass: "text-emerald-700 dark:text-emerald-400",
+      badgeCls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-700",
+    },
+  };
+
+  const quickActionLabels: Record<string, string> = {
+    "sync-inventory":    "Run Inventory Sync",
+    "open-room-mapping": "Open Room Mapping",
+    "open-rate-plans":   "Open Rate Plans",
+    "open-sync-logs":    "View Sync Logs",
+    "open-reconciliation": "View Reconciliation",
+  };
+
+  const sc = result ? (statusConfig[result.status] ?? statusConfig.warning) : null;
+
+  return (
+    <div className="space-y-4 p-4">
+      {/* Input card */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bot className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            AI Inventory Investigator
+          </CardTitle>
+          <CardDescription>
+            Ask any inventory or OTA sync question. The AI automatically collects audit data, sync logs, bookings, and room mappings — then explains the root cause in plain English.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Preset chips */}
+          <div className="flex flex-wrap gap-2">
+            {INVESTIGATOR_PRESETS.map(q => (
+              <button
+                key={q}
+                onClick={() => setQuestion(q)}
+                data-testid={`preset-inv-${q.slice(0, 20).replace(/\s+/g, "-").toLowerCase()}`}
+                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  question === q
+                    ? "bg-violet-100 border-violet-400 text-violet-800 dark:bg-violet-950 dark:text-violet-300 dark:border-violet-600"
+                    : "border-border hover:bg-muted"
+                }`}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Optional filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Room Type (optional)</label>
+              <input
+                type="text"
+                value={roomType}
+                onChange={e => setRoomType(e.target.value)}
+                placeholder="e.g. Deluxe Room"
+                data-testid="input-inv-room-type"
+                className="w-full rounded-md border bg-background text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                data-testid="input-inv-date"
+                className="w-full rounded-md border bg-background text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          </div>
+
+          {/* Question input */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground">Your question</label>
+            <textarea
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              rows={2}
+              placeholder="Describe the issue or ask a specific question…"
+              data-testid="input-inv-question"
+              className="w-full rounded-md border bg-background text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+            />
+          </div>
+
+          <button
+            onClick={investigate}
+            disabled={isRunning || !question.trim()}
+            data-testid="button-run-investigation"
+            className="inline-flex items-center gap-2 rounded-md bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium px-5 py-2.5 transition-colors"
+          >
+            {isRunning
+              ? <><Loader2 className="h-4 w-4 animate-spin" />Investigating…</>
+              : <><Zap className="h-4 w-4" />Run Investigation</>}
+          </button>
+        </CardContent>
+      </Card>
+
+      {/* Result card */}
+      {result && sc && (
+        <Card className={`border-l-4 ${sc.border}`}>
+          <CardHeader className={`rounded-t-xl pb-3 ${sc.bg}`}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                {sc.icon}
+                <CardTitle className={`text-base font-bold ${sc.labelClass}`}>
+                  Investigation Complete — {sc.label.split(" ").slice(1).join(" ")}
+                </CardTitle>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center text-xs font-bold px-2.5 py-1 rounded-full border ${sc.badgeCls}`}>
+                  {sc.label}
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border bg-background">
+                  <BadgeCheck className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-muted-foreground">Confidence:</span>
+                  <span className={`font-bold ${result.confidenceScore >= 80 ? "text-emerald-600 dark:text-emerald-400" : result.confidenceScore >= 60 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                    {result.confidenceScore}%
+                  </span>
+                </span>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{result.summary}</p>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-5">
+            {/* Root Cause */}
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <AlertCircle className="h-3.5 w-3.5" /> Root Cause
+              </h3>
+              <p className="text-sm font-medium">{result.rootCause}</p>
+            </div>
+
+            {/* Evidence */}
+            {result.evidence?.length > 0 && (
+              <div className="space-y-1.5">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5" /> Evidence
+                </h3>
+                <ul className="space-y-1">
+                  {result.evidence.map((e, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-muted-foreground/50 flex-shrink-0" />
+                      <span className="text-muted-foreground">{e}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Business Impact */}
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <Hotel className="h-3.5 w-3.5" /> Business Impact
+              </h3>
+              <p className="text-sm text-muted-foreground">{result.businessImpact}</p>
+            </div>
+
+            {/* Recommended Fix */}
+            <div className="space-y-1.5">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                <CheckCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Recommended Fix
+              </h3>
+              <div className="rounded-md bg-muted/40 border px-4 py-3">
+                {result.recommendedFix.split("\n").filter(Boolean).map((line, i) => (
+                  <p key={i} className="text-sm text-foreground leading-relaxed">{line}</p>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            {result.quickActions?.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5 text-violet-500" /> Quick Actions
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {result.quickActions.map((qa, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleQuickAction(qa.action)}
+                      data-testid={`qa-btn-${qa.action}`}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-violet-300 dark:border-violet-700 bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/40 text-xs font-medium px-3 py-1.5 transition-colors"
+                    >
+                      <Zap className="h-3 w-3" />
+                      {qa.label || quickActionLabels[qa.action] || qa.action}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Context footer */}
+            <div className="pt-1 border-t flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+              <span>Audit score: <strong>{result.contextUsed.auditScore}%</strong></span>
+              <span>Sync logs: <strong>{result.contextUsed.syncLogsFetched}</strong></span>
+              <span>Reconciliation: <strong>{result.contextUsed.reconciliationChecked ? "✓" : "—"}</strong></span>
+              <span>Consistency: <strong>{result.contextUsed.consistencyChecked ? "✓" : "—"}</strong></span>
+              <span className="ml-auto">
+                {format(parseISO(result.generatedAt), "dd MMM HH:mm")}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Empty state */}
+      {!result && !isRunning && (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-center">
+          <Bot className="h-10 w-10 text-muted-foreground/40 mb-3" />
+          <p className="text-sm font-medium text-muted-foreground">Select a preset or type your question</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">AI will auto-collect audit, sync logs, bookings, and mapping data before answering</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AI Auditor ────────────────────────────────────────────────────────────────
 interface AiAuditResult {
   propertyName: string;
@@ -3610,6 +3920,7 @@ export default function ChannelManager() {
             <TabsTrigger value="ai-auditor" data-testid="tab-ai-auditor" className="flex-shrink-0 text-purple-700 dark:text-purple-400 gap-1"><BrainCircuit className="h-3.5 w-3.5" />AI Auditor</TabsTrigger>
             <TabsTrigger value="ota-test" data-testid="tab-ota-test" className="flex-shrink-0 text-indigo-700 dark:text-indigo-400 gap-1"><TestTube2 className="h-3.5 w-3.5" />OTA Test</TabsTrigger>
             <TabsTrigger value="reconciliation" data-testid="tab-reconciliation" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><Scale className="h-3.5 w-3.5" />Reconciliation</TabsTrigger>
+            <TabsTrigger value="ai-investigator" data-testid="tab-ai-investigator" className="flex-shrink-0 text-violet-700 dark:text-violet-400 gap-1"><Bot className="h-3.5 w-3.5" />AI Investigator</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -3622,6 +3933,7 @@ export default function ChannelManager() {
           <TabsContent value="ai-auditor"><AIAuditorTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="ota-test"><OtaTestTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="reconciliation"><InventoryReconciliationTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="ai-investigator"><AIInvestigatorTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>
       )}
