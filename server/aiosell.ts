@@ -889,9 +889,10 @@ export async function autoSyncInventoryForProperty(
       // CRITICAL: Sending all ranges in a single batch risks Aiosell silently
       // dropping ranges beyond an internal limit. Pushing one range at a time
       // guarantees every date range is individually applied and logged.
-      // We pause 2500ms between calls. On failure (rate-limit or any error) we
-      // STOP immediately — continuing to push more ranges while Aiosell is already
-      // rate-limiting only burns all retry budget and makes the blackout longer.
+      // We pause 2500ms between calls. On a single-range failure we back off
+      // for 6s and CONTINUE — skipping remaining ranges on a partial error
+      // leaves some dates un-synced and (worse) skips the critical stop-sell
+      // restrictions below. syncWithRetry will re-run the whole sync if failCount>0.
       const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
       let successCount = 0;
       let failCount = 0;
@@ -913,12 +914,12 @@ export async function autoSyncInventoryForProperty(
           successCount++;
         } else {
           failCount++;
-          // Stop immediately — Aiosell is rate-limiting. Continuing to push more
-          // ranges only creates more 429s and extends the blackout window.
-          // The next scheduled sync or manual "Sync Now" will resume.
-          console.warn(`[AIOSELL] Rate-limit or error at range ${ri + 1}/${inventoryUpdates.length} — stopping bulk sync to avoid cascading 429s. ${inventoryUpdates.length - ri - 1} range(s) skipped. Message: ${result.message}`);
-          stoppedEarly = true;
-          break;
+          // Log the failure but continue — aborting early leaves remaining dates
+          // un-synced and also skips the stop-sell restrictions in Step 2b.
+          // Back off for 6s before the next range to give AioSell time to recover.
+          console.warn(`[AIOSELL] Push error at range ${ri + 1}/${inventoryUpdates.length} — will continue after 6s backoff. ${inventoryUpdates.length - ri - 1} range(s) remaining. Message: ${result.message}`);
+          stoppedEarly = true; // kept for log compatibility
+          await sleep(6000);
         }
       }
       console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} success=${successCount} failed=${failCount} stoppedEarly=${stoppedEarly} todayAvailability=[${availSummary}]`);
@@ -929,8 +930,8 @@ export async function autoSyncInventoryForProperty(
       // (via the re-throw in the outer catch below) so its 3-attempt retry loop fires.
       if (failCount > 0) {
         throw new Error(
-          `Inventory push partial failure: ${failCount}/${inventoryUpdates.length} range(s) failed ` +
-          `(stoppedEarly=${stoppedEarly}). AioSell may be rate-limiting — syncWithRetry will retry.`
+          `Inventory push partial failure: ${failCount}/${inventoryUpdates.length} range(s) failed. ` +
+          `AioSell may be rate-limiting — the sync will be retried automatically.`
         );
       }
 
@@ -939,10 +940,12 @@ export async function autoSyncInventoryForProperty(
       // (and most channel managers) require an explicit stopSell restriction to
       // actually prevent new bookings. Push ONE restriction range at a time (same
       // reason as inventory: prevents silent range-limit drops).
+      // IMPORTANT: always run stop-sell even if some inventory ranges failed —
+      // blocking booked dates on OTAs is more critical than perfect count accuracy.
       // Skip ranges where ALL rooms are open (available > 0) — no point sending stopSell=false for every range.
       const zeroAvailRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
       let ssSuccess = 0; let ssFail = 0;
-      if (!stoppedEarly) for (let ri = 0; ri < zeroAvailRanges.length; ri++) {
+      for (let ri = 0; ri < zeroAvailRanges.length; ri++) {
         const range = zeroAvailRanges[ri];
         if (ri > 0) await sleep(2500); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {

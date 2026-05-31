@@ -20309,8 +20309,19 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       if (!config) return res.status(404).json({ message: "AioSell not configured for this property" });
       const mappings = await getRoomMappingsForConfig(config.id);
       if (mappings.length === 0) return res.status(400).json({ message: "No room mappings configured. Add room mappings first." });
-      await autoSyncInventoryForProperty(propertyId);
-      res.json({ success: true, message: `Inventory sync triggered for ${mappings.length} room type(s). Check sync logs for results.` });
+      try {
+        await autoSyncInventoryForProperty(propertyId);
+        res.json({ success: true, message: `Inventory synced for ${mappings.length} room type(s) — next 90 days pushed to AioSell.` });
+      } catch (syncErr: any) {
+        // Partial failure (some ranges failed) — return 200 with a warning, not 500.
+        // The error message from autoSyncInventoryForProperty already describes what happened.
+        const isPartial = syncErr.message?.includes("partial failure");
+        if (isPartial) {
+          res.json({ success: false, message: syncErr.message });
+        } else {
+          res.status(500).json({ message: syncErr.message });
+        }
+      }
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
