@@ -1579,7 +1579,7 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
   const endDefault = new Date();
-  endDefault.setDate(endDefault.getDate() + 30);
+  endDefault.setDate(endDefault.getDate() + 90);
   const [endDate, setEndDate] = useState(endDefault.toISOString().split("T")[0]);
   const [lastPushResult, setLastPushResult] = useState<{ success: boolean; message?: string } | null>(null);
 
@@ -1601,8 +1601,15 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
     enabled: !!propertyId,
   });
 
+  const normaliseRoomType = (s: string) =>
+    s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
   const getRoomCount = (roomType: string) => {
-    const matching = allRooms.filter(r => r.roomType === roomType);
+    const normType = normaliseRoomType(roomType);
+    const matching = allRooms.filter(r => {
+      const normRoom = normaliseRoomType(r.roomType || "");
+      return normRoom === normType || normRoom.includes(normType) || normType.includes(normRoom);
+    });
     const isDorm = matching.some(r => (r.totalBeds || 1) > 1);
     if (isDorm) return matching.reduce((sum, r) => sum + (r.totalBeds || 1), 0);
     return matching.length;
@@ -1610,6 +1617,23 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
 
   const [inventoryValues, setInventoryValues] = useState<Record<string, string>>({});
   const [pushingSingleInventory, setPushingSingleInventory] = useState<string | null>(null);
+  const [forceSyncResult, setForceSyncResult] = useState<{ success: boolean; message?: string } | null>(null);
+
+  const forceSyncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/aiosell/force-sync", "POST", { propertyId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setForceSyncResult({ success: data.success !== false, message: data.message });
+      toast({ title: data.success !== false ? "Sync triggered" : "Sync failed", description: data.message });
+      queryClient.invalidateQueries({ queryKey: ["/api/aiosell/sync-logs"] });
+    },
+    onError: (e: any) => {
+      setForceSyncResult({ success: false, message: e.message });
+      toast({ title: "Sync Error", description: e.message, variant: "destructive" });
+    },
+  });
 
   const pushInventoryMutation = useMutation({
     mutationFn: async () => {
@@ -1687,13 +1711,42 @@ function InventoryTab({ propertyId }: { propertyId: number }) {
           <CardDescription>Update room availability across all OTA platforms for a date range</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50 dark:bg-teal-950/30 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm text-teal-900 dark:text-teal-100">Auto-Calculate &amp; Push (90 days)</p>
+              <p className="text-xs text-teal-700 dark:text-teal-300 mt-0.5">Reads live bookings from Hostezee, calculates exact availability, and pushes to AioSell for the next 90 days. Same calculation that fires automatically on every new booking.</p>
+            </div>
+            <div className="flex flex-col gap-1.5 shrink-0">
+              <Button
+                data-testid="button-force-sync"
+                onClick={() => { setForceSyncResult(null); forceSyncMutation.mutate(); }}
+                disabled={forceSyncMutation.isPending}
+                className="bg-teal-600 hover:bg-teal-700 text-white"
+              >
+                {forceSyncMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Force Sync Now
+              </Button>
+              {forceSyncResult && (
+                <div className={`flex items-center gap-1.5 text-xs font-medium ${forceSyncResult.success ? "text-teal-700 dark:text-teal-300" : "text-red-600"}`} data-testid="text-force-sync-result">
+                  {forceSyncResult.success ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+                  <span>{forceSyncResult.message}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or push a custom count manually</span></div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Start Date</Label>
               <Input data-testid="input-inv-start-date" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>End Date</Label>
+              <Label>End Date (default 90 days)</Label>
               <Input data-testid="input-inv-end-date" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
             </div>
           </div>
