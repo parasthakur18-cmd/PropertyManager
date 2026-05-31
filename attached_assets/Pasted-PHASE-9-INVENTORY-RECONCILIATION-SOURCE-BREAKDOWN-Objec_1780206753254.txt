@@ -1,0 +1,232 @@
+PHASE 9 – INVENTORY RECONCILIATION & SOURCE BREAKDOWN
+
+Objective:
+
+Build a real-time Inventory Reconciliation system that explains exactly how room availability is calculated and combines OTA bookings, offline bookings, room blocks, and available inventory into a single transparent view.
+
+Location:
+
+Channel Manager
+→ Verify Property
+→ Inventory Reconciliation
+
+OR
+
+Inventory Calendar
+→ Reconciliation Tab
+
+---
+
+Purpose
+
+Today we can see availability.
+
+We cannot easily answer:
+
+"Why are only 2 rooms available?"
+
+This feature must show the complete inventory math.
+
+---
+
+Inventory Formula
+
+For every room type and date:
+
+# Total Inventory
+
+OTA Bookings
++
+Offline Bookings
++
+Blocked Inventory
++
+Available Inventory
+
+If formula balances:
+
+PASS
+
+If formula does not balance:
+
+FAIL
+
+---
+
+Booking Sources
+
+Group bookings by source:
+
+OTA Sources:
+
+* Booking.com
+* Agoda
+* MMT
+* Goibibo
+* Expedia
+
+Offline Sources:
+
+* Walk-in
+* Phone
+* WhatsApp
+* Direct Website
+* Reception Entry
+* Corporate
+
+---
+
+Backend
+
+Create endpoint:
+
+GET /api/inventory/reconciliation?propertyId=:id&date=:date
+
+Return:
+
+{
+roomType: "Deluxe Room",
+totalInventory: 5,
+
+otaBookings: {
+count: 2,
+breakdown: {
+bookingCom: 1,
+agoda: 1
+}
+},
+
+offlineBookings: {
+count: 1,
+breakdown: {
+walkIn: 1
+}
+},
+
+blockedRooms: 1,
+
+availableInventory: 1,
+
+balanced: true
+}
+
+---
+
+Frontend
+
+Create Reconciliation Card
+
+Display:
+
+## Deluxe Room
+
+Total Inventory: 5
+
+OTA Bookings: 2
+
+* Booking.com: 1
+* Agoda: 1
+
+Offline Bookings: 1
+
+* Walk-in: 1
+
+Blocked Rooms: 1
+
+Available Inventory: 1
+
+Status:
+🟢 PASS
+
+Formula:
+5 = 2 + 1 + 1 + 1
+
+---
+
+Failure Example
+
+Total Inventory: 5
+
+OTA Bookings: 2
+Offline Bookings: 1
+Blocked Rooms: 1
+Available Inventory: 2
+
+Formula:
+5 ≠ 2 + 1 + 1 + 2
+
+Status:
+🔴 FAIL
+
+Inventory mismatch detected.
+
+---
+
+Calendar Integration
+
+When user clicks any date in inventory calendar:
+
+Open:
+
+Inventory Breakdown
+
+Show:
+
+Room Type
+Date
+OTA Bookings
+Offline Bookings
+Blocked Rooms
+Available Inventory
+
+---
+
+Source Badges
+
+Show source badges:
+
+Booking.com
+Agoda
+Walk-in
+Phone
+WhatsApp
+Reception
+
+---
+
+Audit Integration
+
+Add new audit section:
+
+Inventory Reconciliation
+
+PASS:
+All room types balanced
+
+WARNING:
+1–3 mismatches
+
+FAIL:
+More than 3 mismatches
+
+---
+
+Business Goal
+
+Allow hotel staff to instantly understand:
+
+Why availability is what it is.
+
+Ensure every OTA booking and every offline booking affects the same inventory pool.
+
+Hostezee remains the single source of truth for inventory.
+
+Success Criteria:
+
+For any room and any date, staff can see exactly how inventory is calculated and verify:
+
+Total Inventory =
+OTA Bookings +
+Offline Bookings +
+Blocked Rooms +
+Available Inventory

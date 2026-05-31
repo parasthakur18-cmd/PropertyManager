@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2 } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2, Scale, XCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -2354,6 +2354,244 @@ interface InventoryConsistencyResult {
   note: string;
 }
 
+interface ReconRoomResult {
+  roomType: string;
+  isDormitory: boolean;
+  totalInventory: number;
+  otaBookings: { count: number; breakdown: Record<string, number> };
+  offlineBookings: { count: number; breakdown: Record<string, number> };
+  blockedRooms: number;
+  availableInventory: number;
+  balanced: boolean;
+}
+interface ReconciliationResult {
+  date: string;
+  propertyId: number;
+  overallStatus: "pass" | "warning" | "fail";
+  reconciliation: ReconRoomResult[];
+  checkedAt: string;
+  fromCache: boolean;
+}
+
+// ── Source display config ──────────────────────────────────────────────────────
+const OTA_LABELS: Record<string, string> = {
+  bookingCom: "Booking.com", agoda: "Agoda", mmt: "MMT", goibibo: "Goibibo",
+  expedia: "Expedia", airbnb: "Airbnb", otaOther: "OTA",
+};
+const OFFLINE_LABELS: Record<string, string> = {
+  walkIn: "Walk-in", phone: "Phone", whatsapp: "WhatsApp", directWebsite: "Direct/Website",
+  reception: "Reception", corporate: "Corporate", travelAgent: "Travel Agent",
+  direct: "Direct", other: "Other",
+};
+const OTA_COLORS: Record<string, string> = {
+  bookingCom: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  agoda: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+  mmt: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  goibibo: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+  expedia: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+  airbnb: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300",
+  otaOther: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+};
+const OFFLINE_COLORS: Record<string, string> = {
+  walkIn: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  phone: "bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-300",
+  whatsapp: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  directWebsite: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
+  direct: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",
+  reception: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+  corporate: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
+  travelAgent: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  other: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+};
+
+function SourceBadge({ label, color, count }: { label: string; color: string; count: number }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${color}`}>
+      {label}
+      <span className="font-bold">{count}</span>
+    </span>
+  );
+}
+
+function ReconciliationCard({ room }: { room: ReconRoomResult }) {
+  const unit = room.isDormitory ? "beds" : "rooms";
+  const formulaLHS = room.totalInventory;
+  const formulaRHS = `${room.otaBookings.count} + ${room.offlineBookings.count} + ${room.blockedRooms} + ${room.availableInventory}`;
+  const formulaOk = room.balanced;
+
+  return (
+    <Card className={`border-l-4 ${formulaOk ? "border-l-emerald-500" : "border-l-red-500"}`}>
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-sm font-semibold">{room.roomType}</CardTitle>
+            {room.isDormitory && <span className="text-[10px] text-muted-foreground">Dormitory · beds</span>}
+          </div>
+          {formulaOk
+            ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5"><CheckCircle className="h-3 w-3" />PASS</span>
+            : <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-full px-2 py-0.5"><XCircle className="h-3 w-3" />FAIL</span>}
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-3">
+        {/* Formula strip */}
+        <div className={`rounded-md px-3 py-2 text-xs font-mono font-medium ${formulaOk ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300" : "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300"}`}>
+          {formulaLHS} {formulaOk ? "=" : "≠"} {formulaRHS}
+          <span className="ml-2 font-sans font-normal text-[10px] opacity-70">
+            (total {formulaOk ? "=" : "≠"} OTA + Offline + Blocked + Available)
+          </span>
+        </div>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground text-xs">Total Inventory</span>
+            <span className="font-bold text-sm">{room.totalInventory} {unit}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground text-xs">Blocked Rooms</span>
+            <span className={`font-semibold text-sm ${room.blockedRooms > 0 ? "text-orange-600 dark:text-orange-400" : ""}`}>{room.blockedRooms}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground text-xs">OTA Bookings</span>
+            <span className="font-semibold text-sm text-blue-700 dark:text-blue-400">{room.otaBookings.count}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground text-xs">Available</span>
+            <span className={`font-bold text-sm ${room.availableInventory < 0 ? "text-red-600 dark:text-red-400" : room.availableInventory === 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+              {room.availableInventory}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-muted-foreground text-xs">Offline Bookings</span>
+            <span className="font-semibold text-sm text-violet-700 dark:text-violet-400">{room.offlineBookings.count}</span>
+          </div>
+        </div>
+
+        {/* Source badges */}
+        {(Object.keys(room.otaBookings.breakdown).length > 0 || Object.keys(room.offlineBookings.breakdown).length > 0) && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {Object.entries(room.otaBookings.breakdown).map(([k, v]) => (
+              <SourceBadge key={k} label={OTA_LABELS[k] || k} color={OTA_COLORS[k] || OTA_COLORS.otaOther} count={v} />
+            ))}
+            {Object.entries(room.offlineBookings.breakdown).map(([k, v]) => (
+              <SourceBadge key={k} label={OFFLINE_LABELS[k] || k} color={OFFLINE_COLORS[k] || OFFLINE_COLORS.other} count={v} />
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function InventoryReconciliationTab({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(todayStr);
+  const [result, setResult] = useState<ReconciliationResult | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const run = async (dateVal?: string) => {
+    const d = dateVal ?? date;
+    setIsRunning(true);
+    try {
+      const res = await fetch(`/api/inventory/reconciliation?propertyId=${propertyId}&date=${d}`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      setResult(await res.json());
+    } catch (err: any) {
+      toast({ title: "Reconciliation failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const passCount = result?.reconciliation.filter(r => r.balanced).length ?? 0;
+  const failCount = result?.reconciliation.filter(r => !r.balanced).length ?? 0;
+
+  return (
+    <div className="space-y-4 p-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold flex items-center gap-2"><Scale className="h-4 w-4 text-teal-600" />Inventory Reconciliation</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">See exactly how room availability is calculated for any date — OTA, offline, blocked, and free inventory all in one view.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <input
+            type="date"
+            value={date}
+            max={new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0]}
+            onChange={e => { setDate(e.target.value); setResult(null); }}
+            data-testid="input-recon-date"
+            className="rounded-md border bg-background text-sm px-3 py-1.5 h-9 focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            onClick={() => run()}
+            disabled={isRunning || !date}
+            data-testid="button-run-reconciliation"
+            className="inline-flex items-center gap-2 rounded-md bg-teal-600 hover:bg-teal-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 transition-colors h-9"
+          >
+            {isRunning ? <><Loader2 className="h-4 w-4 animate-spin" />Running…</> : <><Scale className="h-4 w-4" />Run</>}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary bar */}
+      {result && (
+        <div className={`flex items-center gap-4 rounded-lg border px-4 py-3 ${
+          result.overallStatus === "pass"
+            ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-800"
+            : result.overallStatus === "warning"
+              ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800"
+              : "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
+        }`}>
+          <div className="flex items-center gap-2">
+            {result.overallStatus === "pass"
+              ? <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              : <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />}
+            <span className={`text-sm font-bold uppercase tracking-wide ${result.overallStatus === "pass" ? "text-emerald-700 dark:text-emerald-400" : result.overallStatus === "warning" ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400"}`}>
+              {result.overallStatus === "pass" ? "All Balanced" : result.overallStatus === "warning" ? "Minor Issues" : "Imbalanced"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-xs ml-2">
+            <span className="text-emerald-700 dark:text-emerald-400 font-medium">{passCount} PASS</span>
+            {failCount > 0 && <span className="text-red-700 dark:text-red-400 font-medium">{failCount} FAIL</span>}
+          </div>
+          <span className="ml-auto text-xs text-muted-foreground">
+            {format(parseISO(result.date), "dd MMM yyyy")}
+            {result.fromCache && <span className="ml-1.5 bg-muted text-[10px] px-1.5 py-0.5 rounded-full">cached</span>}
+          </span>
+        </div>
+      )}
+
+      {/* Cards grid */}
+      {result && result.reconciliation.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {result.reconciliation.map(r => <ReconciliationCard key={r.roomType} room={r} />)}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!result && !isRunning && (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-14 text-center">
+          <Scale className="h-10 w-10 text-muted-foreground/40 mb-3" />
+          <p className="text-sm font-medium text-muted-foreground">Pick a date and click Run</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">Breakdown shows OTA + Offline + Blocked + Available for each room type</p>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="rounded-lg border bg-muted/20 p-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Formula</p>
+        <p className="text-xs text-muted-foreground font-mono">Total Inventory = OTA Bookings + Offline Bookings + Blocked Rooms + Available</p>
+        <p className="text-[10px] text-muted-foreground mt-1">🟢 PASS — formula balances (available ≥ 0)&nbsp;&nbsp;·&nbsp;&nbsp;🔴 FAIL — more bookings/blocks than rooms (available &lt; 0)</p>
+      </div>
+    </div>
+  );
+}
+
 function otaStatusColor(s: OtaStatus) {
   if (s === "pass") return "text-emerald-600 dark:text-emerald-400";
   if (s === "warn") return "text-amber-600 dark:text-amber-400";
@@ -3371,6 +3609,7 @@ export default function ChannelManager() {
             <TabsTrigger value="whatsapp-test" data-testid="tab-whatsapp-test" className="flex-shrink-0 text-green-700 dark:text-green-400">WhatsApp Test</TabsTrigger>
             <TabsTrigger value="ai-auditor" data-testid="tab-ai-auditor" className="flex-shrink-0 text-purple-700 dark:text-purple-400 gap-1"><BrainCircuit className="h-3.5 w-3.5" />AI Auditor</TabsTrigger>
             <TabsTrigger value="ota-test" data-testid="tab-ota-test" className="flex-shrink-0 text-indigo-700 dark:text-indigo-400 gap-1"><TestTube2 className="h-3.5 w-3.5" />OTA Test</TabsTrigger>
+            <TabsTrigger value="reconciliation" data-testid="tab-reconciliation" className="flex-shrink-0 text-teal-700 dark:text-teal-400 gap-1"><Scale className="h-3.5 w-3.5" />Reconciliation</TabsTrigger>
           </TabsList>
           <TabsContent value="settings"><SettingsTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="room-mapping"><RoomMappingTab propertyId={propertyId} /></TabsContent>
@@ -3382,6 +3621,7 @@ export default function ChannelManager() {
           <TabsContent value="whatsapp-test"><WhatsAppTestTab /></TabsContent>
           <TabsContent value="ai-auditor"><AIAuditorTab propertyId={propertyId} /></TabsContent>
           <TabsContent value="ota-test"><OtaTestTab propertyId={propertyId} /></TabsContent>
+          <TabsContent value="reconciliation"><InventoryReconciliationTab propertyId={propertyId} /></TabsContent>
         </Tabs>
         </>
       )}

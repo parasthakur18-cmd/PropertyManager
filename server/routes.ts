@@ -21620,6 +21620,193 @@ Respond ONLY with valid JSON (no markdown, no extra text):
     }
   });
 
+  // ── Inventory Reconciliation ──────────────────────────────────────────────────
+  const invReconCache = new Map<string, { result: any; expiry: number }>();
+
+  function _classifySource(src: string | null | undefined): "ota" | "offline" {
+    if (!src) return "offline";
+    const s = src.toLowerCase();
+    if (s.startsWith("aiosell-")) return "ota";
+    const OTA_KEYS = ["booking.com", "booking", "agoda", "mmt", "makemytrip", "expedia", "goibibo", "airbnb"];
+    if (OTA_KEYS.some(k => s === k || s.includes(k))) return "ota";
+    if (s === "ota") return "ota";
+    return "offline";
+  }
+
+  function _otaKey(src: string): string {
+    const s = src.toLowerCase();
+    if (s.includes("booking")) return "bookingCom";
+    if (s.includes("agoda")) return "agoda";
+    if (s.includes("mmt") || s.includes("makemytrip")) return "mmt";
+    if (s.includes("goibibo")) return "goibibo";
+    if (s.includes("expedia")) return "expedia";
+    if (s.includes("airbnb")) return "airbnb";
+    return "otaOther";
+  }
+
+  function _offlineKey(src: string | null | undefined, hasTa: boolean): string {
+    if (hasTa) return "travelAgent";
+    if (!src) return "walkIn";
+    const s = src.toLowerCase();
+    if (s.includes("walk")) return "walkIn";
+    if (s.includes("phone")) return "phone";
+    if (s.includes("whatsapp")) return "whatsapp";
+    if (s.includes("direct") || s.includes("website")) return "directWebsite";
+    if (s.includes("reception")) return "reception";
+    if (s.includes("corporate")) return "corporate";
+    if (s.includes("travel") || s.includes("agent")) return "travelAgent";
+    return "other";
+  }
+
+  /**
+   * GET /api/inventory/reconciliation?propertyId=:id&date=:date (YYYY-MM-DD)
+   * Returns per-room-type inventory formula breakdown for a date.
+   * Formula: totalInventory = otaBookings + offlineBookings + blockedRooms + available
+   * PASS when available >= 0 (no over-booking). Cached 5 min per (property, date).
+   */
+  app.get("/api/inventory/reconciliation", isAuthenticated, async (req: any, res) => {
+    try {
+      const auth = await getAuthenticatedTenant(req);
+      if (!auth) return res.status(401).json({ message: "Not authenticated" });
+      const { tenant } = auth;
+      const propertyId = parseInt(req.query.propertyId as string);
+      const dateStr: string = (req.query.date as string) || new Date().toISOString().split("T")[0];
+      if (!propertyId || isNaN(propertyId)) return res.status(400).json({ message: "propertyId is required" });
+      if (!canAccessProperty(tenant, propertyId)) return res.status(403).json({ message: "Access denied" });
+
+      const cacheKey = `${propertyId}:${dateStr}`;
+      const cached = invReconCache.get(cacheKey);
+      if (cached && cached.expiry > Date.now()) return res.json({ ...cached.result, fromCache: true });
+
+      const date = new Date(dateStr); date.setHours(0, 0, 0, 0);
+      const nextDay = new Date(date); nextDay.setDate(date.getDate() + 1);
+
+      const [allRooms, dayBookings] = await Promise.all([
+        db.select({
+          id: rooms.id, roomType: rooms.roomType, status: rooms.status,
+          roomCategory: rooms.roomCategory, totalBeds: rooms.totalBeds,
+        }).from(rooms).where(eq(rooms.propertyId, propertyId)),
+        db.select({
+          id: bookings.id, roomId: bookings.roomId, roomIds: bookings.roomIds,
+          roomType: bookings.roomType, source: bookings.source,
+          externalSource: bookings.externalSource, travelAgentId: bookings.travelAgentId,
+          bedsBooked: bookings.bedsBooked, numberOfGuests: bookings.numberOfGuests,
+          checkInDate: bookings.checkInDate, checkOutDate: bookings.checkOutDate, status: bookings.status,
+        }).from(bookings).where(and(
+          eq(bookings.propertyId, propertyId),
+          inArray(bookings.status, ["pending", "confirmed", "checked-in"]),
+          lte(bookings.checkInDate, nextDay),
+          gte(bookings.checkOutDate, date),
+        )),
+      ]);
+
+      const activeDayBookings = dayBookings.filter(b => {
+        const cin = new Date(b.checkInDate); cin.setHours(0, 0, 0, 0);
+        const cout = new Date(b.checkOutDate); cout.setHours(0, 0, 0, 0);
+        return cin <= date && date < cout;
+      });
+
+      const roomById = new Map(allRooms.map(r => [r.id, r]));
+
+      const bookingIds = activeDayBookings.map(b => b.id);
+      let confirmedStays: { bookingId: number; roomId: number | null }[] = [];
+      if (bookingIds.length > 0) {
+        confirmedStays = await db.select({
+          bookingId: bookingRoomStays.bookingId, roomId: bookingRoomStays.roomId,
+        }).from(bookingRoomStays).where(and(
+          inArray(bookingRoomStays.bookingId, bookingIds), isNotNull(bookingRoomStays.roomId),
+        ));
+      }
+      const staysByBookingId = new Map<number, number[]>();
+      for (const s of confirmedStays) {
+        if (s.roomId == null) continue;
+        if (!staysByBookingId.has(s.bookingId)) staysByBookingId.set(s.bookingId, []);
+        staysByBookingId.get(s.bookingId)!.push(s.roomId);
+      }
+
+      const roomTypeGroups = new Map<string, (typeof allRooms)[number][]>();
+      for (const r of allRooms) {
+        if (!roomTypeGroups.has(r.roomType)) roomTypeGroups.set(r.roomType, []);
+        roomTypeGroups.get(r.roomType)!.push(r);
+      }
+
+      type Slot = { roomType: string; source: string | null; hasTa: boolean; beds: number };
+      const slots: Slot[] = [];
+
+      for (const b of activeDayBookings) {
+        const src = b.externalSource || b.source;
+        const hasTa = !!b.travelAgentId;
+        const assignedRoomIds: number[] = [];
+        if (b.roomId) assignedRoomIds.push(b.roomId);
+        if (b.roomIds) for (const rid of b.roomIds) if (!assignedRoomIds.includes(rid)) assignedRoomIds.push(rid);
+        for (const rid of (staysByBookingId.get(b.id) || [])) if (!assignedRoomIds.includes(rid)) assignedRoomIds.push(rid);
+
+        if (assignedRoomIds.length > 0) {
+          const counted = new Set<string>();
+          for (const rid of assignedRoomIds) {
+            const room = roomById.get(rid);
+            if (!room) continue;
+            if (room.roomCategory === "dormitory") {
+              slots.push({ roomType: room.roomType, source: src, hasTa, beds: b.bedsBooked || b.numberOfGuests || 1 });
+            } else {
+              const key = `${rid}:${room.roomType}`;
+              if (!counted.has(key)) { counted.add(key); slots.push({ roomType: room.roomType, source: src, hasTa, beds: 1 }); }
+            }
+          }
+        } else if (b.roomType) {
+          const isDorm = (roomTypeGroups.get(b.roomType) || []).some(r => r.roomCategory === "dormitory");
+          slots.push({ roomType: b.roomType, source: src, hasTa, beds: isDorm ? (b.bedsBooked || b.numberOfGuests || 1) : 1 });
+        }
+      }
+
+      const BLOCKED_STATUSES = ["maintenance", "out-of-order", "blocked"];
+      const reconciliation: any[] = [];
+      for (const [rType, typeRooms] of Array.from(roomTypeGroups.entries()).sort()) {
+        const isDorm = typeRooms.some(r => r.roomCategory === "dormitory");
+        const totalInventory = isDorm
+          ? typeRooms.reduce((s, r) => s + (r.totalBeds || 0), 0)
+          : typeRooms.length;
+        const blockedRooms = isDorm
+          ? typeRooms.filter(r => BLOCKED_STATUSES.includes(r.status || "")).reduce((s, r) => s + (r.totalBeds || 0), 0)
+          : typeRooms.filter(r => BLOCKED_STATUSES.includes(r.status || "")).length;
+
+        const typeSlots = slots.filter(s => s.roomType === rType);
+        const otaBreakdown: Record<string, number> = {};
+        const offlineBreakdown: Record<string, number> = {};
+        let otaCount = 0, offlineCount = 0;
+        for (const slot of typeSlots) {
+          if (_classifySource(slot.source) === "ota") {
+            const k = _otaKey(slot.source || "");
+            otaBreakdown[k] = (otaBreakdown[k] || 0) + slot.beds;
+            otaCount += slot.beds;
+          } else {
+            const k = _offlineKey(slot.source, slot.hasTa);
+            offlineBreakdown[k] = (offlineBreakdown[k] || 0) + slot.beds;
+            offlineCount += slot.beds;
+          }
+        }
+        const available = totalInventory - blockedRooms - otaCount - offlineCount;
+        reconciliation.push({
+          roomType: rType, isDormitory: isDorm, totalInventory,
+          otaBookings: { count: otaCount, breakdown: otaBreakdown },
+          offlineBookings: { count: offlineCount, breakdown: offlineBreakdown },
+          blockedRooms, availableInventory: available, balanced: available >= 0,
+        });
+      }
+
+      const failCount = reconciliation.filter(r => !r.balanced).length;
+      const overallStatus = failCount === 0 ? "pass" : failCount <= 3 ? "warning" : "fail";
+      const result = { date: dateStr, propertyId, overallStatus, reconciliation, checkedAt: new Date().toISOString(), fromCache: false };
+
+      invReconCache.set(cacheKey, { result, expiry: Date.now() + 5 * 60 * 1000 });
+      console.log(`[INV-RECON] prop=${propertyId} date=${dateStr} rooms=${reconciliation.length} fails=${failCount} status=${overallStatus}`);
+      res.json(result);
+    } catch (err: any) {
+      console.error("[INV-RECON]", err.message);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   /**
    * GET /api/aiosell/diagnostic-package?propertyId=X
    * Returns a comprehensive JSON package for support/debugging:
