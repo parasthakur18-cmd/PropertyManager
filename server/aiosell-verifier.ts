@@ -693,31 +693,145 @@ export async function auditProperty(
   const warnings: string[] = [];
   const recommendations: string[] = [];
 
-  if (!config)                              criticalIssues.push("No AioSell configuration — property not connected to any OTA");
-  if (!config?.pmsPassword)                 criticalIssues.push("PMS password not set — authentication will fail on all API calls");
-  if (isSandboxHotelCode)                   criticalIssues.push(`Hotel code "${config?.hotelCode}" is a sandbox placeholder — replace with the real production hotel code in Channel Manager → Settings`);
-  if (isSandboxMode)                        criticalIssues.push("Sandbox mode is active (is_sandbox=true) — production OTAs will NOT receive any inventory or rate updates");
-  if (allMappings.length === 0)             criticalIssues.push("No room mappings — inventory cannot be pushed");
-  if (invalidCodeMappings.length > 0)       criticalIssues.push(`${invalidCodeMappings.length} mapping${invalidCodeMappings.length !== 1 ? "s" : ""} have empty AioSell room codes`);
-  if (duplicateRoomCodes.length > 0)        criticalIssues.push(`Duplicate AioSell room codes detected: ${duplicateRoomCodes.map(([code, cnt]) => `"${code}" used by ${cnt} room types`).join(", ")} — AioSell cannot distinguish inventory between these room types`);
-  if (!everPushed)                          criticalIssues.push("Inventory has never been pushed — OTAs are showing default availability");
-  if (allRatePlans.length === 0 && allMappings.length > 0) criticalIssues.push("No rate plans configured — OTA rates will never be updated");
-  if (liveTestResult !== null && !liveTestResult.success)  criticalIssues.push(`AioSell live connection failed: ${liveTestResult.message}`);
+  // ── 1. Structural / config critical issues ───────────────────────────────────
+  if (!config)
+    criticalIssues.push("No AioSell configuration — property not connected to any OTA");
+  if (!config?.pmsPassword)
+    criticalIssues.push("PMS password not set — authentication will fail on all API calls");
+  if (isSandboxHotelCode)
+    criticalIssues.push(`Hotel code "${config?.hotelCode}" is a sandbox placeholder — replace with the real production hotel code in Channel Manager → Settings`);
+  if (isSandboxMode)
+    criticalIssues.push("Sandbox mode is active (is_sandbox=true) — production OTAs will NOT receive any inventory or rate updates");
+  if (allMappings.length === 0)
+    criticalIssues.push("No room mappings — inventory cannot be pushed");
+  if (invalidCodeMappings.length > 0)
+    criticalIssues.push(`${invalidCodeMappings.length} mapping${invalidCodeMappings.length !== 1 ? "s" : ""} have empty AioSell room codes`);
+  if (duplicateRoomCodes.length > 0)
+    criticalIssues.push(`Duplicate AioSell room codes: ${duplicateRoomCodes.map(([code, cnt]) => `"${code}" used by ${cnt} room types`).join(", ")} — AioSell cannot distinguish inventory between these room types`);
+  if (!everPushed)
+    criticalIssues.push("Inventory has never been pushed — OTAs are showing default availability");
+  if (allRatePlans.length === 0 && allMappings.length > 0)
+    criticalIssues.push("No rate plans configured — OTA rates will never be updated");
+  if (liveTestResult !== null && !liveTestResult.success)
+    criticalIssues.push(`AioSell live connection failed: ${liveTestResult.message}`);
 
+  // ── 2. Quantitative sync-health thresholds ───────────────────────────────────
+  // These are derived from section check values — the primary source of truth.
+  const errorRatePct = Math.round(errorRate * 100);
+
+  if (errorRate >= 0.2) {
+    criticalIssues.push(`${errorRatePct}% sync failure rate in last 7 days — OTAs are likely showing stale inventory or rates`);
+  } else if (errorRate >= 0.1) {
+    warnings.push(`Sync error rate ${errorRatePct}% in last 7 days — monitor for persistent failures`);
+  }
+
+  if (failedInv7d.length > 50) {
+    criticalIssues.push(`${failedInv7d.length} failed inventory pushes in last 7 days — persistent sync failure storm`);
+  } else if (failedInv7d.length > 3) {
+    warnings.push(`${failedInv7d.length} failed inventory pushes in last 7 days`);
+  }
+
+  if (recentFails.length > 20) {
+    criticalIssues.push(`${recentFails.length} sync failures in last 24 hours — active failure storm`);
+  } else if (recentFails.length > 2) {
+    warnings.push(`${recentFails.length} sync failures in last 24 hours`);
+  } else if (recentFails.length > 0) {
+    warnings.push(`${recentFails.length} sync failure${recentFails.length !== 1 ? "s" : ""} in last 24 hours`);
+  }
+
+  if (section3.status === "critical") {
+    const s3FailLabels = section3.checks
+      .filter(c => c.status === "fail")
+      .map(c => c.label);
+    if (s3FailLabels.length > 0)
+      criticalIssues.push(`Inventory Sync section critical: ${s3FailLabels.join(", ")}`);
+  }
+
+  // ── 3. Error-content scan (HTTP 429 / INVALID codes in sync log messages) ────
+  // Build one combined lowercase string from errorMessage + responsePayload for each failed log
+  const failedLogTexts = failedLogs7d.map(l => {
+    const msg  = l.errorMessage || "";
+    const resp = typeof l.responsePayload === "string"
+      ? l.responsePayload
+      : l.responsePayload ? JSON.stringify(l.responsePayload) : "";
+    return (msg + " " + resp).toLowerCase();
+  });
+  const allErrorText = failedLogTexts.join(" ");
+
+  const count429 = failedLogs7d.filter((_, i) =>
+    failedLogTexts[i].includes("429") ||
+    failedLogTexts[i].includes("too many request") ||
+    failedLogTexts[i].includes("rate limit"),
+  ).length;
+  if (count429 > 0)
+    warnings.push(`HTTP 429 Too Many Requests detected ${count429} time${count429 !== 1 ? "s" : ""} in last 7 days — AioSell is throttling push requests`);
+
+  const hasInvalidRoomCode =
+    allErrorText.includes("invalid_room_code") ||
+    allErrorText.includes("invalid room code") ||
+    allErrorText.includes("room code not found");
+  if (hasInvalidRoomCode)
+    warnings.push("INVALID_ROOM_CODE errors detected — AioSell does not recognise one or more room codes. Verify codes match exactly in Room Mapping tab.");
+
+  const hasInvalidRatePlan =
+    allErrorText.includes("invalid_rateplan_code") ||
+    allErrorText.includes("invalid rate plan") ||
+    allErrorText.includes("rate plan not found") ||
+    allErrorText.includes("invalid ratecode");
+  if (hasInvalidRatePlan)
+    warnings.push("INVALID_RATEPLAN_CODE errors detected — AioSell does not recognise one or more rate plan codes. Verify codes in Rate Plans tab.");
+
+  // ── 4. Structural warnings ───────────────────────────────────────────────────
   if (mappingsWithoutRates.length > 0 && allRatePlans.length > 0)
     warnings.push(`${mappingsWithoutRates.length} room type${mappingsWithoutRates.length !== 1 ? "s" : ""} missing rate plans: ${mappingsWithoutRates.map(m => m.hostezeeRoomType).join(", ")}`);
-  if (!within24h && lastSuccessAt)          warnings.push(`Last inventory push was ${hoursSince}h ago — consider a fresh push`);
-  if (!lastRateOkLog && allRatePlans.length > 0) warnings.push("Rate push has never succeeded — OTAs are using default rates");
-  if (dormMissingBeds.length > 0)           warnings.push(`${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds — bed availability incorrect`);
-  if (errorRate >= 0.1 && errorRate < 0.25) warnings.push(`Sync error rate ${Math.round(errorRate * 100)}% in last 7 days — monitor for persistent failures`);
-  if (recentFails.length > 0 && recentFails.length <= 2) warnings.push(`${recentFails.length} sync failure${recentFails.length !== 1 ? "s" : ""} in last 24 hours`);
+  if (!within24h && lastSuccessAt)
+    warnings.push(`Last inventory push was ${hoursSince}h ago — consider a fresh push`);
+  if (!lastRateOkLog && allRatePlans.length > 0)
+    warnings.push("Rate push has never succeeded — OTAs are using default rates");
+  if (dormMissingBeds.length > 0)
+    warnings.push(`${dormMissingBeds.length} dorm room${dormMissingBeds.length !== 1 ? "s" : ""} missing totalBeds — bed availability incorrect`);
 
-  if (allRatePlans.length === 0)            recommendations.push("Configure rate plans in Rate Plans tab before enabling OTA rate sync");
-  if (!within24h && allMappings.length > 0) recommendations.push("Run a manual inventory push from Push Inventory tab to update OTA availability");
-  if (!lastRateOkLog && allRatePlans.length > 0) recommendations.push("Push rates from Push Rates tab to update pricing on all OTAs");
-  if (dormMissingBeds.length > 0)           recommendations.push("Set totalBeds on dormitory rooms in Rooms management");
-  if (!config?.pmsPassword)                 recommendations.push("Add PMS password in Settings tab to enable API authentication");
-  if (recentWebhooks.length === 0 && config) recommendations.push("Verify webhook URL is configured in AioSell dashboard for automatic booking import");
+  // ── 5. Section-check sweep — any remaining "fail" check not yet surfaced ─────
+  // Checks handled explicitly above (by structural logic or quantitative thresholds)
+  const explicitlyHandledLabels = new Set([
+    "AioSell Configuration", "Hotel Code", "PMS Name", "PMS Password", "API Base URL",
+    "Sandbox Mode", "Mapped Rooms", "Invalid Room Codes", "Duplicate Room Codes",
+    "AioSell Connectivity",
+    "Error Rate (7 days)", "Failed Pushes (7 days)", "Recent Failures (24h)",
+  ]);
+  for (const sec of sections) {
+    for (const chk of sec.checks) {
+      if (chk.status !== "fail") continue;
+      if (explicitlyHandledLabels.has(chk.label)) continue;
+      // Skip if the check detail is already captured in criticalIssues or warnings
+      const detailSnippet = chk.detail.toLowerCase().slice(0, 40);
+      const alreadySurfaced =
+        criticalIssues.some(s => s.toLowerCase().includes(detailSnippet)) ||
+        warnings.some(s => s.toLowerCase().includes(detailSnippet));
+      if (!alreadySurfaced)
+        warnings.push(`${chk.label}: ${chk.detail}`);
+    }
+  }
+
+  // ── 6. Recommendations ──────────────────────────────────────────────────────
+  if (allRatePlans.length === 0)
+    recommendations.push("Configure rate plans in Rate Plans tab before enabling OTA rate sync");
+  if (!within24h && allMappings.length > 0)
+    recommendations.push("Run a manual inventory push from Push Inventory tab to update OTA availability");
+  if (!lastRateOkLog && allRatePlans.length > 0)
+    recommendations.push("Push rates from Push Rates tab to update pricing on all OTAs");
+  if (dormMissingBeds.length > 0)
+    recommendations.push("Set totalBeds on dormitory rooms in Rooms management");
+  if (!config?.pmsPassword)
+    recommendations.push("Add PMS password in Settings tab to enable API authentication");
+  if (recentWebhooks.length === 0 && config)
+    recommendations.push("Verify webhook URL is configured in AioSell dashboard for automatic booking import");
+  if (count429 > 0)
+    recommendations.push("Reduce push frequency or investigate runaway sync jobs — AioSell is rate-limiting requests");
+  if (hasInvalidRoomCode)
+    recommendations.push("Compare room codes in Room Mapping tab against the exact codes in your AioSell dashboard");
+  if (hasInvalidRatePlan)
+    recommendations.push("Compare rate plan codes in Rate Plans tab against the exact codes configured in AioSell");
 
   return {
     propertyId,

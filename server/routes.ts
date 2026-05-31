@@ -21045,14 +21045,36 @@ Provide a direct, actionable answer with specific numbers and insights. Keep res
       };
 
       if (useFallback) {
+        const ci: string[] = report.criticalIssues || [];
+        const wa: string[] = report.warnings || [];
+
+        const rootCause = ci.length > 0
+          ? ci.slice(0, 2).join("; ")
+          : wa.length > 0
+            ? wa.slice(0, 2).join("; ")
+            : "No critical issues detected in this audit.";
+
+        const impact = ci.length > 0
+          ? "OTA availability and/or rates are likely incorrect — guests may see wrong pricing or availability on Booking.com, MMT, Agoda, etc."
+          : wa.length > 0
+            ? "Minor issues may affect OTA accuracy. Monitor and address warnings."
+            : "Property appears healthy. No action required.";
+
+        const issueLines = [
+          ...ci.map((s: string) => `• [CRITICAL] ${s}`),
+          ...wa.map((s: string) => `• [WARNING]  ${s}`),
+        ];
+
         aiAnalysis = {
-          rootCause:      "AI analysis unavailable — OpenAI API key not configured.",
-          impact:         "Manual review of the critical issues and warnings below is required.",
-          priority:       report.criticalIssues.length > 0 ? "Critical" : report.warnings.length > 0 ? "High" : "Low",
+          rootCause,
+          impact,
+          priority: ci.length > 0 ? "Critical" : wa.length > 0 ? "High" : "Low",
           recommendedFix: report.recommendations.length > 0
             ? report.recommendations.map((r: string, i: number) => `${i + 1}. ${r}`).join("\n")
-            : "Review the critical issues listed and address them in order of severity.",
-          summary: `${report.propertyName} has a health score of ${report.healthScore}% with ${report.criticalIssues.length} critical issue(s) and ${report.warnings.length} warning(s). Configure the OpenAI API key in integrations to enable AI-powered analysis.`,
+            : "No action required.",
+          summary: `${report.propertyName} — Health: ${report.healthScore}% | ${ci.length} critical issue(s), ${wa.length} warning(s).\n\n` +
+            (issueLines.length > 0 ? issueLines.join("\n") : "All checks passed.") +
+            "\n\n(AI-powered analysis unavailable — configure OpenAI API key to enable GPT diagnosis.)",
         };
       } else {
         const systemPrompt = `You are a Channel Manager Auditor for Hostezee, a hotel property management system.
