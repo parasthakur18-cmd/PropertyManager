@@ -1149,8 +1149,22 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  // Auto-detect room mapping from rate plan code — matches the room code prefix
+  // e.g. "bed-in-4-bed-female-dorm" → finds "bed-in-4-bed-female-dormitory-room" mapping
+  const detectMappingFromCode = (code: string): number => {
+    if (!code) return 0;
+    const norm = (s: string) => s.toLowerCase().replace(/[-_\s]+/g, "").trim();
+    const normCode = norm(code);
+    const match = mappings.find(m => {
+      const normRoom = norm(m.aiosellRoomCode);
+      return normCode === normRoom || normCode.startsWith(normRoom) || normRoom.startsWith(normCode);
+    });
+    return match?.id || 0;
+  };
+
   const fromDB: PlanRow[] = ratePlans.map(rp => ({
-    roomMappingId: rp.roomMappingId,
+    // If roomMappingId is missing, try to infer it from the rate plan code
+    roomMappingId: rp.roomMappingId || detectMappingFromCode(rp.ratePlanCode || ""),
     ratePlanName: rp.ratePlanName,
     ratePlanCode: rp.ratePlanCode,
     baseRate: rp.baseRate || "",
@@ -1162,7 +1176,15 @@ function RatePlansTab({ propertyId }: { propertyId: number }) {
 
   const updatePlan = (index: number, field: keyof PlanRow, value: string | number) => {
     const base = editedPlans ?? fromDB;
-    const updated = base.map((p, i) => i === index ? { ...p, [field]: value } : p);
+    const updated = base.map((p, i) => {
+      const updated = { ...p, [field]: value };
+      // When rate plan code changes, auto-detect room mapping if not already set
+      if (field === "ratePlanCode" && !p.roomMappingId) {
+        const detected = detectMappingFromCode(String(value));
+        if (detected) updated.roomMappingId = detected;
+      }
+      return i === index ? updated : p;
+    });
     setEditedPlans(updated);
   };
 
