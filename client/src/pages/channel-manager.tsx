@@ -9,7 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { type Property } from "@shared/schema";
-import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package } from "lucide-react";
+import { AlertCircle, CheckCircle, Trash2, Plus, RefreshCw, Settings, Link2, ArrowUpDown, Calendar, Activity, Loader2, Wifi, WifiOff, Hotel, DollarSign, TestTube2, Download, ChevronDown, ChevronLeft, ChevronRight, IndianRupee, MessageSquare, Send, Phone, ShieldCheck, ChevronUp, FileDown, BrainCircuit, Sparkles, Copy, Package, BarChart2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -2343,6 +2343,17 @@ interface OtaTestResult {
   };
 }
 
+interface InventoryConsistencyResult {
+  status: "pass" | "warning" | "fail";
+  datesChecked: number;
+  mismatches: number;
+  mismatchDetails: { roomType: string; date: string; hostezee: number; aiosell: number }[];
+  checkedAt: string;
+  fromCache: boolean;
+  hasPushData: boolean;
+  note: string;
+}
+
 function otaStatusColor(s: OtaStatus) {
   if (s === "pass") return "text-emerald-600 dark:text-emerald-400";
   if (s === "warn") return "text-amber-600 dark:text-amber-400";
@@ -2399,6 +2410,8 @@ function OtaTestTab({ propertyId }: { propertyId: number }) {
   const { toast } = useToast();
   const [result, setResult] = useState<OtaTestResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
+  const [consistency, setConsistency] = useState<InventoryConsistencyResult | null>(null);
+  const [isRunningConsistency, setIsRunningConsistency] = useState(false);
 
   const runTest = async () => {
     setIsRunning(true);
@@ -2413,6 +2426,22 @@ function OtaTestTab({ propertyId }: { propertyId: number }) {
       toast({ title: "E2E Test failed", description: err.message, variant: "destructive" });
     } finally {
       setIsRunning(false);
+    }
+  };
+
+  const runConsistencyCheck = async () => {
+    setIsRunningConsistency(true);
+    try {
+      const res = await fetch(`/api/aiosell/inventory-consistency?propertyId=${propertyId}`, { credentials: "include" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `HTTP ${res.status}`);
+      }
+      setConsistency(await res.json());
+    } catch (err: any) {
+      toast({ title: "Consistency check failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRunningConsistency(false);
     }
   };
 
@@ -2622,6 +2651,130 @@ function OtaTestTab({ propertyId }: { propertyId: number }) {
           </Card>
         </div>
       )}
+
+      {/* ── Inventory Consistency Test ───────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BarChart2 className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            Inventory Consistency Test
+          </CardTitle>
+          <CardDescription>
+            Compares Hostezee live availability against the last push sent to AioSell, day-by-day for the next 30 days. Identifies mismatches before they affect OTA bookings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={runConsistencyCheck}
+              disabled={isRunningConsistency}
+              data-testid="button-run-consistency-check"
+              className="inline-flex items-center gap-2 rounded-md bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium px-4 py-2 transition-colors"
+            >
+              {isRunningConsistency
+                ? <><Loader2 className="h-4 w-4 animate-spin" />Checking…</>
+                : <><BarChart2 className="h-4 w-4" />Run Consistency Check</>}
+            </button>
+            {consistency && (
+              <span className="text-xs text-muted-foreground">
+                Checked {format(parseISO(consistency.checkedAt), "dd MMM HH:mm")}
+                {consistency.fromCache && <span className="ml-1 text-[10px] bg-muted px-1.5 py-0.5 rounded-full">cached</span>}
+              </span>
+            )}
+          </div>
+
+          {consistency && (
+            <div className="space-y-3">
+              {/* KPI row */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                  <div className="text-lg font-bold">{consistency.datesChecked}</div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">Dates Checked</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                  <div className={`text-lg font-bold ${consistency.mismatches === 0 ? "text-emerald-600 dark:text-emerald-400" : consistency.mismatches <= 5 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                    {consistency.mismatches}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">Mismatches</div>
+                </div>
+                <div className="rounded-lg border bg-muted/30 px-3 py-2 text-center">
+                  <div className={`text-lg font-bold ${consistency.status === "pass" ? "text-emerald-600 dark:text-emerald-400" : consistency.status === "warning" ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                    {consistency.status === "pass" ? "🟢" : consistency.status === "warning" ? "🟡" : "🔴"}
+                  </div>
+                  <div className={`text-xs font-bold mt-0.5 ${consistency.status === "pass" ? "text-emerald-600 dark:text-emerald-400" : consistency.status === "warning" ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                    {consistency.status.toUpperCase()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary banner */}
+              <div className={`rounded-md px-3 py-2 text-sm font-medium ${
+                consistency.status === "pass"
+                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                  : consistency.status === "warning"
+                    ? "bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"
+                    : "bg-red-50 text-red-800 border border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800"
+              }`}>
+                {consistency.status === "pass"
+                  ? "Hostezee and AioSell inventory are fully synchronized."
+                  : consistency.status === "warning"
+                    ? "Minor inventory inconsistencies detected. Review mismatches and push a fresh inventory update."
+                    : "Inventory mismatch detected. OTA availability may be inaccurate. Push inventory immediately."}
+              </div>
+
+              {/* OTA Health contribution */}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Activity className="h-3.5 w-3.5 flex-shrink-0" />
+                <span>
+                  OTA Health contribution:&nbsp;
+                  <span className={`font-semibold ${consistency.status === "pass" ? "text-emerald-600 dark:text-emerald-400" : consistency.status === "fail" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                    {consistency.status === "pass" ? "+10 pts" : consistency.status === "fail" ? "−10 pts" : "0 pts"}
+                  </span>
+                </span>
+                <span className="text-[10px] opacity-60">· {consistency.note}</span>
+              </div>
+
+              {/* Mismatch table */}
+              {consistency.mismatchDetails.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Mismatch Details</p>
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="text-xs py-2">Room Type</TableHead>
+                          <TableHead className="text-xs py-2">Date</TableHead>
+                          <TableHead className="text-xs py-2 text-right">Hostezee</TableHead>
+                          <TableHead className="text-xs py-2 text-right">AioSell</TableHead>
+                          <TableHead className="text-xs py-2 text-right">Gap</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {consistency.mismatchDetails.map((m, i) => (
+                          <TableRow key={i} data-testid={`row-mismatch-${i}`}>
+                            <TableCell className="text-xs py-1.5 font-medium">{m.roomType}</TableCell>
+                            <TableCell className="text-xs py-1.5 font-mono">
+                              {format(parseISO(m.date), "dd-MMM")}
+                            </TableCell>
+                            <TableCell className="text-xs py-1.5 text-right">{m.hostezee}</TableCell>
+                            <TableCell className="text-xs py-1.5 text-right">{m.aiosell}</TableCell>
+                            <TableCell className={`text-xs py-1.5 text-right font-semibold ${m.hostezee > m.aiosell ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>
+                              {m.hostezee > m.aiosell ? `+${m.hostezee - m.aiosell}` : `${m.hostezee - m.aiosell}`}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {consistency.mismatches > consistency.mismatchDetails.length && (
+                    <p className="text-xs text-muted-foreground">Showing first {consistency.mismatchDetails.length} of {consistency.mismatches} mismatches.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

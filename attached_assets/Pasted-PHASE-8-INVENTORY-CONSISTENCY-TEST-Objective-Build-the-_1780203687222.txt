@@ -1,0 +1,173 @@
+PHASE 8 – INVENTORY CONSISTENCY TEST
+
+Objective:
+
+Build the final OTA verification layer that compares Hostezee inventory against AioSell inventory and identifies mismatches before they impact OTA bookings.
+
+Location:
+
+Channel Manager
+→ Verify Property
+→ OTA Test
+
+Add new section:
+
+📊 Inventory Consistency Test
+
+---
+
+Purpose
+
+Current audits verify:
+
+* Configuration
+* Room Mapping
+* Rate Plans
+* Sync Logs
+* OTA Connectivity
+
+But they do NOT verify that AioSell actually holds the same inventory as Hostezee.
+
+This feature must compare both systems directly.
+
+---
+
+Backend
+
+Create endpoint:
+
+GET /api/aiosell/inventory-consistency?propertyId=:id
+
+Process:
+
+1. Load all mapped room types.
+2. Fetch Hostezee inventory for next 30 days.
+3. Fetch AioSell inventory for same room codes and dates.
+4. Compare day-by-day.
+
+For every room/date:
+
+Hostezee Availability
+vs
+AioSell Availability
+
+---
+
+Response Format
+
+{
+status: "pass" | "warning" | "fail",
+datesChecked: 210,
+mismatches: 3,
+mismatchDetails: [
+{
+roomType: "Deluxe Room",
+date: "2026-06-05",
+hostezee: 5,
+aiosell: 3
+}
+]
+}
+
+---
+
+Status Logic
+
+PASS
+
+* 0 mismatches
+
+WARNING
+
+* 1–5 mismatches
+
+FAIL
+
+* More than 5 mismatches
+
+---
+
+Frontend
+
+Add card:
+
+📊 Inventory Consistency Test
+
+Display:
+
+Dates Checked
+210
+
+Mismatches
+0
+
+Status
+🟢 PASS
+
+---
+
+Mismatch Table
+
+If mismatches exist:
+
+Room Type | Date | Hostezee | AioSell
+
+Deluxe Room
+05-Jun
+5
+3
+
+Family Room
+08-Jun
+2
+1
+
+---
+
+Summary Banner
+
+PASS:
+
+"Hostezee and AioSell inventory are fully synchronized."
+
+WARNING:
+
+"Minor inventory inconsistencies detected."
+
+FAIL:
+
+"Inventory mismatch detected. OTA availability may be inaccurate."
+
+---
+
+OTA Health Integration
+
+Add test result into OTA Health Score.
+
+PASS:
++10 points
+
+WARNING:
+0 points
+
+FAIL:
+-10 points
+
+---
+
+Performance Requirements
+
+* Complete in under 10 seconds
+* Use parallel requests
+* Cache result for 5 minutes
+* Support all mapped room types
+
+---
+
+Success Criteria
+
+The system must answer:
+
+"Are Hostezee and AioSell showing the same availability for every room on every future date?"
+
+This is the final OTA verification layer and should become the last major auditor feature before development focus shifts to OTA reliability, restaurant ordering, WhatsApp automation, and multi-property operations.

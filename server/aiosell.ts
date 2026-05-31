@@ -924,10 +924,10 @@ export async function autoSyncInventoryForProperty(
       // actually prevent new bookings. Push ONE restriction range at a time (same
       // reason as inventory: prevents silent range-limit drops).
       // Skip ranges where ALL rooms are open (available > 0) — no point sending stopSell=false for every range.
-      const stopSellRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
+      const zeroAvailRanges = inventoryUpdates.filter(range => range.rooms.some(r => r.available === 0));
       let ssSuccess = 0; let ssFail = 0;
-      if (!stoppedEarly) for (let ri = 0; ri < stopSellRanges.length; ri++) {
-        const range = stopSellRanges[ri];
+      if (!stoppedEarly) for (let ri = 0; ri < zeroAvailRanges.length; ri++) {
+        const range = zeroAvailRanges[ri];
         if (ri > 0) await sleep(2500); // rate-limit guard
         const stopSellUpdate: InventoryRestrictionUpdate = {
           startDate: range.startDate,
@@ -954,7 +954,7 @@ export async function autoSyncInventoryForProperty(
       const stopSellSummary = inventoryUpdates[0]?.rooms
         .map(r => `${r.roomCode}:${r.available === 0 ? "CLOSED" : "open"}`)
         .join(", ") ?? "none";
-      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${stopSellRanges.length} range(s) (${inventoryUpdates.length - stopSellRanges.length} all-open skipped). Today: [${stopSellSummary}]`);
+      console.log(`[AIOSELL] Auto stop-sell: ${ssSuccess} OK / ${ssFail} failed for ${zeroAvailRanges.length} range(s) (${inventoryUpdates.length - zeroAvailRanges.length} all-open skipped). Today: [${stopSellSummary}]`);
     }
 
     // ── Step 3: Re-push stored restrictions AFTER inventory push ─────────────────
