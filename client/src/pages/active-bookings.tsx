@@ -1237,6 +1237,21 @@ export default function ActiveBookings() {
                       {booking.isGroupBooking && (
                         <Badge className="bg-blue-500 text-white text-[10px] px-1.5 py-0 h-4">Group</Badge>
                       )}
+                      {booking.otaSyncStatus === "synced" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-green-50 text-green-700 border-green-300 dark:bg-green-950 dark:text-green-400 dark:border-green-700" title={booking.otaLastSyncAt ? `Synced ${new Date(booking.otaLastSyncAt).toLocaleString("en-IN")}` : "OTA inventory synced"}>
+                          ✅ OTA Synced
+                        </Badge>
+                      )}
+                      {booking.otaSyncStatus === "pending" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-700" title="OTA inventory sync in progress…">
+                          🟡 Sync Pending
+                        </Badge>
+                      )}
+                      {booking.otaSyncStatus === "failed" && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-red-50 text-red-700 border-red-300 dark:bg-red-950 dark:text-red-400 dark:border-red-700 cursor-help" title={booking.otaSyncError || "OTA inventory sync failed — check Channel Manager"}>
+                          🔴 Sync Failed
+                        </Badge>
+                      )}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
                       <span className="font-medium text-foreground">Room {roomLabel}</span>

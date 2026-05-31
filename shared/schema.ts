@@ -284,6 +284,10 @@ export const bookings = pgTable("bookings", {
   // External booking integration (AioSell, etc.)
   externalBookingId: varchar("external_booking_id", { length: 100 }),
   externalSource: varchar("external_source", { length: 50 }),
+  // OTA inventory sync tracking
+  otaSyncStatus: varchar("ota_sync_status", { length: 20 }), // 'synced' | 'pending' | 'failed' | null (null = no AioSell configured)
+  otaLastSyncAt: timestamp("ota_last_sync_at"),
+  otaSyncError: text("ota_sync_error"),
 });
 
 export const insertBookingSchema = createInsertSchema(bookings).omit({

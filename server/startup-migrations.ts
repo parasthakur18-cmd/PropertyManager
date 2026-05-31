@@ -1181,6 +1181,20 @@ const migrations: Array<{ name: string; run: () => Promise<void> }> = [
       `);
     },
   },
+  {
+    name: "add_bookings_ota_sync_status",
+    async run() {
+      if (!(await columnExists("bookings", "ota_sync_status"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN ota_sync_status VARCHAR(20)`);
+      }
+      if (!(await columnExists("bookings", "ota_last_sync_at"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN ota_last_sync_at TIMESTAMP`);
+      }
+      if (!(await columnExists("bookings", "ota_sync_error"))) {
+        await runRaw(`ALTER TABLE bookings ADD COLUMN ota_sync_error TEXT`);
+      }
+    },
+  },
 ];
 
 async function reconcileRoomStatuses(): Promise<void> {

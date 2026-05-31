@@ -36,6 +36,7 @@ import {
   taskNotificationLogs,
   otpTokens,
   vendorTransactions,
+  aiosellConfigurations,
 } from "@shared/schema";
 import { z } from "zod";
 import { db } from "./db";
@@ -254,20 +255,92 @@ async function sendPushToUsers(userIds: string[], payload: object) {
 }
 
 // Helper: sync inventory with automatic retry (up to 3 attempts, 2s back-off per attempt)
-async function syncWithRetry(propertyId: number, event: string, maxRetries = 3): Promise<void> {
+async function syncWithRetry(
+  propertyId: number,
+  event: string,
+  opts?: { triggerBookingId?: number },
+  maxRetries = 3,
+): Promise<void> {
+  // Check if this property has AioSell configured — only track OTA sync status when it does
+  const aiosellCheck = await db
+    .select({ id: aiosellConfigurations.id })
+    .from(aiosellConfigurations)
+    .where(eq(aiosellConfigurations.propertyId, propertyId))
+    .limit(1);
+  const hasAiosell = aiosellCheck.length > 0;
+
+  let lastError: string | undefined;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       await autoSyncInventoryForProperty(propertyId);
       console.log(`[SYNC_SENT] event=${event} propertyId=${propertyId} attempt=${attempt}`);
+      if (hasAiosell) {
+        // SUCCESS: mark every active booking for this property as OTA synced
+        await db
+          .update(bookings)
+          .set({ otaSyncStatus: "synced", otaLastSyncAt: new Date(), otaSyncError: null })
+          .where(
+            and(
+              eq(bookings.propertyId, propertyId),
+              not(inArray(bookings.status, ["cancelled", "checked-out", "no_show"])),
+            ),
+          );
+      }
       return;
     } catch (err: any) {
-      console.error(`[SYNC_FAILED] event=${event} propertyId=${propertyId} attempt=${attempt}/${maxRetries} error=${err.message}`);
+      lastError = err.message;
+      console.error(
+        `[SYNC_FAILED] event=${event} propertyId=${propertyId} attempt=${attempt}/${maxRetries} error=${err.message}`,
+      );
       if (attempt < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
       }
     }
   }
+
+  // All retries exhausted
   console.error(`[SYNC_FAILED] event=${event} propertyId=${propertyId} allRetriesExhausted=true`);
+  if (hasAiosell) {
+    if (opts?.triggerBookingId) {
+      await db
+        .update(bookings)
+        .set({
+          otaSyncStatus: "failed",
+          otaSyncError: `Sync failed after ${maxRetries} attempts (${event}). ${lastError ?? ""}`.trim(),
+        })
+        .where(eq(bookings.id, opts.triggerBookingId));
+    }
+    // Send in-app notification to admin and super-admin users for this property
+    try {
+      const allStaff = await db
+        .select({ id: users.id, role: users.role, assignedPropertyIds: users.assignedPropertyIds })
+        .from(users)
+        .where(or(eq(users.role, "super_admin"), eq(users.role, "admin")));
+      const notifyUsers = allStaff.filter((u) => {
+        if (u.role === "super_admin") return true;
+        const assigned: string[] = Array.isArray(u.assignedPropertyIds)
+          ? (u.assignedPropertyIds as string[])
+          : [];
+        return assigned.includes(String(propertyId));
+      });
+      for (const u of notifyUsers) {
+        await db.insert(notifications).values({
+          userId: String(u.id),
+          type: "ota_sync_failed",
+          title: "⚠️ OTA Inventory Sync Failed",
+          message: opts?.triggerBookingId
+            ? `Booking #${opts.triggerBookingId}: OTA inventory could not be updated after ${maxRetries} attempts (${event}). Please force-sync from Channel Manager → Push Inventory.`
+            : `Property ${propertyId}: OTA inventory sync failed after ${maxRetries} attempts (${event}). Please force-sync from Channel Manager.`,
+          soundType: "warning",
+          relatedId: opts?.triggerBookingId,
+          relatedType: "booking",
+        });
+      }
+      console.log(`[SYNC_FAILED] Failure notifications sent to ${notifyUsers.length} admin(s)`);
+    } catch (notifErr: any) {
+      console.error("[SYNC_FAILED] Could not send failure notification:", notifErr.message);
+    }
+  }
 }
 
 // Defensive billable-orders lookup. Kitchen staff sometimes place orders
@@ -4320,7 +4393,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         // Sync inventory to AioSell / OTAs (e.g. Booking.com, MMT) so the room is blocked
         if (booking.propertyId) {
           console.log(`[SYNC_TRIGGER] event=BOOKING_CREATED bookingId=${booking.id} room=${booking.roomNumber ?? (booking.roomIds?.join(",") ?? "N/A")} propertyId=${booking.propertyId}`);
-          syncWithRetry(booking.propertyId, "BOOKING_CREATED").catch(() => {});
+          // Mark OTA sync as pending immediately so staff can see it on the booking card
+          await db.update(bookings).set({ otaSyncStatus: "pending" }).where(eq(bookings.id, booking.id));
+          syncWithRetry(booking.propertyId, "BOOKING_CREATED", { triggerBookingId: booking.id }).catch(() => {});
         }
       });
     } catch (error: any) {
@@ -5232,7 +5307,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       if (booking.propertyId && (status === "confirmed" || status === "checked-in" || status === "checked-out" || status === "cancelled")) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_STATUS_CHANGED bookingId=${booking.id} newStatus=${status} propertyId=${booking.propertyId}`);
-        syncWithRetry(booking.propertyId, "BOOKING_STATUS_CHANGED").catch(() => {});
+        syncWithRetry(booking.propertyId, "BOOKING_STATUS_CHANGED", { triggerBookingId: booking.id }).catch(() => {});
       }
 
       res.json({ ...booking, autoCheckedOutBookingIds });
@@ -5365,7 +5440,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
 
       if (booking.propertyId) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_CANCELLED bookingId=${booking.id} propertyId=${booking.propertyId}`);
-        syncWithRetry(booking.propertyId, "BOOKING_CANCELLED").catch(() => {});
+        syncWithRetry(booking.propertyId, "BOOKING_CANCELLED", { triggerBookingId: booking.id }).catch(() => {});
       }
 
       // ── Notification lifecycle: remove stale "New Booking Created" alerts ──
@@ -5489,7 +5564,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Free up the room inventory
       if (propertyId) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_NO_SHOW bookingId=${bookingId} propertyId=${propertyId}`);
-        syncWithRetry(propertyId, "BOOKING_NO_SHOW").catch(() => {});
+        syncWithRetry(propertyId, "BOOKING_NO_SHOW", { triggerBookingId: typeof bookingId === "number" ? bookingId : parseInt(bookingId) }).catch(() => {});
       }
 
       res.json({
@@ -6058,7 +6133,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // checkout endpoint calls storage.updateBookingStatus() directly — so we must
       // call it explicitly here. This is especially critical for dorm rooms where
       // releasing one bed should immediately open AioSell inventory.
-      syncWithRetry(booking.propertyId, "BOOKING_CHECKED_OUT").catch((syncErr: any) => {
+      syncWithRetry(booking.propertyId, "BOOKING_CHECKED_OUT", { triggerBookingId: booking.id }).catch((syncErr: any) => {
         console.warn(`[AioSell] Checkout inventory sync failed (non-critical): ${syncErr?.message}`);
       });
 
@@ -6832,7 +6907,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Sync inventory to Aiosell so OTAs (Booking.com, MMT) reflect this confirmation
       if (booking.propertyId) {
         console.log(`[SYNC_TRIGGER] event=BOOKING_CONFIRMED bookingId=${bookingId} propertyId=${booking.propertyId}`);
-        syncWithRetry(booking.propertyId, "BOOKING_CONFIRMED").catch(() => {});
+        syncWithRetry(booking.propertyId, "BOOKING_CONFIRMED", { triggerBookingId: typeof bookingId === "number" ? bookingId : parseInt(bookingId) }).catch(() => {});
       }
 
       // Send booking confirmed WhatsApp notification (template 29294) — non-blocking
@@ -6902,7 +6977,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Sync inventory to Aiosell so OTAs reflect the newly confirmed booking
       if (booking.propertyId) {
         console.log(`[SYNC_TRIGGER] event=ADVANCE_PAYMENT_CONFIRMED bookingId=${bookingId} propertyId=${booking.propertyId}`);
-        syncWithRetry(booking.propertyId, "ADVANCE_PAYMENT_CONFIRMED").catch(() => {});
+        syncWithRetry(booking.propertyId, "ADVANCE_PAYMENT_CONFIRMED", { triggerBookingId: typeof bookingId === "number" ? bookingId : parseInt(bookingId) }).catch(() => {});
       }
       
       // Send WhatsApp confirmation to guest (same as webhook flow) - check template controls
@@ -10609,7 +10684,9 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
       // Sync inventory to Aiosell so OTAs are updated for this walk-in booking
       if (booking.propertyId) {
         console.log(`[SYNC_TRIGGER] event=WALKIN_BOOKING_CREATED bookingId=${booking.id} propertyId=${booking.propertyId}`);
-        syncWithRetry(booking.propertyId, "WALKIN_BOOKING_CREATED").catch(() => {});
+        // Mark OTA sync as pending immediately so staff can see it on the booking card
+        await db.update(bookings).set({ otaSyncStatus: "pending" }).where(eq(bookings.id, booking.id));
+        syncWithRetry(booking.propertyId, "WALKIN_BOOKING_CREATED", { triggerBookingId: booking.id }).catch(() => {});
       }
 
       res.status(201).json(booking);
