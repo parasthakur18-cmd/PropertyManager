@@ -1155,7 +1155,13 @@ export default function Bookings() {
       }
     }
     
-    const totalAmount = (roomCharges * numberOfNights).toFixed(2);
+    // For OTA bookings (received via AioSell / Booking.com), preserve the original
+    // amount unless staff explicitly set a custom price. Room assignment should
+    // never silently overwrite what the OTA charged the guest.
+    const isOtaBooking = editingBooking.source?.startsWith("aiosell-");
+    const totalAmount = (isOtaBooking && !data.customPrice)
+      ? (editingBooking.totalAmount ?? (roomCharges * numberOfNights).toFixed(2))
+      : (roomCharges * numberOfNights).toFixed(2);
     
     // Format dates as YYYY-MM-DD to avoid timezone shifts
     const formatDateForDB = (date: Date) => {
