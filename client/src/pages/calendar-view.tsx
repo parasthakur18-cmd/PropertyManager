@@ -515,10 +515,25 @@ export default function CalendarView() {
   };
 
   const getOccupancyPercent = (date: Date) => {
-    const totalRooms = filteredRooms.length;
-    if (totalRooms === 0) return 0;
-    const occupiedCount = filteredRooms.filter(room => getBookingForDate(room.id, date)).length;
-    return Math.round((occupiedCount / totalRooms) * 100);
+    // Count beds for dorm rooms, 1 unit for regular rooms — matches AioSell's inventory logic
+    let totalCapacity = 0;
+    let occupiedCapacity = 0;
+    const nextDay = addDays(date, 1);
+
+    for (const room of filteredRooms) {
+      if (isDormitoryRoom(room)) {
+        const beds = room.totalBeds || 1;
+        const booked = getBedsBookedForDateRange(room.id, date, nextDay);
+        totalCapacity += beds;
+        occupiedCapacity += Math.min(booked, beds);
+      } else {
+        totalCapacity += 1;
+        if (getBookingForDate(room.id, date)) occupiedCapacity += 1;
+      }
+    }
+
+    if (totalCapacity === 0) return 0;
+    return Math.round((occupiedCapacity / totalCapacity) * 100);
   };
 
   const getAvailableRoomsForType = (typeRooms: Room[], date: Date) => {
