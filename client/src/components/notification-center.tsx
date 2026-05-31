@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Bell, X, ArrowRight, BedDouble, UtensilsCrossed, CreditCard, CheckSquare, AlertTriangle, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -79,6 +79,7 @@ export function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [, navigate] = useLocation();
+  const seenIds = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -89,12 +90,15 @@ export function NotificationCenter() {
           setNotifications(data);
           setUnreadCount(data.filter(n => !n.isRead).length);
 
-          const newUnread = data.filter(n => !n.isRead);
-          newUnread.forEach(notification => {
+          // Only play sound for unread notifications not yet seen this session
+          data.filter(n => !n.isRead && !seenIds.current.has(n.id)).forEach(notification => {
             if (notification.soundType !== "info") {
               playSound(notification.soundType);
             }
           });
+
+          // Mark all fetched IDs as seen so sounds don't repeat on next poll
+          data.forEach(n => seenIds.current.add(n.id));
         }
       } catch (error) {
         console.error("Failed to fetch notifications:", error);
