@@ -92,3 +92,26 @@ Pushes inventory for properties where last_sync_at is null or >23h old.
 SQL to run on hostezee.in DB:
   UPDATE aiosell_room_mappings SET aiosell_room_code = 'deluxe-double-room-with-balcony'
   WHERE aiosell_room_code = 'deluxe-room-with-balcony';
+
+## Auto-Sync Silent Drop Bugs — FIXED (May 2026)
+
+Two bugs caused syncWithRetry()'s 3-attempt retry loop to never fire:
+
+**Bug 1 — Mutex silent drop** (_syncInProgress guard):
+- OLD: autoSyncInventoryForProperty() returned NORMALLY when a sync was already running.
+  syncWithRetry() saw no exception → logged [SYNC_SENT] → exited. New booking state lost.
+- FIX: call scheduleSyncForProperty() instead of returning. It queues a 30s deferred retry
+  that fires once the running push finishes, with timer deduplication.
+
+**Bug 2 — Push failure not propagated**:
+- OLD: outer catch swallowed all errors → returned normally → syncWithRetry() never retried.
+- FIX A: throw after push loop if failCount > 0.
+- FIX B: re-throw in outer catch so syncWithRetry()'s retry loop sees the failure.
+
+**Why it matters:** With 40%+ failure rate on Blue Mont pushes, the old code meant every
+failed push was permanent. Now syncWithRetry() retries 3× with 2s/4s backoff. All callers
+(health job, manual sync-now) already have their own try/catch — the re-throw is safe.
+
+**Circular call is safe:** autoSyncInventoryForProperty → (mutex) → scheduleSyncForProperty
+→ (debounce timer) → autoSyncInventoryForProperty. scheduleSyncForProperty deduplicates
+timers so no pile-up; mutex clears in finally block before deferred call executes.

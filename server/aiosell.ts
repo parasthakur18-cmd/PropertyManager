@@ -479,7 +479,12 @@ export async function autoSyncInventoryForProperty(
   // arriving mid-push would start a second parallel push, flooding Aiosell
   // with simultaneous requests and triggering 429 rate limits (Blue Mont pattern).
   if (_syncInProgress.has(propertyId)) {
-    console.log(`[AIOSELL] autoSync: property ${propertyId} sync already in progress — skipping concurrent call (bookingId=${opts?.triggerBookingId})`);
+    // FIX: previously this silently dropped the event and returned normally,
+    // so syncWithRetry() thought the sync "succeeded" and never retried.
+    // Now we hand off to scheduleSyncForProperty() which queues a deferred
+    // retry (30 s) that fires once the running push finishes.
+    console.log(`[AIOSELL] autoSync: property ${propertyId} sync in progress — deferring to scheduleSyncForProperty (bookingId=${opts?.triggerBookingId})`);
+    scheduleSyncForProperty(propertyId, opts);
     return;
   }
   _syncInProgress.add(propertyId);
@@ -918,6 +923,17 @@ export async function autoSyncInventoryForProperty(
       }
       console.log(`[SYNC_SENT] property=${propertyId} ranges=${inventoryUpdates.length} success=${successCount} failed=${failCount} stoppedEarly=${stoppedEarly} todayAvailability=[${availSummary}]`);
 
+      // FIX: previously autoSyncInventoryForProperty returned normally even when
+      // pushInventory failed, so syncWithRetry() thought the push "succeeded" and
+      // never retried.  Throwing here propagates the failure to syncWithRetry()
+      // (via the re-throw in the outer catch below) so its 3-attempt retry loop fires.
+      if (failCount > 0) {
+        throw new Error(
+          `Inventory push partial failure: ${failCount}/${inventoryUpdates.length} range(s) failed ` +
+          `(stoppedEarly=${stoppedEarly}). AioSell may be rate-limiting — syncWithRetry will retry.`
+        );
+      }
+
       // ── Step 2b: Auto stop-sell — push stopSell=true for 0-inventory dates ──────
       // Pushing available=0 alone is NOT enough to block rooms on OTAs. Aiosell
       // (and most channel managers) require an explicit stopSell restriction to
@@ -994,6 +1010,10 @@ export async function autoSyncInventoryForProperty(
     }
   } catch (error: any) {
     console.error(`[AIOSELL] Auto-sync inventory failed for property ${propertyId}:`, error.message);
+    // FIX: re-throw so syncWithRetry()'s 3-attempt retry loop can fire.
+    // Previously the catch swallowed the error and returned normally, making
+    // every push failure look like a success to the caller.
+    throw error;
   } finally {
     _syncInProgress.delete(propertyId);
   }
