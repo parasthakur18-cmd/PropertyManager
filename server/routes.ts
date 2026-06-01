@@ -23608,9 +23608,12 @@ Respond ONLY with valid JSON (no markdown, no extra text):
             bookingId,
           });
 
-          // ── Dual-format mapping lookup ───────────────────────────────────
+          // ── Multi-priority mapping lookup ────────────────────────────────
           // Priority 1: match by numeric AioSell roomId (stored as aiosellRoomId)
-          // Priority 2: fall back to roomCode string
+          // Priority 2: exact roomCode string match
+          // Priority 3: prefix match — AioSell may append rate-plan suffix to roomCode
+          //             e.g. "deluxe-double-room-with-balcony-s-ep" → "deluxe-double-room-with-balcony"
+          // Priority 4: numeric roomId sent as roomCode (some AioSell channels do this)
           let mapping = incomingRoomId
             ? mappings.find(m => m.aiosellRoomId && m.aiosellRoomId === incomingRoomId)
             : undefined;
@@ -23619,7 +23622,25 @@ Respond ONLY with valid JSON (no markdown, no extra text):
             mapping = mappings.find(m => m.aiosellRoomCode === incomingRoomCode);
           }
 
-          console.log("[AIOSELL] Mapping Found:", mapping ?? null);
+          // Priority 3: prefix — AioSell appends "-s-ep"/"-d-ep"/"-t-ep"/"-q-ep" rate-plan suffix
+          if (!mapping && incomingRoomCode) {
+            mapping = mappings.find(m =>
+              m.aiosellRoomCode && incomingRoomCode.startsWith(m.aiosellRoomCode + "-")
+            );
+            if (mapping) {
+              console.log(`[AIOSELL] Mapping via prefix match: "${incomingRoomCode}" starts with "${mapping.aiosellRoomCode}"`);
+            }
+          }
+
+          // Priority 4: numeric roomId stored / sent as the roomCode field
+          if (!mapping && incomingRoomId) {
+            mapping = mappings.find(m => m.aiosellRoomCode === incomingRoomId);
+            if (mapping) {
+              console.log(`[AIOSELL] Mapping via numeric roomId=roomCode: "${incomingRoomId}" === "${mapping.aiosellRoomCode}"`);
+            }
+          }
+
+          console.log("[AIOSELL] Mapping Found:", mapping ? `${mapping.aiosellRoomCode} → ${mapping.hostezeeRoomType}` : "NULL");
 
           // ── Auto-save aiosellRoomId if mapping was found by roomCode but has no roomId ──
           // This ensures future inventory pushes include the roomId for accurate routing to Booking.com
