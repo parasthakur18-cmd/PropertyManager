@@ -1368,6 +1368,22 @@ function PushRatesTab({ propertyId }: { propertyId: number }) {
   const [rateValues, setRateValues] = useState<Record<string, string>>({});
   const [pushingSinglePlan, setPushingSinglePlan] = useState<string | null>(null);
 
+  // Pre-fill rate inputs from baseRate when plans load (so Push All works without manual typing)
+  useEffect(() => {
+    if (ratePlans.length === 0) return;
+    setRateValues(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const rp of ratePlans) {
+        if (!next[rp.ratePlanCode] && rp.baseRate) {
+          next[rp.ratePlanCode] = String(parseFloat(rp.baseRate));
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [ratePlans]);
+
   const humanizeAiosellError = (msg: string | undefined) => {
     if (!msg) return "Unknown error from AioSell";
     if (msg.toLowerCase().includes("authentication required"))
@@ -2543,12 +2559,12 @@ function ReconciliationCard({ room }: { room: ReconRoomResult }) {
         </div>
 
         {/* Source badges */}
-        {(Object.keys(room.otaBookings.breakdown).length > 0 || Object.keys(room.offlineBookings.breakdown).length > 0) && (
+        {(Object.keys(room.otaBookings?.breakdown ?? {}).length > 0 || Object.keys(room.offlineBookings?.breakdown ?? {}).length > 0) && (
           <div className="flex flex-wrap gap-1.5 pt-1">
-            {Object.entries(room.otaBookings.breakdown).map(([k, v]) => (
+            {Object.entries(room.otaBookings?.breakdown ?? {}).map(([k, v]) => (
               <SourceBadge key={k} label={OTA_LABELS[k] || k} color={OTA_COLORS[k] || OTA_COLORS.otaOther} count={v} />
             ))}
-            {Object.entries(room.offlineBookings.breakdown).map(([k, v]) => (
+            {Object.entries(room.offlineBookings?.breakdown ?? {}).map(([k, v]) => (
               <SourceBadge key={k} label={OFFLINE_LABELS[k] || k} color={OFFLINE_COLORS[k] || OFFLINE_COLORS.other} count={v} />
             ))}
           </div>
