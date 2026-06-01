@@ -582,17 +582,20 @@ export async function autoSyncInventoryForProperty(
       }
     }
 
-    // Normalise room type strings for fuzzy matching (handles hyphens vs spaces, case differences)
+    // Normalise room type strings for exact matching (handles hyphens vs spaces, case differences)
+    // NOTE: We intentionally use EXACT match only (no substring includes).
+    // Substring matching caused "Double Room with Balcony" rooms to be included in the
+    // "Deluxe Double Room with Balcony" mapping (and vice-versa), inflating available counts.
     const normaliseRoomType = (s: string) =>
       s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 
-    // Group rooms by type (using hostezeeRoomType from mappings) — normalised match
+    // Group rooms by type (using hostezeeRoomType from mappings) — exact normalised match
     const roomsByType: Record<string, number[]> = {};
     for (const mapping of mappings) {
       const normMapped = normaliseRoomType(mapping.hostezeeRoomType);
       const matchingRooms = allRooms.filter(r => {
         const normRoom = normaliseRoomType(r.roomType || "");
-        return normRoom === normMapped || normRoom.includes(normMapped) || normMapped.includes(normRoom);
+        return normRoom === normMapped;
       });
       if (matchingRooms.length > 0) {
         roomsByType[mapping.hostezeeRoomType] = matchingRooms.map(r => r.id);

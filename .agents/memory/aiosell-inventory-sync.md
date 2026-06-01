@@ -3,16 +3,24 @@ name: Aiosell inventory sync behavior
 description: Key quirks, rate limits, debounce, concurrency fixes, and audit accuracy for the AioSell channel manager
 ---
 
-## Key Finding: Aiosell "Update Rooms" Page Shows NET Count
+## CRITICAL: Room-Type Matching Must Be EXACT MATCH ONLY (Fixed Jun 2026)
 
-When Hostezee pushes `available: N` to Aiosell:
-- Aiosell stores N as the "open" count
-- Aiosell ALSO tracks its own OTA bookings internally
-- The "Update Rooms" page may display: N minus Aiosell's own OTA bookings
-- So pushing 4 when Aiosell has 1 OTA booking shows 3 on their screen
+The `normaliseRoomType` fuzzy match in `autoSyncInventoryForProperty` previously used
+bidirectional substring checks. Changed to **exact match only** (`normRoom === normMapped`).
 
-**Why:** This explains the "Synced" but different numbers gap. We pushed the right
-number, but Aiosell displays differently.
+**Why:** `"deluxe double room with balcony".includes("double room with balcony")` = TRUE.
+This caused all 10 "Double Room with Balcony" rooms (2001-2012) to be pulled into the
+"Deluxe Double Room with Balcony" mapping pool. With 4 Deluxe rooms fully booked but 10
+Double rooms free, the sync pushed 5+ available — AioSell showed 5 even when calendar showed 0.
+
+**How to apply:** Never revert to substring matching. normaliseRoomType already handles
+hyphens/spaces/case so exact match is sufficient for all Woodpecker/Blue Mont room types.
+
+## Aiosell "Update Rooms" Page Shows Last Pushed Value
+
+When Hostezee pushes `available: N` to Aiosell, the "Update Rooms" page shows N.
+It does NOT auto-subtract Aiosell's own OTA bookings in this view.
+If Hostezee pushed wrong values, the page keeps showing them until Hostezee pushes again.
 
 ## Reconciliation Page Limitation
 - Compares Hostezee calculation vs "last pushed" from our sync logs
