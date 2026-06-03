@@ -914,7 +914,13 @@ export async function checkTemplateSetting(
     const setting = settings?.find((s: TemplateSetting) => s.templateType === templateType);
     
     if (!setting) {
-      // No setting found - default to enabled and immediate
+      // No setting found - default to enabled for booking-related templates, disabled for food orders.
+      // food_order_received is opt-in: if no row exists, treat as disabled (prevents spam when not configured).
+      const disabledByDefault = ['food_order_received'];
+      if (disabledByDefault.includes(templateType)) {
+        console.log(`[WhatsApp] No template setting found for ${templateType} on property ${propertyId} — defaulting to DISABLED (opt-in template)`);
+        return { send: false, delayMs: 0 };
+      }
       console.log(`[WhatsApp] No template setting found for ${templateType} on property ${propertyId}, defaulting to immediate`);
       return { send: true, delayMs: 0 };
     }

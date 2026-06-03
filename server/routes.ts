@@ -1246,7 +1246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const propIdForCheck = orderData.propertyId;
         const tplCheck = propIdForCheck
           ? await checkTemplateSetting(propIdForCheck, 'food_order_received', storage)
-          : { send: true, delayMs: 0 };
+          : { send: false, delayMs: 0 }; // no property context → cannot check setting → don't send
         if (tplCheck.send) {
           if (orderType === "room" && orderData.guestId) {
             const guest = await storage.getGuest(orderData.guestId);
@@ -9183,7 +9183,7 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
             const adminPropId = orderData.propertyId;
             const adminTplCheck = adminPropId
               ? await checkTemplateSetting(adminPropId, 'food_order_received', storage)
-              : { send: true, delayMs: 0 };
+              : { send: false, delayMs: 0 }; // no property context → cannot check setting → don't send
             if (adminTplCheck.send) {
               await sendFoodOrderReceived(guest.phone, guest.fullName || "Guest");
               console.log(`[WhatsApp] Food order confirmation (WID 28983) sent to guest ${guest.fullName} (order #${order.id})`);
