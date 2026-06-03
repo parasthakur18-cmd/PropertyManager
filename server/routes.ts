@@ -4759,10 +4759,21 @@ If the user hasn't provided enough info yet, respond with a normal conversationa
         lt(bookings.checkInDate, booking.checkOutDate),
         gt(bookings.checkOutDate, booking.checkInDate),
       );
+      // Conflict check: ensure the target room is free for these dates.
+      // IMPORTANT: For multi-room bookings, the primary `roomId` field is often stale
+      // (points to a room not actually assigned in the booking). We must ONLY use the
+      // `roomIds` array for multi-room bookings, and only use `roomId` for true single-room
+      // bookings (where roomIds is null/empty). Otherwise a stale roomId causes false conflicts.
       const [conflictingSingle, conflictingGroup] = await Promise.all([
+        // Single-room bookings: roomId matches AND roomIds is empty/null
         db.select({ id: bookings.id }).from(bookings)
-          .where(and(eq(bookings.roomId, newRoomId), dateOverlapConditions!))
+          .where(and(
+            eq(bookings.roomId, newRoomId),
+            sql`(${bookings.roomIds} IS NULL OR array_length(${bookings.roomIds}, 1) IS NULL OR array_length(${bookings.roomIds}, 1) = 0)`,
+            dateOverlapConditions!
+          ))
           .limit(1),
+        // Multi-room bookings: new room explicitly listed in roomIds array
         db.select({ id: bookings.id }).from(bookings)
           .where(and(sql`${newRoomId} = ANY(${bookings.roomIds})`, dateOverlapConditions!))
           .limit(1),
