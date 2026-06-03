@@ -214,14 +214,17 @@ export default function CalendarView() {
     const cout = format(new Date(booking.checkOutDate), "yyyy-MM-dd");
     // The room currently being swapped — exclude it from results
     const excludeRoomId = changeRoomFromRoomId ?? booking.roomId;
-    // All rooms belonging to THIS booking (can't move to a room already in the same booking)
-    const ownRoomIds = new Set<number>(
-      [booking.roomId, ...(booking.roomIds || [])].filter((id): id is number => id != null)
+    // Other rooms in this same booking that are staying (i.e. roomIds array minus the one being moved).
+    // We use only booking.roomIds (the explicit multi-room array), NOT booking.roomId, because
+    // booking.roomId is a legacy primary-key field that can be stale and doesn't reliably reflect
+    // the current room assignment in multi-room bookings.
+    const otherBookingRoomIds = new Set<number>(
+      (booking.roomIds || []).filter((id): id is number => id != null && id !== excludeRoomId)
     );
     return rooms.filter(room => {
       if (room.id === excludeRoomId) return false;
-      // Exclude other rooms already occupied by this same booking
-      if (ownRoomIds.has(room.id)) return false;
+      // Exclude rooms already occupied by other parts of the same booking
+      if (otherBookingRoomIds.has(room.id)) return false;
       if (room.propertyId !== booking.propertyId) return false;
       if (room.status === "out-of-service" || room.status === "maintenance") return false;
       const hasConflict = bookings.some(b => {
